@@ -21,7 +21,6 @@ import {
   leaderInputHasEntityAuthority,
   leaderIsActionCapability,
   leaderIsDataCapability,
-  leaderSameRoundDependencyConsumerTasksLackEntityInput,
   leaderSameRoundDependencyConsumerTaskToolIds,
   leaderSameRoundDependencyProducerTaskToolIds,
   leaderTasksHaveSameRoundDependency
@@ -67,6 +66,7 @@ const OVERLAPPING_VIDEO_TOOLS_ERROR: string = 'LEADER_OVERLAPPING_VIDEO_TOOLS';
 const TASK_INPUT_INVALID_ERROR: string = 'LEADER_TASK_INPUT_INVALID';
 const ACTION_OWNED_DATA_TASK_ERROR: string = 'LEADER_ACTION_OWNED_DATA_TASK';
 const SKILL_CAPABILITY_ERROR: string = 'LEADER_SKILL_CAPABILITY_VIOLATION';
+const PERSONA_SKILL_SWITCH_ERROR: string = 'LEADER_PERSONA_SKILL_SWITCH';
 const EXPLICIT_MAPS_SELECTION_ERROR: string = 'LEADER_EXPLICIT_MAPS_SELECTION';
 const PREMATURE_MAPS_DETAILS_ERROR: string = 'LEADER_PREMATURE_MAPS_DETAILS';
 const PREMATURE_CALENDAR_UPDATE_ACTION_ERROR: string =
@@ -1115,9 +1115,6 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     if (producerTaskToolIds.length === 0 || consumerTaskToolIds.length === 0) {
       throw new Error(SAME_ROUND_DEPENDENCY_ERROR);
     }
-    if (!leaderSameRoundDependencyConsumerTasksLackEntityInput(decision.dataTasks)) {
-      throw new Error(SAME_ROUND_DEPENDENCY_ERROR);
-    }
     const producerToolIds: Set<string> = new Set<string>(producerTaskToolIds);
     const consumerToolIds: Set<string> = new Set<string>(consumerTaskToolIds);
     const retained: LeaderDecisionDataTask[] = [];
@@ -1163,6 +1160,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     }
     decision.dataTasks = retained;
     decision.requestedCapabilityIds = normalizedRequested;
+    decision.reasonCode = 'dependency_requires_next_round';
   }
 
   private rejectUnboundLaterTool(
@@ -1238,7 +1236,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
   }
 
   private parseDecision(output: string, context: LeaderPlanningContext): LeaderDecision {
-    const trimmed: string = output.trim();
+    let trimmed: string = output.trim();
     if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
       throw new Error('Leader planner requires exactly one JSON object.');
     }
@@ -1246,7 +1244,15 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     try {
       parsed = JSON.parse(trimmed) as Object;
     } catch (_error) {
-      throw new Error('Leader planner requires exactly one JSON object.');
+      if (!trimmed.endsWith('}}')) {
+        throw new Error('Leader planner requires exactly one JSON object.');
+      }
+      trimmed = trimmed.substring(0, trimmed.length - 1);
+      try {
+        parsed = JSON.parse(trimmed) as Object;
+      } catch (_redundantClosureError) {
+        throw new Error('Leader planner requires exactly one JSON object.');
+      }
     }
     if (this.hasDuplicateObjectKeys(trimmed)) {
       throw new Error('Leader planner JSON contains duplicate object keys.');
@@ -1321,6 +1327,11 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     if (toolCatalog.length > MAX_LEADER_TOOL_CATALOG_CHARS) {
       throw new Error('LEADER_TOOL_CATALOG_LIMIT');
     }
+    const lockedSelection: string = context.lockedPersonaId === undefined ? '' :
+      'Locked turn persona/skill: ' + JSON.stringify({
+        personaId: context.lockedPersonaId,
+        skillId: context.lockedSkillId
+      }) + '\nEvery later-round decision must preserve this exact personaId and skillId.';
     const result: string = [
       'You are the Appless Leader Agent.',
       'Return exactly one LeaderDecision JSON object.',
@@ -1345,6 +1356,9 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
         'the unique union of every selected Data tool, allowed tool, and Action ID. In other words, ' +
         'requestedCapabilityIds is the exact current-round execution union, not a list of future-round tools.',
       'Tasks in this round must be independent. Put dependent work in a later round.',
+      'For dependent serial tools, emit exactly one data task in this planning round.\n' +
+        'Wait for its Observation, then emit the next task with args derived from that real output.\n' +
+        'Never pre-fill placeId, eventId, threadId, messageId, orderId, or provider receipt.',
       'Ownership contract: Data-owned capability IDs belong in dataTasks toolId and allowedToolIds. ' +
         'Action-owned capability IDs belong in actionIntent.allowedActionIds. A Data-owned ID may also appear in ' +
         'actionIntent only when a source tool explicitly declares that exact ID in actions. Never place an ' +
@@ -1369,6 +1383,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       hotelSearchPlanningContract(currentLocalDate),
       'Maximum planning rounds: 3.',
       'Round: ' + round.toString(),
+      lockedSelection,
       'Context: ' + JSON.stringify(input),
       'Registry capabilities: ' + toolCatalog,
       'Personas: ' + JSON.stringify(context.personas)
@@ -1481,6 +1496,12 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       (reasonCode !== undefined &&
         (typeof reasonCode !== 'string' || reasonCode.trim().length === 0))) {
       throw new Error('Leader decision fields are malformed.');
+    }
+    if ((context.lockedPersonaId !== undefined || context.lockedSkillId !== undefined) &&
+      (typeof context.lockedPersonaId !== 'string' || context.lockedPersonaId.length === 0 ||
+        typeof context.lockedSkillId !== 'string' ||
+        personaId !== context.lockedPersonaId || skillId !== context.lockedSkillId)) {
+      throw new Error(PERSONA_SKILL_SWITCH_ERROR);
     }
     if (!this.validPersonaSkill(context, personaId, skillId)) {
       throw new Error('Leader persona and skill must be an exact registered pair.');

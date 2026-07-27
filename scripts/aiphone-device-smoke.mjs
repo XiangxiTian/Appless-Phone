@@ -7,6 +7,7 @@ import {
   evaluateHotelSystemActionEvidence,
   foregroundBundleFromAbilityDump,
   hasPopulatedHotelActionEvidence,
+  hasVisibleHotelRateRuleEvidence,
   hotelActionEvidenceFromLogs,
   hotelDetailClickLocator,
   hotelMultiAgentSearchEvidence,
@@ -33,13 +34,16 @@ import {
   directTextVisibleEvidence,
   dynamicAuthOutcomeAssessment,
   dynamicToolDiscoveryEvidence,
+  expandedMailBodyRegionText,
   mailThreadReadEvidence,
   modelTransportEvidence,
   multiAgentActionEvidence,
   multiAgentPostCompletionWaitMs,
   multiAgentTurnEvidence,
+  shouldPreserveSmokeAppSession,
   socialDraftUiEvidence,
   socialReplyButtonCenter,
+  shouldRecoverMailBodyViewport,
   toolExecutionEvidence,
   visibleMailBodyText
 } from './multi-agent-smoke-evidence.mjs';
@@ -228,8 +232,21 @@ const retainedFullCases = [
   { id: 'F04', query: '瑞幸生椰拿铁多少钱', expectsTool: true, expectedToolId: 'food.search' },
   { id: 'F05', query: '用 Google Pay 给罗一格转 1 美元', expectsTool: true, expectedToolId: 'payment.send' },
   { id: 'F06', query: '帮我设置 Stripe 收款账户', expectsTool: true, expectedToolId: 'payment.account.setup' },
-  { id: 'F07', query: '帮我用 Gmail 写一封邮件给 alice@example.com，说我收到了', expectsTool: true, expectedToolId: 'gmail.draft.create' },
-  { id: 'F08', query: '确认应用刚才的 Gmail 草稿', expectsTool: true, expectedToolId: 'gmail.draft.apply' },
+  {
+    id: 'F07',
+    query: '帮我用 Gmail 写一封邮件给 alice@example.com，说我收到了',
+    expectsTool: true,
+    expectedToolId: 'gmail.draft.create',
+    retryLimit: 0
+  },
+  {
+    id: 'F08',
+    query: '确认应用刚才的 Gmail 草稿',
+    expectsTool: true,
+    expectedToolId: 'gmail.draft.apply',
+    dependsOnCaseId: 'F07',
+    retryLimit: 0
+  },
   { id: 'F09', query: '帮我在 YouTube 搜索世界杯相关视频', expectsTool: true, expectedToolId: 'youtube.video.search' },
   { id: 'F10', query: '帮我查看我的 YouTube 播放列表', expectsTool: true, expectedToolId: 'youtube.mine.playlists' },
   { id: 'F11', query: '帮我查看我的 YouTube 订阅', expectsTool: true, expectedToolId: 'youtube.mine.subscriptions' },
@@ -522,6 +539,7 @@ const selectedDefaultCases = runComposioCases ? composioCases :
         (runDynamicCases ? defaultCases.concat(dynamicCases) : defaultCases))));
 const useDefaultCases = queryArgs.length === 0;
 const queries = useDefaultCases ? selectedDefaultCases.map((testCase) => testCase.query) : queryArgs;
+const queryRetryLimit = Number.parseInt(process.env.AIPHONE_QUERY_RETRY_LIMIT || '2', 10);
 if (listCases) {
   if (runGmailSendManual) {
     const safeThreadId = (process.env.AIPHONE_GMAIL_SAFE_THREAD_ID || '').trim();
@@ -539,8 +557,15 @@ if (listCases) {
     }], null, 2));
     process.exit(0);
   }
-  const manifest = runFullRegression ?
-    [...coreScenarioManifest, ...fullScenarioManifest] : coreScenarioManifest;
+  const manifest = queryArgs.length > 0 ? queryArgs.map((query) => {
+    const testCase = expectedCaseForQuery(query);
+    return {
+      id: testCase.id || '',
+      expectedToolIds: lifecycleOptions(testCase).expectedToolIds,
+      retryLimit: testCase.retryLimit ?? queryRetryLimit
+    };
+  }) : (runFullRegression ?
+    [...coreScenarioManifest, ...fullScenarioManifest] : coreScenarioManifest);
   console.log(JSON.stringify(manifest, null, 2));
   process.exit(0);
 }
@@ -550,7 +575,6 @@ if (runGmailSendManual) {
 }
 const target = process.env.AIPHONE_HDC_TARGET || firstTarget();
 const timeoutMs = Number.parseInt(process.env.AIPHONE_QUERY_TIMEOUT_MS || '90000', 10);
-const queryRetryLimit = Number.parseInt(process.env.AIPHONE_QUERY_RETRY_LIMIT || '2', 10);
 const mailActionScrollLimit = Number.parseInt(process.env.AIPHONE_MAIL_ACTION_SCROLL_LIMIT || '16', 10);
 
 function isWhatsAppSendQuery(query) {
@@ -566,6 +590,10 @@ function isHotelQuery(query) {
 }
 
 function expectedCaseForQuery(query) {
+  const configuredCase = fullRegressionCases.find((testCase) => testCase.query === query);
+  if (configuredCase !== undefined) {
+    return configuredCase;
+  }
   if (isPersonaMemoryUpdateQuery(query)) {
     return {
       expectsTool: false,
@@ -2003,6 +2031,11 @@ function currentMailReadEvidence(logText, sourceToolId, actionContext) {
   return results.find((result) => result.complete) || results[0];
 }
 
+function visibleExpandedMailBody(layout, text) {
+  return visibleMailBodyText(expandedMailBodyRegionText(layout)) &&
+    !hasTechnicalGmailArgsCard(text);
+}
+
 async function verifyMailExpandedBody(layout, index, appPid, actionContext) {
   let currentLayout = layout;
   const sourceToolId = visibleSourceToolId(actionContext);
@@ -2025,13 +2058,25 @@ async function verifyMailExpandedBody(layout, index, appPid, actionContext) {
       );
       let text = collectLayoutText(expanded).join('\n');
       for (let poll = 0; poll < 16 && evidence.complete &&
-        !visibleMailBodyText(text) &&
+        !visibleExpandedMailBody(expanded, text) &&
         !/邮件正文加载失败|正文读取失败|PROVIDER_|AUTH_REQUIRED/.test(text); poll += 1) {
         await sleep(250);
         expanded = dumpLayout(
           `query-${index + 1}-mail-body-${attempt + 1}-${candidate + 1}-poll-${poll + 1}-layout.json`
         );
         text = collectLayoutText(expanded).join('\n');
+      }
+      let bodyVisible = visibleExpandedMailBody(expanded, text);
+      if (shouldRecoverMailBodyViewport(evidence, bodyVisible)) {
+        for (let recovery = 0; recovery < 4 && !bodyVisible; recovery += 1) {
+          swipeResultsUp();
+          await sleep(450);
+          expanded = dumpLayout(
+            `query-${index + 1}-mail-body-${attempt + 1}-${candidate + 1}-viewport-${recovery + 1}-layout.json`
+          );
+          text = collectLayoutText(expanded).join('\n');
+          bodyVisible = visibleExpandedMailBody(expanded, text);
+        }
       }
       const textPath = join(
         outDir,
@@ -2043,8 +2088,6 @@ async function verifyMailExpandedBody(layout, index, appPid, actionContext) {
       );
       writeFileSync(textPath, text + '\n');
       writeFileSync(logPath, logs + '\n');
-      const bodyVisible = visibleMailBodyText(text) &&
-        !hasTechnicalGmailArgsCard(text);
       if (evidence.ok && evidence.bodyVisible && bodyVisible) {
         return {
           ok: true,
@@ -2632,8 +2675,7 @@ async function verifyHotelDetailAction(layout, index, appPid, queryLogs, queryCo
   );
   return {
     ok: pendingSearchCardAbsent &&
-      detailRequested && detailOk && /房型与价格规则/.test(text) &&
-      /床型|餐食|取消政策/.test(text) && restoredOk &&
+      detailRequested && detailOk && hasVisibleHotelRateRuleEvidence(text) && restoredOk &&
       searchActionEvidence.ok && restoredActionEvidence.ok && surfaceIdentity.ok &&
       bookingAction.ok && systemActions.ok,
     capability: 'hotel.detail',
@@ -2953,7 +2995,7 @@ async function verifyMailExpandedActions(layout, index, appPid, targetMarker = '
   };
 }
 
-async function runQuery(query, index, expectedTool, expectedCaseOverride = null) {
+async function runQuery(query, index, expectedTool, expectedCaseOverride = null, preserveAppSession = false) {
   const expectedCase = expectedCaseOverride || (useDefaultCases ? selectedDefaultCases[index] : expectedCaseForQuery(query));
   const expectsDirectText = expectedTool === false && !isPersonaMemoryUpdateQuery(query);
   const expectedToolId = expectedCase.expectedToolId || '';
@@ -2962,11 +3004,13 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null)
   const minimumDataRounds = lifecycle.minimumDataRounds;
   const expectedDependencies = lifecycle.expectedDependencies;
   clearHilog();
-  hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
-  if (cleanData) {
-    cleanBundleData();
+  if (!preserveAppSession) {
+    hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+    if (cleanData) {
+      cleanBundleData();
+    }
+    hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
   }
-  hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
   await sleep(3000);
   moveAppWindowIntoScreenshot();
   const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim().split(/\s+/)[0] || '';
@@ -3636,19 +3680,27 @@ for (let index = 0; index < queries.length; index += 1) {
     continue;
   }
   const expectedTool = inferredCase.expectsTool;
+  const previousCase = index > 0 ?
+    (useDefaultCases ? selectedDefaultCases[index - 1] : expectedCaseForQuery(queries[index - 1])) : null;
+  const preserveAppSession = shouldPreserveSmokeAppSession(
+    inferredCase,
+    previousCase,
+    summaries.at(-1) || null
+  );
+  const caseRetryLimit = inferredCase.retryLimit ?? queryRetryLimit;
   let summary = null;
-  for (let attempt = 0; attempt <= queryRetryLimit; attempt += 1) {
-    summary = await runQuery(query, index, expectedTool);
+  for (let attempt = 0; attempt <= caseRetryLimit; attempt += 1) {
+    summary = await runQuery(query, index, expectedTool, inferredCase, preserveAppSession);
     summary.attempt = attempt + 1;
-    summary.retryLimit = queryRetryLimit;
+    summary.retryLimit = caseRetryLimit;
     const missingScrolledMarkers = Array.isArray(summary.layoutScrolledRequiredMarkers) &&
       Array.isArray(summary.layoutScrolledFoundMarkers) &&
       summary.layoutScrolledRequiredMarkers.some((marker) => !summary.layoutScrolledFoundMarkers.includes(marker));
     const retryableFailure = summary.providerFailed || summary.modelFailed || missingScrolledMarkers;
-    if (summary.ok || summary.allowsCorrelatedDynamicAuth || !retryableFailure || attempt === queryRetryLimit) {
+    if (summary.ok || summary.allowsCorrelatedDynamicAuth || !retryableFailure || attempt === caseRetryLimit) {
       break;
     }
-    console.warn(`retryable failure for query ${index + 1}, retrying attempt ${attempt + 2}/${queryRetryLimit + 1}`);
+    console.warn(`retryable failure for query ${index + 1}, retrying attempt ${attempt + 2}/${caseRetryLimit + 1}`);
   }
   if (summary === null) {
     throw new Error(`No summary produced for query: ${query}`);

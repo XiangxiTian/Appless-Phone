@@ -109,7 +109,7 @@ import {
   parseHotelDetailRequest,
   parseHotelSearchRequest
 } from './HotelToolTypes';
-import { callGmailApiTool, gmailMailDetailFromPayload, readGmailMailDetail } from './GmailApiClient';
+import { callGmailApiTool, gmailMailDetailFromComposioObservation, gmailMailDetailFromPayload, readGmailMailDetail } from './GmailApiClient';
 import { callYouTubeVideoSearch, defaultYouTubeSearchOptions, YouTubeSearchOptions } from './YouTubeApiClient';
 import { callMediaVideoSearch, mediaVideoQueryFromArgs } from './MediaVideoClient';
 import { mediaVideoPlaybackUrl, mediaVideoStructuredDataA2ui } from './MediaVideoToolA2ui';
@@ -172,7 +172,7 @@ import { callAggregateSearch } from './AggregateSearchClient';
 import { AggregateSearchResult, AggregateSearchSourceStatus } from './AggregateSearchTypes';
 import { discoverDynamicToolForPrompt, DynamicToolDiscoveryResult } from './DynamicToolDiscovery';
 import { DynamicToolRegistry, isBuiltInToolId, isUnsafeMcpTool, selectBestRemoteTransport } from './DynamicToolRegistry';
-import { sampleManifestForToolId } from './DynamicToolSamples';
+import { sampleManifestForToolId, sampleRecordsForDiscovery } from './DynamicToolSamples';
 import { dataAgentToolDefinitions, isCalendarToolId, isGmailToolId, isHotelToolId, isKnownDomainToolId, isLuckinToolId, isMailToolId, isMapsToolId, isMediaToolId, isPaymentToolId, isRideToolId, isYouTubeToolId, toolDefinitionForToolId } from './ToolDefinitionRegistry';
 import { ToolBackendType, ToolDefinition } from './ToolDefinitionTypes';
 import {
@@ -9750,6 +9750,22 @@ export type HotelTimestampProvider = () => string;
 const defaultHotelTimestampProvider: HotelTimestampProvider = (): string => new Date().toISOString();
 let hotelTimestampProvider: HotelTimestampProvider = defaultHotelTimestampProvider;
 
+export function resolveDynamicCredentialValue(
+  manifestId: string,
+  credentialName: string,
+  storedValue: string
+): string {
+  const stored = storedValue.trim();
+  if (stored.length > 0) {
+    return stored;
+  }
+  if (manifestId !== 'modelscope.@amap.amap-maps' || credentialName !== 'AMAP_MAPS_API_KEY') {
+    return '';
+  }
+  const mcpKey = localProviderConfig.amapMcpKey.trim();
+  return mcpKey.length > 0 ? mcpKey : localProviderConfig.amapKey.trim();
+}
+
 export function configureGmailMcpClientForTests(client: GenericMcpClient | null): void {
   gmailMcpClient = client === null ? genericMcpClient : client;
 }
@@ -9912,11 +9928,14 @@ function dynamicReadFailure(
   qualifiedName: string,
   inputSchema: Object,
   message: string,
-  status: string = 'error'
+  status: string = 'error',
+  selectedToolId: string = 'dynamic.search'
 ): DynamicReadExecution {
   const result = dynamicErrorResult(provider, qualifiedName, '动态读取失败', message);
   result.status = status;
-  const registration = dynamicRegistration(provider, qualifiedName, inputSchema, new Object(), '');
+  const registration = dynamicRegistration(
+    provider, qualifiedName, inputSchema, new Object(), '', selectedToolId
+  );
   return dynamicExecutionResult(result, registration);
 }
 
@@ -9945,6 +9964,22 @@ function dynamicManifestTool(manifest: DynamicToolManifest, name: string): Dynam
   return null;
 }
 
+function selectedDynamicManifest(qualifiedName: string): DynamicToolDiscoveryResult | null {
+  const records = sampleRecordsForDiscovery();
+  for (let recordIndex = 0; recordIndex < records.length; recordIndex++) {
+    const manifest = records[recordIndex].manifest;
+    for (let toolIndex = 0; toolIndex < manifest.tools.length; toolIndex++) {
+      if (manifest.tools[toolIndex].name === qualifiedName) {
+        return {
+          toolId: records[recordIndex].toolIds[0], manifest: manifest, query: qualifiedName,
+          source: 'modelscope-local-catalog', score: 0, reason: 'selected qualifiedName'
+        };
+      }
+    }
+  }
+  return null;
+}
+
 function dynamicManifestReadAllowed(tool: DynamicMcpTool, transport: DynamicToolTransport): boolean {
   if (tool.annotations?.readOnlyHint === true || transport.type === 'http_api' &&
     transportOption(transport, 'method', 'GET').toUpperCase() === 'GET') {
@@ -9957,31 +9992,39 @@ function dynamicManifestReadAllowed(tool: DynamicMcpTool, transport: DynamicTool
   return dynamicReadAuthorizationMessage(request as Object).length === 0;
 }
 
-async function dynamicManifestReadExecution(discovery: DynamicToolDiscoveryResult, prompt: string): Promise<DynamicReadExecution> {
+async function dynamicManifestReadExecution(
+  discovery: DynamicToolDiscoveryResult,
+  prompt: string,
+  selectedToolName: string = ''
+): Promise<DynamicReadExecution> {
   const manifest = discovery.manifest;
   const transport = selectBestRemoteTransport(manifest);
-  const toolName = firstSafeToolName(manifest);
+  const toolName = selectedToolName.length > 0 ? selectedToolName : firstSafeToolName(manifest);
   const tool = dynamicManifestTool(manifest, toolName);
   if (transport === null || tool === null) {
     return dynamicReadFailure(manifest.displayName, toolName, new Object(),
-      'No safe HAP-runnable dynamic read tool is available.');
+      'No safe HAP-runnable dynamic read tool is available.', 'unsupported_transport', discovery.toolId);
   }
-  if (!dynamicManifestReadAllowed(tool, transport)) {
+  if (!isSafeDynamicManifestTool(tool) || !dynamicManifestReadAllowed(tool, transport)) {
     return dynamicReadFailure(manifest.displayName, tool.name, tool.inputSchema,
-      'Dynamic tool is not a recognized read/search/list/get operation.', 'unsafe_action_blocked');
+      'Dynamic tool is not a recognized read/search/list/get operation.', 'unsafe_action_blocked', discovery.toolId);
   }
   let credentialRef = '';
   let credentialValue = '';
   const requiredCredential = firstRequiredCredential(manifest);
   if (requiredCredential !== null) {
     credentialRef = credentialRefFor(manifest.id, requiredCredential.name);
-    credentialValue = await dynamicCredentialStore.get(credentialRef);
+    credentialValue = resolveDynamicCredentialValue(
+      manifest.id,
+      requiredCredential.name,
+      await dynamicCredentialStore.get(credentialRef)
+    );
     if (credentialValue.length === 0) {
       return dynamicReadFailure(manifest.displayName, tool.name, tool.inputSchema,
-        'Dynamic read requires configured credentials.', 'needs_auth');
+        'Dynamic read requires configured credentials.', 'needs_auth', discovery.toolId);
     }
   }
-  const registration: DynamicToolRegistration = {
+  const candidate: DynamicToolRegistration = {
     toolId: discovery.toolId,
     manifestId: manifest.id,
     displayName: manifest.displayName,
@@ -9992,6 +10035,8 @@ async function dynamicManifestReadExecution(discovery: DynamicToolDiscoveryResul
     sourceUrl: manifest.sourceUrl,
     lastError: ''
   };
+  dynamicToolRegistry.setRegistration(candidate);
+  const registration = dynamicToolRegistry.registrationForToolId(discovery.toolId) ?? candidate;
   let result: DynamicGenericToolResult;
   if (transport.type === 'http_api') {
     result = await callDynamicHttpApiTool(registration, credentialValue, prompt);
@@ -9999,7 +10044,8 @@ async function dynamicManifestReadExecution(discovery: DynamicToolDiscoveryResul
     const preflight = await genericMcpClient.preflight(registration, credentialValue);
     if (!preflight.ok) {
       return dynamicReadFailure(manifest.displayName, tool.name, tool.inputSchema,
-        preflight.message.length > 0 ? preflight.message : 'Dynamic MCP preflight failed.');
+        preflight.message.length > 0 ? preflight.message : 'Dynamic MCP preflight failed.',
+        'error', discovery.toolId);
     }
     result = await genericMcpClient.callTool(registration, credentialValue, dynamicArgsFromPrompt(prompt));
   }
@@ -10008,14 +10054,21 @@ async function dynamicManifestReadExecution(discovery: DynamicToolDiscoveryResul
 }
 
 async function defaultDynamicReadExecutor(prompt: string, args: Object | null): Promise<DynamicReadExecution> {
-  const discovery = discoverDynamicToolForPrompt(prompt);
+  const selected = dynamicQualifiedName(dynamicReadRequestArgs(args));
+  if (selected.length > 0) {
+    const selectedManifest = selectedDynamicManifest(selected);
+    if (selectedManifest !== null) {
+      return dynamicManifestReadExecution(selectedManifest, prompt, selected);
+    }
+  }
+  const discovery = selected.length === 0 ? discoverDynamicToolForPrompt(prompt) : null;
   if (discovery !== null) {
     return dynamicManifestReadExecution(discovery, prompt);
   }
   const result = await callComposioDynamic(prompt, args);
   if (result === null) {
-    return dynamicReadFailure('dynamic.search', dynamicQualifiedName(dynamicReadRequestArgs(args)),
-      new Object(), 'No matching dynamic read provider was found.');
+    return dynamicReadFailure('dynamic.search', selected,
+      new Object(), 'No matching dynamic read provider was found.', 'no_tool_found');
   }
   const providedRegistration = result.registration;
   const qualifiedName = providedRegistration?.qualifiedName ??
@@ -10050,6 +10103,27 @@ function dynamicStructuredDataResult(execution: DynamicReadExecution): DataResul
     source.receipt = execution.registration.receipt;
   }
   base.sources = [source];
+  const status = execution.results.length > 0 ? execution.results[0].status : 'empty';
+  let code = '';
+  if (status === 'needs_auth') {
+    code = 'AUTH_REQUIRED';
+  } else if (status === 'missing_config') {
+    code = 'DYNAMIC_CONFIG_MISSING';
+  } else if (status === 'unsupported_transport') {
+    code = 'DYNAMIC_UNSUPPORTED_TRANSPORT';
+  } else if (status === 'no_tool_found') {
+    code = 'DYNAMIC_NO_PROVIDER';
+  } else if (status !== 'success' && status !== 'empty') {
+    code = 'DYNAMIC_PROVIDER_ERROR';
+  }
+  if (code.length > 0) {
+    base.status = 'error';
+    base.error = {
+      code: code,
+      message: execution.results[0].summary,
+      retryable: code === 'DYNAMIC_PROVIDER_ERROR'
+    };
+  }
   return base;
 }
 
@@ -10332,11 +10406,15 @@ async function callDynamicHttpApiTool(registration: DynamicToolRegistration, cre
 
 function firstSafeToolName(manifest: DynamicToolManifest): string {
   for (let index = 0; index < manifest.tools.length; index++) {
-    if (!isUnsafeMcpTool(manifest.tools[index].name, manifest.tools[index].description)) {
+    if (isSafeDynamicManifestTool(manifest.tools[index])) {
       return manifest.tools[index].name;
     }
   }
   return '';
+}
+
+function isSafeDynamicManifestTool(tool: DynamicMcpTool): boolean {
+  return !isUnsafeMcpTool(tool.name, tool.description);
 }
 
 function firstRequiredCredential(manifest: DynamicToolManifest): DynamicCredentialSpec | null {
@@ -11023,6 +11101,22 @@ async function readConfiguredGmailDetailWithSource(
       sources: [mailDetailSource('Gmail OAuth', 'oauth_api', 'gmail.thread.read')]
     };
   }
+  if (args.messageId.trim().length > 0) {
+    try {
+      const execution: ComposioRawExecution = await callComposioFixedRaw(
+        'Fetch exactly one Gmail message by message ID',
+        'gmail.message.read',
+        args as Object
+      );
+      return {
+        detail: gmailMailDetailFromComposioObservation(execution.observation, args),
+        sources: [mailDetailSource('Composio Gmail', 'oauth_api', 'gmail.message.read')]
+      };
+    } catch (messageError) {
+      aiLogError('[AIPhone][GmailDetailMessageComposioFailed] ' +
+        describeThrown(messageError).substring(0, 240));
+    }
+  }
   try {
     const execution: ComposioRawExecution = await callComposioFixedRaw(
       'Gmail read full thread ' + args.threadId,
@@ -11523,16 +11617,17 @@ async function configuredGmailResults(
   prompt: string,
   args: Object | null
 ): Promise<DynamicGenericToolResult[]> {
+  const providerArgs = toolId === 'gmail.mail.search' ? gmailMcpArgsForPrompt(toolId, prompt, args) : args;
   let pinnedProvider = '';
-  if (toolId === 'gmail.draft.apply' && args !== null && !Array.isArray(args) && typeof args === 'object') {
-    const values = args as ToolArgRecord;
+  if (toolId === 'gmail.draft.apply' && providerArgs !== null && !Array.isArray(providerArgs) && typeof providerArgs === 'object') {
+    const values = providerArgs as ToolArgRecord;
     pinnedProvider = textOf(values.provider).trim().toLowerCase();
     if (pinnedProvider !== 'gmail_oauth' && pinnedProvider !== 'composio') {
       return [gmailErrorResult(toolId, 'Gmail draft provider is missing or invalid.')];
     }
   }
   if (pinnedProvider === 'gmail_oauth') {
-    const pinnedFallback = await gmailOAuthFallbackResults(toolId, prompt, args);
+    const pinnedFallback = await gmailOAuthFallbackResults(toolId, prompt, providerArgs);
     pinnedFallback.forEach((result: DynamicGenericToolResult) => {
       result.providerPhase = 'execution';
     });
@@ -11545,7 +11640,7 @@ async function configuredGmailResults(
       'Gmail',
       prompt,
       toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply' ? '草稿' : '邮件',
-      args
+      providerArgs
     ) : clonedGmailResult(gmailComposioResultForTests);
   if (pinnedProvider === 'composio') {
     return [composioResult];
@@ -11553,7 +11648,7 @@ async function configuredGmailResults(
   if (composioResult.status === 'success' && composioResult.providerPhase === 'execution') {
     return [composioResult];
   }
-  const fallbackResults = await gmailOAuthFallbackResults(toolId, prompt, args);
+  const fallbackResults = await gmailOAuthFallbackResults(toolId, prompt, providerArgs);
   fallbackResults.forEach((result: DynamicGenericToolResult) => {
     result.providerPhase = 'execution';
   });

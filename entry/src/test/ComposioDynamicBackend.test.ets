@@ -10,6 +10,7 @@ import {
   composioExactToolSlugForFixedTool,
   composioPhoneNumberIdsFromObservation,
   configureComposioConfigFromRawJson,
+  gmailDraftPreviewA2ui,
   proxyToolkitAccountsPreview,
   shouldAttemptComposioDynamic,
   configureComposioUserId,
@@ -75,6 +76,7 @@ interface SelectedSlugCase {
 class RecordingComposioSearchExecuteClient implements ComposioSearchExecuteClient {
   searchObservation: string;
   executionObservation: string;
+  searchedUseCases: string[] = [];
   executedSlugs: string[] = [];
 
   constructor(searchObservation: string, executionObservation: string) {
@@ -82,7 +84,8 @@ class RecordingComposioSearchExecuteClient implements ComposioSearchExecuteClien
     this.executionObservation = executionObservation;
   }
 
-  async search(_useCase: string): Promise<string> {
+  async search(useCase: string): Promise<string> {
+    this.searchedUseCases.push(useCase);
     return this.searchObservation;
   }
 
@@ -164,6 +167,24 @@ export default function composioDynamicBackendTest() {
       expect(isUnsafeComposioExecute('GITHUB_FIND_PULL_REQUESTS', '{"sort":"updated"}')).assertFalse();
     });
 
+    it('executes the selected qualifiedName instead of a prompt-ranked candidate', 0, async () => {
+      const client = new RecordingComposioSearchExecuteClient(
+        '{"source":"Composio","authorizedToolkits":["github","googledrive"],"tools":[' +
+          '{"toolSlug":"GOOGLEDRIVE_SEARCH_FILES","description":"Search Drive files","inputSchema":"{}"},' +
+          '{"toolSlug":"GITHUB_LIST_PULL_REQUESTS","description":"List pull requests","inputSchema":"{}"}' +
+        '],"instruction":"execute selected tool"}', successfulExecutionObservation()
+      );
+      const result = await callComposioSearchAndExecute(
+        client, 'search Google Drive files',
+        looseObject('{"operation":"list","qualifiedName":"GITHUB_LIST_PULL_REQUESTS"}')
+      );
+
+      expect(result.status).assertEqual('success');
+      expect(result.registration?.qualifiedName).assertEqual('GITHUB_LIST_PULL_REQUESTS');
+      expect(client.searchedUseCases[0]).assertEqual('GITHUB_LIST_PULL_REQUESTS');
+      expect(client.executedSlugs[0]).assertEqual('GITHUB_LIST_PULL_REQUESTS');
+    });
+
     it('reauthorizes every actual selected Composio slug before execute', 0, async () => {
       const blocked: SelectedSlugCase[] = [
         { prompt: 'use GitHub', slug: 'GITHUB_EXECUTE_WORKFLOW' },
@@ -172,6 +193,9 @@ export default function composioDynamicBackendTest() {
         { prompt: 'use Slack', slug: 'slackuploadfile' },
         { prompt: 'use GitHub', slug: 'COMPOSIO_GITHUB_PUBLISH_RELEASE' },
         { prompt: 'use GitHub', slug: 'GITHUB_SEARCH_AND_DELETE_REPOSITORY' },
+        { prompt: 'use GitHub', slug: 'GITHUB_FIND_AND_DELETE_REPOSITORY' },
+        { prompt: 'use Google Drive', slug: 'GOOGLEDRIVE_FIND_AND_SHARE_FILE' },
+        { prompt: 'use Gmail', slug: 'GMAIL_FETCH_AND_SEND_EMAIL' },
         { prompt: 'use GitHub', slug: 'GITHUB_SYNC_REPOSITORY' },
         { prompt: 'use GitHub', slug: 'GITHUB_BUDGET_REPORT' },
         { prompt: 'use Google Drive', slug: 'GOOGLEDRIVE_SPREADSHEET_EXPORT' },
@@ -209,12 +233,15 @@ export default function composioDynamicBackendTest() {
 
       const allowed: SelectedSlugCase[] = [
         { prompt: 'use GitHub', slug: 'GITHUB_SEARCH_REPOSITORIES' },
+        { prompt: 'use GitHub', slug: 'GITHUB_FIND_PULL_REQUESTS' },
         { prompt: 'use GitHub', slug: 'github.list-repositories' },
         { prompt: 'use GitHub', slug: 'githubGetRepository' },
         { prompt: 'use GitHub', slug: 'githubsearchrepositories' },
         { prompt: 'use GitHub', slug: 'COMPOSIO_GITHUB_READ_REPOSITORY' },
+        { prompt: 'use Google Drive', slug: 'GOOGLEDRIVE_FIND_FILE' },
         { prompt: 'search Twitter posts', slug: 'TWITTER_SEARCH_POSTS' },
         { prompt: 'use Slack', slug: 'slack.list-channels' },
+        { prompt: 'use Gmail', slug: 'GMAIL_FETCH_EMAILS' },
         { prompt: 'use Gmail', slug: 'gmailGetMessage' },
         { prompt: 'use Google Drive', slug: 'googledrivereadfile' },
         { prompt: 'use GitHub', slug: 'COMPOSIO_GITHUB_READ_FILE' },
@@ -354,6 +381,8 @@ export default function composioDynamicBackendTest() {
     });
 
     it('maps Gmail fixed-tool args into the matched Composio schema', 0, () => {
+      expect(composioExactToolSlugForFixedTool('gmail.message.read'))
+        .assertEqual('GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID');
       const draftTool = composioTool('{"toolSlug":"GMAIL_CREATE_DRAFT","inputSchema":"{\\"type\\":\\"object\\",\\"properties\\":{\\"to\\":{\\"type\\":\\"array\\"},\\"subject\\":{\\"type\\":\\"string\\"},\\"body\\":{\\"type\\":\\"string\\"},\\"thread_id\\":{\\"type\\":\\"string\\"},\\"reply_mode\\":{\\"type\\":\\"string\\"}}}"}');
       const draftArgs = composioArgumentsForTool(
         draftTool,
@@ -375,6 +404,17 @@ export default function composioDynamicBackendTest() {
         looseObject('{"threadId":"thread-999"}')
       ) as Record<string, Object | string | number | boolean | null | undefined>;
       expect(threadArgs.threadId).assertEqual('thread-999');
+
+      const messageTool = composioTool('{"toolSlug":"GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID","inputSchema":"{\\"type\\":\\"object\\",\\"properties\\":{\\"format\\":{\\"type\\":\\"string\\"},\\"user_id\\":{\\"type\\":\\"string\\"},\\"message_id\\":{\\"type\\":\\"string\\"}}}"}');
+      const messageArgs = composioArgumentsForTool(
+        messageTool,
+        '读取一封 Gmail 邮件',
+        'gmail.message.read',
+        looseObject('{"messageId":"message-999"}')
+      ) as Record<string, Object | string | number | boolean | null | undefined>;
+      expect(messageArgs.message_id).assertEqual('message-999');
+      expect(messageArgs.user_id).assertEqual('me');
+      expect(messageArgs.format).assertEqual('full');
 
       const replyTool = composioTool('{"toolSlug":"GMAIL_REPLY_TO_THREAD","inputSchema":"{\\"type\\":\\"object\\",\\"properties\\":{\\"recipient_email\\":{\\"type\\":\\"string\\"},\\"message_body\\":{\\"type\\":\\"string\\"},\\"thread_id\\":{\\"type\\":\\"string\\"}}}"}');
       const replyArgs = composioArgumentsForTool(
@@ -462,8 +502,11 @@ export default function composioDynamicBackendTest() {
       expect(composioExactToolSlugForFixedTool('calendar.event.delete')).assertEqual('GOOGLECALENDAR_DELETE_EVENT');
       expect(composioExactToolSlugForFixedTool('gmail.reply.send')).assertEqual('GMAIL_REPLY_TO_THREAD');
       expect(composioExactToolSlugForFixedTool('gmail.draft.apply')).assertEqual('GMAIL_UPDATE_DRAFT');
+      expect(composioExactToolSlugForFixedTool('gmail.message.read')).assertEqual('GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID');
       expect(normalizedComposioUseCase('', 'calendar.event.delete')).assertEqual(
         'Delete a Google Calendar event by event ID');
+      expect(normalizedComposioUseCase('', 'gmail.message.read')).assertEqual(
+        'Fetch exactly one Gmail email message by its message ID, not the entire thread');
     });
 
     it('rejects a lone read candidate when Gmail reply discovery omits the exact write tool', 0, async () => {
@@ -712,6 +755,7 @@ export default function composioDynamicBackendTest() {
         .assertLarger(composioPreferredToolScore('帮我看今天的 Google Calendar 日程', calendarCreate, 'calendar.events.search'));
 
       const gmailRead = composioTool('{"toolSlug":"GMAIL_GET_THREAD","description":"Read Gmail thread"}');
+      const gmailMessageRead = composioTool('{"toolSlug":"GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID","description":"Fetch one Gmail message by message ID"}');
       const gmailThreadRead = composioTool('{"toolSlug":"GMAIL_FETCH_MESSAGE_BY_THREAD_ID","description":"Fetch Message by Thread ID"}');
       const gmailReply = composioTool('{"toolSlug":"GMAIL_REPLY_TO_THREAD","description":"Reply to Gmail thread"}');
       const gmailDraft = composioTool('{"toolSlug":"GMAIL_CREATE_DRAFT","description":"Create Gmail draft"}');
@@ -722,6 +766,8 @@ export default function composioDynamicBackendTest() {
         .assertLarger(composioPreferredToolScore('帮我读取这封 Gmail 邮件', gmailDraft, 'gmail.thread.read'));
       expect(composioPreferredToolScore('帮我读取这封 Gmail 邮件', gmailThreadRead, 'gmail.thread.read'))
         .assertLarger(composioPreferredToolScore('帮我读取这封 Gmail 邮件', gmailEmails, 'gmail.thread.read'));
+      expect(composioPreferredToolScore('帮我读取这封 Gmail 邮件', gmailMessageRead, 'gmail.message.read'))
+        .assertLarger(composioPreferredToolScore('帮我读取这封 Gmail 邮件', gmailThreadRead, 'gmail.message.read'));
       expect(composioPreferredToolScore('回复这封 Gmail 邮件', gmailReply, 'gmail.reply.send'))
         .assertLarger(composioPreferredToolScore('回复这封 Gmail 邮件', gmailDraft, 'gmail.reply.send'));
       expect(composioPreferredToolScore('帮我查看我Gmail里和我eccv论文相关的邮件', gmailEmails, 'gmail.mail.search'))
@@ -821,17 +867,144 @@ export default function composioDynamicBackendTest() {
     });
 
     it('treats Gmail draft payloads with draft ids as successful execute results', 0, () => {
-      const observation = '{"data":{"display_url":"https://mail.google.com/mail/u/0/#drafts/r-1","id":"draft-1","threadId":"thread-1"},"error":{"display_url":"https://mail.google.com/mail/u/0/#drafts/r-1","id":"draft-1","threadId":"thread-1"}}';
+      const observation = '{"data":{' +
+        '"display_url":"https://mail.google.com/mail/u/0/#drafts/draft-client-1",' +
+        '"id":"draft-client-1","message":{' +
+        '"display_url":"https://mail.google.com/mail/u/0/#drafts/draft-client-1",' +
+        '"id":"message-client-1","labelIds":["DRAFT"],"threadId":"thread-client-1"}},' +
+        '"error":null,"log_id":"log-client-1"}';
       const result: DynamicGenericToolResult = composioDynamicResultFromObservation(
         'execute',
         observation,
         'GMAIL_CREATE_EMAIL_DRAFT',
         '创建 Gmail 回复草稿'
       );
+      const jsonl = gmailDraftPreviewA2ui(
+        'gmail_client_response_surface',
+        result,
+        looseObject('{"to":["alice@example.com"],"subject":"Re: Demo","body":"我收到了"}'),
+        'gmail.draft.create'
+      );
 
       expect(result.status).assertEqual('success');
       expect(result.summary.indexOf('GMAIL_CREATE_EMAIL_DRAFT')).assertLarger(-1);
-      expect(result.rawPreview.indexOf('mail.google.com')).assertLarger(-1);
+      expect(JSON.stringify(result.rows).indexOf(
+        '"label":"Draft ID","value":"draft-client-1"'
+      )).assertLarger(-1);
+      expect(result.rawPreview).assertEqual('{"draft_id":"draft-client-1"}');
+      expect(jsonl.indexOf('"id":"gmail.draft.apply"')).assertLarger(-1);
+      expect(jsonl.indexOf('"draftId":"draft-client-1"')).assertLarger(-1);
+    });
+
+    it('preserves only nested Gmail draft identity across unrelated provider arrays', 0, () => {
+      const observation = '{"successful":true,"data":{"response_data":{"data":{' +
+        '"display_url":"https://mail.google.com/mail/u/0/#drafts/draft-provider-nested-1",' +
+        '"id":"draft-provider-nested-1","message":{' +
+        '"display_url":"https://mail.google.com/mail/u/0/#drafts/draft-provider-nested-1",' +
+        '"id":"message-provider-nested-1","labelIds":["DRAFT"],' +
+        '"threadId":"thread-provider-nested-1"}},' +
+        '"logs":[{"title":"private log title","text":"private log text","body":"private log body"}]}},"error":null}';
+      const result: DynamicGenericToolResult = composioDynamicResultFromObservation(
+        'execute',
+        observation,
+        'GMAIL_CREATE_EMAIL_DRAFT',
+        '创建 Gmail 草稿'
+      );
+      const unrelated: DynamicGenericToolResult = composioDynamicResultFromObservation(
+        'execute',
+        observation,
+        'NOTION_CREATE_DRAFT',
+        '创建 Notion 草稿'
+      );
+      const messageThreadEvidence: DynamicGenericToolResult = composioDynamicResultFromObservation(
+        'execute',
+        '{"successful":true,"data":{"response_data":{"data":{"id":"draft-message-thread-1",' +
+          '"message":{"id":"message-thread-1","threadId":"thread-evidence-1"},' +
+          '"headers":[{"title":"private header title","text":"private header text",' +
+          '"body":"private header body"}]}}},"error":null}',
+        'GMAIL_CREATE_EMAIL_DRAFT',
+        '创建 Gmail 草稿'
+      );
+      const legacy: DynamicGenericToolResult = composioDynamicResultFromObservation(
+        'execute',
+        '{"successful":true,"data":{"response_data":{"draft_id":"draft-legacy-1",' +
+          '"thread_id":"thread-legacy-1"}},"error":null}',
+        'GMAIL_CREATE_EMAIL_DRAFT',
+        '创建 Gmail 草稿'
+      );
+      const missingEvidence: DynamicGenericToolResult = composioDynamicResultFromObservation(
+        'execute',
+        '{"successful":true,"data":{"response_data":{"data":{"id":"draft-untrusted-1"},' +
+          '"logs":[]}},"error":null}',
+        'GMAIL_CREATE_EMAIL_DRAFT',
+        '创建 Gmail 草稿'
+      );
+      const failed: DynamicGenericToolResult = composioDynamicResultFromObservation(
+        'execute',
+        '{"successful":false,"data":{"response_data":{"data":{' +
+          '"display_url":"https://mail.google.com/mail/u/0/#drafts/draft-failed-1",' +
+          '"id":"draft-failed-1"}}},"error":"provider failed"}',
+        'GMAIL_CREATE_EMAIL_DRAFT',
+        '创建 Gmail 草稿'
+      );
+      const originalArgs = looseObject(
+        '{"to":["alice@example.com"],"subject":"","body":"我收到了"}'
+      );
+      const jsonl = gmailDraftPreviewA2ui(
+        'gmail_nested_provider_surface',
+        result,
+        originalArgs,
+        'gmail.draft.create'
+      );
+      const missingEvidenceJsonl = gmailDraftPreviewA2ui(
+        'gmail_missing_evidence_surface',
+        missingEvidence,
+        originalArgs,
+        'gmail.draft.create'
+      );
+      const failedJsonl = gmailDraftPreviewA2ui(
+        'gmail_failed_surface',
+        failed,
+        originalArgs,
+        'gmail.draft.create'
+      );
+      const unrelatedJsonl = gmailDraftPreviewA2ui(
+        'gmail_unsafe_slug_surface',
+        unrelated,
+        originalArgs,
+        'gmail.draft.create'
+      );
+
+      expect(result.status).assertEqual('success');
+      expect(JSON.stringify(result.rows).indexOf('"label":"Draft ID","value":"draft-provider-nested-1"'))
+        .assertLarger(-1);
+      expect(result.rawPreview.indexOf('draft-provider-nested-1')).assertLarger(-1);
+      expect(result.rawPreview.indexOf('private log title')).assertEqual(-1);
+      expect(result.rawPreview.indexOf('private log text')).assertEqual(-1);
+      expect(result.rawPreview.indexOf('private log body')).assertEqual(-1);
+      expect(JSON.stringify(result.rows).indexOf('private log title')).assertEqual(-1);
+      expect(JSON.stringify(result.rows).indexOf('private log text')).assertEqual(-1);
+      expect(JSON.stringify(result.rows).indexOf('private log body')).assertEqual(-1);
+      expect(jsonl.indexOf('"id":"gmail.draft.apply"')).assertLarger(-1);
+      expect(jsonl.indexOf('"draftId":"draft-provider-nested-1"')).assertLarger(-1);
+      expect(JSON.stringify(messageThreadEvidence.rows)).assertEqual(
+        '[{"label":"执行工具","value":"GMAIL_CREATE_EMAIL_DRAFT"},' +
+          '{"label":"查询","value":"创建 Gmail 草稿"},' +
+          '{"label":"Draft ID","value":"draft-message-thread-1"}]'
+      );
+      expect(messageThreadEvidence.rawPreview).assertEqual('{"draft_id":"draft-message-thread-1"}');
+      expect(messageThreadEvidence.rawPreview.indexOf('private header title')).assertEqual(-1);
+      expect(messageThreadEvidence.rawPreview.indexOf('private header text')).assertEqual(-1);
+      expect(messageThreadEvidence.rawPreview.indexOf('private header body')).assertEqual(-1);
+      expect(JSON.stringify(legacy.rows).indexOf('draft-legacy-1')).assertLarger(-1);
+      expect(JSON.stringify(missingEvidence.rows).indexOf('"label":"Draft ID"')).assertEqual(-1);
+      expect(missingEvidenceJsonl.indexOf('"id":"gmail.draft.apply"')).assertEqual(-1);
+      expect(failed.status).assertEqual('error');
+      expect(JSON.stringify(failed.rows).indexOf('"label":"Draft ID"')).assertEqual(-1);
+      expect(failedJsonl.indexOf('"id":"gmail.draft.apply"')).assertEqual(-1);
+      expect(JSON.stringify(unrelated.rows).indexOf('"label":"Draft ID"')).assertEqual(-1);
+      expect(unrelated.rawPreview.indexOf('draft-provider-nested-1')).assertEqual(-1);
+      expect(unrelatedJsonl.indexOf('"id":"gmail.draft.apply"')).assertEqual(-1);
     });
 
     it('accepts the real Calendar write response_data id without a generic success flag', 0, () => {

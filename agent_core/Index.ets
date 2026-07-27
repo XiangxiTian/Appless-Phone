@@ -42,7 +42,16 @@ export * from './src/main/ets/agent/action/ActionAgentTypes';
 export { clearStoredConversation, loadConversation, saveConversation } from './src/main/ets/agent/ConversationStore';
 export { AgentEvent, AgentEventKind } from './src/main/ets/agent/AgentEvent';
 export { AgentTool } from './src/main/ets/agent/AgentTool';
-export { A2uiObservationDigest, summarizeA2uiObservation } from './src/main/ets/agent/A2uiObservationDigest';
+export { AgentToolRunOptions } from './src/main/ets/agent/AgentToolRunOptions';
+export { MultiToolSurfaceComposer, MultiToolSurfaceEmitHandler } from './src/main/ets/agent/MultiToolSurfaceComposer';
+export {
+  childSurfaceIdForMultiTaskSlot,
+  isMultiTaskSurface,
+  mergeSlotObservationIntoMultiTaskSurface,
+  resolveMultiTaskSlotId
+} from './src/main/ets/agent/MultiTaskSurfaceMerge';
+export { MultiTaskBoardData, MultiToolSlotCall } from './src/main/ets/agent/MultiToolTypes';
+export { A2uiObservationDigest, summarizeA2uiObservation, summarizeAppliedA2uiSurface } from './src/main/ets/agent/A2uiObservationDigest';
 export {
   ToolRegistry,
   ToolRegistryCloseHandler,

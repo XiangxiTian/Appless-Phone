@@ -123,6 +123,20 @@ const EXPLICIT_GOOGLE_MAPS_DECISION: string =
   '"input":{"query":"伦敦国王十字车站附近的中餐"},"required":true}],' +
   '"uiIntent":{"purpose":"展示 Google Maps 地点","preferredDensity":"comfortable",' +
   '"requiredSections":["places"]}}';
+const DEVICE_C04_FOOD_DECISION: string =
+  '{"personaId":"food_companion","skillId":"","requestedCapabilityIds":["food.search"],' +
+  '"roundAction":"execute","dataTasks":[{"localId":"search_chinese_restaurant_near_kings_cross",' +
+  '"goal":"搜索伦敦国王十字车站附近的中餐","allowedToolIds":["food.search"],"toolId":"food.search",' +
+  '"input":{"query":"中餐 伦敦国王十字车站附近","location":"伦敦国王十字车站",' +
+  '"radius":5000,"language":"zh"},"required":true}],"uiIntent":{"purpose":"search",' +
+  '"preferredDensity":"compact","requiredSections":["results"]}}';
+const DEVICE_C04_MAPS_REPAIR: string =
+  '{"personaId":"default_companion","skillId":"","requestedCapabilityIds":["maps.place.search"],' +
+  '"roundAction":"execute","dataTasks":[{"localId":"search_chinese_restaurant_near_kings_cross",' +
+  '"goal":"搜索伦敦国王十字车站附近的中餐","allowedToolIds":["maps.place.search"],' +
+  '"toolId":"maps.place.search","input":{"query":"中餐 伦敦国王十字车站附近",' +
+  '"location":"伦敦国王十字车站"},"required":true}],"uiIntent":{"purpose":"search",' +
+  '"preferredDensity":"compact","requiredSections":["results"]}}}';
 const PREMATURE_GOOGLE_MAPS_DETAILS_DECISION: string = EXPLICIT_GOOGLE_MAPS_DECISION.replace(
   '["maps.place.search"]',
   '["maps.place.search","maps.place.details"]'
@@ -460,6 +474,24 @@ class ObservationPromptAwareModel implements LocalModel {
       return MAP_DETAILS_DECISION;
     }
     return ANSWER_FROM_TRAVEL_OBSERVATION;
+  }
+}
+
+class LockedSelectionPromptAwareModel implements LocalModel {
+  prompts: string[] = [];
+
+  async complete(prompt: string): Promise<string> {
+    this.prompts.push(prompt);
+    const locked: boolean = prompt.indexOf(
+      'Locked turn persona/skill: {"personaId":"travel_companion","skillId":""}'
+    ) >= 0 && prompt.indexOf(
+      'Every later-round decision must preserve this exact personaId and skillId.'
+    ) >= 0;
+    return locked ? ANSWER_FROM_TRAVEL_OBSERVATION :
+      ANSWER_FROM_TRAVEL_OBSERVATION.replace(
+        '"personaId":"travel_companion"',
+        '"personaId":"default_companion"'
+      );
   }
 }
 
@@ -952,6 +984,7 @@ export default function multiAgentLeaderPlannerTest() {
         expect(decision.dataTasks[0].required).assertTrue();
         expect(decision.personaId).assertEqual('travel_companion');
         expect(decision.skillId).assertEqual('');
+        expect(decision.reasonCode).assertEqual('dependency_requires_next_round');
         expect(decision.uiIntent.purpose).assertEqual('read source and dependent detail');
         expect(decision.uiIntent.preferredDensity).assertEqual('comfortable');
         expect(decision.uiIntent.requiredSections.join(',')).assertEqual('source,detail');
@@ -964,6 +997,11 @@ export default function multiAgentLeaderPlannerTest() {
         expect(model.prompts.length).assertEqual(1);
         expect(model.prompts[0].indexOf(
           'requestedCapabilityIds is the exact current-round execution union'
+        )).assertLarger(-1);
+        expect(model.prompts[0].indexOf(
+          'For dependent serial tools, emit exactly one data task in this planning round.\n' +
+          'Wait for its Observation, then emit the next task with args derived from that real output.\n' +
+          'Never pre-fill placeId, eventId, threadId, messageId, orderId, or provider receipt.'
         )).assertLarger(-1);
       }
     });
@@ -989,7 +1027,7 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.prompts.length).assertEqual(1);
     });
 
-    it('fails closed for every same-round consumer with an explicit entity input', 0, async () => {
+    it('drops every same-round consumer with a hostile explicit entity input', 0, async () => {
       const sources: string[] = [
         'maps.place.search',
         'mail.search',
@@ -1006,13 +1044,18 @@ export default function multiAgentLeaderPlannerTest() {
         '{"threadId":"gmail-thread-explicit"}'
       ];
       for (let index = 0; index < sources.length; index++) {
-        expect(await sameRoundDependencyError(
+        const decision = await new MultiAgentLeaderPlanner(new QueueLocalModel([
           sameRoundDependencyDecision(sources[index], consumers[index], inputs[index])
-        )).assertEqual('LEADER_SAME_ROUND_DEPENDENCY');
+        ])).plan(inputMessage(), { text: 'search then details' }, planningContext(), 1,
+          (): boolean => true);
+        expect(decision.requestedCapabilityIds.join(',')).assertEqual(sources[index]);
+        expect(decision.dataTasks.length).assertEqual(1);
+        expect(decision.dataTasks[0].toolId).assertEqual(sources[index]);
+        expect(decision.reasonCode).assertEqual('dependency_requires_next_round');
       }
     });
 
-    it('fails closed for mail and Gmail consumers with a supplied provider', 0, async () => {
+    it('drops mail consumers with a hostile supplied provider', 0, async () => {
       const sources: string[] = ['mail.search', 'gmail.mail.search'];
       const consumers: string[] = ['mail.thread.read', 'gmail.thread.read'];
       const providerInputs: string[] = [
@@ -1023,13 +1066,17 @@ export default function multiAgentLeaderPlannerTest() {
       ];
       for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
         for (let inputIndex = 0; inputIndex < providerInputs.length; inputIndex++) {
-          expect(await sameRoundDependencyError(
+          const decision = await new MultiAgentLeaderPlanner(new QueueLocalModel([
             sameRoundDependencyDecision(
               sources[sourceIndex],
               consumers[sourceIndex],
               providerInputs[inputIndex]
             )
-          )).assertEqual('LEADER_SAME_ROUND_DEPENDENCY');
+          ])).plan(inputMessage(), { text: 'search then details' }, planningContext(), 1,
+            (): boolean => true);
+          expect(decision.requestedCapabilityIds.join(',')).assertEqual(sources[sourceIndex]);
+          expect(decision.dataTasks.length).assertEqual(1);
+          expect(decision.dataTasks[0].toolId).assertEqual(sources[sourceIndex]);
         }
       }
     });
@@ -1062,14 +1109,18 @@ export default function multiAgentLeaderPlannerTest() {
       }
     });
 
-    it('fails closed when one same-round Maps consumer is unbound and another has a placeId', 0, async () => {
-      expect(await sameRoundDependencyError(
+    it('drops every same-round Maps consumer when one carries a forged placeId', 0, async () => {
+      const decision = await new MultiAgentLeaderPlanner(new QueueLocalModel([
         sameRoundDependencyDecisionWithConsumers(
           'maps.place.search',
           'maps.place.details',
           ['{}', '{"placeId":"place-explicit"}']
         )
-      )).assertEqual('LEADER_SAME_ROUND_DEPENDENCY');
+      ])).plan(inputMessage(), { text: 'search then details' }, planningContext(), 1,
+        (): boolean => true);
+      expect(decision.requestedCapabilityIds.join(',')).assertEqual('maps.place.search');
+      expect(decision.dataTasks.length).assertEqual(1);
+      expect(decision.dataTasks[0].toolId).assertEqual('maps.place.search');
     });
 
     it('keeps direct Maps details available without a same-round producer', 0, async () => {
@@ -1235,6 +1286,75 @@ export default function multiAgentLeaderPlannerTest() {
       ) >= 0).assertTrue();
     });
 
+    it('preserves the locked first-round persona and skill in later-round prompt and decision', 0, async () => {
+      const model = new LockedSelectionPromptAwareModel();
+      const context = planningContext();
+      context.personas.push({
+        personaId: 'default_companion',
+        name: 'Default Companion',
+        soul: 'General conversation.',
+        memory: '',
+        previous: false,
+        activeSkills: []
+      });
+      context.lockedPersonaId = 'travel_companion';
+      context.lockedSkillId = '';
+
+      const decision = await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        completedTravelInput(),
+        context,
+        2
+      );
+
+      expect(decision.personaId).assertEqual('travel_companion');
+      expect(decision.skillId).assertEqual('');
+      expect(model.prompts.length).assertEqual(1);
+    });
+
+    it('rejects a later-round persona switch and clearing a locked skill to bypass its capability set', 0,
+      async () => {
+        const personaSwitchContext = planningContext();
+        personaSwitchContext.personas.push({
+          personaId: 'default_companion',
+          name: 'Default Companion',
+          soul: 'General conversation.',
+          memory: '',
+          previous: false,
+          activeSkills: []
+        });
+        personaSwitchContext.lockedPersonaId = 'travel_companion';
+        personaSwitchContext.lockedSkillId = '';
+        const switched = ANSWER_FROM_TRAVEL_OBSERVATION.replace(
+          '"personaId":"travel_companion"',
+          '"personaId":"default_companion"'
+        );
+        let personaError: string = '';
+        try {
+          await new MultiAgentLeaderPlanner(new QueueLocalModel([switched])).plan(
+            inputMessage(), completedTravelInput(), personaSwitchContext, 2
+          );
+        } catch (error) {
+          personaError = error instanceof Error ? error.message : 'unknown';
+        }
+
+        const skillBypassContext = planningContext();
+        skillBypassContext.lockedPersonaId = 'travel_companion';
+        skillBypassContext.lockedSkillId = 'travel-planning';
+        let skillError: string = '';
+        try {
+          await new MultiAgentLeaderPlanner(new QueueLocalModel([SOCIAL_ONLY_DECISION])).plan(
+            inputMessage(), { text: '帮我查看我今天 X 和 Slack 上的消息' },
+            skillBypassContext, 2
+          );
+        } catch (error) {
+          skillError = error instanceof Error ? error.message : 'unknown';
+        }
+
+        expect(personaError).assertEqual('LEADER_PERSONA_SKILL_SWITCH');
+        expect(skillError).assertEqual('LEADER_PERSONA_SKILL_SWITCH');
+      });
+
     it('carries the old hotel date and anti-invention contract in the shared prompt', 0, async () => {
       const model: QueueLocalModel = new QueueLocalModel([PARALLEL_DECISION]);
       const planner: MultiAgentLeaderPlanner = new MultiAgentLeaderPlanner(
@@ -1398,6 +1518,39 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.prompts.length).assertEqual(2);
       expect(model.prompts[1].indexOf('LEADER_EXPLICIT_MAPS_SELECTION') >= 0).assertTrue();
       expect(model.prompts[1].indexOf(EXPLICIT_GOOGLE_MAPS_AS_FOOD_DECISION) >= 0).assertTrue();
+    });
+
+    it('accepts the device C04 Maps repair with one redundant terminal object closure', 0, async () => {
+      const model = new QueueLocalModel([DEVICE_C04_FOOD_DECISION, DEVICE_C04_MAPS_REPAIR]);
+      const context = planningContext();
+      context.personas.push({
+        personaId: 'food_companion',
+        name: 'Food Companion',
+        soul: 'Use registered food tools only.',
+        memory: '',
+        previous: false,
+        activeSkills: []
+      });
+      context.personas.push({
+        personaId: 'default_companion',
+        name: 'Default Companion',
+        soul: 'Use registered tools only.',
+        memory: '',
+        previous: false,
+        activeSkills: []
+      });
+
+      const decision = await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        { text: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐' },
+        context,
+        1,
+        (): boolean => true
+      );
+
+      expect(decision.requestedCapabilityIds.join(',')).assertEqual('maps.place.search');
+      expect(decision.dataTasks[0].toolId).assertEqual('maps.place.search');
+      expect(model.prompts.length).assertEqual(2);
     });
 
     it('fails closed when the one explicit Google Maps correction is still food search', 0, async () => {
@@ -1615,6 +1768,7 @@ export default function multiAgentLeaderPlannerTest() {
 
       expect(dependent.dataTasks.length).assertEqual(1);
       expect(dependent.dataTasks[0].toolId).assertEqual('maps.place.details');
+      expect(dependentModel.prompts[0].indexOf('place-real-1')).assertLarger(-1);
       expect(dependentModel.prompts[0].indexOf(
         'A different later-round tool is allowed only when it requires real prior output.'
       ) >= 0).assertTrue();

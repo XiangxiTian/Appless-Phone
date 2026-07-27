@@ -13,6 +13,7 @@ import { DynamicGenericToolResult, dynamicReceiptFromProviderPayload } from './D
 
 interface ComposioExecuteArgs {
   operation?: string;
+  qualifiedName?: string;
   toolSlug?: string;
   arguments?: Object;
   fixedToolId?: string;
@@ -114,6 +115,10 @@ function parsedExecuteArgs(args: Object | null): ComposioExecuteArgs {
     return {};
   }
   return args as ComposioExecuteArgs;
+}
+
+function selectedQualifiedName(parsed: ComposioExecuteArgs): string {
+  return textOf(parsed.qualifiedName).trim();
 }
 
 function composioToolSchema(rawSchema: string | undefined): Object {
@@ -411,6 +416,9 @@ export function normalizedComposioUseCase(prompt: string, fixedToolId: string = 
   if (fixedToolId === 'gmail.reply.send') {
     return 'Reply to an existing Gmail thread';
   }
+  if (fixedToolId === 'gmail.message.read') {
+    return 'Fetch exactly one Gmail email message by its message ID, not the entire thread';
+  }
   if (fixedToolId === 'gmail.thread.read') {
     return 'Read the full Gmail thread content by thread ID';
   }
@@ -541,6 +549,9 @@ function fixedArgumentAliases(toolId: string): FixedArgumentAlias[] {
   }
   if (toolId === 'gmail.thread.read') {
     return [{ source: 'threadId', targets: ['threadId', 'thread_id', 'id'] }];
+  }
+  if (toolId === 'gmail.message.read') {
+    return [{ source: 'messageId', targets: ['messageId', 'message_id', 'id'] }];
   }
   if (toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply') {
     return [
@@ -790,6 +801,7 @@ export function composioExactToolSlugForFixedTool(fixedToolId: string): string {
   if (fixedToolId === 'calendar.event.delete') return 'GOOGLECALENDAR_DELETE_EVENT';
   if (fixedToolId === 'gmail.reply.send') return 'GMAIL_REPLY_TO_THREAD';
   if (fixedToolId === 'gmail.draft.apply') return 'GMAIL_UPDATE_DRAFT';
+  if (fixedToolId === 'gmail.message.read') return 'GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID';
   return '';
 }
 
@@ -889,6 +901,17 @@ export function composioPreferredToolScore(prompt: string, tool: ComposioSearchT
   if (fixedToolId === 'gmail.mail.search' &&
     slugContainsAny(slug, ['people', 'person', 'contact', 'profile'])) {
     score -= 800;
+  }
+  if (fixedToolId === 'gmail.message.read' &&
+    (slugContainsAny(slug, ['get', 'read', 'fetch']) && slugContainsAny(slug, ['gmail', 'message']))) {
+    score += 400;
+  }
+  if (fixedToolId === 'gmail.message.read' && slug === 'gmail_fetch_message_by_message_id') {
+    score += 1200;
+  }
+  if (fixedToolId === 'gmail.message.read' &&
+    (slug === 'gmail_fetch_message_by_thread_id' || slug === 'gmail_fetch_emails')) {
+    score -= 1000;
   }
   if (fixedToolId === 'gmail.thread.read' &&
     (slugContainsAny(slug, ['get', 'read', 'fetch']) && slugContainsAny(slug, ['gmail', 'thread', 'message']))) {
@@ -1134,6 +1157,11 @@ function specialArgumentsForTool(toolSlug: string, prompt: string, schema: Compo
     setIfSupported(args, schema, 'max_results', 5);
     setIfSupported(args, schema, 'include_payload', false);
     setIfSupported(args, schema, 'verbose', true);
+    return args;
+  }
+  if (lower === 'gmail_fetch_message_by_message_id') {
+    setIfSupported(args, schema, 'user_id', 'me');
+    setIfSupported(args, schema, 'format', 'full');
     return args;
   }
   if (lower === 'slack_search_messages') {
@@ -1655,7 +1683,52 @@ function youtubeThumbnailUrl(record: Record<string, Object | string | number | b
   return '';
 }
 
-function rawPreviewForExecute(payload: Object, observation: string): string {
+function gmailDraftIdFromRecord(
+  record: Record<string, Object | string | number | boolean | null | undefined>
+): string {
+  const message = objectRecord(record.message);
+  if (!valueLooksLikeGmailDraft(record) &&
+    (message === null || !valueLooksLikeGmailDraft(message))) {
+    return '';
+  }
+  const value = record.draft_id === undefined ?
+    (record.draftId === undefined ? record.id : record.draftId) : record.draft_id;
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const draftId = value.trim();
+  return draftId.length > 0 && draftId.length <= 512 ? draftId : '';
+}
+
+function gmailDraftIdForExecute(payload: Object, toolSlug: string): string {
+  const normalized = toolSlug.trim().toLowerCase();
+  if (normalized.indexOf('gmail') < 0 || !isSafeGmailDraftCreateSlug(normalized)) {
+    return '';
+  }
+  const record = payload as Record<string, Object | string | number | boolean | null | undefined>;
+  const data = objectRecord(record.data);
+  if (data === null) {
+    return '';
+  }
+  const directId = gmailDraftIdFromRecord(data);
+  if (directId.length > 0) {
+    return directId;
+  }
+  const response = objectRecord(data.response_data);
+  if (response === null) {
+    return '';
+  }
+  const providerData = objectRecord(response.data);
+  const nestedId = providerData === null ? '' : gmailDraftIdFromRecord(providerData);
+  return nestedId.length > 0 ? nestedId : gmailDraftIdFromRecord(response);
+}
+
+function rawPreviewForExecute(payload: Object, observation: string, gmailDraftId: string): string {
+  if (gmailDraftId.length > 0) {
+    const identity: Record<string, string> = {};
+    identity['draft_id'] = gmailDraftId;
+    return JSON.stringify(identity);
+  }
   const hit = firstArrayHit(payload);
   if (!hit.found) {
     return observation.substring(0, 16000);
@@ -1669,10 +1742,19 @@ function rawPreviewForExecute(payload: Object, observation: string): string {
   return JSON.stringify(compact).substring(0, 16000);
 }
 
-function rowsForExecute(payload: Object, prompt: string, toolSlug: string): A2uiLabelValueData[] {
+function rowsForExecute(
+  payload: Object,
+  prompt: string,
+  toolSlug: string,
+  gmailDraftId: string
+): A2uiLabelValueData[] {
   const rows: A2uiLabelValueData[] = [];
   appendRow(rows, '执行工具', toolSlug);
   appendRow(rows, '查询', promptSearchKeyword(prompt));
+  appendRow(rows, 'Draft ID', gmailDraftId);
+  if (gmailDraftId.length > 0) {
+    return rows;
+  }
   const hit = firstArrayHit(payload);
   if (hit.found) {
     appendRow(rows, '结果数量', hit.items.length.toString());
@@ -1873,7 +1955,7 @@ export function isUnsafeComposioExecute(toolSlug: string, _argsJson: string): bo
   return isUnsafeMcpTool(toolSlug, '');
 }
 
-const SELECTED_READ_OPERATIONS: string[] = ['read', 'search', 'list', 'get'];
+const SELECTED_READ_OPERATIONS: string[] = ['read', 'search', 'list', 'get', 'find', 'fetch'];
 const SELECTED_PROVIDER_PREFIXES: string[] = [
   'googlecalendar', 'googledrive', 'googledocs', 'ticketmaster', 'hackernews', 'salesforce',
   'composio', 'instagram', 'linkedin', 'whatsapp', 'github', 'twitter', 'youtube',
@@ -2053,15 +2135,16 @@ function xDiscoveryFailure(prompt: string, observation: string): DynamicGenericT
   };
 }
 
-export function composioDynamicMissingConfigResult(prompt: string): DynamicGenericToolResult {
-  const title = composioToolkitFromPrompt(prompt).length > 0 ? resultTitleForPrompt(prompt) : 'Composio 未配置';
+export function composioDynamicMissingConfigResult(prompt: string, qualifiedName: string = ''): DynamicGenericToolResult {
+  const title = qualifiedName.length > 0 ? 'Composio 未配置' :
+    (composioToolkitFromPrompt(prompt).length > 0 ? resultTitleForPrompt(prompt) : 'Composio 未配置');
   const missing = composioConfig.missingConfiguration();
   const summary = 'Composio 未配置' + (missing.length > 0 ? '：' + missing : '') + '，无法查询已授权应用工具。';
   return {
     sourceTag: 'Composio',
-    toolName: 'dynamic.search',
+    toolName: qualifiedName.length > 0 ? qualifiedName : 'dynamic.search',
     title: title,
-    status: 'needs_auth',
+    status: qualifiedName.length > 0 ? 'missing_config' : 'needs_auth',
     summary: summary,
     rows: [
       { label: '请求', value: prompt.substring(0, 240) },
@@ -2081,7 +2164,14 @@ export function composioDynamicResultFromObservation(
     const payload = JSON.parse(observation) as ComposioSearchObservation;
     if (phase === 'execute') {
       const errorMessage = executionErrorMessage(payload as Object, toolSlug);
-      const rows = rowsForExecute(payload as Object, prompt, toolSlug.length > 0 ? toolSlug : 'dynamic.search');
+      const draftId = errorMessage.length === 0 ?
+        gmailDraftIdForExecute(payload as Object, toolSlug) : '';
+      const rows = rowsForExecute(
+        payload as Object,
+        prompt,
+        toolSlug.length > 0 ? toolSlug : 'dynamic.search',
+        draftId
+      );
       if (errorMessage.length > 0) {
         return {
           sourceTag: 'Composio',
@@ -2101,7 +2191,7 @@ export function composioDynamicResultFromObservation(
         status: 'success',
         summary: executeSummary(toolSlug.length > 0 ? toolSlug : 'dynamic.search', rows),
         rows: rows,
-        rawPreview: rawPreviewForExecute(payload as Object, observation),
+        rawPreview: rawPreviewForExecute(payload as Object, observation, draftId),
         providerPhase: 'execution'
       };
     }
@@ -2149,7 +2239,8 @@ async function callComposioSearchAndExecuteParsed(
   allowFixedContract: boolean
 ): Promise<DynamicGenericToolResult> {
   const fixedToolId = textOf(parsed.fixedToolId).trim();
-  const searchObservation = await current.search(normalizedComposioUseCase(prompt, fixedToolId));
+  const selected = selectedQualifiedName(parsed);
+  const searchObservation = await current.search(selected.length > 0 ? selected : normalizedComposioUseCase(prompt, fixedToolId));
   let payload: ComposioSearchObservation;
   try {
     payload = JSON.parse(searchObservation) as ComposioSearchObservation;
@@ -2159,7 +2250,25 @@ async function callComposioSearchAndExecuteParsed(
     }
     return composioDynamicResultFromObservation('search', searchObservation, '', prompt);
   }
-  let tool = bestToolForPrompt(payload, prompt, fixedToolId);
+  let tool: ComposioSearchTool | null = null;
+  if (selected.length > 0 && Array.isArray(payload.tools)) {
+    for (let index = 0; index < payload.tools.length; index++) {
+      const candidate = payload.tools[index] as ComposioSearchTool;
+      if (textOf(candidate.toolSlug).trim() === selected) {
+        tool = candidate;
+        break;
+      }
+    }
+    if (tool === null) {
+      return {
+        sourceTag: 'Composio', toolName: selected, title: 'Composio 工具不可用', status: 'no_tool_found',
+        summary: 'Composio 没有返回所选读取工具。', rows: [], rawPreview: searchObservation.substring(0, 16000),
+        providerPhase: 'discovery'
+      };
+    }
+  } else {
+    tool = bestToolForPrompt(payload, prompt, fixedToolId);
+  }
   const expected = composioExactToolSlugForFixedTool(fixedToolId);
   if (tool === null && expected.length > 0) {
     return {
@@ -2289,7 +2398,8 @@ async function callComposioParsed(
     return missingFixedWriteArgsResult(prompt, fixedToolId, missingFixedArgs);
   }
   const operation = textOf(parsed.operation).trim();
-  if (!shouldAttemptComposioDynamic(prompt, operation, composioConfig.isConfigured())) {
+  if (selectedQualifiedName(parsed).length === 0 &&
+    !shouldAttemptComposioDynamic(prompt, operation, composioConfig.isConfigured())) {
     return null;
   }
   if (operation === 'execute') {
@@ -2300,9 +2410,9 @@ async function callComposioParsed(
     }
   }
   if (!composioConfig.isConfigured()) {
-    return composioDynamicMissingConfigResult(prompt);
+    return composioDynamicMissingConfigResult(prompt, selectedQualifiedName(parsed));
   }
-  const current = await clientForPrompt(prompt);
+  const current = selectedQualifiedName(parsed).length > 0 ? await client() : await clientForPrompt(prompt);
   if (operation === 'execute') {
     const slug = textOf(parsed.toolSlug).trim();
     const authorizationMessage = selectedSlugAuthorizationMessage(slug, fixedToolId, allowFixedContract);

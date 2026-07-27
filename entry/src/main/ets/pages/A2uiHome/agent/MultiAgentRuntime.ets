@@ -322,9 +322,12 @@ export class MultiAgentEvidenceFormatter {
       ' task=' + this.token('k', message.taskId);
     const selectedToolId = selected.length > 0 ? selected :
       (provider.toLowerCase() === 'composio' ? 'dynamic.search' : qualifiedName);
+    const providerEvidence = selectedToolId.toLowerCase() === 'weather.query' &&
+      qualifiedName.toLowerCase() === 'maps_weather' &&
+      provider === '高德地图' ? 'amap' : provider.toLowerCase();
     return '[AIPhone][DynamicToolDiscovery]' + identity +
       ' selectedToolId=' + evidenceAllowed(selectedToolId.toLowerCase()) +
-      ' provider=' + evidenceAllowed(provider.toLowerCase()) +
+      ' provider=' + evidenceAllowed(providerEvidence) +
       ' qualifiedName=' + evidenceAllowed(qualifiedName.toLowerCase()) +
       ' status=' + evidenceAllowed(payload.status, ['success', 'partial', 'empty', 'error']) +
       ' source=' + (source === undefined ? 'false' : 'true') +
@@ -446,6 +449,7 @@ export class MultiAgentRuntime {
   private readonly actionTimeoutMs: number;
   private readonly surfaceTurnActivator: ((turnId: string, hostGeneration: number) => void) | null;
   private readonly turnGenerationObserver: ((turnId: string, hostGeneration: number) => void) | null;
+  private readonly directActionAdmission: ((action: A2uiAction, context: ActionExecutionContext) => boolean) | null;
   private readonly leader: LeaderAgent;
   private readonly planningContextProvider: ((prompt: string) => LeaderPlanningContext) | null;
   private readonly data: DataAgent;
@@ -474,6 +478,8 @@ export class MultiAgentRuntime {
       null : options.surfaceTurnActivator;
     this.turnGenerationObserver = options.turnGenerationObserver === undefined ?
       null : options.turnGenerationObserver;
+    this.directActionAdmission = options.directActionAdmission === undefined ?
+      null : options.directActionAdmission;
     this.leader = new LeaderAgent(
       this.bus,
       options.planner,
@@ -671,6 +677,21 @@ export class MultiAgentRuntime {
         this.timeoutAction(pending);
       }, this.actionTimeoutMs);
       this.pendingActions.set(taskId, pending);
+      const admit = this.directActionAdmission;
+      if (admit !== null && !admit(action, {
+        conversationId: context.conversationId,
+        turnId: context.turnId,
+        surfaceId: context.surfaceId,
+        sourceToolId: context.sourceToolId,
+        planId,
+        runId,
+        stepId: 'step-1'
+      })) {
+        clearTimeout(pending.timerId);
+        this.pendingActions.delete(taskId);
+        resolve(false);
+        return;
+      }
       this.bus.publish(message);
     });
   }
@@ -910,13 +931,17 @@ export class MultiAgentRuntime {
   }
 
   private observeVirtualActionResult(message: AgentMessage, pending: PendingTurn): void {
-    if (message.taskId !== pending.virtualActionTaskId || pending.virtualActionTaskId.length === 0) {
-      return;
-    }
     const result: ActionResultPayload = message.payload as ActionResultPayload;
-    if (result.surfaceId !== pending.virtualActionSurfaceId ||
-      result.planId !== pending.virtualActionPlanId ||
-      result.runId !== pending.virtualActionRunId ||
+    if (!this.matchesActionTerminal(
+      message,
+      result,
+      pending.conversationId,
+      pending.turnId,
+      pending.virtualActionTaskId,
+      pending.virtualActionSurfaceId,
+      pending.virtualActionPlanId,
+      pending.virtualActionRunId
+    ) ||
       (result.status !== 'success' && result.status !== 'error' && result.status !== 'canceled')) {
       return;
     }
@@ -1001,18 +1026,40 @@ export class MultiAgentRuntime {
 
   private observeActionResult(message: AgentMessage, pending: PendingAction): void {
     const result: ActionResultPayload = message.payload as ActionResultPayload;
-    if (pending.generation !== this.generation ||
-      message.conversationId !== pending.conversationId ||
-      message.turnId !== pending.turnId ||
-      result.surfaceId !== pending.surfaceId ||
-      result.planId !== pending.planId ||
-      result.runId !== pending.runId ||
+    if (pending.generation !== this.generation || !this.matchesActionTerminal(
+      message,
+      result,
+      pending.conversationId,
+      pending.turnId,
+      pending.taskId,
+      pending.surfaceId,
+      pending.planId,
+      pending.runId
+    ) ||
       result.status === 'paused') {
       return;
     }
     pending.directTerminal = true;
     pending.directSucceeded = result.status === 'success';
     this.trySettleAction(pending);
+  }
+
+  private matchesActionTerminal(
+    message: AgentMessage,
+    result: ActionResultPayload,
+    conversationId: string,
+    turnId: string,
+    taskId: string,
+    surfaceId: string,
+    planId: string,
+    runId: string
+  ): boolean {
+    return message.conversationId === conversationId &&
+      message.turnId === turnId &&
+      message.taskId === taskId &&
+      result.surfaceId === surfaceId &&
+      result.planId === planId &&
+      result.runId === runId;
   }
 
   private followUpAction(message: AgentMessage): PendingAction | null {

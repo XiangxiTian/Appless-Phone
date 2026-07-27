@@ -14,6 +14,7 @@ import {
   ActionPlanValidationResult,
   ActionStepExecutionResult,
   ActionStepExecutor,
+  FrozenActionPlanStep,
   JsonValue
 } from './ActionPlanTypes';
 import {
@@ -169,6 +170,7 @@ function snapshotContext(context: ActionPlanRunContext): ContextSnapshotResult {
     context as Object as Record<string, JsonValue | undefined>;
   if (!isNonemptyString(record['conversationId']) ||
     !isNonemptyString(record['turnId']) ||
+    !isNonemptyString(record['taskId']) ||
     !isNonemptyString(record['surfaceId']) ||
     !isNonemptyString(record['sourceToolId']) ||
     !isNonemptyString(record['planId']) ||
@@ -183,6 +185,7 @@ function snapshotContext(context: ActionPlanRunContext): ContextSnapshotResult {
   const value: ActionPlanRunContext = {
     conversationId: record['conversationId'] as string,
     turnId: record['turnId'] as string,
+    taskId: record['taskId'] as string,
     surfaceId: record['surfaceId'] as string,
     sourceToolId: record['sourceToolId'] as string,
     planId: record['planId'] as string,
@@ -310,15 +313,18 @@ export class ActionPlanRunner {
 
   validateDraft(draft: ActionPlanDraft, sourceToolId: string): ActionPlanValidationResult {
     const plan: ActionPlan = {
+      conversationId: 'draft',
+      taskId: 'draft',
       planId: draft.planId,
       turnId: 'draft',
       surfaceId: 'draft',
       label: draft.label,
-      steps: draft.steps
+      steps: draft.steps as FrozenActionPlanStep[]
     };
     const context: ActionPlanRunContext = {
       conversationId: 'draft',
       turnId: plan.turnId,
+      taskId: plan.taskId,
       surfaceId: plan.surfaceId,
       sourceToolId,
       planId: plan.planId,
@@ -347,10 +353,14 @@ export class ActionPlanRunner {
       }
       if (plan === null ||
         typeof plan !== 'object' ||
+        !isNonemptyString(plan.conversationId) ||
+        !isNonemptyString(plan.taskId) ||
         !isNonemptyString(plan.planId) ||
         !isNonemptyString(plan.turnId) ||
         !isNonemptyString(plan.surfaceId) ||
         !isNonemptyString(plan.label) ||
+        plan.conversationId !== context.conversationId ||
+        plan.taskId !== context.taskId ||
         plan.planId !== context.planId ||
         plan.turnId !== context.turnId ||
         plan.surfaceId !== context.surfaceId) {
@@ -533,6 +543,15 @@ export class ActionPlanRunner {
       let availableConfirmation = confirmedStepId;
       for (let index = nextStepIndex; index < snapshot.steps.length; index++) {
         const step = snapshot.steps[index];
+        if (step.definitionFingerprint !== undefined && step.definitionFingerprint.length > 0 &&
+          this.catalog.definitionFingerprint(step.actionId) !== step.definitionFingerprint) {
+          return errorOutcome(
+            step.stepId,
+            'PLAN_STALE',
+            'Registered action definition changed.',
+            this.completedStepIds(completed)
+          );
+        }
         const bound = this.bindInputs(step, completed);
         if (!bound.ok || !isArgsObject(bound.value)) {
           return errorOutcome(

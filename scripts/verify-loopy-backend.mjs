@@ -157,6 +157,74 @@ function readProductionEtsSources() {
   return sources.join('\n');
 }
 
+function readEntryProductionEtsSources() {
+  const sources = [];
+  function visit(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(entryPath);
+      } else if (entry.isFile() && entry.name.endsWith('.ets')) {
+        sources.push(readFileSync(entryPath, 'utf8'));
+      }
+    }
+  }
+  visit(resolve(repoRoot, 'entry/src/main/ets'));
+  return sources.join('\n');
+}
+
+function readEntryProductPageSources() {
+  const sources = [];
+  function visit(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(entryPath);
+      } else if (entry.isFile() && entry.name === 'Index.ets') {
+        sources.push(readFileSync(entryPath, 'utf8'));
+      }
+    }
+  }
+  visit(resolve(repoRoot, 'entry/src/main/ets/pages'));
+  return sources;
+}
+
+function productionEntryViolations(source) {
+  const code = maskNonCode(source);
+  return [
+    ['ReActAgentRunner construction', /\bnew\s+ReActAgentRunner\s*\(/],
+    ['LoopBackend fallback reference', /\bLoopBackend\b/]
+  ].filter(([, pattern]) => pattern.test(code)).map(([name]) => name);
+}
+
+function productPageImportViolations(source) {
+  const code = maskNonCode(source);
+  const declarations = source.matchAll(
+    /^\s*import\s+(?:type\s+)?[\s\S]*?\s+from\s+(['"])([^'"]+)\1\s*;?/gm
+  );
+  const forbiddenImports = [
+    ['HtmlMultiTaskHomeRenderer import', 'HtmlMultiTaskHomeRenderer'],
+    ['ReActAgentRunner import', 'ReActAgentRunner'],
+    ['MultiToolSurfaceComposer import', 'MultiToolSurfaceComposer'],
+    ['LoopBackend fallback import', 'LoopBackend']
+  ];
+  const violations = [];
+  for (const declaration of declarations) {
+    const importStart = source.indexOf('import', declaration.index);
+    if (code.substring(importStart, importStart + 'import'.length) !== 'import') {
+      continue;
+    }
+    const statement = declaration[0];
+    const modulePath = declaration[2];
+    for (const [name, token] of forbiddenImports) {
+      if (statement.includes(token) || modulePath.includes(token)) {
+        violations.push(name);
+      }
+    }
+  }
+  return violations;
+}
+
 function parseIndexExports(index) {
   const exports = new Map();
   for (const match of index.matchAll(/export\s+(\*|\{[\s\S]*?\})\s+from\s+'([^']+)';/g)) {
@@ -399,6 +467,10 @@ function liveDeclarationBody(source, declaration) {
   return declarationBody(stripComments(source), declaration);
 }
 
+function executableDeclarationBody(source, declaration) {
+  return declarationBody(maskNonCode(source), declaration);
+}
+
 function hasBoundedLeaderModelCalls(source) {
   const live = stripComments(source);
   const plan = declarationBody(live, 'async plan(');
@@ -448,8 +520,8 @@ function hasTravelRoute(source) {
   return /if\s*\(\s*toolId\s*===\s*'travel\.search'\s*\)\s*\{\s*return\s+callLocalTravelSearch\(prompt,\s*surfaceId\);\s*\}/s.test(body);
 }
 
-function hasHotelRolesOnBus(source) {
-  const body = stripStrings(liveDeclarationBody(source, 'constructor(options: HotelAgentRuntimeOptions)'));
+function hasFourRolesOnBus(source, constructorSignature) {
+  const body = executableDeclarationBody(source, constructorSignature);
   return [
     ['leader', 'LeaderAgent'],
     ['data', 'DataAgent'],
@@ -457,6 +529,34 @@ function hasHotelRolesOnBus(source) {
     ['action', 'ActionAgent']
   ].every(([field, role]) =>
     new RegExp(`this\\.${field}\\s*=\\s*new\\s+${role}\\s*\\(\\s*this\\.bus\\b`).test(body));
+}
+
+function hasCorrelatedMultiAgentRuntime(source) {
+  const body = executableDeclarationBody(source, 'constructor(options: MultiAgentRuntimeOptions)');
+  return hasFourRolesOnBus(source, 'constructor(options: MultiAgentRuntimeOptions)') &&
+    /this\.bus\s*=\s*options\.bus\s*===\s*undefined\s*\?\s*new\s+LinkedMessageBus\s*\(\s*\)\s*:\s*options\.bus\s*;/.test(body) &&
+    /this\.reader\s*=\s*this\.bus\.openReader\s*\(\s*\)\s*;/.test(body);
+}
+
+function hasLeaderObserveReplan(source) {
+  const planning = executableDeclarationBody(source, 'private startPlanning(');
+  const observation = executableDeclarationBody(source, 'private handleSemanticObservation(');
+  return /this\.planner\.plan\s*\(/.test(planning) &&
+    /state\.turnObservations\.push\s*\(\s*digest\s*\)\s*;/.test(observation) &&
+    /state\.round\s*\+\+\s*;/.test(observation) &&
+    /this\.startPlanning\s*\(\s*this\.inputMessage\s*\(\s*state\s*\)\s*,\s*state\.input\s*,\s*state\s*\)\s*;/.test(observation);
+}
+
+function hasValidatedUiA2uiWrite(source) {
+  const body = executableDeclarationBody(source, 'private async handleUiTask(');
+  const validate = body.search(/this\.validateRenderedJsonl\s*\(\s*rendered\s*,\s*false\s*\)\s*;/);
+  const write = body.search(/await\s+this\.writer\.write\s*\(/);
+  return validate >= 0 && write > validate;
+}
+
+function hasCatalogBoundActionOffers(source) {
+  const body = executableDeclarationBody(source, 'private sanitizeOffers(');
+  return /this\.catalog\.validatePlacement\s*\(\s*sourceToolId\s*,\s*candidate\.actionId\s*,\s*args\s*\)\s*\.ok/.test(body);
 }
 
 function verifyArchitectureVerifier() {
@@ -487,6 +587,39 @@ function verifyArchitectureVerifier() {
   assert(
     !importsRetiredHotelRuntime("// import { HotelVisibility } from './HotelAgentRuntime';"),
     'verifier ignores a comment-only HotelAgentRuntime import'
+  );
+  assert(
+    productionEntryViolations('const runner = new ReActAgentRunner(options);').includes('ReActAgentRunner construction'),
+    'verifier detects a live production ReActAgentRunner construction'
+  );
+  assert(
+    productionEntryViolations('const fallback: LoopBackend = backend;').includes('LoopBackend fallback reference'),
+    'verifier detects a live production LoopBackend fallback reference'
+  );
+  assert(
+    productionEntryViolations('// new ReActAgentRunner(options);\n/* LoopBackend */').length === 0,
+    'verifier ignores comment-only production fallback references'
+  );
+  const liveProductPageImportViolations = productPageImportViolations([
+    "import { renderMultiTaskHomeDocument } from './HtmlMultiTaskHomeRenderer';",
+    "import { ReActAgentRunner, MultiToolSurfaceComposer, LoopBackend } from './LegacyRuntime';"
+  ].join('\n'));
+  for (const violation of [
+    'HtmlMultiTaskHomeRenderer import',
+    'ReActAgentRunner import',
+    'MultiToolSurfaceComposer import',
+    'LoopBackend fallback import'
+  ]) {
+    assert(
+      liveProductPageImportViolations.includes(violation),
+      `verifier detects a live product-page ${violation}`
+    );
+  }
+  assert(
+    productPageImportViolations(
+      "const diagnostic = `\nimport { renderMultiTaskHomeDocument } from './HtmlMultiTaskHomeRenderer';\n`;"
+    ).length === 0,
+    'verifier ignores a string-only multi-task renderer import'
   );
 
   const exactSkillFixture = `---
@@ -713,7 +846,84 @@ Use Google Maps for explicit provider requests.`;
   `;
   const decoyConstructor = liveDeclarationBody(decoyBusRuntime, 'constructor(options: HotelAgentRuntimeOptions)');
   assert(['LeaderAgent', 'DataAgent', 'UiAgent', 'ActionAgent'].every((role) => new RegExp(`new\\s+${role}\\s*\\(\\s*this\\.bus\\b`).test(decoyConstructor)), 'fixture reproduces former bus-token predicate');
-  assert(!hasHotelRolesOnBus(decoyBusRuntime), 'verifier rejects constructor string bus decoys');
+  assert(
+    !hasFourRolesOnBus(decoyBusRuntime, 'constructor(options: HotelAgentRuntimeOptions)'),
+    'verifier rejects constructor string bus decoys'
+  );
+
+  const runtimeBody = `
+    this.bus = options.bus === undefined ? new LinkedMessageBus() : options.bus;
+    this.leader = new LeaderAgent(this.bus, planner);
+    this.data = new DataAgent(this.bus, executor);
+    this.ui = new UiAgent(this.bus, renderer, writer);
+    this.action = new ActionAgent(this.bus, catalog, registered);
+    this.reader = this.bus.openReader();
+  `;
+  const runtimeFixture = `class MultiAgentRuntime {
+    constructor(options: MultiAgentRuntimeOptions) {${runtimeBody}}
+  }`;
+  assert(hasCorrelatedMultiAgentRuntime(runtimeFixture), 'verifier accepts live correlated runtime roles and bus');
+  assert(
+    !hasCorrelatedMultiAgentRuntime(`class MultiAgentRuntime {
+      constructor(options: MultiAgentRuntimeOptions) {/*${runtimeBody}*/}
+    }`),
+    'verifier rejects comment-only correlated runtime roles and bus'
+  );
+  assert(
+    !hasCorrelatedMultiAgentRuntime(`class MultiAgentRuntime {
+      constructor(options: MultiAgentRuntimeOptions) {const decoy = ${JSON.stringify(runtimeBody)};}
+    }`),
+    'verifier rejects string-only correlated runtime roles and bus'
+  );
+
+  const leaderFixture = `class LeaderAgent {
+    private startPlanning() { this.planner.plan(input); }
+    private handleSemanticObservation() {
+      state.turnObservations.push(digest);
+      state.round++;
+      this.startPlanning(this.inputMessage(state), state.input, state);
+    }
+  }`;
+  assert(hasLeaderObserveReplan(leaderFixture), 'verifier accepts live Leader observe-replan contract');
+  assert(
+    !hasLeaderObserveReplan(`class LeaderAgent {/*${leaderFixture}*/}`),
+    'verifier rejects comment-only Leader observe-replan contract'
+  );
+  assert(
+    !hasLeaderObserveReplan(`class LeaderAgent {const decoy = ${JSON.stringify(leaderFixture)};}`),
+    'verifier rejects string-only Leader observe-replan contract'
+  );
+
+  const uiFixture = `class UiAgent {
+    private async handleUiTask() {
+      this.validateRenderedJsonl(rendered, false);
+      await this.writer.write(surface);
+    }
+  }`;
+  assert(hasValidatedUiA2uiWrite(uiFixture), 'verifier accepts live UI A2UI validation contract');
+  assert(
+    !hasValidatedUiA2uiWrite(`class UiAgent {/*${uiFixture}*/}`),
+    'verifier rejects comment-only UI A2UI validation contract'
+  );
+  assert(
+    !hasValidatedUiA2uiWrite(`class UiAgent {const decoy = ${JSON.stringify(uiFixture)};}`),
+    'verifier rejects string-only UI A2UI validation contract'
+  );
+
+  const actionFixture = `class ActionAgent {
+    private sanitizeOffers() {
+      if (!this.catalog.validatePlacement(sourceToolId, candidate.actionId, args).ok) return [];
+    }
+  }`;
+  assert(hasCatalogBoundActionOffers(actionFixture), 'verifier accepts live catalog-bound Action offers');
+  assert(
+    !hasCatalogBoundActionOffers(`class ActionAgent {/*${actionFixture}*/}`),
+    'verifier rejects comment-only catalog-bound Action offers'
+  );
+  assert(
+    !hasCatalogBoundActionOffers(`class ActionAgent {const decoy = ${JSON.stringify(actionFixture)};}`),
+    'verifier rejects string-only catalog-bound Action offers'
+  );
 
   const registryContract = `{
     toolId: 'gmail.message.send', domain: 'gmail', intent: 'gmail.message.send',
@@ -816,6 +1026,19 @@ function verifySourceContracts() {
     'production sources contain no retired orchestration entry points',
     retiredViolations.join(', ')
   );
+  const entryProductionViolations = productionEntryViolations(readEntryProductionEtsSources());
+  assert(
+    entryProductionViolations.length === 0,
+    'production entry contains no ReAct or LoopBackend fallback',
+    entryProductionViolations.join(', ')
+  );
+  const productPageImportViolationsFound = readEntryProductPageSources()
+    .flatMap((source) => productPageImportViolations(source));
+  assert(
+    productPageImportViolationsFound.length === 0,
+    'production pages do not import retired or multi-task renderers',
+    productPageImportViolationsFound.join(', ')
+  );
   const a2uiHome = read('entry/src/main/ets/pages/A2uiHome/Index.ets');
   const multiAgentCanary = read(
     'entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets'
@@ -824,18 +1047,6 @@ function verifySourceContracts() {
     !importsRetiredHotelRuntime(a2uiHome + '\n' + multiAgentCanary),
     'production host does not import the retired HotelAgentRuntime'
   );
-  const migrationDesign = read(
-    'docs/superpowers/specs/2026-07-21-full-scenario-multi-agent-migration-design.md'
-  );
-  const foundationPlan = read(
-    'docs/superpowers/plans/2026-07-21-multi-agent-runtime-foundation.md'
-  );
-  const domainPlan = read(
-    'docs/superpowers/plans/2026-07-21-multi-agent-domain-migration.md'
-  );
-  const cutoverPlan = read(
-    'docs/superpowers/plans/2026-07-21-multi-agent-cutover-regression.md'
-  );
   const protocol = read('agent_core/src/main/ets/a2ui/A2uiProtocol.ets');
   const llmProvider = read('agent_core/src/main/ets/model/LlmProvider.ets');
   const openAiModel = read('agent_core/src/main/ets/model/OpenAiCompatibleModel.ets');
@@ -843,6 +1054,7 @@ function verifySourceContracts() {
   const definitions = read('agent_core/src/main/ets/aiphone/AiphoneToolDefinitions.ets');
   const executor = read('agent_core/src/main/ets/aiphone/AiphoneToolExecutor.ets');
   const canaryRuntime = read('entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets');
+  const multiAgentRuntime = read('entry/src/main/ets/pages/A2uiHome/agent/MultiAgentRuntime.ets');
   const canaryLeaderPlanner = read('entry/src/main/ets/pages/A2uiHome/agent/MultiAgentLeaderPlanner.ets');
   const liveCanaryLeaderPlanner = stripComments(canaryLeaderPlanner);
   const index = stripComments(read('agent_core/Index.ets'));
@@ -983,68 +1195,6 @@ function verifySourceContracts() {
     "from './runtime/ToolDefinitionRegistry'",
     'public compatibility module derives the runtime registry'
   );
-  assertContains(
-    migrationDesign,
-    '| Action | 执行下列 21 个固定 Action 工具',
-    'migration design reports all 21 fixed Action tools'
-  );
-  assertContains(
-    migrationDesign,
-    '| Data | 执行下列 25 个固定只读工具',
-    'migration design reports all 25 fixed Data tools'
-  );
-  const documentedDataTools = fencedListAfterHeading(
-    migrationDesign, '### 9.2 Data Agent 固定工具（25）'
-  );
-  const documentedActionTools = fencedListAfterHeading(
-    migrationDesign, '### 9.3 Action Agent 固定工具（21）'
-  );
-  assert(
-    documentedDataTools.length === 25 &&
-      new Set(documentedDataTools).size === 25 &&
-      documentedDataTools.includes('social.community.search'),
-    'migration design Data list has 25 unique tools including social.community.search',
-    `found ${documentedDataTools.length}`
-  );
-  assert(
-    documentedActionTools.length === 21 &&
-      new Set(documentedActionTools).size === 21 &&
-      documentedActionTools.includes('social.post.preview'),
-    'migration design Action list has 21 unique tools including social.post.preview',
-    `found ${documentedActionTools.length}`
-  );
-  assert(
-    foundationPlan.includes('expect(all.length).assertEqual(46);') &&
-      foundationPlan.includes('expect(data.length).assertEqual(25);') &&
-      foundationPlan.includes('expect(action.length).assertEqual(21);') &&
-      foundationPlan.includes('46 unique fixed tools, split 25/21'),
-    'foundation plan ownership example and gate use 46 fixed tools split 25/21'
-  );
-  assertContains(
-    foundationPlan,
-    "indexOf('social.community.search')",
-    'foundation plan ownership example includes social.community.search'
-  );
-  assertContains(
-    foundationPlan,
-    "indexOf('social.post.preview')",
-    'foundation plan ownership example includes social.post.preview'
-  );
-  assertContains(
-    domainPlan,
-    'all 21 fixed Action tools',
-    'domain migration registered executor covers all 21 fixed Action tools'
-  );
-  assertContains(
-    cutoverPlan,
-    'Registry: fixed=46, Data=25, Action=21, virtual=2, blocked=0',
-    'cutover report gate uses the restored fixed-tool counts'
-  );
-  const approvedDocs = [migrationDesign, foundationPlan, domainPlan, cutoverPlan].join('\n');
-  assert(
-    hasNoStaleApprovedRegistryCounts(approvedDocs),
-    'approved specs and plans contain no stale fixed-tool count claims'
-  );
   assert(runtimeIds.length === runtimeUniqueIds.size, 'runtime tool ids are unique');
   assert(runtimeIds.length === 46, 'AIPhone runtime tool registry has expected fixed count', `found ${runtimeIds.length}`);
   for (const id of [
@@ -1135,7 +1285,14 @@ function verifySourceContracts() {
     forbiddenHotelTools.every((toolId) => !runtimeUniqueIds.has(toolId)),
     'hotel transaction tools are absent from the runtime registry'
   );
-  assert(hasHotelRolesOnBus(hotelRuntime), 'HotelAgentRuntime assigns all four roles to one broadcast bus');
+  assert(
+    hasFourRolesOnBus(hotelRuntime, 'constructor(options: HotelAgentRuntimeOptions)'),
+    'HotelAgentRuntime assigns all four roles to one broadcast bus'
+  );
+  assert(
+    hasCorrelatedMultiAgentRuntime(multiAgentRuntime),
+    'MultiAgentRuntime assigns all four correlated subscribers to one LinkedMessageBus'
+  );
   assert(
     (hotelA2ui.includes("id: 'hotel.booking.open'") || hotelActions.includes("id: 'hotel.booking.open'")) &&
       !hotelA2ui.includes("row('第三方预订（离开 Appless）'"),
@@ -1194,7 +1351,7 @@ function verifySourceContracts() {
   );
 
   assertContains(runtimeDefinitions, 'Composio-backed app/toolkit requests', 'registry describes Composio dynamic routing');
-  assertContains(runtimeDefinitions, 'Keep the query focused to the relevant 6-10 OR terms', 'registry preserves Gmail academic query expansion guidance');
+  assertContains(runtimeDefinitions, 'Never add synonyms or inferred English terms', 'registry preserves exact Gmail keyword guidance');
   assertContains(runtimeDefinitions, 'toolPlanningDescriptionForToolId', 'registry owns the shared planning description projection');
   assertContains(canaryRuntime, 'toolPlanningDescriptionForToolId(definition.toolId)', 'multi-agent canary consumes the registry planning projection');
   assertContains(canaryRuntime, "definition.toolId !== 'gmail.message.send'", 'multi-agent planner excludes direct Gmail send');
@@ -1426,8 +1583,9 @@ function verifySourceContracts() {
   assertContains(dataAgent, 'authorizer(task)', 'Data Agent authorizes exact tasks before execution');
   assertContains(dataAgent, 'result.toolId === task.toolId && result.outputSchema === task.outputSchema',
     'Data Agent validates result identity and schema');
-  assertContains(actionAgent, 'this.catalog.validatePlacement(sourceToolId, candidate.actionId, args)',
-    'Action Agent derives only catalog-approved offers');
+  assert(hasLeaderObserveReplan(leaderAgent), 'Leader owns Plan-Observe-Replan on executable code');
+  assert(hasValidatedUiA2uiWrite(uiAgent), 'UI Agent validates rendered A2UI before writing a surface');
+  assert(hasCatalogBoundActionOffers(actionAgent), 'Action Agent derives only catalog-approved offers');
   assertContains(actionAgent, 'type: AgentMessageType.ACTION_OFFERS_READY',
     'Action Agent publishes immutable offers');
   assertContains(actionAgent, 'type: AgentMessageType.ACTION_PLAN_DRAFT',

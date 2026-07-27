@@ -1,5 +1,6 @@
 import localUnitTest from './LocalUnit.test';
 import conversationContextTest from './ConversationContext.test';
+import agentCorePublicContractTest from './AgentCorePublicContract.test';
 import a2uiParserTest from './A2uiParser.test';
 import localModelClientTest from './LocalModelClient.test';
 import toolGatewayClientTest from './ToolGatewayClient.test';
@@ -50,6 +51,7 @@ import mediaVideoToolA2uiTest from './MediaVideoToolA2ui.test';
 import bilibiliApiClientTest from './BilibiliApiClient.test';
 import mediaVideoClientTest from './MediaVideoClient.test';
 import aggregateSearchA2uiTest from './AggregateSearchA2ui.test';
+import multiTaskA2uiTest from './MultiTaskA2ui.test';
 import aggregateSearchClientTest from './AggregateSearchClient.test';
 import paymentCoreTest from './PaymentCore.test';
 import paymentA2uiTest from './PaymentA2ui.test';
@@ -91,6 +93,7 @@ import checkoutWebOverlayTest from './CheckoutWebOverlay.test';
 export default function testsuite() {
   localUnitTest();
   conversationContextTest();
+  agentCorePublicContractTest();
   a2uiParserTest();
   localModelClientTest();
   toolGatewayClientTest();
@@ -141,6 +144,7 @@ export default function testsuite() {
   bilibiliApiClientTest();
   mediaVideoClientTest();
   aggregateSearchA2uiTest();
+  multiTaskA2uiTest();
   aggregateSearchClientTest();
   paymentCoreTest();
   paymentA2uiTest();

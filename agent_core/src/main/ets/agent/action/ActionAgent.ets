@@ -37,6 +37,8 @@ import {
   ActionPlanOutcome,
   ActionPlanPausedOutcome,
   ActionPlanRunContext,
+  ActionPlanStep,
+  FrozenActionPlanStep,
   ActionPlanStepOutput,
   ActionStepExecutionResult,
   ActionStepExecutor,
@@ -140,6 +142,7 @@ function copyContext(context: ActionPlanRunContext): ActionPlanRunContext {
   const copy: ActionPlanRunContext = {
     conversationId: context.conversationId,
     turnId: context.turnId,
+    taskId: context.taskId,
     surfaceId: context.surfaceId,
     sourceToolId: context.sourceToolId,
     planId: context.planId,
@@ -215,11 +218,49 @@ function sameJson(left: JsonValue | undefined, right: JsonValue | undefined): bo
   return true;
 }
 
-function directPlan(
+function frozenPlan(
   message: AgentMessage,
-  payload: ActionRunPayload
-): ActionPlan {
+  planId: string,
+  surfaceId: string,
+  label: string,
+  steps: ActionPlanStep[],
+  catalog: ActionCatalog
+): ActionPlan | null {
+  const frozenSteps: FrozenActionPlanStep[] = [];
+  for (let index = 0; index < steps.length; index++) {
+    const step = steps[index];
+    const fingerprint = catalog.definitionFingerprint(step.actionId);
+    if (fingerprint.length === 0) {
+      return null;
+    }
+    const frozen: FrozenActionPlanStep = {
+      stepId: step.stepId,
+      actionId: step.actionId,
+      definitionFingerprint: fingerprint
+    };
+    if (step.args !== undefined) {
+      frozen.args = step.args;
+    }
+    if (step.inputFrom !== undefined) {
+      frozen.inputFrom = step.inputFrom;
+    }
+    frozenSteps.push(frozen);
+  }
   return {
+    conversationId: message.conversationId,
+    taskId: message.taskId,
+    planId,
+    turnId: message.turnId,
+    surfaceId,
+    label,
+    steps: frozenSteps
+  };
+}
+
+function directPlan(message: AgentMessage, payload: ActionRunPayload): ActionPlan {
+  return {
+    conversationId: message.conversationId,
+    taskId: message.taskId,
     planId: `direct:${payload.runId}`,
     turnId: message.turnId,
     surfaceId: payload.surfaceId,
@@ -227,7 +268,8 @@ function directPlan(
     steps: [{
       stepId: 'step-1',
       actionId: payload.actionId,
-      args: payload.args
+      args: payload.args,
+      definitionFingerprint: ''
     }]
   };
 }
@@ -1194,16 +1236,45 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
       storedDraft.uiTaskId,
       storedDraft.draft.runId
     ));
-    const plan: ActionPlan = {
-      planId: storedDraft.draft.planId,
-      turnId: storedDraft.turnId,
+    const draftValidation = this.runner.validateDraft(
+      storedDraft.draft,
+      storedDraft.sourceToolId
+    );
+    if (!draftValidation.ok) {
+      this.publishInputError(
+        this.draftMessage(storedDraft),
+        storedDraft.draft.planId,
+        storedDraft.draft.runId,
+        surfaceId,
+        draftValidation.errorCode,
+        draftValidation.message,
+        draftValidation.failedStepId
+      );
+      return;
+    }
+    const plan = frozenPlan(
+      this.draftMessage(storedDraft),
+      storedDraft.draft.planId,
       surfaceId,
-      label: storedDraft.draft.label,
-      steps: storedDraft.draft.steps
-    };
+      storedDraft.draft.label,
+      storedDraft.draft.steps,
+      this.catalog
+    );
+    if (plan === null) {
+      this.publishInputError(
+        this.draftMessage(storedDraft),
+        storedDraft.draft.planId,
+        storedDraft.draft.runId,
+        surfaceId,
+        'ACTION_PLAN_FINGERPRINT_UNAVAILABLE',
+        'Registered action definition is unavailable.'
+      );
+      return;
+    }
     const context: ActionPlanRunContext = {
       conversationId: storedDraft.conversationId,
       turnId: storedDraft.turnId,
+      taskId: storedDraft.taskId,
       surfaceId,
       sourceToolId: storedDraft.sourceToolId,
       planId: plan.planId,
@@ -1346,6 +1417,7 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
     const context: ActionPlanRunContext = {
       conversationId: message.conversationId,
       turnId: message.turnId,
+      taskId: message.taskId,
       surfaceId: payload.surfaceId,
       sourceToolId: payload.sourceToolId as string,
       planId: plan.planId,
@@ -1613,7 +1685,7 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
       if (this.sameTurn(stored.context, message)) {
         this.readyRuns.delete(key);
         canceled.add(key);
-        this.publishCanceled(stored, message.taskId, [], []);
+        this.publishCanceled(stored, [], []);
       }
     });
     this.pausedRuns.forEach((paused: PausedActionRun, key: string) => {
@@ -1625,9 +1697,9 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
           runId: paused.runId,
           plan: paused.plan,
           context: paused.context,
-          taskId: message.taskId,
+          taskId: paused.context.taskId,
           followUpPublished: paused.followUpPublished
-        }, message.taskId, this.outputStepIds(paused.outputs), paused.outputs);
+        }, this.outputStepIds(paused.outputs), paused.outputs);
       }
     });
     this.activeRuns.forEach((active: ActiveActionRun, key: string) => {
@@ -1637,7 +1709,6 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
         if (!canceled.has(key)) {
           this.publishCanceled(
             active.stored,
-            message.taskId,
             active.completedStepIds,
             active.outputs
           );
@@ -1648,7 +1719,6 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
 
   private publishCanceled(
     stored: StoredActionRun,
-    taskId: string,
     completedStepIds: string[],
     outputs: ActionPlanStepOutput[]
   ): void {
@@ -1671,7 +1741,7 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
       type: AgentMessageType.ACTION_RESULT,
       conversationId: stored.context.conversationId,
       turnId: stored.context.turnId,
-      taskId,
+      taskId: stored.taskId,
       payload
     });
   }
@@ -1803,6 +1873,7 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
       `${active.stored.context.conversationId}:` +
         `${active.stored.context.turnId}:follow-up:` +
         `${Date.now()}:${followUpTurnSequence}`;
+    safe.dataTask.roundId = followUpTurnId + ':round-1';
     this.bus.publish({
       type: AgentMessageType.TASK_CREATE_UI,
       conversationId: active.stored.context.conversationId,
@@ -1977,6 +2048,7 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
       stored.runId === payload.runId &&
       stored.context.conversationId === message.conversationId &&
       stored.context.turnId === message.turnId &&
+      stored.context.taskId === message.taskId &&
       stored.context.surfaceId === payload.surfaceId;
   }
 
@@ -2015,6 +2087,7 @@ export class ActionAgent extends MessageDrivenAgent implements ActionStepExecuto
       paused.stepId === payload.confirmedStepId &&
       paused.context.conversationId === message.conversationId &&
       paused.context.turnId === message.turnId &&
+      paused.context.taskId === message.taskId &&
       paused.context.surfaceId === payload.surfaceId;
   }
 

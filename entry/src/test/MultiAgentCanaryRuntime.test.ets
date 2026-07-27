@@ -4,12 +4,14 @@ import {
   A2uiRuntimeDataModel,
   A2uiSurfaceStore,
   A2uiSurfaceState,
+  ActionResultPayload,
   ActionExecutionContext,
   ActionExecutionResult,
   AgentMessage,
   AgentMessageType,
   ConversationContext,
   CreateDataTaskPayload,
+  CreateUiTaskPayload,
   DataResult,
   DataStepDecision,
   DataTaskExecutor,
@@ -28,8 +30,10 @@ import {
   TaskErrorPayload,
   UiSurfaceWriteLease,
   UiSurfaceWriter,
+  composioDynamicResultFromObservation,
   createSeedA2uiSurface,
   gmailDraftPreviewA2ui,
+  gmailThreadResultsA2ui,
   hotelSearchDataResult,
   parseA2uiJsonl,
   parseHotelSearchRequest,
@@ -42,6 +46,7 @@ import {
   updatePersonaPackText
 } from '../main/ets/model/PersonaStore';
 import {
+  MultiAgentCanaryActionContext,
   MultiAgentCanaryOptions,
   MultiAgentCanaryRuntime,
   rememberedPersonaAfterOutcome
@@ -115,6 +120,20 @@ const TWO_TOOL_DONE_DECISION: string = '{"personaId":"travel_companion","skillId
   '"dataTasks":[],"uiIntent":{"purpose":"travel.compare",' +
   '"preferredDensity":"comfortable","requiredSections":[]},' +
   '"answer":"出行结果已就绪","reasonCode":"two_tool_ready"}';
+const FLIGHT_TRAIN_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":["flight.search","train.search"],"roundAction":"execute",' +
+  '"dataTasks":[{"localId":"flight","goal":"search flights",' +
+  '"allowedToolIds":["flight.search"],"toolId":"flight.search",' +
+  '"input":{"query":"北京到上海"},"required":true},{"localId":"train",' +
+  '"goal":"search trains","allowedToolIds":["train.search"],"toolId":"train.search",' +
+  '"input":{"query":"北京到上海"},"required":true}],' +
+  '"uiIntent":{"purpose":"flight and train","preferredDensity":"comfortable",' +
+  '"requiredSections":["flight","train"]},"reasonCode":"flight_train_compare"}';
+const FLIGHT_TRAIN_DONE_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":["flight.search","train.search"],"roundAction":"answer",' +
+  '"dataTasks":[],"uiIntent":{"purpose":"flight and train",' +
+  '"preferredDensity":"comfortable","requiredSections":[]},' +
+  '"answer":"航班和高铁结果已就绪","reasonCode":"flight_train_ready"}';
 const C02_QUERY: string = '我明天要从北京去上海，帮我搜索出行方案';
 const F01_QUERY: string = '帮我查明天北京到上海的航班';
 const F02_QUERY: string = '帮我查询明天晚上六点以后深圳北到香港西九龙的高铁';
@@ -528,6 +547,34 @@ class TwoToolExecutor implements DataTaskExecutor {
       data,
       warnings: []
     };
+  }
+}
+
+class DeferredFlightTrainExecutor implements DataTaskExecutor {
+  readonly started: string[] = [];
+  readonly bothStarted: TestGate = new TestGate();
+  private readonly flightRelease: TestGate = new TestGate();
+  private readonly trainRelease: TestGate = new TestGate();
+
+  async execute(task: CreateDataTaskPayload): Promise<DataResult> {
+    this.started.push(task.toolId);
+    if (this.started.length === 2) {
+      this.bothStarted.open();
+    }
+    if (task.toolId === 'flight.search') {
+      await this.flightRelease.promise;
+    } else {
+      await this.trainRelease.promise;
+    }
+    return canaryStructuredResult(task.toolId, task.outputSchema);
+  }
+
+  releaseFlight(): void {
+    this.flightRelease.open();
+  }
+
+  releaseTrain(): void {
+    this.trainRelease.open();
   }
 }
 
@@ -945,6 +992,16 @@ interface RecordedPageAction {
   context: ActionExecutionContext;
 }
 
+interface RegisteredPageActionOutputFixture {
+  actionId: string;
+  pageActionId: string;
+  conversationId: string;
+  turnId: string;
+  surfaceId: string;
+  status: string;
+  data: Object;
+}
+
 function pageSurface(
   sourceToolId: string,
   action: A2uiAction,
@@ -971,8 +1028,8 @@ function pageSurface(
   return surface;
 }
 
-function providerGmailDraftSurface(sequence: number): A2uiSurfaceState {
-  const providerResult: DynamicGenericToolResult = {
+function defaultGmailDraftProviderResult(): DynamicGenericToolResult {
+  return {
     sourceTag: 'Gmail API',
     toolName: 'users.drafts.create',
     title: 'Gmail 草稿已创建',
@@ -986,6 +1043,26 @@ function providerGmailDraftSurface(sequence: number): A2uiSurfaceState {
     ],
     rawPreview: 'draftId=draft-provider-1 messageId=message-provider-1'
   };
+}
+
+function realComposioGmailDraftProviderResult(): DynamicGenericToolResult {
+  return composioDynamicResultFromObservation(
+    'execute',
+    '{"data":{' +
+      '"display_url":"https://mail.google.com/mail/u/0/#drafts/draft-provider-1",' +
+      '"id":"draft-provider-1","message":{' +
+      '"display_url":"https://mail.google.com/mail/u/0/#drafts/draft-provider-1",' +
+      '"id":"message-provider-1","labelIds":["DRAFT"],"threadId":"thread-provider-1"}},' +
+      '"error":null,"log_id":"log-provider-1"}',
+    'GMAIL_CREATE_EMAIL_DRAFT',
+    '创建 Gmail 草稿'
+  );
+}
+
+function providerGmailDraftSurface(
+  sequence: number,
+  providerResult: DynamicGenericToolResult = defaultGmailDraftProviderResult()
+): A2uiSurfaceState {
   const parsed = parseA2uiJsonl(
     gmailDraftPreviewA2ui(
       'gmail-provider-draft',
@@ -993,6 +1070,74 @@ function providerGmailDraftSurface(sequence: number): A2uiSurfaceState {
       JSON.parse('{"to":["alice@example.com"],"subject":"","body":"我收到了"}') as Object,
       'gmail.draft.create'
     )
+  );
+  const store = new A2uiSurfaceStore();
+  parsed.envelopes.forEach((envelope) => store.apply(envelope));
+  const surface = store.getSurface();
+  surface.runtimeOwner = 'multi_agent';
+  surface.runtimeGeneration = sequence;
+  return surface;
+}
+
+function successfulGmailDraftTerminalSurface(surface: A2uiSurfaceState): A2uiSurfaceState {
+  const terminal = JSON.parse(JSON.stringify(surface)) as A2uiSurfaceState;
+  const model = JSON.parse(terminal.dataModelJson) as A2uiRuntimeDataModel;
+  model.summary = {
+    text: '操作状态：success',
+    toolName: 'action',
+    dataLabel: 'actionStatus',
+    count: 0
+  };
+  terminal.dataModelJson = JSON.stringify(model);
+  terminal.sequence = surface.sequence + 1;
+  return terminal;
+}
+
+function registeredPageActionOutput(
+  actionId: string,
+  surface: A2uiSurfaceState,
+  context: ActionExecutionContext
+): RegisteredPageActionOutputFixture {
+  const output: RegisteredPageActionOutputFixture = {
+    actionId,
+    pageActionId: actionId,
+    conversationId: context.conversationId,
+    turnId: context.turnId,
+    surfaceId: surface.surfaceId,
+    status: surface.status,
+    data: JSON.parse(surface.dataModelJson) as Object
+  };
+  return output;
+}
+
+function registeredGmailDraftProviderOutput(
+  surface: A2uiSurfaceState,
+  context: ActionExecutionContext
+): RegisteredPageActionOutputFixture {
+  const output = registeredPageActionOutput('gmail.draft.create', surface, context);
+  const data = output.data as A2uiRuntimeDataModel;
+  data.genericToolResults[0].actions = [];
+  data.genericToolResults[0].rawPreview = '';
+  return output;
+}
+
+function currentGmailReplySurface(sequence: number): A2uiSurfaceState {
+  const result: DynamicGenericToolResult = {
+    sourceTag: 'Gmail API',
+    toolName: 'users.threads.get',
+    title: 'QA',
+    status: 'success',
+    summary: 'QA body',
+    rows: [
+      { label: 'Provider', value: 'gmail' },
+      { label: 'From', value: 'Alice <alice@example.com>' },
+      { label: 'Thread ID', value: 'thread-real-1' },
+      { label: 'Message ID', value: 'message-real-1' }
+    ],
+    rawPreview: ''
+  };
+  const parsed = parseA2uiJsonl(
+    gmailThreadResultsA2ui('gmail-reply-surface', 'gmail.thread.read', [result])
   );
   const store = new A2uiSurfaceStore();
   parsed.envelopes.forEach((envelope) => store.apply(envelope));
@@ -1010,6 +1155,23 @@ function pageSnapshot(surface: A2uiSurfaceState, generation: number): Registered
       messages: [],
       isBusy: false,
       isAwaitingFirstSurface: false
+    }),
+    generation
+  };
+}
+
+function pendingPageSnapshot(
+  surface: A2uiSurfaceState,
+  generation: number,
+  inputText: string
+): RegisteredPageSnapshot {
+  return {
+    surface,
+    document: createHtmlHomeDocument({
+      messages: [],
+      inputText,
+      isBusy: true,
+      isAwaitingFirstSurface: true
     }),
     generation
   };
@@ -1074,6 +1236,38 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(2);
       runtime.dispose();
     });
+
+    it('keeps independent flight and train reads concurrent until one aggregate surface is ready', 0,
+      async () => {
+        const executor = new DeferredFlightTrainExecutor();
+        const bus = new TrackingBus();
+        const surfaces: A2uiSurfaceState[] = [];
+        const runtime = new MultiAgentCanaryRuntime(canaryOptions(
+          new QueueModel([FLIGHT_TRAIN_DECISION, FLIGHT_TRAIN_DONE_DECISION]),
+          executor,
+          new RecordingOpener(),
+          surfaces,
+          [],
+          bus
+        ));
+
+        const pending = runtime.submit('比较北京到上海的航班和高铁', { text: '' });
+        await executor.bothStarted.promise;
+
+        expect(executor.started.join(',')).assertEqual('flight.search,train.search');
+        expect(bus.count(AgentMessageType.TASK_RESULT_DATA)).assertEqual(0);
+        executor.releaseFlight();
+        executor.releaseTrain();
+        const outcome = await pending as MultiAgentSettledOutcome;
+
+        expect(outcome.status).assertEqual('success');
+        expect(surfaces.length).assertEqual(2);
+        expect(outcome.surfaceId).assertEqual(surfaces[0].surfaceId);
+        expect(surfaces[1].surfaceId).assertEqual(surfaces[0].surfaceId);
+        expect(surfaces[1].dataModelJson.indexOf('flights')).assertLarger(-1);
+        expect(surfaces[1].dataModelJson.indexOf('trains')).assertLarger(-1);
+        runtime.dispose();
+      });
 
     it('assembles the approved Action Agent prompt on the production canary model seam', 0, async () => {
       const model = new ActionCompilerCanaryModel();
@@ -2048,15 +2242,17 @@ export default function multiAgentCanaryRuntimeTest() {
       }
     });
 
-    it('owns C11 as one virtual memory action and renders the real update', 0, async () => {
+    it('owns C11b as one provider write and one exact success terminal', 0, async () => {
       const updates: PersonaMemoryUpdateRequest[] = [];
       const surfaces: A2uiSurfaceState[] = [];
+      const bus = new TrackingBus();
       const runtime = new MultiAgentCanaryRuntime(canaryOptions(
         new QueueModel([MEMORY_DECISION]),
         new CanaryHotelExecutor(),
         new RecordingOpener(),
         surfaces,
-        updates
+        updates,
+        bus
       ));
 
       const outcome = await runtime.submit('我只喝瑞幸咖啡', {
@@ -2069,6 +2265,17 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(updates[0].personaId).assertEqual('food_companion');
       expect(updates[0].memoryText).assertEqual('我只喝瑞幸咖啡');
       expect(surfaces.length).assertEqual(1);
+      const actionResults = bus.messages.filter((message: AgentMessage): boolean =>
+        message.type === AgentMessageType.ACTION_RESULT
+      );
+      const actionRequest = bus.messages.filter((message: AgentMessage): boolean =>
+        message.type === AgentMessageType.ACTION_PLAN_REQUEST
+      )[0];
+      const terminal = actionResults[0].payload as ActionResultPayload;
+      expect(updates.length).assertEqual(1);
+      expect(actionResults.length).assertEqual(1);
+      expect(terminal.status).assertEqual('success');
+      expect(terminal.runId).assertEqual('virtual:' + actionRequest.taskId);
       runtime.dispose();
     });
 
@@ -2191,7 +2398,10 @@ export default function multiAgentCanaryRuntimeTest() {
       const calls: RecordedPageAction[] = [];
       let currentHost: A2uiSurfaceState | null = null;
       let currentSnapshot: RegisteredPageSnapshot | null = null;
-      const hostGeneration = 41;
+      let hostGeneration = 41;
+      let providerResultCount = 0;
+      let providerActionCount = -1;
+      let providerRowsHaveDraftId = false;
       const options = canaryOptions(
         new QueueModel([GMAIL_DRAFT_CREATE_DECISION, GMAIL_DRAFT_APPLY_DECISION]),
         new CanaryHotelExecutor(),
@@ -2208,9 +2418,21 @@ export default function multiAgentCanaryRuntimeTest() {
         context: ActionExecutionContext
       ): Promise<ActionExecutionResult> => {
         calls.push({ actionId, args, context });
+        let output: Object = JSON.parse('{"providerStatus":"exact"}') as Object;
         if (actionId === 'gmail.draft.create') {
-          currentHost = providerGmailDraftSurface(hostGeneration);
-          currentSnapshot = pageSnapshot(currentHost, 1);
+          const createdSurface = providerGmailDraftSurface(
+            hostGeneration,
+            realComposioGmailDraftProviderResult()
+          );
+          createdSurface.sequence = 7;
+          currentHost = createdSurface;
+          output = registeredGmailDraftProviderOutput(createdSurface, context);
+          const providerData = (output as RegisteredPageActionOutputFixture).data as A2uiRuntimeDataModel;
+          providerResultCount = providerData.genericToolResults.length;
+          const providerActions = providerData.genericToolResults[0].actions;
+          providerActionCount = providerActions === undefined ? 0 : providerActions.length;
+          providerRowsHaveDraftId =
+            JSON.stringify(providerData.genericToolResults[0].rows).indexOf('draft-provider-1') >= 0;
         } else if (actionId === 'gmail.draft.apply') {
           const updated = pageSurface('gmail.draft.apply', {
             id: 'gmail.open.web',
@@ -2225,7 +2447,7 @@ export default function multiAgentCanaryRuntimeTest() {
         }
         return {
           status: 'success',
-          output: JSON.parse('{"providerStatus":"exact"}') as Object
+          output
         };
       };
       const runtime = new MultiAgentCanaryRuntime(options);
@@ -2235,8 +2457,16 @@ export default function multiAgentCanaryRuntimeTest() {
         { text: '' },
         hostGeneration
       ) as MultiAgentSettledOutcome;
-      const f07Document = currentSnapshot === null ?
-        null : (currentSnapshot as RegisteredPageSnapshot).document;
+      expect(currentHost === null).assertFalse();
+      const providerSurface: A2uiSurfaceState = currentHost === null ?
+        providerGmailDraftSurface(hostGeneration) : currentHost;
+      const providerSurfaceJson = JSON.stringify(providerSurface);
+      const terminalSurface = successfulGmailDraftTerminalSurface(providerSurface);
+      currentHost = terminalSurface;
+      const terminalSnapshot = pageSnapshot(terminalSurface, 2);
+      const f07Document = terminalSnapshot.document;
+      currentSnapshot = terminalSnapshot;
+      hostGeneration = 42;
       const applied = await runtime.submit(
         '确认应用刚才的 Gmail 草稿',
         { text: '' },
@@ -2248,6 +2478,15 @@ export default function multiAgentCanaryRuntimeTest() {
       }
 
       expect(created.status).assertEqual('success');
+      expect(providerSurface.sequence).assertEqual(7);
+      expect(terminalSurface.sequence).assertEqual(8);
+      expect(JSON.stringify(terminalSurface) === providerSurfaceJson).assertFalse();
+      expect(providerResultCount).assertEqual(1);
+      expect(providerActionCount).assertEqual(0);
+      expect(providerRowsHaveDraftId).assertTrue();
+      expect(terminalSnapshot.document.source === 'pending').assertFalse();
+      expect(terminalSnapshot.document.actions.length +
+        terminalSnapshot.document.blocks.length).assertLarger(0);
       expect(applied.status).assertEqual('success');
       expect(calls.length).assertEqual(2);
       expect(calls[0].actionId).assertEqual('gmail.draft.create');
@@ -2256,7 +2495,7 @@ export default function multiAgentCanaryRuntimeTest() {
       );
       expect(calls[1].actionId).assertEqual('gmail.draft.apply');
       expect(JSON.stringify(calls[1].args)).assertEqual(
-        '{"provider":"gmail_oauth","draftId":"draft-provider-1","to":["alice@example.com"],' +
+        '{"provider":"composio","draftId":"draft-provider-1","to":["alice@example.com"],' +
           '"subject":"","body":"我收到了","threadId":""}'
       );
       expect(actions.filter((action): boolean =>
@@ -2274,12 +2513,10 @@ export default function multiAgentCanaryRuntimeTest() {
       runtime.dispose();
     });
 
-    it('binds F08 only to the exact current multi-agent Gmail draft action', 0, async () => {
+    it('rejects F08 for a fresh runtime with only a preseeded Gmail draft surface', 0, async () => {
       const calls: RecordedPageAction[] = [];
       const bus = new TrackingBus();
-      let currentHost: A2uiSurfaceState | null;
-      let currentSnapshot: RegisteredPageSnapshot | null;
-      let hostGeneration = 41;
+      const hostGeneration = 41;
       const applyArgs = JSON.parse(
         '{"provider":"gmail_oauth","draftId":"draft-provider-1","threadId":"thread-provider-1",' +
           '"to":["alice@example.com"],"subject":"Provider draft subject","body":"我收到了"}'
@@ -2293,19 +2530,15 @@ export default function multiAgentCanaryRuntimeTest() {
         args: applyArgs
       };
       const options = canaryOptions(
-        new QueueModel([
-          GMAIL_DRAFT_APPLY_DECISION,
-          GMAIL_DRAFT_APPLY_DECISION,
-          GMAIL_DRAFT_APPLY_DECISION
-        ]),
+        new QueueModel([GMAIL_DRAFT_APPLY_DECISION]),
         new CanaryHotelExecutor(),
         new RecordingOpener(),
         [],
         [],
         bus
       );
-      currentHost = pageSurface('gmail.draft.create', applyAction, hostGeneration);
-      currentSnapshot = pageSnapshot(currentHost, 1);
+      const currentHost = pageSurface('gmail.draft.create', applyAction, hostGeneration);
+      const currentSnapshot = pageSnapshot(currentHost, 1);
       options.currentHostSurface = (): A2uiSurfaceState | null => currentHost;
       options.currentHostGeneration = (): number => hostGeneration;
       options.currentPageSnapshot = (): RegisteredPageSnapshot | null => currentSnapshot;
@@ -2315,18 +2548,6 @@ export default function multiAgentCanaryRuntimeTest() {
         context: ActionExecutionContext
       ): Promise<ActionExecutionResult> => {
         calls.push({ actionId, args, context });
-        if (actionId === 'gmail.draft.apply') {
-          const applied = pageSurface('gmail.draft.apply', {
-            id: 'gmail.open.web',
-            label: '打开 Gmail',
-            prompt: '打开 Gmail',
-            variant: 'secondary',
-            kind: 'client',
-            args: JSON.parse('{"url":"https://mail.google.com/"}') as Object
-          }, hostGeneration);
-          currentHost = applied;
-          currentSnapshot = pageSnapshot(applied, 2);
-        }
         return {
           status: 'success',
           output: JSON.parse('{"providerStatus":"exact"}') as Object
@@ -2339,31 +2560,189 @@ export default function multiAgentCanaryRuntimeTest() {
         { text: '' },
         hostGeneration
       ) as MultiAgentSettledOutcome;
-      const replayed = await runtime.submit(
-        '确认应用刚才的 Gmail 草稿',
+
+      expect(applied.status).assertEqual('error');
+      expect(calls.length).assertEqual(0);
+      expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(0);
+      runtime.dispose();
+    });
+
+    it('rejects F08 when the retained F07 snapshot and current host differ', 0, async () => {
+      const calls: RecordedPageAction[] = [];
+      let currentHost: A2uiSurfaceState | null = null;
+      let currentSnapshot: RegisteredPageSnapshot | null = null;
+      let hostGeneration = 41;
+      const options = canaryOptions(
+        new QueueModel([GMAIL_DRAFT_CREATE_DECISION, GMAIL_DRAFT_APPLY_DECISION]),
+        new CanaryHotelExecutor(),
+        new RecordingOpener(),
+        [],
+        []
+      );
+      options.currentHostSurface = (): A2uiSurfaceState | null => currentHost;
+      options.currentHostGeneration = (): number => hostGeneration;
+      options.currentPageSnapshot = (): RegisteredPageSnapshot | null => currentSnapshot;
+      options.pageAction = async (
+        actionId: string,
+        args: Object,
+        context: ActionExecutionContext
+      ): Promise<ActionExecutionResult> => {
+        calls.push({ actionId, args, context });
+        let output: Object = JSON.parse('{"providerStatus":"exact"}') as Object;
+        if (actionId === 'gmail.draft.create') {
+          const createdSurface = providerGmailDraftSurface(hostGeneration);
+          currentHost = createdSurface;
+          currentSnapshot = pageSnapshot(createdSurface, 1);
+          output = registeredPageActionOutput(actionId, createdSurface, context);
+        }
+        return {
+          status: 'success',
+          output
+        };
+      };
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const created = await runtime.submit(
+        '帮我用 Gmail 写一封邮件给 alice@example.com，说我收到了',
         { text: '' },
         hostGeneration
       ) as MultiAgentSettledOutcome;
-      currentHost = null;
-      currentSnapshot = null;
-      const missing = await runtime.submit(
+      currentHost = JSON.parse(JSON.stringify(currentHost)) as A2uiSurfaceState;
+      currentHost.title = 'forged-current-host';
+      hostGeneration = 42;
+      const applied = await runtime.submit(
         '确认应用刚才的 Gmail 草稿',
         { text: '' },
         hostGeneration
       ) as MultiAgentSettledOutcome;
 
-      expect(applied.status).assertEqual('success');
-      expect(replayed.status).assertEqual('error');
-      expect(missing.status).assertEqual('error');
+      expect(created.status).assertEqual('success');
+      expect(applied.status).assertEqual('error');
       expect(calls.length).assertEqual(1);
-      expect(calls[0].actionId).assertEqual('gmail.draft.apply');
-      expect(JSON.stringify(calls[0].args)).assertEqual(JSON.stringify(applyArgs));
-      expect(calls[0].context.virtualAction).assertTrue();
-      expect(calls.filter((call: RecordedPageAction): boolean =>
-        call.actionId === 'gmail.message.send'
-      ).length).assertEqual(0);
-      expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(0);
+      expect(calls[0].actionId).assertEqual('gmail.draft.create');
       runtime.dispose();
+    });
+
+    it('rejects invalid F07 provider data and delayed rendered Gmail authority mismatches', 0, async () => {
+      const cases: string[] = [
+        'provider_failed',
+        'provider_zero',
+        'provider_two',
+        'draft_id_invalid',
+        'provider_invalid',
+        'original_args_invalid',
+        'snapshot_missing',
+        'snapshot_pending',
+        'rendered_surface_different',
+        'rendered_status_different',
+        'rendered_generation_stale',
+        'rendered_action_missing',
+        'rendered_action_tampered',
+        'skip_generation'
+      ];
+      for (let caseIndex = 0; caseIndex < cases.length; caseIndex++) {
+        const caseId = cases[caseIndex];
+        const calls: RecordedPageAction[] = [];
+        let currentHost: A2uiSurfaceState | null = null;
+        let currentSnapshot: RegisteredPageSnapshot | null = null;
+        let hostGeneration = 41;
+        const options = canaryOptions(
+          new QueueModel([GMAIL_DRAFT_CREATE_DECISION, GMAIL_DRAFT_APPLY_DECISION]),
+          new CanaryHotelExecutor(),
+          new RecordingOpener(),
+          [],
+          []
+        );
+        options.currentHostSurface = (): A2uiSurfaceState | null => currentHost;
+        options.currentHostGeneration = (): number => hostGeneration;
+        options.currentPageSnapshot = (): RegisteredPageSnapshot | null => currentSnapshot;
+        options.pageAction = async (
+          actionId: string,
+          args: Object,
+          context: ActionExecutionContext
+        ): Promise<ActionExecutionResult> => {
+          calls.push({ actionId, args, context });
+          const createdSurface = providerGmailDraftSurface(hostGeneration);
+          const renderedData = JSON.parse(createdSurface.dataModelJson) as A2uiRuntimeDataModel;
+          const renderedActions = renderedData.genericToolResults[0].actions as A2uiAction[];
+          if (caseId === 'rendered_action_missing') {
+            renderedData.genericToolResults[0].actions = [];
+          } else if (caseId === 'rendered_action_tampered') {
+            const renderedArgs = renderedActions[0].args as
+              Record<string, Object | string | number | boolean | null | undefined>;
+            renderedArgs['draftId'] = 'draft-rendered-tampered';
+          }
+          createdSurface.dataModelJson = JSON.stringify(renderedData);
+          currentHost = createdSurface;
+          const output = registeredGmailDraftProviderOutput(createdSurface, context);
+          const data = output.data as A2uiRuntimeDataModel;
+          if (caseId === 'provider_failed') {
+            data.genericToolResults[0].status = 'error';
+          } else if (caseId === 'provider_zero') {
+            data.genericToolResults = [];
+          } else if (caseId === 'provider_two') {
+            data.genericToolResults.push(
+              JSON.parse(JSON.stringify(data.genericToolResults[0]))
+            );
+          } else if (caseId === 'draft_id_invalid') {
+            data.genericToolResults[0].rows = data.genericToolResults[0].rows.filter((row): boolean =>
+              row.label !== 'Draft ID'
+            );
+            data.genericToolResults[0].rawPreview = '{}';
+          } else if (caseId === 'provider_invalid') {
+            data.genericToolResults[0].sourceTag = 'Unknown provider';
+          } else if (caseId === 'original_args_invalid') {
+            const originalArgs = args as
+              Record<string, Object | string | number | boolean | null | undefined>;
+            originalArgs['body'] = '';
+          }
+          return { status: 'success', output };
+        };
+        const runtime = new MultiAgentCanaryRuntime(options);
+
+        const created = await runtime.submit(
+          '帮我用 Gmail 写一封邮件给 alice@example.com，说我收到了',
+          { text: '' },
+          hostGeneration
+        ) as MultiAgentSettledOutcome;
+        const providerSurface = currentHost === null ?
+          providerGmailDraftSurface(hostGeneration) : currentHost;
+        currentHost = successfulGmailDraftTerminalSurface(providerSurface);
+        currentSnapshot = pageSnapshot(currentHost, 2);
+        if (caseId === 'snapshot_missing') {
+          currentSnapshot = null;
+        } else if (caseId === 'snapshot_pending') {
+          currentSnapshot = pendingPageSnapshot(
+            currentHost,
+            3,
+            '确认应用刚才的 Gmail 草稿'
+          );
+        } else if (caseId === 'rendered_surface_different') {
+          currentHost.surfaceId = 'forged-gmail-surface';
+          currentSnapshot = pageSnapshot(currentHost, 3);
+        } else if (caseId === 'rendered_status_different') {
+          currentHost.status = 'working';
+          currentSnapshot = pageSnapshot(currentHost, 3);
+        } else if (caseId === 'rendered_generation_stale') {
+          currentHost.runtimeGeneration = 40;
+          currentSnapshot = pageSnapshot(currentHost, 3);
+        }
+        hostGeneration = caseId === 'skip_generation' ? 43 : 42;
+        const applied = await runtime.submit(
+          '确认应用刚才的 Gmail 草稿',
+          { text: '' },
+          hostGeneration
+        ) as MultiAgentSettledOutcome;
+
+        expect(created.status).assertEqual('success');
+        expect(applied.status).assertEqual('error');
+        expect(calls.length).assertEqual(1);
+        expect(calls[0].actionId).assertEqual('gmail.draft.create');
+        expect(calls.filter((call): boolean =>
+          call.actionId === 'gmail.message.send'
+        ).length).assertEqual(0);
+        runtime.dispose();
+      }
     });
 
     it('rejects F08 when the Gmail draft host generation is stale', 0, async () => {
@@ -2940,27 +3319,70 @@ export default function multiAgentCanaryRuntimeTest() {
 
       const detail = renderedAction(surfaces[surfaces.length - 1], 'hotel.detail');
       expect(detail === null).assertFalse();
+      const forgedDetail = JSON.parse(JSON.stringify(detail)) as A2uiAction;
+      (forgedDetail.args as Record<string, Object | string | number | boolean | null | undefined>)['hotelId'] =
+        999999;
+      const mismatchedDetailContext: MultiAgentCanaryActionContext = {
+        conversationId: restoredSearchContext!.conversationId,
+        turnId: restoredSearchContext!.turnId + '-forged',
+        surfaceId: restoredSearchContext!.surfaceId,
+        sourceToolId: restoredSearchContext!.sourceToolId
+      };
+      expect(await runtime.runAction(forgedDetail, restoredSearchContext!)).assertFalse();
+      expect(await runtime.runAction(detail!, mismatchedDetailContext)).assertFalse();
+      expect(executor.calls.join(',')).assertEqual('hotel.search');
+      expect(runtime.currentActionContext()?.sourceToolId).assertEqual('hotel.search');
       let detailSettled = false;
       const detailPending = runtime.runAction(detail!, restoredSearchContext!);
       detailPending.then((_ok: boolean): void => {
         detailSettled = true;
       });
+      expect(await runtime.runAction(detail!, restoredSearchContext!)).assertFalse();
+      const concurrentDifferentDetail = JSON.parse(JSON.stringify(detail)) as A2uiAction;
+      (concurrentDifferentDetail.args as Record<string, Object | string | number | boolean | null | undefined>)[
+        'hotelId'
+      ] = 999999;
+      expect(await runtime.runAction(concurrentDifferentDetail, restoredSearchContext!)).assertFalse();
+      expect(runtime.currentActionContext()?.sourceToolId === 'hotel.search').assertFalse();
       await flush();
       expect(executor.calls.join(',')).assertEqual('hotel.search,hotel.detail');
       await executor.detailStarted.promise;
       await flush();
+      expect(runtime.currentActionContext()?.sourceToolId === 'hotel.search').assertFalse();
       expect(bus.count(AgentMessageType.TASK_CREATE_UI)).assertEqual(2);
       expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(2);
+      const detailUiMessage = bus.messages.filter((message: AgentMessage): boolean =>
+        message.type === AgentMessageType.TASK_CREATE_UI &&
+        (message.payload as CreateUiTaskPayload).intent === 'hotel.detail'
+      )[0];
+      const detailDataMessage = bus.messages.filter((message: AgentMessage): boolean =>
+        message.type === AgentMessageType.TASK_CREATE_DATA &&
+        (message.payload as CreateDataTaskPayload).toolId === 'hotel.detail'
+      )[0];
+      const detailUiTask = detailUiMessage.payload as CreateUiTaskPayload;
+      const detailDataTask = detailDataMessage.payload as CreateDataTaskPayload;
+      expect(detailUiTask.dataTaskIds[0]).assertEqual(detailDataTask.taskId);
+      expect(detailUiTask.taskId).assertEqual('hotel-detail-ui-2');
+      expect(detailDataTask.taskId).assertEqual('hotel-detail-data-1');
+      expect(detailDataTask.roundId).assertEqual(detailDataMessage.turnId + ':round-1');
+      expect(detailUiMessage.turnId).assertEqual(detailDataMessage.turnId);
+      expect(detailUiMessage.turnId === restoredSearchContext?.turnId).assertFalse();
       expect(detailSettled).assertFalse();
       executor.detailRelease.open();
       expect(await detailPending).assertTrue();
 
       const detailContext = runtime.currentActionContext();
       expect(detailContext?.sourceToolId).assertEqual('hotel.detail');
+      expect(detailContext?.surfaceId === originalSearchSurfaceId).assertFalse();
       const booking = renderedAction(surfaces[surfaces.length - 1], 'hotel.booking.open');
       expect(booking === null).assertFalse();
+      expect(booking?.id).assertEqual('hotel.booking.open');
+      expect((booking?.args as Record<string, string>).bookingUrl).assertEqual(hotelItem().bookingUrl);
+      expect(await runtime.runAction(booking!, restoredSearchContext!)).assertFalse();
       expect(await runtime.runAction(booking!, detailContext!)).assertTrue();
       expect(opener.uris[opener.uris.length - 1].indexOf('https://rollinggo.cn/')).assertEqual(0);
+      expect(runtime.currentActionContext()?.surfaceId).assertEqual(detailContext?.surfaceId);
+      expect(runtime.currentActionContext()?.sourceToolId).assertEqual('hotel.detail');
 
       const visibleDetail = surfaces[surfaces.length - 1];
       const newerHost = pageSurface('hotel.detail', booking!, 202);
@@ -3115,6 +3537,60 @@ export default function multiAgentCanaryRuntimeTest() {
         message.type === AgentMessageType.ACTION_RESULT &&
           JSON.stringify(message.payload).indexOf('"status":"paused"') >= 0
       ).length).assertEqual(0);
+      runtime.dispose();
+    });
+
+    it('does not block Gmail send from the exact current reply surface', 0, async () => {
+      const calls: RecordedPageAction[] = [];
+      const bus = new TrackingBus();
+      const surface = currentGmailReplySurface(29);
+      const document = createHtmlHomeDocument({
+        surface,
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      const options = canaryOptions(
+        new QueueModel([]),
+        new CanaryHotelExecutor(),
+        new RecordingOpener(),
+        [],
+        [],
+        bus
+      );
+      options.currentPageSnapshot = (): RegisteredPageSnapshot | null => ({
+        surface,
+        document,
+        generation: 29
+      });
+      options.pageAction = async (
+        actionId: string,
+        args: Object,
+        context: ActionExecutionContext
+      ): Promise<ActionExecutionResult> => {
+        calls.push({ actionId, args, context });
+        return { status: 'success', output: JSON.parse('{"providerStatus":"sent"}') as Object };
+      };
+      const runtime = new MultiAgentCanaryRuntime(options);
+      const args = JSON.parse(
+        '{"requestKey":"gmail:thread-real-1","provider":"gmail","accountLabel":"",' +
+          '"threadId":"thread-real-1","messageId":"message-real-1",' +
+          '"to":["alice@example.com"],"subject":"Re: QA","body":"Exact reply",' +
+          '"replyMode":"reply","contextSummary":"QA body"}'
+      ) as Object;
+      const clicked: A2uiAction = {
+        id: 'html_mail_reply_send',
+        label: '发送回复',
+        prompt: 'gmail:thread-real-1',
+        variant: 'primary',
+        kind: 'client',
+        args
+      };
+
+      expect(await runtime.runPageAction(clicked)).assertTrue();
+      expect(calls.length).assertEqual(1);
+      expect(calls[0].actionId).assertEqual('gmail.message.send');
+      expect(JSON.stringify(bus.messages).indexOf('ACTION_BLOCKED')).assertEqual(-1);
       runtime.dispose();
     });
 

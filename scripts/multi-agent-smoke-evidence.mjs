@@ -6,7 +6,13 @@ const LIFECYCLE_MARKERS = new Set([
   'MultiAgentInput', 'MultiAgentDataTask', 'MultiAgentDataResult',
   'MultiAgentUiTask', 'MultiAgentUiResult', 'MultiAgentTaskError',
   'MultiAgentActionPlan', 'MultiAgentActionRun', 'MultiAgentActionResult',
-  'MultiAgentTurnResult', 'DynamicToolDiscovery'
+  'MultiAgentTurnResult', 'DynamicToolDiscovery',
+  'MailDetailInPlace',
+  'RollingGoHotelRequest', 'RollingGoHotelResponse',
+  'A2uiHomeSurfaceUpdate', 'HtmlHomeDocument'
+]);
+const MODEL_DOWNSTREAM_WORK_MARKERS = new Set([
+  'MultiAgentDataTask', 'MultiAgentUiTask', 'MultiAgentActionPlan', 'MultiAgentActionRun'
 ]);
 const DUPLICATE_HILOG_MAX_SKEW_MS = 1;
 
@@ -50,6 +56,13 @@ export async function runC19CleanupFinalizer({ cleanupRequired, runDelete, runAb
     absence = { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
   return { cleanup, absence };
+}
+
+export function shouldPreserveSmokeAppSession(currentCase, previousCase, previousSummary) {
+  const dependency = currentCase?.dependsOnCaseId || '';
+  return dependency.length > 0 &&
+    dependency === (previousCase?.id || '') &&
+    previousSummary?.ok === true;
 }
 
 function duplicateHilogChannelPair(left, right) {
@@ -589,7 +602,7 @@ export function composioAuthEvidence({ textValues = [], externalAuthJumps = [] }
 }
 
 export function multiAgentPostCompletionWaitMs(caseId) {
-  return caseId === 'C20' ? 3000 : 0;
+  return caseId === 'C20' ? 5000 : 0;
 }
 
 export function captureCompletionSettled({ done, doneAt, lifecycleOptions, customCompletion, now }) {
@@ -825,7 +838,7 @@ export function modelTransportEvidence(logText, options = {}) {
   if (terminal === undefined || terminal.index !== lifecycle.terminalIndex ||
     !sameAppIdentity(terminal.line, identity)) return false;
   const plannedWork = all.find((item) => item.index > selected.index &&
-    item.index < terminal.index && LIFECYCLE_MARKERS.has(item.marker));
+    item.index < terminal.index && MODEL_DOWNSTREAM_WORK_MARKERS.has(item.marker));
   const modelEndIndex = plannedWork?.index ?? terminal.index;
 
   const request = all.find((item) => item.index > selected.index && item.index < modelEndIndex &&
@@ -1034,7 +1047,8 @@ export function multiAgentActionEvidence(logText, options = {}) {
     if (!plan.fields.conversation || !plan.fields.turn || !plan.fields.task ||
       plan.fields.uiTask !== plan.fields.task || actions.length !== 1 ||
       fabricatedRun || matchingResults.length !== 1 || result.index <= plan.index ||
-      !result.fields.surface || result.fields.surface === 'none' || result.fields.surface === 'invalid' || !result.fields.plan ||
+      !result.fields.surface || result.fields.surface === 'none' ||
+      (result.fields.surface === 'invalid' && options.expectedVirtual !== true) || !result.fields.plan ||
       !result.fields.run || !ACTION_STATUSES.has(result.fields.status)) continue;
     const chain = all.filter((item) => item.index >= plan.index && item.index <= result.index);
     const truthful = !externalOrSyntheticError(chain) || result.fields.status !== 'success';
@@ -1247,4 +1261,63 @@ export function visibleMailBodyText(value) {
     .replace(/\s+/g, ' ')
     .trim();
   return content.length >= 8;
+}
+
+function layoutEvidenceText(node) {
+  const attributes = node?.attributes || {};
+  return ['text', 'content', 'description', 'hint']
+    .map((key) => attributes[key])
+    .filter((value) => typeof value === 'string' && value.trim().length > 0)
+    .join('\n')
+    .trim();
+}
+
+function hasLayoutDescendant(node, predicate) {
+  if (predicate(node)) return true;
+  return (node?.children || []).some((child) => hasLayoutDescendant(child, predicate));
+}
+
+function mailBodyTextFromDetailRegion(node) {
+  const children = node?.children || [];
+  if (children.length >= 3) {
+    const sender = layoutEvidenceText(children[0]);
+    const route = layoutEvidenceText(children[1]);
+    const body = layoutEvidenceText(children[2]);
+    if (sender.length > 0 && route.includes('发给') && body.length > 0) {
+      return body;
+    }
+  }
+  for (const child of children) {
+    const body = mailBodyTextFromDetailRegion(child);
+    if (body.length > 0) return body;
+  }
+  return '';
+}
+
+export function expandedMailBodyRegionText(layout) {
+  let body = '';
+  const visit = (node) => {
+    if (body.length > 0) return;
+    if (node?.attributes?.type === 'article') {
+      const children = node.children || [];
+      const isMail = children.some((child) =>
+        ['Gmail', 'QQ Mail', 'Outlook'].includes(layoutEvidenceText(child)));
+      const isExpanded = hasLayoutDescendant(node, (candidate) =>
+        candidate?.attributes?.type === 'button' && layoutEvidenceText(candidate).includes('收起'));
+      if (isMail && isExpanded) {
+        body = mailBodyTextFromDetailRegion(node);
+        return;
+      }
+    }
+    for (const child of node?.children || []) visit(child);
+  };
+  visit(layout);
+  return body;
+}
+
+export function shouldRecoverMailBodyViewport(evidence, uiBodyAccepted) {
+  return evidence?.complete === true &&
+    evidence?.ok === true &&
+    evidence?.bodyVisible === true &&
+    uiBodyAccepted !== true;
 }

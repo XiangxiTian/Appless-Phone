@@ -16,6 +16,7 @@ import {
   visibleMailBodyText,
   modelTransportEvidence,
   multiAgentActionEvidence,
+  shouldPreserveSmokeAppSession,
   multiAgentTurnEvidence,
   socialDraftUiEvidence,
   socialReplyButtonCenter,
@@ -27,6 +28,43 @@ const f16ExternalReturns = ['QQ 邮箱', '瑞幸咖啡', '滴滴出行'].map((ap
   opened: true,
   returned: true
 }));
+
+function productionMultiTaskPanelUpdater() {
+  const source = readFileSync('entry/src/main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer.ets', 'utf8');
+  const start = source.indexOf('  function upsertPanelBody(panel, block, sectionId, embedHtml) {');
+  const end = source.indexOf('\n  function upsertPanel(block, sectionId, embeds) {', start);
+  assert.ok(start >= 0 && end > start, 'production multi-task panel updater is present');
+  const functionSource = source.slice(start, end);
+  return new Function('text', 'add', `${functionSource}\nreturn upsertPanelBody;`)(
+    (value) => value === undefined || value === null ? '' : String(value),
+    () => { throw new Error('existing iframe should be reused'); }
+  );
+}
+
+test('refreshes an iframe when equal-length provider HTML changes', () => {
+  const stablePrefix = '<main>Provider detail: ' + 'x'.repeat(120);
+  const previous = stablePrefix + 'ready</main>';
+  const updated = stablePrefix + 'error</main>';
+  const attributes = new Map();
+  const iframe = {
+    srcdoc: previous,
+    getAttribute(name) { return attributes.get(name) ?? null; },
+    setAttribute(name, value) { attributes.set(name, value); }
+  };
+  const panel = {
+    querySelector(selector) {
+      return selector === '.multi-embed-frame' ? iframe : null;
+    },
+    removeChild() {}
+  };
+  const updatePanel = productionMultiTaskPanelUpdater();
+
+  assert.equal(previous.length, updated.length);
+  assert.equal(previous.slice(0, 96), updated.slice(0, 96));
+  updatePanel(panel, { title: 'Provider' }, 'provider', previous);
+  updatePanel(panel, { title: 'Provider' }, 'provider', updated);
+  assert.equal(iframe.srcdoc, updated);
+});
 
 test('keeps F16 provider timeout as truthful usable UI evidence but BLOCKED overall', () => {
   const evidence = composioAuthEvidence({
@@ -73,7 +111,7 @@ test('holds ordinary C20 multi-agent capture until its bounded settlement window
   assert.equal(typeof smokeLifecycle.multiAgentPostCompletionWaitMs, 'function');
   assert.equal(typeof smokeLifecycle.captureCompletionSettled, 'function');
   const waitMs = smokeLifecycle.multiAgentPostCompletionWaitMs('C20');
-  assert.equal(waitMs, 3000);
+  assert.equal(waitMs, 5000);
   assert.equal(smokeLifecycle.multiAgentPostCompletionWaitMs('C19'), 0);
   assert.equal(smokeLifecycle.captureCompletionSettled({
     done: true,
@@ -908,6 +946,17 @@ test('accepts only a correlated app-owned cloud streaming model lifecycle', () =
   mutations.forEach((logs) => assert.equal(modelTransportEvidence(logs), false));
 });
 
+test('keeps pending presentation markers inside the current model transport window', () => {
+  const pendingPresentation = cloudStreamTurn.replace(
+    '07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n',
+    '07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n' +
+      '07-22 18:00:05.210 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][HtmlHomeDocument] source=pending kind=thinking chars=316983 blocks=0 renderTick=0\n' +
+      '07-22 18:00:05.211 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][A2uiHomeSurfaceUpdate] source=pending kind=thinking chars=316983 blocks=0\n'
+  );
+
+  assert.equal(modelTransportEvidence(pendingPresentation), true);
+});
+
 test('does not treat an arbitrary app 443 response as streamed model evidence', () => {
   const providerResponse = cloudStreamTurn.replace(
     'LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}',
@@ -1532,10 +1581,86 @@ test('correlates an exact mail read action through one Data and in-place Ui term
   ).complete, false);
 });
 
+test('deduplicates one dual-channel mail detail terminal before viewport recovery', () => {
+  const logs = `
+    [AIPhone][MultiAgentActionRun] conversation=c1 turn=page-turn-1 task=a1 surface=s1 plan=p1 run=r1 action=mail.thread.read source=mail.search provider=qq identity=qq-identity-1
+    [AIPhone][MultiAgentUiTask] conversation=c1 turn=read-turn task=ui1 dataTasks=data1
+    [AIPhone][MultiAgentDataTask] conversation=c1 turn=read-turn task=data1 round=1 tool=mail.thread.read predecessor=none path=none target=none binding=false provider=qq identity=qq-identity-1
+    [AIPhone][MultiAgentActionResult] conversation=c1 turn=page-turn-1 task=a1 surface=s1 plan=p1 run=r1 status=success
+    [AIPhone][MultiAgentDataResult] conversation=c1 turn=read-turn task=data1 tool=mail.thread.read status=success sources=1 error=false provider=qq identity=qq-identity-1
+    07-26 21:34:46.435 63634 63634 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MailDetailInPlace] requestKeyChars=7 provider=qq identity=qq-identity-1 status=success bodyChars=701
+    07-26 21:34:46.435 63634 63634 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MailDetailInPlace] requestKeyChars=7 provider=qq identity=qq-identity-1 status=success bodyChars=701
+    [AIPhone][MultiAgentUiResult] conversation=c1 turn=read-turn task=ui1 surface=loop_surface_1 state=result
+  `;
+  const evidence = mailThreadReadEvidence(logs, {
+    expectedActionId: 'mail.thread.read',
+    expectedSourceToolId: 'mail.search',
+    currentSurfaceId: 's1',
+    expectedConversationId: 'c1',
+    expectedTurnId: 'page-turn-1'
+  });
+  assert.equal(evidence.complete, true);
+  assert.equal(evidence.ok, true);
+  assert.equal(evidence.bodyVisible, true);
+});
+
 test('does not treat the mail loading skeleton as a visible body', () => {
   assert.equal(visibleMailBodyText('发件人\n主题\n正在加载邮件正文\n回复'), false);
   assert.equal(visibleMailBodyText('Alice\nalice@example.com 发给 我\n这是供应商返回的真实完整正文\n回复'), true);
   assert.equal(visibleMailBodyText('邮件正文加载失败。\n重试'), false);
+});
+
+test('extracts visible mail body only from the expanded mail detail region', () => {
+  assert.equal(typeof smokeLifecycle.expandedMailBodyRegionText, 'function');
+  const node = (type, text = '', children = []) => ({
+    attributes: { type, text, content: '', description: '', hint: '' },
+    children
+  });
+  const mailArticle = (detailChildren) => node('article', '', [
+    node('genericContainer', 'QQ Mail'),
+    node('heading', 'Release workflow failed'),
+    node('button', '收起'),
+    node('genericContainer', '', detailChildren)
+  ]);
+  const sender = node('genericContainer', 'Yige Luo');
+  const route = node('genericContainer', 'notifications@example.com 发给 我');
+  const body = node('genericContainer', 'Provider returned the complete release failure details.');
+  const positive = node('root', '', [mailArticle([sender, route, body])]);
+  const headerOnly = node('root', '', [mailArticle([sender, route])]);
+  const unrelatedPage = node('root', '', [
+    node('article', '', [
+      node('heading', 'Release workflow failed'),
+      node('button', '收起'),
+      node('genericContainer', '', [sender, route, body])
+    ]),
+    node('paragraph', 'Provider returned unrelated page copy.')
+  ]);
+  const subjectAndQueryOnly = node('root', '', [
+    mailArticle([sender, route]),
+    node('paragraph', 'Release workflow failed'),
+    node('paragraph', '帮我查看邮箱里最新的重要邮件')
+  ]);
+
+  assert.equal(smokeLifecycle.expandedMailBodyRegionText(positive),
+    'Provider returned the complete release failure details.');
+  assert.equal(smokeLifecycle.expandedMailBodyRegionText(headerOnly), '');
+  assert.equal(smokeLifecycle.expandedMailBodyRegionText(unrelatedPage), '');
+  assert.equal(smokeLifecycle.expandedMailBodyRegionText(subjectAndQueryOnly), '');
+});
+
+test('requests viewport recovery only after a correlated mail body succeeds off-screen', () => {
+  assert.equal(typeof smokeLifecycle.shouldRecoverMailBodyViewport, 'function');
+  const decide = smokeLifecycle.shouldRecoverMailBodyViewport;
+  const success = {
+    complete: true,
+    ok: true,
+    bodyVisible: true
+  };
+  assert.equal(decide(success, false), true);
+  assert.equal(decide(success, true), false);
+  assert.equal(decide({ ...success, complete: false }, false), false);
+  assert.equal(decide({ ...success, ok: false }, false), false);
+  assert.equal(decide({ ...success, bodyVisible: false }, false), false);
 });
 
 test('correlates a virtual action request with its exact terminal result', () => {
@@ -1546,6 +1671,35 @@ test('correlates a virtual action request with its exact terminal result', () =>
   assert.equal(result.complete, true);
   assert.equal(result.ok, true);
   assert.equal(result.surfaceId, 's1');
+});
+
+test('accepts the exact C11b virtual memory terminal with its invalid surface sentinel', () => {
+  const result = multiAgentActionEvidence(`
+    [AIPhone][MultiAgentActionPlan] conversation=c77776924 turn=t921f1276 task=k2 uiTask=k2 dataTasks=none actions=memory.update virtual=true
+    [AIPhone][PersonaMemoryUpdate] ok=true personaId=food_companion summary=我只喝瑞幸咖啡
+    [AIPhone][MultiAgentActionResult] conversation=c77776924 turn=t921f1276 task=k2 surface=invalid plan=p3 run=r4 status=success
+    [AIPhone][MultiAgentTurnResult] conversation=c77776924 turn=t921f1276 task=k1 status=success surface=invalid roundCount=0 messageChars=17
+  `, {
+    expectedActionId: 'memory.update',
+    expectedConversationId: 'c77776924',
+    expectedTurnId: 't921f1276',
+    expectedVirtual: true
+  });
+  assert.equal(result.complete, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.planId, 'p3');
+  assert.equal(result.runId, 'r4');
+  assert.equal(result.status, 'success');
+  assert.equal(result.surfaceId, 'invalid');
+});
+
+test('rejects invalid surface sentinels for direct actions', () => {
+  const result = multiAgentActionEvidence(`
+    [AIPhone][MultiAgentActionRun] conversation=c1 turn=t1 task=a1 surface=invalid plan=p1 run=r1 action=hotel.navigate source=hotel.search
+    [AIPhone][MultiAgentActionResult] conversation=c1 turn=t1 task=a1 surface=invalid plan=p1 run=r1 status=success
+  `, { expectedActionId: 'hotel.navigate', expectedVirtual: false });
+  assert.equal(result.complete, false);
+  assert.equal(result.ok, false);
 });
 
 test('keeps filtered nonadjacent virtual ActionResult copies duplicated', () => {
@@ -1700,6 +1854,33 @@ test('lists exactly C01-C20 and F01-F16 without excluded sends', () => {
   assert.equal(full.find((item) => item.id === 'F15')?.expectedDynamicQualifiedName,
     'googledocs_search_documents');
   assert.doesNotMatch(serialized, /不确认直接发送|gmail\.message\.send/);
+});
+
+test('maps the positional Gmail confirmation query to the retained F08 apply action', () => {
+  const [gmailApply] = listedCases(['确认应用刚才的 Gmail 草稿']);
+  assert.equal(gmailApply.id, 'F08');
+  assert.deepEqual(gmailApply.expectedToolIds, ['gmail.draft.apply']);
+  assert.equal(gmailApply.retryLimit, 0);
+});
+
+test('runs Gmail draft writes once while ordinary reads inherit the configured retry limit', () => {
+  const cases = listedCases([
+    '帮我用 Gmail 写一封邮件给 alice@example.com，说我收到了',
+    '确认应用刚才的 Gmail 草稿',
+    '帮我查看我 Gmail 里和 ECCV 论文相关的邮件'
+  ], {
+    AIPHONE_QUERY_RETRY_LIMIT: '5'
+  });
+  assert.deepEqual(cases.map((item) => item.retryLimit), [0, 0, 5]);
+});
+
+test('preserves the Gmail draft surface only for a successful adjacent F07 to F08 pair', () => {
+  const f07 = { id: 'F07' };
+  const f08 = { id: 'F08', dependsOnCaseId: 'F07' };
+  assert.equal(shouldPreserveSmokeAppSession(f08, f07, { ok: true }), true);
+  assert.equal(shouldPreserveSmokeAppSession(f08, f07, { ok: false }), false);
+  assert.equal(shouldPreserveSmokeAppSession(f08, null, null), false);
+  assert.equal(shouldPreserveSmokeAppSession(f08, { id: 'F06' }, { ok: true }), false);
 });
 
 test('lists Gmail reply send only behind explicit safe manual configuration', () => {

@@ -8,8 +8,10 @@ import {
   parseHotelSearchRequest
 } from '@loop/agent-core';
 import { renderHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeRenderer';
+import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer';
 import { createHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeSnapshot';
-import { HtmlHomeAction, HtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
+import { HtmlHomeAction, HtmlHomeBlock, HtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
+import { parseHtmlHomeAction } from '../main/ets/pages/A2uiHome/components/HtmlHomeSurfaceView';
 import { renderRideDriverMapHtml } from '../main/ets/pages/A2uiHome/html/RideDriverMapHtmlRenderer';
 
 interface GooglePayCheckoutArgsFixture {
@@ -26,6 +28,33 @@ interface GooglePayCheckoutArgsFixture {
 
 interface BookingUrlArgsFixture {
   bookingUrl: string;
+}
+
+interface MapsOpenArgsFixture {
+  url: string;
+}
+
+interface RenderedHomeDataFixture {
+  blocks: HtmlHomeBlock[];
+}
+
+function renderedActionByLabel(html: string, label: string): A2uiAction | null {
+  const start = html.indexOf('<script id="home-data" type="application/json">');
+  const end = html.indexOf('</script>', start);
+  if (start < 0 || end < 0) {
+    return null;
+  }
+  const jsonStart = start + '<script id="home-data" type="application/json">'.length;
+  const data = JSON.parse(html.substring(jsonStart, end)) as RenderedHomeDataFixture;
+  for (let blockIndex = 0; blockIndex < data.blocks.length; blockIndex++) {
+    const actions = data.blocks[blockIndex].actions;
+    for (let actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+      if (actions[actionIndex].label === label) {
+        return parseHtmlHomeAction(JSON.stringify(actions[actionIndex]));
+      }
+    }
+  }
+  return null;
 }
 
 function documentFixture(): HtmlHomeDocument {
@@ -1213,6 +1242,49 @@ function expectCalmUtilityPalette(document: HtmlHomeDocument): void {
 
 export default function htmlHomeRendererTest() {
   describe('htmlHomeRenderer', () => {
+    it('keeps the existing auth card beside a successful result without object or raw JSON UI', 0, () => {
+      const doc = dynamicCredentialDocumentFixture();
+      const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=Shenzhen';
+      const mapsArgs: MapsOpenArgsFixture = { url: mapsUrl };
+      const openMaps: HtmlHomeAction = {
+        id: 'maps.open.web',
+        label: '打开地图',
+        prompt: mapsUrl,
+        variant: 'secondary',
+        kind: 'client',
+        args: mapsArgs
+      };
+      const mapsResult: HtmlHomeBlock = {
+        id: 'maps-success',
+        kind: 'generic-tool-result',
+        title: '深圳湾',
+        subtitle: '真实地点结果',
+        status: 'success',
+        source: 'Google Maps',
+        metrics: [],
+        rows: [{ label: '地址', value: '深圳湾' }],
+        actions: [openMaps]
+      };
+      doc.blocks.push(mapsResult);
+      doc.actions = [openMaps];
+
+      const html = renderHtmlHomeDocument(doc);
+      const visibleAction = renderedActionByLabel(html, '打开地图');
+
+      expect(html.indexOf('Amap Maps')).assertLarger(-1);
+      expect(html.indexOf('深圳湾')).assertLarger(-1);
+      expect(html.indexOf('button.textContent = text(action.label || action.id);')).assertLarger(-1);
+      expect(html.indexOf('addActions(detailHost, block.actions);')).assertLarger(-1);
+      expect(html.indexOf('args: action.args && typeof action.args === \'object\' ? action.args : null')).assertLarger(-1);
+      expect(visibleAction === null).assertFalse();
+      expect((visibleAction as A2uiAction).id).assertEqual('maps.open.web');
+      expect((visibleAction as A2uiAction).label).assertEqual('打开地图');
+      expect((visibleAction as A2uiAction).prompt).assertEqual(mapsUrl);
+      expect(JSON.stringify((visibleAction as A2uiAction).args)).assertEqual(JSON.stringify(mapsArgs));
+      expect(html.indexOf('[object Object]')).assertEqual(-1);
+      expect(html.indexOf('raw JSON')).assertEqual(-1);
+    });
+
     it('uses the calm utility palette across result templates', 0, () => {
       expectCalmUtilityPalette(documentFixture());
       expectCalmUtilityPalette(calendarSearchDocumentFixture());
@@ -1248,6 +1320,32 @@ export default function htmlHomeRendererTest() {
       const html = renderHtmlHomeDocument(documentFixture());
 
       expect(html.indexOf('AIPhoneHome.postAction')).assertLarger(-1);
+    });
+
+    it('binds an embedded multi-task click to its exact section', 0, () => {
+      const embedded = documentFixture();
+      const document = documentFixture();
+      document.kind = 'multi-task';
+      document.blocks = [{
+        id: 'slot-review',
+        kind: 'multi-task-section',
+        title: 'Review',
+        sectionId: 'slot-review',
+        metrics: [],
+        rows: [],
+        actions: [],
+        embeddedDocument: embedded
+      }];
+      const payload = buildMultiTaskHomePayload(document);
+      const parsed = parseHtmlHomeAction(
+        '{"id":"doc-action","label":"Run Action","prompt":"run it",' +
+        '"variant":"primary","kind":"prompt","sourceSectionId":"slot-review","args":{"id":"real"}}'
+      );
+
+      expect(payload.embeds.length).assertEqual(1);
+      expect(payload.embeds[0].html.indexOf('sourceSectionId')).assertLarger(-1);
+      expect(payload.embeds[0].html.indexOf('slot-review')).assertLarger(-1);
+      expect(JSON.stringify(parsed).indexOf('"sourceSectionId":"slot-review"')).assertLarger(-1);
     });
 
     it('renders ride tool panel with no fake map before driver coordinates', 0, () => {
@@ -2106,6 +2204,14 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf("kind === 'generic-tool-result' && isMailBlock(block)")).assertLarger(-1);
     });
 
+    it('initializes expanded details for mail blocks outside the Gmail scene', 0, () => {
+      const doc = mailAggregateDocumentFixture();
+      doc.kind = 'generic';
+      const html = renderHtmlHomeDocument(doc);
+
+      expect(html.indexOf("if (isMailBlock(block))")).assertLarger(-1);
+    });
+
     it('filters Gmail hero preview counts to mail blocks', 0, () => {
       const doc = mailAggregateDocumentFixture();
       doc.blocks.unshift({
@@ -2281,6 +2387,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('luckin-payment-option-chip')).assertLarger(-1);
       expect(html.indexOf('瑞幸咖啡 深圳科技园店')).assertLarger(-1);
       expect(html.indexOf('resource://rawfile/wechat_pay.jpeg')).assertLarger(-1);
+      expect(html.indexOf('patchLuckinPaymentStatus')).assertLarger(-1);
       expect(html.indexOf('resource://rawfile/alipay.jpeg')).assertLarger(-1);
       expect(html.indexOf('resource://rawfile/google_pay.jpeg')).assertLarger(-1);
     });

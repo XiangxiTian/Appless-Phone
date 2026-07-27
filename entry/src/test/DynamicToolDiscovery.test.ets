@@ -7,11 +7,17 @@ import {
   DynamicStructuredData,
   DynamicGenericToolResult,
   DynamicToolDiscoveryResult,
+  configureDynamicToolSamplesFromJson,
   configureDefaultDynamicToolSamplesForTests
 } from '@loop/agent-core';
 
 type DynamicArgValue = Object | string | null | undefined;
 type DynamicArgRecord = Record<string, DynamicArgValue>;
+
+interface DynamicStatusCase {
+  status: string;
+  code: string;
+}
 
 function looseObject(raw: string): Object {
   return JSON.parse(raw) as Object;
@@ -43,6 +49,94 @@ export default function dynamicToolDiscoveryTest() {
       const result = discoverDynamicToolForPrompt('帮我查明天深圳到珠海的船票');
 
       expect(result === null).assertTrue();
+    });
+
+    it('executes the selected manifest instead of a prompt-discovered competitor', 0, async () => {
+      configureDynamicToolSamplesFromJson('{"manifests":[' +
+        '{"toolIds":["statistics.search"],"manifest":{"id":"stats","displayName":"Stats",' +
+        '"sourceUrl":"memory:stats","hosted":true,"fromSiteUrl":"","capabilities":["gdp"],' +
+        '"requiredCredentials":[{"name":"STATS_KEY","description":"","required":true,' +
+        '"placement":"header","scheme":"Bearer","testValue":""}],"transports":[' +
+        '{"type":"streamable_http","url":"https://stats.invalid/mcp","command":"","args":[],' +
+        '"headers":{},"env":{}}],"tools":[{"name":"GITHUB_LIST_PULL_REQUESTS",' +
+        '"description":"GDP search","inputSchema":{}}]}},' +
+        '{"toolIds":["maps.weather"],"manifest":{"id":"maps","displayName":"Maps",' +
+        '"sourceUrl":"memory:maps","hosted":true,"fromSiteUrl":"","capabilities":["weather"],' +
+        '"requiredCredentials":[{"name":"MAPS_KEY","description":"","required":true,' +
+        '"placement":"header","scheme":"Bearer","testValue":""}],"transports":[' +
+        '{"type":"streamable_http","url":"https://maps.invalid/mcp","command":"","args":[],' +
+        '"headers":{},"env":{}}],"tools":[{"name":"GOOGLEDRIVE_SEARCH_FILES",' +
+        '"description":"weather search","inputSchema":{}}]}}]}');
+      try {
+        const result = await callStructuredTool(
+          'dynamic.search', 'find GDP data',
+          looseObject('{"operation":"search","qualifiedName":"GOOGLEDRIVE_SEARCH_FILES"}')
+        );
+        const data = result.data as DynamicStructuredData;
+
+        expect(result.status).assertEqual('error');
+        expect(result.error?.code).assertEqual('AUTH_REQUIRED');
+        expect(data.registration.qualifiedName).assertEqual('GOOGLEDRIVE_SEARCH_FILES');
+        expect(data.registration.selectedToolId).assertEqual('maps.weather');
+        expect(result.sources[0].operation).assertEqual('GOOGLEDRIVE_SEARCH_FILES');
+      } finally {
+        configureDefaultDynamicToolSamplesForTests();
+      }
+    });
+
+    it('executes only the selected second safe manifest tool', 0, async () => {
+      configureDynamicToolSamplesFromJson('{"manifests":[{"toolIds":["multi.search"],"manifest":{' +
+        '"id":"multi","displayName":"Multi","sourceUrl":"memory:multi","hosted":true,' +
+        '"fromSiteUrl":"","capabilities":["first"],"requiredCredentials":[],"transports":[' +
+        '{"type":"http_api","url":"https://multi.invalid/read","command":"","args":[],' +
+        '"headers":{},"env":{},"method":"POST"}],"tools":[' +
+        '{"name":"FIRST_SEARCH_METRICS","description":"Search first metrics","inputSchema":{},' +
+        '"annotations":{"readOnlyHint":true}},' +
+        '{"name":"SECOND_SEARCH_METRICS","description":"Search second metrics","inputSchema":{},' +
+        '"annotations":{"readOnlyHint":true}}]}}]}');
+      try {
+        const result = await callStructuredTool(
+          'dynamic.search', 'search first metrics',
+          looseObject('{"operation":"search","qualifiedName":"SECOND_SEARCH_METRICS"}')
+        );
+        const data = result.data as DynamicStructuredData;
+
+        expect(result.status).assertEqual('error');
+        expect(result.error?.code).assertEqual('DYNAMIC_PROVIDER_ERROR');
+        expect(data.results[0].toolName).assertEqual('SECOND_SEARCH_METRICS');
+        expect(data.registration.qualifiedName).assertEqual('SECOND_SEARCH_METRICS');
+        expect(result.sources[0].operation).assertEqual('SECOND_SEARCH_METRICS');
+        expect(JSON.stringify(data).indexOf('FIRST_SEARCH_METRICS')).assertEqual(-1);
+      } finally {
+        configureDefaultDynamicToolSamplesForTests();
+      }
+    });
+
+    it('blocks a selected booking mutation despite a read-only hint', 0, async () => {
+      configureDynamicToolSamplesFromJson('{"manifests":[{"toolIds":["multi.search"],"manifest":{' +
+        '"id":"multi","displayName":"Multi","sourceUrl":"memory:multi","hosted":true,' +
+        '"fromSiteUrl":"","capabilities":["tickets"],"requiredCredentials":[],"transports":[' +
+        '{"type":"http_api","url":"https://multi.invalid/read","command":"","args":[],' +
+        '"headers":{},"env":{},"method":"POST"}],"tools":[' +
+        '{"name":"FIRST_SEARCH_METRICS","description":"Search first metrics","inputSchema":{},' +
+        '"annotations":{"readOnlyHint":true}},' +
+        '{"name":"BOOK_TICKET_SEARCH","description":"Book a paid ticket order for checkout",' +
+        '"inputSchema":{},"annotations":{"readOnlyHint":true}}]}}]}');
+      try {
+        const result = await callStructuredTool(
+          'dynamic.search', 'search first metrics',
+          looseObject('{"operation":"search","qualifiedName":"BOOK_TICKET_SEARCH"}')
+        );
+        const data = result.data as DynamicStructuredData;
+
+        expect(result.status).assertEqual('error');
+        expect(data.results[0].status).assertEqual('unsafe_action_blocked');
+        expect(data.results[0].title).assertEqual('动态读取失败');
+        expect(data.registration.qualifiedName).assertEqual('BOOK_TICKET_SEARCH');
+        expect(result.sources[0].operation).assertEqual('BOOK_TICKET_SEARCH');
+      } finally {
+        configureDefaultDynamicToolSamplesForTests();
+      }
     });
 
     it('allows safe dynamic reads and preserves turn-scoped registration metadata', 0, async () => {
@@ -81,10 +175,24 @@ export default function dynamicToolDiscoveryTest() {
           'dynamic.search', 'get a repository',
           looseObject('{"operation":"get","qualifiedName":"GITHUB_GET_REPOSITORY","schema":{"type":"object"},"receipt":"turn-4"}')
         );
+        const githubQualifiedName: string = 'GITHUB_LIST_PULL_REQUESTS';
+        const driveQualifiedName: string = 'GOOGLEDRIVE_SEARCH_FILES';
+        const github = await callStructuredTool(
+          'dynamic.search', 'list GitHub pull requests',
+          looseObject('{"operation":"list","qualifiedName":"' + githubQualifiedName +
+            '","schema":{"type":"object"},"receipt":"github-turn"}')
+        );
+        const drive = await callStructuredTool(
+          'dynamic.search', 'search Google Drive files',
+          looseObject('{"operation":"search","qualifiedName":"' + driveQualifiedName +
+            '","schema":{"type":"object"},"receipt":"drive-turn"}')
+        );
         const firstData = first.data as DynamicStructuredData;
         const secondData = second.data as DynamicStructuredData;
         const thirdData = third.data as DynamicStructuredData;
         const fourthData = fourth.data as DynamicStructuredData;
+        const githubData = github.data as DynamicStructuredData;
+        const driveData = drive.data as DynamicStructuredData;
 
         expect(first.status).assertEqual('success');
         expect(first.outputSchema).assertEqual('dynamicToolConnect');
@@ -99,8 +207,12 @@ export default function dynamicToolDiscoveryTest() {
         expect(JSON.stringify(second.data).indexOf('turn-1')).assertEqual(-1);
         expect(thirdData.registration.qualifiedName).assertEqual('NOTION_READ_PAGE');
         expect(fourthData.registration.qualifiedName).assertEqual('GITHUB_GET_REPOSITORY');
+        expect(githubData.registration.qualifiedName).assertEqual(githubQualifiedName);
+        expect(driveData.registration.qualifiedName).assertEqual(driveQualifiedName);
+        expect(github.sources[0].operation).assertEqual(githubQualifiedName);
+        expect(drive.sources[0].operation).assertEqual(driveQualifiedName);
         expect(JSON.stringify(fourth.data).indexOf('turn-3')).assertEqual(-1);
-        expect(calls).assertEqual(4);
+        expect(calls).assertEqual(6);
       } finally {
         configureDynamicReadExecutorForTests(null);
       }
@@ -170,6 +282,36 @@ export default function dynamicToolDiscoveryTest() {
       } finally {
         configureDynamicReadExecutorForTests(null);
       }
+    });
+
+    it('maps real dynamic execution statuses without collapsing them into provider error', 0, async () => {
+      const cases: DynamicStatusCase[] = [
+        { status: 'needs_auth', code: 'AUTH_REQUIRED' },
+        { status: 'missing_config', code: 'DYNAMIC_CONFIG_MISSING' },
+        { status: 'unsupported_transport', code: 'DYNAMIC_UNSUPPORTED_TRANSPORT' },
+        { status: 'no_tool_found', code: 'DYNAMIC_NO_PROVIDER' },
+        { status: 'error', code: 'DYNAMIC_PROVIDER_ERROR' }
+      ];
+      for (let index = 0; index < cases.length; index++) {
+        const current = cases[index];
+        configureDynamicReadExecutorForTests(async (): Promise<DynamicReadExecution> => ({
+          results: [{
+            sourceTag: 'Composio', toolName: 'GITHUB_LIST_PULL_REQUESTS', title: current.status,
+            status: current.status, summary: current.status, rows: [], rawPreview: ''
+          }],
+          registration: {
+            provider: 'Composio', qualifiedName: 'GITHUB_LIST_PULL_REQUESTS',
+            inputSchema: looseObject('{}'), outputSchema: looseObject('{}'), receipt: ''
+          }
+        }));
+        const result = await callStructuredTool(
+          'dynamic.search', 'selected provider read',
+          looseObject('{"operation":"list","qualifiedName":"GITHUB_LIST_PULL_REQUESTS"}')
+        );
+        expect(result.status).assertEqual('error');
+        expect(result.error?.code).assertEqual(current.code);
+      }
+      configureDynamicReadExecutorForTests(null);
     });
   });
 }

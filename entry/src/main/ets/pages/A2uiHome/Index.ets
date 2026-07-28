@@ -78,6 +78,8 @@ import {
   decideTrainPresaleExecution,
   defaultToolGatewayUrl,
   isMultiTaskSurface,
+  directFirecrawlToolIdForActionId,
+  firecrawlHttpUrlOf,
   isRegisteredToolId,
   mergeSlotObservationIntoMultiTaskSurface,
   normalizeComposioUserId,
@@ -186,6 +188,7 @@ import { RegisteredPageActionContext } from './agent/AiphoneRegisteredActionExec
 import { socialHubComposioToolkitCandidates } from './components/SocialHubViewData';
 import { createHtmlHomeDocument } from './html/HtmlHomeSnapshot';
 import { buildMultiTaskHomePayload, renderHtmlHomeDocument } from './html/HtmlHomeRenderer';
+import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
 import { isHtmlHomeActionAllowed } from './html/HtmlHomeActionPolicy';
 import { HtmlHomeAction, HtmlHomeBlock, HtmlHomeDocument } from './html/HtmlHomeTypes';
 import {
@@ -217,10 +220,12 @@ import {
   ConnectionPanelState,
   createInitialConnectionPanelState,
   inputTextAfterPromptSubmit,
+  nextPendingToolRenderTick,
   runtimeCallbackIsCurrent,
   runtimeOwnerAllowsSurfaceAction,
   runtimeSurfaceIdentityMatches,
   shouldApplySurfaceUpdate,
+  shouldShowFirecrawlPendingSurface,
   shouldShowQueryPendingSurface,
   shouldShowWelcome,
   updateConnectionPanelState,
@@ -650,6 +655,7 @@ struct Index {
   @State currentSurface: A2uiSurfaceState = initialSurface;
   @State surfaceRenderTick: number = 0;
   @State isAwaitingFirstSurface: boolean = false;
+  @State pendingFirecrawlToolId: string = '';
   @State inputText: string = '';
   @State isVoiceListening: boolean = false;
   @State voiceInputMessage: string = '';
@@ -1890,7 +1896,7 @@ struct Index {
       currentHostSurface: (): A2uiSurfaceState | null => this.surfaceSnapshot(this.currentSurface),
       currentHostGeneration: (): number => this.runtimeGeneration,
       currentLocalDate: (): string => this.currentLocalDate(),
-      submitTimeoutMs: 45000,
+      submitTimeoutMs: 90000,
       actionTimeoutMs: 45000,
       settingsFingerprint: fingerprint
     };
@@ -2023,6 +2029,14 @@ struct Index {
   }
 
   private currentHtmlHomeDocument(): HtmlHomeDocument {
+    if (isFirecrawlToolId(this.pendingFirecrawlToolId) &&
+      shouldShowFirecrawlPendingSurface(
+        this.isBusy,
+        this.pendingFirecrawlToolId,
+        this.currentSurface
+      )) {
+      return createFirecrawlPendingDocument(this.pendingFirecrawlToolId);
+    }
     if (shouldShowWelcome(this.isBusy, this.messages.length, this.currentSurface) ||
       shouldShowQueryPendingSurface(this.isBusy, this.isAwaitingFirstSurface)) {
       return createHtmlHomeDocument({
@@ -2066,6 +2080,7 @@ struct Index {
       this.currentSurface.status,
       this.isBusy ? 'busy' : 'idle',
       this.isAwaitingFirstSurface ? 'awaiting' : 'ready',
+      this.pendingFirecrawlToolId,
       this.messages.length.toString(),
       this.multiTaskActiveSectionId,
       needsInputText ? this.inputText : ''
@@ -4608,6 +4623,15 @@ struct Index {
       await this.openExternalUrl(onboardingUrl);
       return;
     }
+    if (action.id === 'web.open.source') {
+      const url = firecrawlHttpUrlOf(action.prompt);
+      if (url.length === 0) {
+        this.logHtmlHomeActionError(action, 'invalid_firecrawl_source_url');
+        return;
+      }
+      await this.openExternalUrl(url, ['https', 'http']);
+      return;
+    }
     if (action.id === 'luckin.demo.googlepay.return') {
       this.restoreLuckinReturnSurface(action.prompt.length > 0 ? action.prompt : action.id);
       return;
@@ -5099,6 +5123,21 @@ struct Index {
       }
       return;
     }
+    const directFirecrawlToolId = directFirecrawlToolIdForActionId(action.id);
+    if (directFirecrawlToolId.length > 0) {
+      this.isBusy = true;
+      try {
+        await this.callToolById(
+          directFirecrawlToolId,
+          action.prompt.length > 0 ? action.prompt : action.label,
+          action.id,
+          action.args === undefined ? null : action.args
+        );
+      } finally {
+        this.isBusy = false;
+      }
+      return;
+    }
     const directPaymentToolId = directPaymentToolIdForActionId(action.id);
     if (directPaymentToolId.length > 0) {
       await this.callToolById(
@@ -5383,6 +5422,15 @@ struct Index {
     )) {
       return false;
     }
+    const firecrawlPending = isFirecrawlToolId(toolId);
+    if (firecrawlPending) {
+      this.surfaceRenderTick = nextPendingToolRenderTick(
+        this.surfaceRenderTick,
+        this.pendingFirecrawlToolId,
+        toolId
+      );
+      this.pendingFirecrawlToolId = toolId;
+    }
     const targetSurfaceId = multiTaskCtx !== null ? multiTaskCtx.childSurfaceId : this.toolSurfaceId();
     const result: A2uiCallResult = await callToolGateway(
       TOOL_GATEWAY_URL,
@@ -5430,6 +5478,14 @@ struct Index {
       null,
       callArgs
     );
+    if (firecrawlPending) {
+      this.surfaceRenderTick = nextPendingToolRenderTick(
+        this.surfaceRenderTick,
+        this.pendingFirecrawlToolId,
+        ''
+      );
+      this.pendingFirecrawlToolId = '';
+    }
     if (runtimeOwner !== this.activeRuntimeOwner || toolGeneration !== this.runtimeGeneration) {
       if (inlineLuckinSwitch) {
         this.finishLuckinOptionSwitch(false);

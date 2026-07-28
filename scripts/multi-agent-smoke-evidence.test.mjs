@@ -1915,7 +1915,7 @@ test('lists Gmail reply send only behind explicit safe manual configuration', ()
   assert.deepEqual(manual[0].expectedToolIds, ['gmail.message.send']);
 });
 
-test('gives production provider actions the same deadline as multi-agent turns', () => {
+test('gives slow read turns more time while keeping provider actions bounded', () => {
   const source = readFileSync(
     'entry/src/main/ets/pages/A2uiHome/Index.ets',
     'utf8'
@@ -1924,6 +1924,6 @@ test('gives production provider actions the same deadline as multi-agent turns',
     source.indexOf('const options: MultiAgentCanaryOptions = {'),
     source.indexOf('this.multiAgentRuntime = new MultiAgentCanaryRuntime(options);')
   );
-  assert.match(options, /\bsubmitTimeoutMs\s*:\s*45000\s*,/);
+  assert.match(options, /\bsubmitTimeoutMs\s*:\s*90000\s*,/);
   assert.match(options, /\bactionTimeoutMs\s*:\s*45000\s*,/);
 });

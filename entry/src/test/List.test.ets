@@ -89,6 +89,7 @@ import actionPlanRunnerTest from './ActionPlanRunner.test';
 import actionAgentTest from './ActionAgent.test';
 import a2uiLayoutMergerTest from './A2uiLayoutMerger.test';
 import checkoutWebOverlayTest from './CheckoutWebOverlay.test';
+import firecrawlMcpClientTest from './FirecrawlMcpClient.test';
 import trainPresaleProviderTest from './TrainPresaleProvider.test';
 import trainPresaleSearchTest from './TrainPresaleSearch.test';
 import trainPresaleTaskStoreTest from './TrainPresaleTaskStore.test';
@@ -184,6 +185,7 @@ export default function testsuite() {
   actionAgentTest();
   a2uiLayoutMergerTest();
   checkoutWebOverlayTest();
+  firecrawlMcpClientTest();
   trainPresaleProviderTest();
   trainPresaleSearchTest();
   trainPresaleTaskStoreTest();

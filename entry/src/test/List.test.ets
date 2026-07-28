@@ -89,6 +89,14 @@ import actionPlanRunnerTest from './ActionPlanRunner.test';
 import actionAgentTest from './ActionAgent.test';
 import a2uiLayoutMergerTest from './A2uiLayoutMerger.test';
 import checkoutWebOverlayTest from './CheckoutWebOverlay.test';
+import trainPresaleProviderTest from './TrainPresaleProvider.test';
+import trainPresaleSearchTest from './TrainPresaleSearch.test';
+import trainPresaleTaskStoreTest from './TrainPresaleTaskStore.test';
+import systemOneShotSchedulerTest from './SystemOneShotScheduler.test';
+import trainPresaleConfirmationTest from './TrainPresaleConfirmation.test';
+import trainPresaleExecutionTest from './TrainPresaleExecution.test';
+import trainPresaleWebAutomationTest from './TrainPresaleWebAutomation.test';
+import trainPresaleDebugTest from './TrainPresaleDebug.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -176,6 +184,14 @@ export default function testsuite() {
   actionAgentTest();
   a2uiLayoutMergerTest();
   checkoutWebOverlayTest();
+  trainPresaleProviderTest();
+  trainPresaleSearchTest();
+  trainPresaleTaskStoreTest();
+  systemOneShotSchedulerTest();
+  trainPresaleConfirmationTest();
+  trainPresaleExecutionTest();
+  trainPresaleWebAutomationTest();
+  trainPresaleDebugTest();
   personaStoreTest();
   personaA2uiTest();
   personaMemoryUpdateTest();

@@ -49,7 +49,7 @@ export struct ComposioAuthPage {
     if (item.authScheme.length > 0) {
       return item.authScheme;
     }
-    return 'Composio';
+    return item.canExecute ? '无需账号授权' : '已支持，等待 Auth Config';
   }
 
   @Builder
@@ -107,16 +107,18 @@ export struct ComposioAuthPage {
           .layoutWeight(1)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Button(composioAuthActionLabel(item))
-          .height(34)
-          .fontSize(12)
-          .fontColor(Color.White)
-          .backgroundColor(COLOR_ACCENT)
-          .borderRadius(9)
-          .enabled(!this.isBusy && item.authConfigId.length > 0)
-          .onClick(() => {
-            this.onAuthorize(item);
-          })
+        if (item.authConfigId.length > 0) {
+          Button(composioAuthActionLabel(item))
+            .height(34)
+            .fontSize(12)
+            .fontColor(Color.White)
+            .backgroundColor(COLOR_ACCENT)
+            .borderRadius(9)
+            .enabled(!this.isBusy)
+            .onClick(() => {
+              this.onAuthorize(item);
+            })
+        }
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
@@ -132,7 +134,7 @@ export struct ComposioAuthPage {
   }
 
   @Builder
-  ExternalAuthCard(app: ExternalAuthApp) {
+  OtherAppCard(app: ExternalAuthApp) {
     Column() {
       Row() {
         this.ToolkitBadge(app.slug, app.name)
@@ -155,7 +157,10 @@ export struct ComposioAuthPage {
         .alignItems(HorizontalAlign.Start)
         .margin({ left: 10, right: 10 })
 
-        StatusBadgeView({ status: 'needs_auth', label: '外部授权' })
+        StatusBadgeView({
+          status: app.requiresAuth === false ? 'success' : 'needs_auth',
+          label: app.requiresAuth === false ? '无需授权' : '外部授权'
+        })
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
@@ -167,15 +172,17 @@ export struct ComposioAuthPage {
           .layoutWeight(1)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Button('授权')
-          .height(34)
-          .fontSize(12)
-          .fontColor(Color.White)
-          .backgroundColor(COLOR_ACCENT)
-          .borderRadius(9)
-          .onClick(() => {
-            this.onOpenExternalAuth(app.url);
-          })
+        if (app.requiresAuth !== false && app.url.length > 0) {
+          Button('授权')
+            .height(34)
+            .fontSize(12)
+            .fontColor(Color.White)
+            .backgroundColor(COLOR_ACCENT)
+            .borderRadius(9)
+            .onClick(() => {
+              this.onOpenExternalAuth(app.url);
+            })
+        }
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
@@ -266,14 +273,14 @@ export struct ComposioAuthPage {
             .fontWeight(FontWeight.Bold)
             .fontColor(COLOR_INK)
             .margin({ top: 14, bottom: 4 })
-          Text('以下入口仅打开官方授权页面，当前功能仍使用已配置的默认凭证。')
+          Text('所有支持应用均在此展示；需要外部授权的会打开官方页面，其余无需用户账号授权。')
             .fontSize(12)
             .fontColor(COLOR_MUTED)
             .lineHeight(18)
             .margin({ bottom: 12 })
 
           ForEach(EXTERNAL_AUTH_APPS, (app: ExternalAuthApp) => {
-            this.ExternalAuthCard(app)
+            this.OtherAppCard(app)
           }, (app: ExternalAuthApp) => app.slug)
         }
         .width('100%')

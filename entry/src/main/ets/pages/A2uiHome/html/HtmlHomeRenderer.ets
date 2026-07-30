@@ -5122,7 +5122,6 @@ const HTML_HOME_JS: string = `
   }
   function renderPersonaBanner(parent) {
     var persona = data.persona || {};
-    var memory = data.personaMemory || {};
     var name = text(persona.name);
     if (text(persona.id).length === 0 || name.length === 0) {
       return;
@@ -5140,7 +5139,6 @@ const HTML_HOME_JS: string = `
     }
     var copy = add(banner, 'div', 'persona-copy');
     add(copy, 'div', 'persona-title', name + '上线');
-    add(copy, 'div', 'persona-subtitle', text(memory.summary) || text(persona.reason));
   }
   app.textContent = '';
   var shell = add(app, 'main', isEnhancedScene() ? 'shell ' + sceneClassName() : 'shell');

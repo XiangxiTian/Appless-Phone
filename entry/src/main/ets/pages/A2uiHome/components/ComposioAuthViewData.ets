@@ -3,6 +3,7 @@ import { ComposioAuthConfigItem } from '@loop/agent-core';
 export interface ComposioToolkitSummary {
   slug: string;
   name: string;
+  requiresAuth?: boolean;
 }
 
 export interface ExternalAuthApp {
@@ -11,6 +12,7 @@ export interface ExternalAuthApp {
   subtitle: string;
   source: string;
   url: string;
+  requiresAuth?: boolean;
 }
 
 export const COMPOSIO_SUPPORTED_TOOLKITS: ComposioToolkitSummary[] = [
@@ -36,7 +38,8 @@ export const COMPOSIO_SUPPORTED_TOOLKITS: ComposioToolkitSummary[] = [
   { slug: 'ticketmaster', name: 'Ticketmaster' },
   { slug: 'hubspot', name: 'HubSpot' },
   { slug: 'salesforce', name: 'Salesforce' },
-  { slug: 'reddit', name: 'Reddit' }
+  { slug: 'reddit', name: 'Reddit' },
+  { slug: 'hackernews', name: 'Hacker News', requiresAuth: false }
 ];
 
 export const EXTERNAL_AUTH_APPS: ExternalAuthApp[] = [
@@ -60,6 +63,118 @@ export const EXTERNAL_AUTH_APPS: ExternalAuthApp[] = [
     subtitle: '登录并管理个人 MCP Key',
     source: '滴滴官方页面 · 当前默认凭证',
     url: 'https://mcp.didichuxing.com'
+  },
+  {
+    slug: 'googlemaps',
+    name: 'Google Maps',
+    subtitle: '无需用户授权',
+    source: '内置能力',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'bilibili',
+    name: 'Bilibili',
+    subtitle: '无需用户授权',
+    source: '公开内容能力',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'wecom',
+    name: 'WeCom',
+    subtitle: '无需用户授权',
+    source: '当前本地配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'paypal',
+    name: 'PayPal',
+    subtitle: '无需用户授权',
+    source: '当前支付配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'stripe',
+    name: 'Stripe',
+    subtitle: '无需用户授权',
+    source: '当前支付配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'googlepay',
+    name: 'Google Pay',
+    subtitle: '无需用户授权',
+    source: '系统支付入口',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'amap',
+    name: 'Amap',
+    subtitle: '无需用户授权',
+    source: '当前地图配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'baidumaps',
+    name: 'Baidu Maps',
+    subtitle: '无需用户授权',
+    source: '当前地图配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'tencentmaps',
+    name: 'Tencent Maps',
+    subtitle: '无需用户授权',
+    source: '当前地图配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'meituan',
+    name: 'Meituan',
+    subtitle: '无需用户授权',
+    source: '当前本地配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'taobao',
+    name: 'Taobao',
+    subtitle: '无需用户授权',
+    source: '当前本地配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'mcdonalds',
+    name: 'McDonald’s',
+    subtitle: '无需用户授权',
+    source: '当前本地配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'kfc',
+    name: 'KFC',
+    subtitle: '无需用户授权',
+    source: '当前本地配置',
+    url: '',
+    requiresAuth: false
+  },
+  {
+    slug: 'zhihu',
+    name: 'Zhihu',
+    subtitle: '无需用户授权',
+    source: '当前内容配置',
+    url: '',
+    requiresAuth: false
   }
 ];
 
@@ -91,11 +206,14 @@ export function composioAuthStatusLabel(status: string): string {
   if (status === 'connected') {
     return '已连接';
   }
+  if (status === 'success') {
+    return '无需授权';
+  }
   if (status === 'error') {
     return '异常';
   }
   if (status === 'disabled') {
-    return '已停用';
+    return '待配置';
   }
   return '待授权';
 }
@@ -105,7 +223,28 @@ export function composioAuthActionLabel(item: ComposioAuthConfigItem): string {
 }
 
 export function sortedComposioAuthConfigs(items: ComposioAuthConfigItem[]): ComposioAuthConfigItem[] {
-  return items.slice().sort((left: ComposioAuthConfigItem, right: ComposioAuthConfigItem) => {
+  const visible = items.slice();
+  for (let index = 0; index < COMPOSIO_SUPPORTED_TOOLKITS.length; index++) {
+    const toolkit = COMPOSIO_SUPPORTED_TOOLKITS[index];
+    const matches = visible.filter((item: ComposioAuthConfigItem) =>
+      composioToolkitDisplayName(item.toolkitSlug, item.toolkitName) === toolkit.name);
+    if (matches.length === 0) {
+      visible.push({
+        authConfigId: '',
+        toolkitSlug: toolkit.slug,
+        toolkitName: toolkit.name,
+        logoUrl: '',
+        authScheme: '',
+        management: '',
+        status: toolkit.requiresAuth === false ? 'success' : 'disabled',
+        connectedAccountId: '',
+        connectedAccountLabel: '',
+        lastConnectedAt: '',
+        canExecute: toolkit.requiresAuth === false
+      });
+    }
+  }
+  return visible.sort((left: ComposioAuthConfigItem, right: ComposioAuthConfigItem) => {
     const leftRank = left.status === 'connected' ? 0 : 1;
     const rightRank = right.status === 'connected' ? 0 : 1;
     if (leftRank !== rightRank) {

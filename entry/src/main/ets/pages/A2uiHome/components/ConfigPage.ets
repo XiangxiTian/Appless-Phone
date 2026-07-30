@@ -226,11 +226,22 @@ export struct ConfigPage {
     if (item !== null && (item.status === 'connected' || item.connectedAccountId.length > 0)) {
       return 'connected';
     }
+    for (let index = 0; index < COMPOSIO_SUPPORTED_TOOLKITS.length; index++) {
+      const toolkit = COMPOSIO_SUPPORTED_TOOLKITS[index];
+      if (this.normalizedToolkitSlug(toolkit.slug) === this.normalizedToolkitSlug(slug) &&
+        toolkit.requiresAuth === false) {
+        return 'success';
+      }
+    }
     return 'needs_auth';
   }
 
   private composioStatusLabel(slug: string): string {
-    return this.composioStatus(slug) === 'connected' ? '已连接' : '待授权';
+    const status = this.composioStatus(slug);
+    if (status === 'connected') {
+      return '已连接';
+    }
+    return status === 'success' ? '无需授权' : '待授权';
   }
 
   private composioConnectedCount(): number {
@@ -1021,7 +1032,6 @@ export struct ConfigPage {
           }
 
           Button(this.isBusy ? '检查中' : '测试连接')
-            .enabled(!this.isBusy)
             .height(44)
             .width('100%')
             .fontSize(15)
@@ -1031,7 +1041,9 @@ export struct ConfigPage {
             .border({ width: 1, color: COLOR_ACCENT })
             .margin({ top: 16 })
             .onClick(() => {
-              this.onTestConnection();
+              if (!this.isBusy) {
+                this.onTestConnection();
+              }
             })
 
           Divider()

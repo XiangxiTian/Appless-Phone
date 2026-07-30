@@ -1750,6 +1750,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('"name":"旅行搭子"')).assertLarger(-1);
       expect(html.indexOf('用户请求属于旅行或出行规划场景。')).assertLarger(-1);
       expect(html.indexOf('renderPersonaBanner(hero)')).assertLarger(-1);
+      expect(html.indexOf("add(copy, 'div', 'persona-subtitle'")).assertEqual(-1);
       expect(html.indexOf('G123')).assertLarger(-1);
       expect(html.indexOf('麦当劳 科技园店')).assertLarger(-1);
       expect(html.indexOf("var price = metric(block, ['price']);")).assertLarger(-1);
@@ -2439,6 +2440,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('"name":"娱乐搭子"')).assertLarger(-1);
       expect(html.indexOf('用户请求属于娱乐或媒体内容场景。')).assertLarger(-1);
       expect(html.indexOf('renderPersonaBanner(heroCopy)')).assertLarger(-1);
+      expect(html.indexOf("add(copy, 'div', 'persona-subtitle'")).assertEqual(-1);
       expect(html.indexOf('YouTube video')).assertLarger(-1);
       expect(html.indexOf('Bilibili video')).assertLarger(-1);
       expect(html.indexOf('data-source-key="media-youtube"')).assertLarger(-1);

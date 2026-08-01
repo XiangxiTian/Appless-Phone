@@ -2747,8 +2747,7 @@ export default function firecrawlMcpClientTest() {
           '{"url":"https://www.xiaohongshu.com/search_result?keyword=' +
           '%E9%B8%BF%E8%92%99%E5%BA%94%E7%94%A8%E5%BC%80%E5%8F%91&source=web_search_result_notes",' +
           '"formats":["markdown"],"onlyMainContent":false,"waitFor":5000,"maxAge":0,' +
-          '"storeInCache":false,"proxy":"auto","profile":{' +
-          '"name":"aiphone-xiaohongshu-login","saveChanges":true}}'
+          '"storeInCache":false,"proxy":"auto"}'
         );
         const detailArgs = scripted.callArgs[3] as InteractArgsFixture;
         expect((detailArgs.code === undefined ? '' : detailArgs.code).indexOf(

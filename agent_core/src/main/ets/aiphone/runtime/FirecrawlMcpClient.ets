@@ -46,7 +46,6 @@ const REQUIRED_MCP_TOOLS: string[] = [
 const SHORT_PREVIEW_CHARS: number = 1200;
 const FULL_PREVIEW_CHARS: number = 12000;
 const SUMMARY_CHARS: number = 600;
-const XIAOHONGSHU_PROFILE: string = 'aiphone-xiaohongshu-login';
 const SHOPPING_SOURCE_DOMAINS: string[] = [
   'zol.com.cn',
   'pconline.com.cn',
@@ -910,8 +909,7 @@ function xiaohongshuSearchArguments(query: string): Object {
     '{"url":"https://www.xiaohongshu.com/search_result?keyword=' +
     encodeURIComponent(query) + '&source=web_search_result_notes",' +
     '"formats":["markdown"],"onlyMainContent":false,"waitFor":5000,"maxAge":0,' +
-    '"storeInCache":false,"proxy":"auto","profile":{"name":' +
-    JSON.stringify(XIAOHONGSHU_PROFILE) + ',"saveChanges":true}}'
+    '"storeInCache":false,"proxy":"auto"}'
   ) as Object;
 }
 
@@ -2577,8 +2575,8 @@ export class FirecrawlMcpClient {
           resultWithRows(
             errorResult(
               toolId,
-              'needs_auth',
-              '小红书登录态已失效，请重新登录 Firecrawl 小红书浏览器会话。',
+              'blocked_by_site',
+              '小红书要求登录或安全验证；为保护账号隐私，不会使用个人登录态抓取。',
               markdown,
               scrape.httpStatus,
               config

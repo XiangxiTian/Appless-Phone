@@ -151,6 +151,68 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.blocks[0].actions[0].prompt.indexOf('"to":"SH"')).assertLarger(-1);
     });
 
+    it('keeps the real 12306 booking action on mixed travel train cards', 0, () => {
+      const options: A2uiComponent = {
+        id: 'mixed-options',
+        component: 'TravelOptions',
+        dataPath: '/travelOptions'
+      };
+      const bookingUrl =
+        'https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc&fs=test&ts=test&date=2026-07-22&flag=N,N,Y';
+      const doc = createHtmlHomeDocument({
+        surface: surface('travel', 'ready', [root('mixed-options'), options],
+          '{"travelOptions":[{"id":"train-G1","source":"train","sourceTag":"高铁 · 12306","title":"G1",' +
+          '"from":"深圳北","to":"上海虹桥","depart":"09:00","arrive":"13:28","duration":"4h28m",' +
+          '"price":"553","availability":"有票","status":"success","detail":"","bookingUrl":"' + bookingUrl +
+          '"},{"id":"flight-CZ1","source":"flight","sourceTag":"飞机 · 飞常准","title":"CZ1",' +
+          '"from":"SZX","to":"SHA","depart":"10:00","arrive":"12:20","duration":"2h20m",' +
+          '"price":"680","availability":"","status":"scheduled","detail":"南方航空"}]}'),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      const trainAction = doc.blocks[0].actions[0];
+
+      expect(doc.blocks.length).assertEqual(2);
+      expect(trainAction.id).assertEqual('train.booking.open');
+      expect(trainAction.label).assertEqual('去购票');
+      expect(JSON.stringify(trainAction.args).indexOf('"bookingUrl":"' + bookingUrl + '"')).assertLarger(-1);
+      expect(JSON.stringify(doc.blocks[1].actions).indexOf('train.booking.open')).assertEqual(-1);
+    });
+
+    it('keeps presale mixed travel train cards on the schedule action', 0, () => {
+      const options: A2uiComponent = {
+        id: 'presale-options',
+        component: 'TravelOptions',
+        dataPath: '/travelOptions'
+      };
+      const bookingUrl =
+        'https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc&fs=深圳北,IZQ&ts=上海虹桥,SHH&date=2026-08-20&flag=N,N,Y';
+      const doc = createHtmlHomeDocument({
+        surface: surface('travel', 'ready', [root('presale-options'), options],
+          '{"travelOptions":[{"id":"train-G1","source":"train","sourceTag":"高铁 · 12306","title":"G1",' +
+          '"trainCode":"G1","from":"深圳北","to":"上海虹桥","fromCode":"IZQ","toCode":"SHH",' +
+          '"depart":"09:00","arrive":"13:28","duration":"4h28m","price":"553",' +
+          '"availability":"","status":"待开售","detail":"","bookingUrl":"' + bookingUrl + '",' +
+          '"travelDate":"2026-08-20","saleState":"presale","saleAt":"2026-08-10T12:00:00+08:00"},' +
+          '{"id":"flight-CZ1","source":"flight","sourceTag":"飞机 · 飞常准","title":"CZ1",' +
+          '"from":"SZX","to":"SHA","depart":"10:00","arrive":"12:20","duration":"2h20m",' +
+          '"price":"680","availability":"","status":"scheduled","detail":"南方航空"}]}'),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      const trainActions = doc.blocks[0].actions;
+
+      expect(trainActions[0].id).assertEqual('train.presale.schedule');
+      expect(trainActions[0].label).assertEqual('开售抢票');
+      expect(JSON.stringify(trainActions[0].args).indexOf('"trainCode":"G1"')).assertLarger(-1);
+      expect(JSON.stringify(trainActions[0].args).indexOf('"saleAt":"2026-08-10T12:00:00+08:00"')).assertLarger(-1);
+      expect(JSON.stringify(trainActions).indexOf('train.booking.open')).assertEqual(-1);
+      expect(JSON.stringify(trainActions).indexOf('train.booking.alipay.open')).assertEqual(-1);
+      expect(JSON.stringify(doc.blocks[1].actions).indexOf('train.')).assertEqual(-1);
+    });
+
     it('maps train and flight rows into blocks', 0, () => {
       const action: A2uiAction = {
         id: 'travel_open',

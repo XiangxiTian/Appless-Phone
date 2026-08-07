@@ -102,6 +102,12 @@ import {
   resolveRegisteredPageAction,
   resolveVirtualRegisteredPageAction
 } from './RegisteredPageActionRoute';
+import {
+  BimGatedLeaderPlanner,
+  BimTurnGate,
+  bimTravelQueryIsComplete,
+  originalQueryFromBimPrompt
+} from '../bim/BimRuntime';
 
 const MEMORY_ACTION_ID: string = 'memory.update';
 const TIME_TOOL_ID: string = 'time';
@@ -167,6 +173,7 @@ interface SocialFeedTaskInput {
 
 export interface MultiAgentCanaryOptions {
   model: LocalModel;
+  turnGate?: BimTurnGate;
   opener: SystemUriOpener;
   pageAction?: RegisteredPageAction;
   currentPageSnapshot?: () => RegisteredPageSnapshot | null;
@@ -729,20 +736,72 @@ function validSocialFeedTaskInput(input: Object): boolean {
   }
 }
 
+function travelTaskText(input: Object, keys: string[]): string {
+  const source = input as Record<string, Object | string | number | boolean | null | undefined>;
+  for (let index = 0; index < keys.length; index++) {
+    const value = source[keys[index]];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
+function queryFromTravelTaskFields(input: Object, toolId: string): string {
+  const origin = travelTaskText(input, ['origin', 'departureCity', 'from']);
+  const destination = travelTaskText(input, ['destination', 'arrivalCity', 'to']);
+  const date = travelTaskText(input, ['departureDate', 'date', 'startDate']);
+  if (origin.length === 0 || destination.length === 0 || date.length === 0) {
+    return '';
+  }
+  const subject = toolId === 'train.search' ? '高铁' :
+    (toolId === 'flight.search' ? '航班' : '出行方式');
+  return '从' + origin + '到' + destination + '，出发日期 ' + date + '，查询' + subject;
+}
+
+function validBimTravelQuery(query: string, currentLocalDate: string): boolean {
+  const timestamp = Date.parse(currentLocalDate + 'T00:00:00+08:00');
+  return !Number.isNaN(timestamp) && bimTravelQueryIsComplete(query, new Date(timestamp));
+}
+
 function normalizeCanaryTaskInput(
   input: InputUserPayload,
   task: LeaderDecisionDataTask,
   currentLocalDate: string
 ): Object {
+  const originalInput: InputUserPayload = {
+    text: originalQueryFromBimPrompt(input.text),
+    recentMessages: input.recentMessages,
+    previousPersonaId: input.previousPersonaId,
+    currentSurfaceSummary: input.currentSurfaceSummary,
+    recentObservations: input.recentObservations,
+    orderedContinuationAuthorized: input.orderedContinuationAuthorized
+  };
   // MultiAgentLeaderPlanner owns the date snapshot and replaces task.input with
   // the normalized value. LeaderAgent receives the same host-only authority
   // for its defense-in-depth pass and never calls an independent clock.
   if (task.toolId === 'hotel.search') {
-    return normalizeHotelSearchTaskInput(input, task, currentLocalDate);
+    return normalizeHotelSearchTaskInput(originalInput, task, currentLocalDate);
   }
   if (task.toolId === 'travel.search' || task.toolId === 'train.search' ||
     task.toolId === 'flight.search') {
-    const normalized = setJsonPointer(task.input as JsonValue, '/query', input.text);
+    const taskSource = task.input as Record<string, Object | string | number | boolean | null | undefined>;
+    const taskQuery = taskSource['query'];
+    const fieldQuery = queryFromTravelTaskFields(task.input, task.toolId);
+    const isBimTurn = input.text.indexOf('[BIM_CONTEXT]') === 0;
+    let query = originalInput.text;
+    if (isBimTurn) {
+      if (validBimTravelQuery(originalInput.text, currentLocalDate)) {
+        query = originalInput.text;
+      } else if (fieldQuery.length > 0 && validBimTravelQuery(fieldQuery, currentLocalDate)) {
+        query = fieldQuery;
+      } else if (typeof taskQuery === 'string' && validBimTravelQuery(taskQuery, currentLocalDate)) {
+        query = taskQuery.trim();
+      } else {
+        throw new Error('BIM_TRAVEL_QUERY_INCOMPLETE');
+      }
+    }
+    const normalized = setJsonPointer(task.input as JsonValue, '/query', query);
     if (!normalized.ok || normalized.value === undefined || normalized.value === null ||
       typeof normalized.value !== 'object' || Array.isArray(normalized.value)) {
       throw new Error(normalized.errorCode.length > 0 ?
@@ -761,11 +820,11 @@ function normalizeCanaryTaskInput(
     throw new Error('CURRENT_LOCAL_DATE_INVALID');
   }
   const now = new Date(timestamp);
-  const update = calendarUpdateSearchArgs(input.text, now);
+  const update = calendarUpdateSearchArgs(originalInput.text, now);
   if (update !== null) {
     return update as Object;
   }
-  const remove = calendarDeleteSearchArgs(input.text, now);
+  const remove = calendarDeleteSearchArgs(originalInput.text, now);
   if (remove !== null) {
     return remove as Object;
   }
@@ -777,7 +836,7 @@ function normalizeCanaryTaskInput(
       safe[key] = value as Object | string | number | boolean;
     }
   });
-  return normalizedCalendarArgsForPrompt('calendar.events.search', input.text, safe, now) as Object;
+  return normalizedCalendarArgsForPrompt('calendar.events.search', originalInput.text, safe, now) as Object;
 }
 
 function authorizeCanaryDataTask(task: CreateDataTaskPayload): DataTaskAuthorizationResult {
@@ -1478,6 +1537,7 @@ export class MultiAgentCanaryRuntime {
   private readonly currentHostSurface: () => A2uiSurfaceState | null;
   private readonly currentHostGeneration: () => number;
   private readonly turnHostGenerations: Map<string, number> = new Map<string, number>();
+  private readonly validOriginTurnIds: Set<string> = new Set<string>();
   private readonly turnHostGenerationOrder: string[] = [];
   private pageGeneration: number = 0;
   private pageFingerprint: string = '';
@@ -1560,6 +1620,19 @@ export class MultiAgentCanaryRuntime {
       args: Object,
       context: RegisteredPageActionContext
     ): Promise<ActionExecutionResult> => {
+      const originHostGeneration = this.turnHostGenerations.get(context.turnId);
+      const currentHostGeneration = this.currentHostGeneration();
+      if (!this.validOriginTurnIds.has(context.turnId) || originHostGeneration === undefined ||
+        !Number.isSafeInteger(originHostGeneration) || originHostGeneration <= 0 ||
+        !Number.isSafeInteger(currentHostGeneration) || currentHostGeneration <= 0 ||
+        originHostGeneration !== currentHostGeneration) {
+        return {
+          status: 'error',
+          errorCode: 'BIM_PAGE_ACTION_GENERATION_STALE',
+          message: 'Page action no longer belongs to the current turn.'
+        };
+      }
+      context.hostGeneration = originHostGeneration;
       if (actionId === 'gmail.draft.create') {
         this.gmailDraftApplyCandidate = null;
       }
@@ -1583,14 +1656,16 @@ export class MultiAgentCanaryRuntime {
       task: LeaderDecisionDataTask,
       currentLocalDate: string
     ): Object => normalizeCanaryTaskInput(input, task, currentLocalDate);
+    const leaderPlanner = new MultiAgentLeaderPlanner(
+      options.model,
+      undefined,
+      dataTaskInputNormalizer
+    );
     this.runtime = new MultiAgentRuntime({
       conversationId,
       bus: options.bus,
-      planner: new MultiAgentLeaderPlanner(
-        options.model,
-        undefined,
-        dataTaskInputNormalizer
-      ),
+      planner: options.turnGate === undefined ?
+        leaderPlanner : new BimGatedLeaderPlanner(leaderPlanner, options.turnGate),
       planningContext: initialContext,
       planningContextProvider: (prompt: string): LeaderPlanningContext =>
         canaryPlanningContext(this.lastLeaderPersonaId, prompt),
@@ -1647,6 +1722,9 @@ export class MultiAgentCanaryRuntime {
       directActionAdmission: (action: A2uiAction, context: ActionExecutionContext): boolean =>
         this.admitHotelDetailFollowUp(action, context),
       turnGenerationObserver: (turnId: string, hostGeneration: number): void => {
+        if (options.turnGate !== undefined) {
+          options.turnGate.bind(turnId, hostGeneration);
+        }
         this.rememberTurnHostGeneration(turnId, hostGeneration);
       }
     });
@@ -1657,13 +1735,15 @@ export class MultiAgentCanaryRuntime {
     context: UserInputPayload,
     hostGeneration: number = 0
   ): Promise<MultiAgentTurnOutcome> {
-    if (text.trim() !== '确认应用刚才的 Gmail 草稿') {
+    const capturedGeneration = Number.isSafeInteger(hostGeneration) && hostGeneration > 0 ?
+      hostGeneration : 0;
+    if (capturedGeneration > 0 &&
+      capturedGeneration === this.currentHostGeneration() &&
+      text.trim() !== '确认应用刚才的 Gmail 草稿') {
       this.gmailDraftApplyCandidate = null;
     }
     this.submissionSequence++;
     const submissionSequence: number = this.submissionSequence;
-    const capturedGeneration = Number.isSafeInteger(hostGeneration) && hostGeneration > 0 ?
-      hostGeneration : 0;
     const input: UserInputPayload = {
       text: context.text,
       recentMessages: context.recentMessages,
@@ -1749,6 +1829,7 @@ export class MultiAgentCanaryRuntime {
       this.pageFingerprint = fingerprint;
     }
     const turnId = 'page-turn-' + generation.toString();
+    this.rememberTurnHostGeneration(turnId, hostGeneration);
     this.authority.activate(
       this.conversationId,
       turnId,
@@ -1797,6 +1878,7 @@ export class MultiAgentCanaryRuntime {
     this.gmailDraftApplyCandidate = null;
     this.surfaceGeneration = 0;
     this.turnHostGenerations.clear();
+    this.validOriginTurnIds.clear();
     this.turnHostGenerationOrder.splice(0, this.turnHostGenerationOrder.length);
   }
 
@@ -1845,6 +1927,9 @@ export class MultiAgentCanaryRuntime {
     if (turnId.trim().length === 0) {
       return;
     }
+    if (Number.isSafeInteger(hostGeneration) && hostGeneration > 0) {
+      this.validOriginTurnIds.add(turnId);
+    }
     let capturedGeneration = hostGeneration;
     if (!Number.isSafeInteger(capturedGeneration) || capturedGeneration <= 0) {
       const retained = this.turnHostGenerations.get(turnId);
@@ -1863,6 +1948,7 @@ export class MultiAgentCanaryRuntime {
       const removedTurnId = this.turnHostGenerationOrder[0];
       this.turnHostGenerationOrder.splice(0, 1);
       this.turnHostGenerations.delete(removedTurnId);
+      this.validOriginTurnIds.delete(removedTurnId);
     }
   }
 

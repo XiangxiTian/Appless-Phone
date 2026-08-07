@@ -6,6 +6,10 @@ const renderer = readFileSync(
   new URL('../entry/src/main/ets/pages/A2uiHome/html/HtmlAggregateSearchHomeRenderer.ets', import.meta.url),
   'utf8'
 );
+const surfaceView = readFileSync(
+  new URL('../entry/src/main/ets/pages/A2uiHome/components/HtmlHomeSurfaceView.ets', import.meta.url),
+  'utf8'
+);
 
 function template(name) {
   const marker = `const ${name}: string = \``;
@@ -16,6 +20,29 @@ function template(name) {
   assert.notEqual(end, -1, `${name} template is unterminated`);
   return renderer.slice(contentStart, end);
 }
+
+const aggregateCss = template('AGGREGATE_CSS');
+const aggregateJs = template('AGGREGATE_JS');
+const waterfallCss = template('WATERFALL_CSS');
+assert.match(aggregateCss, /\.aggregate-status-sheet-summary/);
+assert.match(aggregateCss, /\.aggregate-status-sheet/);
+assert.match(aggregateCss, /\.aggregate-status-card > summary\s*\{[^}]*border:\s*0/s);
+assert.match(aggregateJs, /data-status-close/);
+assert.match(waterfallCss, /\.waterfall-entry-floating/);
+assert.match(waterfallCss, /\.waterfall-cinema-card/);
+assert.match(waterfallCss, /\.waterfall-toolbar-primary/);
+assert.match(waterfallCss, /\.waterfall-toolbar-tools/);
+assert.match(waterfallCss, /\.waterfall-source-logo/);
+assert.match(waterfallCss, /\.waterfall-media-cover/);
+assert.match(waterfallCss, /\.waterfall-media-frame/);
+assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*background:\s*#f4f6f8/s);
+assert.match(waterfallCss, /\.waterfall-media-frame\s*\{[^}]*pointer-events:\s*auto/s);
+assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-card h2\s*\{[^}]*-webkit-line-clamp/s);
+assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-card p\s*\{[^}]*-webkit-line-clamp/s);
+assert.match(waterfallCss, /\.waterfall-preferences label\s*\{[^}]*border:\s*0/s);
+assert.match(waterfallCss, /\.waterfall-toolbar-secondary\s*\{[^}]*border:\s*0/s);
+assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-stage img\s*\{/);
+assert.match(surfaceView, /\.mediaPlayGestureAccess\(false\)/);
 
 function element() {
   const classes = new Set();
@@ -43,21 +70,22 @@ function element() {
 const overlay = element();
 const track = element();
 const preferences = element();
-const reasonPanel = element();
-reasonPanel.hidden = true;
-reasonPanel.textContent = '';
-const reasonButton = element();
+const backButton = element();
+const preferencesButton = element();
 const documentListeners = {};
 const actions = [];
+const fullscreenStates = [];
 const document = {
   getElementById: (id) => ({
     'waterfall-discovery': overlay,
     'waterfall-track': track,
-    'waterfall-preferences': preferences,
-    'waterfall-reason-panel': reasonPanel
+    'waterfall-preferences': preferences
   })[id] ?? null,
   querySelector: () => null,
-  querySelectorAll: (selector) => selector === '[data-waterfall-reason]' ? [reasonButton] : [],
+  querySelectorAll: (selector) => ({
+    '[data-waterfall-back]': [backButton],
+    '[data-waterfall-preferences]': [preferencesButton]
+  })[selector] ?? [],
   addEventListener: (type, listener) => {
     documentListeners[type] = listener;
   }
@@ -67,9 +95,9 @@ const candidate = (id) => ({
   source: 'youtube',
   mediaType: 'video',
   title: id,
-  summary: id,
-  url: `https://example.test/${id}`,
-  coverUrl: '',
+  summary: id === 'current' ? 'B 站视频搜索结果：current summary tail' : id,
+  url: id === 'current' ? 'https://www.youtube.com/watch?v=abc123' : `https://example.test/${id}`,
+  coverUrl: id === 'current' ? 'https://example.test/broken-cover.jpg' : '',
   publishedAt: '',
   reason: '标题命中查询'
 });
@@ -79,10 +107,15 @@ const window = {
     enabledSources: ['youtube'],
     aggregateHtml: '',
     candidates: [candidate('current'), candidate('next')],
-    sources: []
+    mediaEmbeds: {
+      'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1&autoplay=1&mute=1'
+    },
+    sources: [{ source: 'youtube', phase: 'success' }]
   },
+  __aiphoneWaterfallSourceLogos: { youtube: 'data:image/png;base64,logo' },
   AIPhoneHome: {
-    postAction: (value) => actions.push(JSON.parse(value))
+    postAction: (value) => actions.push(JSON.parse(value)),
+    setWaterfallFullscreen: (value) => fullscreenStates.push(value)
   }
 };
 
@@ -97,39 +130,74 @@ documentListeners.click({
     closest: (selector) => selector === '[data-waterfall-enter]' ? {} : null
   }
 });
-reasonButton.emit('click');
-assert.equal(reasonPanel.hidden, false);
-assert.equal(reasonPanel.textContent, '推荐理由：标题命中查询');
-assert.equal(reasonPanel.classList.contains('active'), true);
-reasonButton.emit('click');
-assert.equal(reasonPanel.hidden, true);
-assert.equal(reasonPanel.classList.contains('active'), false);
-reasonButton.emit('click');
-assert.equal(reasonPanel.hidden, false);
-assert.equal(reasonPanel.classList.contains('active'), true);
+assert.deepEqual(fullscreenStates, ['true']);
+assert.match(track.innerHTML, /class="waterfall-media-frame"/);
+assert.match(track.innerHTML, /autoplay=1/);
+assert.match(track.innerHTML, /mute=1/);
+assert.equal((track.innerHTML.match(/<iframe/g) ?? []).length, 1);
+assert.match(track.innerHTML, /current summary/);
+assert.match(track.innerHTML, /current summary tail/);
+assert.doesNotMatch(track.innerHTML, /B 站视频搜索结果：/);
+assert.doesNotMatch(track.innerHTML, /waterfall-recommendation/);
+assert.doesNotMatch(track.innerHTML, /标题命中查询/);
+assert.doesNotMatch(track.innerHTML, /data-waterfall-reason/);
+assert.match(track.innerHTML, /data-waterfall-media-fallback/);
 
 track.scrollTop = 600;
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  candidates: [candidate('current'), candidate('next'), candidate('late')]
+});
+assert.equal(track.scrollTop, 600);
 track.emit('scroll');
-await new Promise((resolve) => setTimeout(resolve, 120));
+await new Promise((resolve) => setTimeout(resolve, 220));
 assert.equal(actions.at(-1)?.id, 'waterfall.feed.advance');
+preferencesButton.emit('click');
+assert.equal(preferences.classList.contains('active'), true);
+backButton.emit('click');
+assert.deepEqual(fullscreenStates, ['true', 'false']);
+assert.equal(preferences.classList.contains('active'), false);
 
 window.__aiphoneApplyWaterfallUpdate({
   surfaceId: 'surface-1',
   enabledSources: [],
   aggregateHtml: '',
   candidates: [candidate('current'), candidate('next')],
-  sources: [],
+  sources: [{ source: 'youtube', phase: 'success' }],
   replenishing: false,
   exhausted: true
 });
 assert.match(track.innerHTML, /data-waterfall-empty-sources/);
 assert.doesNotMatch(track.innerHTML, /\\u672c\\u8f6e\\u5185\\u5bb9\\u5df2\\u7ed3\\u675f/);
+
+const statusDetails = { open: true };
+const statusListeners = {};
+const statusDocument = {
+  querySelectorAll: () => [],
+  getElementById: () => null,
+  addEventListener: (type, listener) => { statusListeners[type] = listener; }
+};
+vm.runInNewContext(aggregateJs, {
+  document: statusDocument,
+  window: {}
+});
+statusListeners.click({
+  target: {
+    closest: (selector) => selector === '[data-status-close]' ? {
+      closest: () => statusDetails
+    } : null
+  }
+});
+assert.equal(statusDetails.open, false);
 track.emit('click', {
   target: {
     closest: (selector) => selector === '[data-waterfall-empty-sources]' ? {} : null
   }
 });
 assert.equal(preferences.classList.contains('active'), true);
+assert.match(preferences.innerHTML, /class="waterfall-source-logo"/);
+assert.match(preferences.innerHTML, /data:image\/png;base64,logo/);
+assert.match(preferences.innerHTML, /data-waterfall-source="youtube"/);
 
 window.__aiphoneApplyWaterfallUpdate({
   surfaceId: 'surface-1',

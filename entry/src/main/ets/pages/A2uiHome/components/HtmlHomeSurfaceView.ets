@@ -9,6 +9,7 @@ type HtmlHomePostedAction = Record<string, HtmlHomeActionValue>;
 
 class HtmlHomeActionBridge {
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
+  onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
 
   postAction(raw: string): void {
     const action = parseHtmlHomeAction(raw);
@@ -30,6 +31,10 @@ class HtmlHomeActionBridge {
     }
     aiLogError('[AIPhone][HtmlHomePostActionParseError] rawChars=' + raw.length.toString());
   }
+
+  setWaterfallFullscreen(raw: string): void {
+    this.onWaterfallFullscreenChange(raw === 'true');
+  }
 }
 
 @Component
@@ -47,6 +52,7 @@ export struct HtmlHomeSurfaceView {
   @Prop luckinInlinePatchJson: string = '';
   @Prop @Watch('onLuckinPatchTickChange') luckinInlinePatchTick: number = 0;
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
+  onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
   private controller: webview.WebviewController = new webview.WebviewController();
   private popupController: webview.WebviewController = new webview.WebviewController();
   private bridge: HtmlHomeActionBridge = new HtmlHomeActionBridge();
@@ -67,6 +73,13 @@ export struct HtmlHomeSurfaceView {
     this.bridge.onAction = (action: A2uiAction): void => {
       this.onAction(action);
     };
+    this.bridge.onWaterfallFullscreenChange = (active: boolean): void => {
+      this.onWaterfallFullscreenChange(active);
+    };
+  }
+
+  aboutToDisappear(): void {
+    this.onWaterfallFullscreenChange(false);
   }
 
   private loadHtmlIfNeeded(): void {
@@ -83,6 +96,7 @@ export struct HtmlHomeSurfaceView {
     }
     try {
       this.webReady = false;
+      this.onWaterfallFullscreenChange(false);
       this.controller.loadData(this.html, 'text/html', 'UTF-8', 'https://aiphone.local/');
       this.loadedKey = this.html;
       this.lastMailDetailEventJson = '';
@@ -289,12 +303,13 @@ export struct HtmlHomeSurfaceView {
       Web({ src: 'data:text/html;charset=utf-8,<body style="margin:0;background:%23F5F2EE"></body>', controller: this.controller })
         .javaScriptAccess(true)
         .domStorageAccess(true)
+        .mediaPlayGestureAccess(false)
         .multiWindowAccess(true)
         .allowWindowOpenMethod(true)
         .javaScriptProxy({
           object: this.bridge,
           name: 'AIPhoneHome',
-          methodList: ['postAction'],
+          methodList: ['postAction', 'setWaterfallFullscreen'],
           controller: this.controller
         })
         .width('100%')
@@ -439,7 +454,7 @@ function actionObject(value: HtmlHomeActionValue): Object | undefined {
   return value;
 }
 
-function popupTitleFromUrl(url: string): string {
+export function popupTitleFromUrl(url: string): string {
   const lower = url.toLowerCase();
   if (lower.indexOf('google.com/maps/') >= 0 || lower.indexOf('maps.google.com/') >= 0) {
     return 'Google Maps 路线';
@@ -450,9 +465,15 @@ function popupTitleFromUrl(url: string): string {
   if (lower.indexOf('paypal') >= 0) {
     return 'PayPal 确认';
   }
-  return '支付确认';
+  if (lower.indexOf('checkout.stripe.com/') >= 0 || lower.indexOf('alipay') >= 0) {
+    return '支付确认';
+  }
+  return '内容详情';
 }
 
-function popupSubtitleFromTitle(title: string): string {
-  return title === 'Google Maps 路线' ? '路线由 Google Maps 实时提供' : '安全确认页面';
+export function popupSubtitleFromTitle(title: string): string {
+  if (title === 'Google Maps 路线') {
+    return '路线由 Google Maps 实时提供';
+  }
+  return title === '内容详情' ? '来自原始来源' : '安全确认页面';
 }

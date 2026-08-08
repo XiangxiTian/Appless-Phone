@@ -129,6 +129,14 @@ test('holds ordinary C20 multi-agent capture until its bounded settlement window
   }), true);
 });
 
+test('does not treat a missing device curl binary as local-model reachability', () => {
+  const source = readFileSync('scripts/aiphone-device-smoke.mjs', 'utf8');
+  const probe = source.slice(source.indexOf('function probeLocalModel()'), source.indexOf('function startModelFoundation()'));
+  assert.match(probe, /probeUnavailable/);
+  assert.match(probe, /inaccessible or not found/);
+  assert.match(probe, /!probeUnavailable/);
+});
+
 test('requires correlated provider-backed dynamic discovery and keeps local manifest evidence', () => {
   assert.equal(typeof smokeLifecycle.dynamicToolDiscoveryEvidence, 'function');
   const remote = [
@@ -773,6 +781,18 @@ function directTextLayout(messages) {
   };
 }
 
+function plainChatLayout(query, reply) {
+  return {
+    attributes: { type: 'root', text: '' },
+    children: [
+      textNode('heading', '和 Appless 聊聊'),
+      messageArticle('', reply),
+      textNode('disclosureTriangle', '上下文 1 条 +'),
+      textNode('TextArea', query)
+    ]
+  };
+}
+
 test('requires the current direct reply as the final semantic user-assistant pair', () => {
   const baseline = directTextLayout([]);
   const layout = directTextLayout([
@@ -808,6 +828,19 @@ test('requires the current direct reply as the final semantic user-assistant pai
   invalidLayouts.forEach((candidate) => {
     assert.equal(directTextVisibleEvidence(cloudStreamTurn, baseline, candidate, '你好').ok, false);
   });
+});
+
+test('accepts the current roleless plain-chat reply exposed by ArkWeb', () => {
+  const baseline = directTextLayout([]);
+  baseline.children.push(textNode('TextArea', '你好'));
+  const evidence = directTextVisibleEvidence(
+    cloudStreamTurn,
+    baseline,
+    plainChatLayout('', '你好！有什么可以帮助你的吗？'),
+    '你好'
+  );
+  assert.equal(evidence.ok, true);
+  assert.equal(evidence.replyText, '你好！有什么可以帮助你的吗？');
 });
 
 test('requires the final semantic messages to be the exact baseline plus one new pair', () => {
@@ -1867,10 +1900,10 @@ test('requires a virtual action request before its exact result', () => {
   }).complete, false);
 });
 
-test('lists exactly C01-C22 and F01-F16 without excluded sends', () => {
+test('lists exactly C01-C23 and F01-F16 without excluded sends', () => {
   const core = listedCases();
   assert.deepEqual(core.map((item) => item.id),
-    Array.from({ length: 22 }, (_value, index) => `C${String(index + 1).padStart(2, '0')}`));
+    Array.from({ length: 23 }, (_value, index) => `C${String(index + 1).padStart(2, '0')}`));
   const full = listedCases(['--full-regression']);
   assert.deepEqual(full.map((item) => item.id), [
     ...core.map((item) => item.id),

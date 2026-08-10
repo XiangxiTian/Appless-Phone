@@ -1,0 +1,288 @@
+{
+  "fixtureFormat": "appless.capability.baseline.v1",
+  "baseline": "origin/multiagent-backend@f93a56927dfae13d437909166cb87eae1e60d48c",
+  "source": "agent_core/src/main/ets/aiphone/runtime/ToolDefinitionRegistry.ets",
+  "linkCount": 70,
+  "links": [
+    {
+      "sourceToolId": "hotel.search",
+      "targetToolId": "hotel.detail"
+    },
+    {
+      "sourceToolId": "hotel.search",
+      "targetToolId": "hotel.navigate"
+    },
+    {
+      "sourceToolId": "hotel.detail",
+      "targetToolId": "hotel.booking.open"
+    },
+    {
+      "sourceToolId": "luckin.order.preview",
+      "targetToolId": "luckin.order.create"
+    },
+    {
+      "sourceToolId": "luckin.order.create",
+      "targetToolId": "luckin.order.status"
+    },
+    {
+      "sourceToolId": "social.feed.search",
+      "targetToolId": "social.reply.draft"
+    },
+    {
+      "sourceToolId": "mail.search",
+      "targetToolId": "mail.thread.read"
+    },
+    {
+      "sourceToolId": "mail.search",
+      "targetToolId": "mail.draft.create"
+    },
+    {
+      "sourceToolId": "mail.thread.read",
+      "targetToolId": "mail.draft.create"
+    },
+    {
+      "sourceToolId": "gmail.mail.search",
+      "targetToolId": "gmail.authorize"
+    },
+    {
+      "sourceToolId": "gmail.mail.search",
+      "targetToolId": "gmail.thread.read"
+    },
+    {
+      "sourceToolId": "gmail.mail.search",
+      "targetToolId": "gmail.draft.create"
+    },
+    {
+      "sourceToolId": "gmail.mail.search",
+      "targetToolId": "gmail.open.web"
+    },
+    {
+      "sourceToolId": "gmail.thread.read",
+      "targetToolId": "gmail.authorize"
+    },
+    {
+      "sourceToolId": "gmail.thread.read",
+      "targetToolId": "gmail.draft.create"
+    },
+    {
+      "sourceToolId": "gmail.thread.read",
+      "targetToolId": "gmail.open.web"
+    },
+    {
+      "sourceToolId": "gmail.draft.create",
+      "targetToolId": "gmail.authorize"
+    },
+    {
+      "sourceToolId": "gmail.draft.create",
+      "targetToolId": "gmail.draft.apply"
+    },
+    {
+      "sourceToolId": "gmail.draft.create",
+      "targetToolId": "gmail.open.web"
+    },
+    {
+      "sourceToolId": "gmail.draft.apply",
+      "targetToolId": "gmail.authorize"
+    },
+    {
+      "sourceToolId": "gmail.draft.apply",
+      "targetToolId": "gmail.open.web"
+    },
+    {
+      "sourceToolId": "youtube.video.search",
+      "targetToolId": "youtube.open.web"
+    },
+    {
+      "sourceToolId": "media.video.search",
+      "targetToolId": "media.open.web"
+    },
+    {
+      "sourceToolId": "media.aggregate.search",
+      "targetToolId": "media.open.web"
+    },
+    {
+      "sourceToolId": "youtube.mine.playlists",
+      "targetToolId": "youtube.authorize"
+    },
+    {
+      "sourceToolId": "youtube.mine.playlists",
+      "targetToolId": "youtube.open.web"
+    },
+    {
+      "sourceToolId": "youtube.mine.subscriptions",
+      "targetToolId": "youtube.authorize"
+    },
+    {
+      "sourceToolId": "youtube.mine.subscriptions",
+      "targetToolId": "youtube.open.web"
+    },
+    {
+      "sourceToolId": "calendar.events.search",
+      "targetToolId": "calendar.authorize"
+    },
+    {
+      "sourceToolId": "calendar.events.search",
+      "targetToolId": "calendar.event.update"
+    },
+    {
+      "sourceToolId": "calendar.events.search",
+      "targetToolId": "calendar.event.delete"
+    },
+    {
+      "sourceToolId": "calendar.event.create",
+      "targetToolId": "calendar.authorize"
+    },
+    {
+      "sourceToolId": "calendar.event.update",
+      "targetToolId": "calendar.authorize"
+    },
+    {
+      "sourceToolId": "calendar.event.delete",
+      "targetToolId": "calendar.event.delete.confirm"
+    },
+    {
+      "sourceToolId": "payment.send",
+      "targetToolId": "payment.confirm"
+    },
+    {
+      "sourceToolId": "payment.send",
+      "targetToolId": "payment.cancel"
+    },
+    {
+      "sourceToolId": "payment.send",
+      "targetToolId": "payment.amount.select"
+    },
+    {
+      "sourceToolId": "payment.send",
+      "targetToolId": "payment.provider.select"
+    },
+    {
+      "sourceToolId": "payment.send",
+      "targetToolId": "payment.checkout.open"
+    },
+    {
+      "sourceToolId": "payment.account.setup",
+      "targetToolId": "stripe.account.create"
+    },
+    {
+      "sourceToolId": "payment.account.setup",
+      "targetToolId": "stripe.account.open"
+    },
+    {
+      "sourceToolId": "payment.account.setup",
+      "targetToolId": "stripe.account.onboard"
+    },
+    {
+      "sourceToolId": "payment.account.setup",
+      "targetToolId": "stripe.account.refresh"
+    },
+    {
+      "sourceToolId": "maps.route.open",
+      "targetToolId": "maps.open.web"
+    },
+    {
+      "sourceToolId": "whatsapp.message.send",
+      "targetToolId": "whatsapp.message.send.confirm"
+    },
+    {
+      "sourceToolId": "ride.estimate",
+      "targetToolId": "ride.order.confirm"
+    },
+    {
+      "sourceToolId": "ride.estimate",
+      "targetToolId": "ride.open.didi"
+    },
+    {
+      "sourceToolId": "ride.estimate",
+      "targetToolId": "ride.open.amap"
+    },
+    {
+      "sourceToolId": "ride.app.link",
+      "targetToolId": "ride.open.didi"
+    },
+    {
+      "sourceToolId": "ride.app.link",
+      "targetToolId": "ride.open.amap"
+    },
+    {
+      "sourceToolId": "ride.order.create",
+      "targetToolId": "ride.driver.location.refresh"
+    },
+    {
+      "sourceToolId": "ride.order.create",
+      "targetToolId": "ride.order.cancel"
+    },
+    {
+      "sourceToolId": "ride.order.cancel",
+      "targetToolId": "ride.query.retry"
+    },
+    {
+      "sourceToolId": "ride.order.cancel",
+      "targetToolId": "ride.vehicle.change"
+    },
+    {
+      "sourceToolId": "ride.driver.location",
+      "targetToolId": "ride.driver.location.refresh"
+    },
+    {
+      "sourceToolId": "ride.driver.location",
+      "targetToolId": "ride.order.cancel"
+    },
+    {
+      "sourceToolId": "web.research.search",
+      "targetToolId": "web.page.read"
+    },
+    {
+      "sourceToolId": "web.research.search",
+      "targetToolId": "web.open.source"
+    },
+    {
+      "sourceToolId": "web.page.read",
+      "targetToolId": "web.open.source"
+    },
+    {
+      "sourceToolId": "shopping.research",
+      "targetToolId": "web.page.read"
+    },
+    {
+      "sourceToolId": "shopping.research",
+      "targetToolId": "web.open.source"
+    },
+    {
+      "sourceToolId": "social.public.search",
+      "targetToolId": "web.page.read"
+    },
+    {
+      "sourceToolId": "social.public.search",
+      "targetToolId": "web.open.source"
+    },
+    {
+      "sourceToolId": "web.monitor.create",
+      "targetToolId": "web.monitor.create.confirm"
+    },
+    {
+      "sourceToolId": "web.monitor.list",
+      "targetToolId": "web.monitor.detail"
+    },
+    {
+      "sourceToolId": "web.monitor.list",
+      "targetToolId": "web.monitor.checks"
+    },
+    {
+      "sourceToolId": "web.monitor.list",
+      "targetToolId": "web.monitor.run"
+    },
+    {
+      "sourceToolId": "web.monitor.list",
+      "targetToolId": "web.monitor.pause"
+    },
+    {
+      "sourceToolId": "web.monitor.list",
+      "targetToolId": "web.monitor.resume"
+    },
+    {
+      "sourceToolId": "web.monitor.list",
+      "targetToolId": "web.monitor.delete"
+    }
+  ]
+}

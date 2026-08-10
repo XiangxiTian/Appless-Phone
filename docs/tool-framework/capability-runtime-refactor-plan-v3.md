@@ -2,9 +2,9 @@
 
 > 文档状态：执行中
 >
-> 当前版本：V3.2
+> 当前版本：V3.3
 >
-> 最后更新：2026-08-07
+> 最后更新：2026-08-10
 >
 > 代码根目录：`agent_core/src/main/ets/capability/`
 
@@ -31,7 +31,7 @@
 
 | 工作流 | 当前状态 | 当前结论 |
 |---|---|---|
-| Phase 0：冻结现有行为 | 🟡 进行中 | 已固定 53 个 Tool ID 并通过现有 326 项检查，但缺完整行为快照和设备验收 |
+| Phase 0：冻结现有行为 | 🟡 进行中 | 已固定当前基线的 54 个 Tool ID、70 个 ActionLink，并通过现有 326 项检查；DataResult/A2UI 快照和设备验收仍缺 |
 | Phase 1：Capability 基础设施 | 🟡 进行中 | 主干和兼容适配器已建立，但已与生产入口隔离，尚未接入现有业务 |
 | Phase 2：Hotel / Calendar 垂直迁移 | 🟡 进行中 | 只有 Module 外壳和隔离 Registry 归属，生产业务仍完整走旧实现 |
 | Phase 3：剩余固定 Capability | ⬜ 未开始 | 其他领域仅通过 Legacy Adapter 注册 |
@@ -41,7 +41,7 @@
 
 当前准确描述：
 
-> V3 基础设施已经可以编译，并能在测试或显式创建的隔离环境中注册 53 个固定 Tool；当前没有接入 DataAgent、ActionAgent、MultiAgentRuntime、HotelAgentRuntime 或现有 `callStructuredTool()` 生产路径，原业务继续使用旧 ToolGatewayClient 和旧 Action Executor。
+> V3 基础设施已经可以编译，并能在测试或显式创建的隔离环境中注册当前基线的 54 个固定 Tool；当前没有接入 DataAgent、ActionAgent、MultiAgentRuntime、HotelAgentRuntime 或现有 `callStructuredTool()` 生产路径，原业务继续使用旧 ToolGatewayClient 和旧 Action Executor。
 
 ### 当前提交安全边界
 
@@ -171,13 +171,13 @@ entry / Multi-Agent Runtime
 
 长期约束：
 
-- [ ] 增加自动化 import-boundary 测试，禁止反向依赖。
-- [ ] `contracts` 不依赖 Provider、A2UI、页面或 Agent。
-- [ ] `registry` 不调用 Handler。
-- [ ] `domains` 不依赖 Runtime 实现。
-- [ ] `backends` 不依赖 Agent、页面或 A2UI。
-- [ ] `presentation` 不依赖 Provider。
-- [ ] `entry` 页面不直接依赖领域 Provider。
+- [x] 增加自动化 import-boundary 测试，禁止反向依赖。
+- [x] `contracts` 不依赖 Provider、A2UI、页面或 Agent。
+- [x] `registry` 不调用 Handler。
+- [x] `domains` 不依赖 Runtime 实现。
+- [x] `backends` 不依赖 Agent、页面或 A2UI。
+- [x] `presentation` 不依赖 Provider。
+- [x] `entry` 页面不直接依赖领域 Provider。
 - [ ] 除 `compatibility` 外，新框架不得导入旧类型。
 
 ## 7. Phase 0：冻结现有行为
@@ -186,21 +186,24 @@ entry / Multi-Agent Runtime
 
 ### 已完成
 
-- [x] 通过测试固定现有 53 个固定 Tool ID。
+- [x] 通过测试固定当前基线的 54 个固定 Tool ID。
 - [x] 保持旧 `ToolDefinitionRegistry` 字面定义不变。
-- [x] 新 Registry 与旧 53 Tool ID 做精确集合对比。
+- [x] 新 Registry 与旧 54 Tool ID 做精确集合对比。
 - [x] 现有 HAR 构建成功。
 - [x] 现有 `verify-loopy-backend` 326 项检查通过。
 - [x] Gateway `/v1/tool/call` 无 A2UI 响应的 smoke case 已加入测试脚本。
+- [x] 生成并校验 54 个 ToolSpec 的版本化 fixture：[`tool-specs.json`](fixtures/capability-runtime-v3/tool-specs.json)。
+- [x] 生成并校验 70 个 ActionLink 的版本化 fixture：[`action-links.json`](fixtures/capability-runtime-v3/action-links.json)。
+- [x] 增加 Capability 静态 import-boundary 校验：[`verify-capability-boundaries.mjs`](../../scripts/verify-capability-boundaries.mjs)，当前覆盖 87 个 Capability 源文件。
 
 ### 待完成
 
-- [ ] 将 53 个 ToolSpec 基线导出为可审查的版本化 fixture。
-- [ ] 固化所有 ActionLink 基线。
+- [x] 将 54 个 ToolSpec 基线导出为可审查的版本化 fixture。
+- [x] 固化 70 个 ActionLink 基线。
 - [ ] 固化各 Tool 的 DataResult 成功、空结果、部分结果和错误基线。
 - [ ] 固化现有 A2UI 输出快照。
 - [ ] 固化 confirmation、暂停、恢复、错 Turn、错 Surface 和 replay 行为。
-- [ ] 增加新旧模块 import-boundary 测试。
+- [x] 增加新旧模块 import-boundary 测试。
 - [ ] 在可用设备或模拟器上完成 Hypium 执行。
 - [ ] 完成 C01–C22、F01–F16 验收。
 - [ ] 验证自动测试不会产生支付、发送、下单或删除副作用。
@@ -231,7 +234,7 @@ entry / Multi-Agent Runtime
 - [x] PlanningProfile、ActionLink Registry。
 - [x] Capability → Tool 与 Tool → Capability 索引。
 - [x] 重复 ID、缺失引用和 Manifest 权限覆盖校验。
-- [x] 53 个固定 Tool 通过兼容 Adapter 注册。
+- [x] 54 个固定 Tool 通过兼容 Adapter 注册。
 - [x] `dynamic.search` 作为独立兼容 Capability 注册。
 - [x] 唯一组合根创建 Registry、Runtime、Policy、Backend 和 Event Sink。
 - [x] 对外公共导出加入 `agent_core/Index.ets`。
@@ -261,6 +264,7 @@ entry / Multi-Agent Runtime
 
 - [x] 已实现旧 ToolDefinition、DataResult、ToolGateway 和 ActionCatalog 适配器。
 - [x] Capability Runtime 可由测试或显式 Factory 创建。
+- [x] 本地完整测试套件通过：1778/1778；设备/模拟器 Hypium 证据仍待补齐。
 - [x] 旧 `DataResult` 与新 `ToolResult` 的边界适配代码已实现。
 - [x] 新框架从 `agent_core/Index.ets` 导出，但不会由现有生产入口自动实例化。
 - [x] 现有业务入口保持旧实现。
@@ -293,7 +297,7 @@ entry / Multi-Agent Runtime
 - [ ] 所有生产 Tool 入口至少经过统一 Policy。
 - [ ] 生产审批链使用不可伪造、不可重放的 ApprovalGrant。
 - [ ] Credential、Surface、Cancel、Retry 和 Audit 满足安全契约。
-- [ ] 兼容接入不改变 53 个 Tool 的外部行为。
+- [ ] 兼容接入不改变 54 个 Tool 的外部行为。
 
 ## 9. Phase 2：迁移 Hotel 与 Calendar 垂直切片
 
@@ -409,7 +413,7 @@ entry / Multi-Agent Runtime
 
 ### Phase 3 退出条件
 
-- [ ] 53 个固定 Tool 均由真实 Capability Domain 拥有。
+- [ ] 54 个固定 Tool 均由真实 Capability Domain 拥有。
 - [ ] 固定 Tool 不再通过 LegacyToolGatewayAdapter 执行。
 - [ ] 所有固定 ToolCall 通过同一个 Runtime 和 Policy。
 
@@ -511,7 +515,7 @@ entry / Multi-Agent Runtime
 
 | 验收项 | 状态 | 当前证据/缺口 |
 |---|---|---|
-| 53 固定 Tool ID 兼容 | ✅ | `CapabilityRuntime.test.ets` 集合对比 |
+| 54 固定 Tool ID 兼容 | ✅ | `CapabilityRuntime.test.ets` 集合对比 |
 | Registry 引用完整性 | ✅ | Registry integrity 测试 |
 | Approval Turn/Surface/Args/Replay | 🟡 | Runtime 单测已写并编译；设备 Hypium 未运行 |
 | Gmail send manual-only | 🟡 | Runtime 单测已写并编译；设备 Hypium 未运行 |
@@ -532,7 +536,7 @@ entry / Multi-Agent Runtime
 - Runtime 主入口：[`CapabilityRuntime.ets`](../../agent_core/src/main/ets/capability/runtime/CapabilityRuntime.ets)
 - Registry：[`CapabilityRegistry.ets`](../../agent_core/src/main/ets/capability/registry/CapabilityRegistry.ets)
 - 组合根：[`ApplessCapabilityRuntimeFactory.ets`](../../agent_core/src/main/ets/capability/bootstrap/ApplessCapabilityRuntimeFactory.ets)
-- 53 Tool 兼容注册：[`ApplessCapabilityModules.ets`](../../agent_core/src/main/ets/capability/bootstrap/ApplessCapabilityModules.ets)
+- 54 Tool 兼容注册：[`ApplessCapabilityModules.ets`](../../agent_core/src/main/ets/capability/bootstrap/ApplessCapabilityModules.ets)
 - 现有生产 Gateway（保持原路径）：[`ToolGatewayClient.ets`](../../agent_core/src/main/ets/aiphone/runtime/ToolGatewayClient.ets)
 - 现有 Action 状态机（保持原路径）：[`ActionAgent.ets`](../../agent_core/src/main/ets/agent/action/ActionAgent.ets)
 - Hotel Module 外壳：[`HotelCapabilityModule.ets`](../../agent_core/src/main/ets/capability/domains/travel/hotel/HotelCapabilityModule.ets)
@@ -542,7 +546,7 @@ entry / Multi-Agent Runtime
 
 ## 17. 下一批执行顺序
 
-1. 补齐 Phase 0 的 fixture 和模块边界测试。
+1. 补齐 Phase 0 的 DataResult、A2UI 和行为 fixture。
 2. 完成 canonical arguments digest、真实 SurfaceAuthority 和生产 ApprovalGrant 接入。
 3. 将 Hotel 做成第一个不依赖 Legacy Adapter 的完整垂直切片。
 4. 将 Calendar 做成第二个完整垂直切片，重点验证 create/update/delete receipt。
@@ -554,6 +558,15 @@ entry / Multi-Agent Runtime
 10. 删除旧 Registry、Gateway 分支、Action Executor 和 Compatibility。
 
 ## 18. 变更记录
+
+### 2026-08-10 — V3.3 固化当前 backend 基线
+
+- 将当前 `origin/multiagent-backend@f93a56927dfae13d437909166cb87eae1e60d48c` 基线从历史记录中的 53 个 Tool 修正为 54 个 Tool。
+- 新增 54 个 ToolSpec 和 70 个 ActionLink 的版本化 fixture，并提供 `generate-capability-baseline.mjs --check` 防止基线漂移。
+- 新增 `verify-capability-boundaries.mjs`，静态校验 87 个 Capability 源文件的依赖方向、兼容层旧类型导入范围、生产入口隔离和页面 Provider 边界。
+- 将上述两项校验加入 `.github/workflows/hypium.yml`，在安装依赖和设备测试前执行。
+- 本次只增加文档、fixture 和静态校验，不接入 DataAgent、ActionAgent、MultiAgentRuntime 或现有生产 ToolGateway 路径。
+- 当前验证：本地测试套件 1778/1778 通过；设备 Hypium、DataResult/A2UI 行为快照和真实 Provider 垂直迁移仍未完成。
 
 ### 2026-08-07 — V3.2 生产接入暂缓
 

@@ -27,6 +27,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           allow-unsafe-pr-checkout: true
 
+      - name: Verify Capability baseline and boundaries
+        run: |
+          "$NODE_HOME/bin/node" scripts/generate-capability-baseline.mjs --check
+          "$NODE_HOME/bin/node" scripts/verify-capability-boundaries.mjs
+
       - name: Install dependencies
         run: /Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm install --all
 

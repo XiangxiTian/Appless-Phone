@@ -2,7 +2,7 @@
 
 > 文档状态：执行中
 >
-> 当前版本：V3.3
+> 当前版本：V3.4
 >
 > 最后更新：2026-08-10
 >
@@ -31,7 +31,7 @@
 
 | 工作流 | 当前状态 | 当前结论 |
 |---|---|---|
-| Phase 0：冻结现有行为 | 🟡 进行中 | 已固定当前基线的 54 个 Tool ID、70 个 ActionLink，并通过现有 326 项检查；DataResult/A2UI 快照和设备验收仍缺 |
+| Phase 0：冻结现有行为 | 🟡 进行中 | 已固定 54 个 Tool ID、70 个 ActionLink，并为 Hotel/Calendar 首批场景增加 7 组 DataResult 与 6 组 A2UI 规范化快照；其余工具和设备验收仍缺 |
 | Phase 1：Capability 基础设施 | 🟡 进行中 | 主干和兼容适配器已建立，但已与生产入口隔离，尚未接入现有业务 |
 | Phase 2：Hotel / Calendar 垂直迁移 | 🟡 进行中 | 只有 Module 外壳和隔离 Registry 归属，生产业务仍完整走旧实现 |
 | Phase 3：剩余固定 Capability | ⬜ 未开始 | 其他领域仅通过 Legacy Adapter 注册 |
@@ -195,13 +195,16 @@ entry / Multi-Agent Runtime
 - [x] 生成并校验 54 个 ToolSpec 的版本化 fixture：[`tool-specs.json`](fixtures/capability-runtime-v3/tool-specs.json)。
 - [x] 生成并校验 70 个 ActionLink 的版本化 fixture：[`action-links.json`](fixtures/capability-runtime-v3/action-links.json)。
 - [x] 增加 Capability 静态 import-boundary 校验：[`verify-capability-boundaries.mjs`](../../scripts/verify-capability-boundaries.mjs)，当前覆盖 87 个 Capability 源文件。
+- [x] 固化 Hotel/Calendar 首批 7 组 DataResult 行为基线：Hotel search 成功/空/错误、Hotel detail 部分结果、Calendar search 成功/空/错误。
+- [x] 固化 Hotel/Calendar 首批 6 组 A2UI 行为基线：Hotel search/detail 与 Calendar search/create/update/delete。
+- [x] 行为基线全部使用本地固定 Provider payload，不访问真实 Provider，也不触发 Calendar 写操作。
 
 ### 待完成
 
 - [x] 将 54 个 ToolSpec 基线导出为可审查的版本化 fixture。
 - [x] 固化 70 个 ActionLink 基线。
-- [ ] 固化各 Tool 的 DataResult 成功、空结果、部分结果和错误基线。
-- [ ] 固化现有 A2UI 输出快照。
+- [ ] 将 DataResult 成功、空结果、部分结果和错误基线扩展到 Hotel/Calendar 未覆盖状态及其余固定 Tool。
+- [ ] 将 A2UI 输出快照扩展到 Hotel/Calendar 未覆盖状态及其余固定 Tool。
 - [ ] 固化 confirmation、暂停、恢复、错 Turn、错 Surface 和 replay 行为。
 - [x] 增加新旧模块 import-boundary 测试。
 - [ ] 在可用设备或模拟器上完成 Hypium 执行。
@@ -521,6 +524,8 @@ entry / Multi-Agent Runtime
 | Gmail send manual-only | 🟡 | Runtime 单测已写并编译；设备 Hypium 未运行 |
 | HAR 构建 | ✅ | DevEco HAR build successful |
 | 现有静态/架构检查 | ✅ | 326 checks passed |
+| Hotel/Calendar DataResult 基线 | 🟡 | 7 组规范化快照已写入 Hypium；ArkTS 编译通过，Previewer 执行证据待补 |
+| Hotel/Calendar A2UI 基线 | 🟡 | 6 组规范化快照已写入 Hypium；ArkTS 编译通过，Previewer 执行证据待补 |
 | Gateway wire smoke | ✅ | 本地 NDJSON unknown-tool case 通过 |
 | Hypium 设备执行 | ⬜ | 当前没有可用设备/模拟器 |
 | C01–C22 | ⬜ | 待执行并保存证据 |
@@ -543,10 +548,12 @@ entry / Multi-Agent Runtime
 - Calendar Module 外壳：[`CalendarCapabilityModule.ets`](../../agent_core/src/main/ets/capability/domains/productivity/calendar/CalendarCapabilityModule.ets)
 - Gateway 协议：[`server.mjs`](../../tool-gateway/server.mjs)
 - 回归测试：[`CapabilityRuntime.test.ets`](../../entry/src/test/CapabilityRuntime.test.ets)
+- Hotel/Calendar 行为基线测试：[`CapabilityBehaviorBaseline.test.ets`](../../entry/src/test/CapabilityBehaviorBaseline.test.ets)
+- Hotel/Calendar 版本化快照：[`CapabilityBehaviorSnapshots.ets`](../../entry/src/test/fixtures/CapabilityBehaviorSnapshots.ets)
 
 ## 17. 下一批执行顺序
 
-1. 补齐 Phase 0 的 DataResult、A2UI 和行为 fixture。
+1. 扩展 Phase 0 的 DataResult/A2UI fixture 到 Hotel/Calendar 剩余状态和其余固定 Tool，并补齐设备执行证据。
 2. 完成 canonical arguments digest、真实 SurfaceAuthority 和生产 ApprovalGrant 接入。
 3. 将 Hotel 做成第一个不依赖 Legacy Adapter 的完整垂直切片。
 4. 将 Calendar 做成第二个完整垂直切片，重点验证 create/update/delete receipt。
@@ -558,6 +565,14 @@ entry / Multi-Agent Runtime
 10. 删除旧 Registry、Gateway 分支、Action Executor 和 Compatibility。
 
 ## 18. 变更记录
+
+### 2026-08-10 — V3.4 固化 Hotel/Calendar 首批行为基线
+
+- 新增版本化、可审查的 Hotel/Calendar DataResult 规范化快照，覆盖 7 个成功、空、部分和错误场景。
+- 新增 Hotel/Calendar A2UI 规范化快照，固定协议版本、Surface、组件、数据路径、摘要、Action ID 和关键展示行。
+- 将行为基线加入现有 Hypium 测试入口；测试仅消费本地固定 JSON payload，不访问真实 Provider，不产生 create/update/delete 副作用。
+- 本次仍未接入 CapabilityRuntime 生产路径，也未修改 DataAgent、ActionAgent、MultiAgentRuntime、Provider 或页面业务逻辑。
+- 当前验证：新增 ArkTS 测试编译通过；本机 DevEco Previewer 因 command-pipe 连接失败未产出新的运行结果，设备/模拟器证据仍待补齐。
 
 ### 2026-08-10 — V3.3 固化当前 backend 基线
 

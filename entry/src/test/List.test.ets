@@ -102,6 +102,7 @@ import movieDemoContractTest from './MovieDemoContract.test';
 import bimStoreTest from './BimStore.test';
 import bimRuntimeTest from './BimRuntime.test';
 import bimHomePageTest from './BimHomePage.test';
+import capabilityRuntimeTest from './CapabilityRuntime.test';
 
 export default function testsuite() {
   movieDemoContractTest();
@@ -208,4 +209,5 @@ export default function testsuite() {
   htmlHomeSnapshotTest();
   htmlHomeRendererTest();
   htmlHomeActionPolicyTest();
+  capabilityRuntimeTest();
 }

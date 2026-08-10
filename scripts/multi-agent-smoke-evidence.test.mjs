@@ -757,7 +757,7 @@ const dualChannelTurn = `
 
 const cloudStreamTurn = `
 07-22 18:00:05.198 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3
-07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true
+07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true
 07-22 18:00:12.700 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12
 07-22 18:00:12.798 44325 45467 I C015B0/com.example.aiphonedemo/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}
 07-22 18:00:12.801 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentTurnResult] conversation=c1 turn=t2 task=k3 status=success surface=none roundCount=1 messageChars=14
@@ -950,12 +950,12 @@ test('accepts only a correlated app-owned cloud streaming model lifecycle', () =
 
   const mutations = [
     cloudStreamTurn.replace('[AIPhone][ModelResponseChunk] seq=1 chars=12\n', ''),
-    cloudStreamTurn.replace('[AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n', ''),
+    cloudStreamTurn.replace('[AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n', ''),
     cloudStreamTurn.replace(
-      '[AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n' +
+      '[AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n' +
         '07-22 18:00:12.700 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12',
       '[AIPhone][ModelResponseChunk] seq=1 chars=12\n' +
-        '07-22 18:00:12.700 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true'
+        '07-22 18:00:12.700 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true'
     ),
     cloudStreamTurn.replace(
       '07-22 18:00:12.798 44325 45467 I C015B0/com.example.aiphonedemo/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}\n',
@@ -981,8 +981,8 @@ test('accepts only a correlated app-owned cloud streaming model lifecycle', () =
 
 test('keeps pending presentation markers inside the current model transport window', () => {
   const pendingPresentation = cloudStreamTurn.replace(
-    '07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n',
-    '07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n' +
+    '07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n',
+    '07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n' +
       '07-22 18:00:05.210 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][HtmlHomeDocument] source=pending kind=thinking chars=316983 blocks=0 renderTick=0\n' +
       '07-22 18:00:05.211 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][A2uiHomeSurfaceUpdate] source=pending kind=thinking chars=316983 blocks=0\n'
   );
@@ -1001,7 +1001,7 @@ test('does not treat an arbitrary app 443 response as streamed model evidence', 
 test('does not reuse a provider streaming response after tool planning', () => {
   const providerStream = `
 07-22 18:00:05.198 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3
-07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=qwen-max endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true
+07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true
 07-22 18:00:06.000 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12
 07-22 18:00:06.100 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentDataTask] conversation=c1 turn=t2 task=data-1 round=1 tool=travel.search predecessor=none path=none target=none binding=false
 07-22 18:00:06.101 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentUiTask] conversation=c1 turn=t2 task=ui-1 dataTasks=data-1

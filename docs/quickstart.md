@@ -23,7 +23,7 @@ Model: Deepseek-V4-Flash-0731
 
 进入 app 设置页，点击连接测试。如果使用 OpenAI-compatible 云端端点，在同一页填写模型、Base URL、API key 和必要的自定义 JSON 参数。
 
-CSI.AI Deepseek V4 Flash preset 已内置；原有 DashScope Qwen preset 也保留在设置页，你仍然需要各自的 API key。
+CSI.AI Deepseek V4 Flash preset 已内置并默认启用；DashScope Deepseek V4 Flash preset 可在设置页手动切换，你仍然需要各自的 API key。
 
 ## 3. 不配置 key 也能试
 

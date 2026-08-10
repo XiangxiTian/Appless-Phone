@@ -12,9 +12,8 @@ import {
   RuntimeOwner,
   StripeReceivingAccountCardData,
   UserInputPayload,
-  defaultLocalModelSettings,
-  dashScopeModelSettings,
-  deepSeekModelSettings
+  cloudModelSettingsForPreset,
+  defaultLocalModelSettings
 } from '@loop/agent-core';
 import { isRollingGoHotelBookingUrl } from '@loop/agent-core';
 import {
@@ -2014,8 +2013,7 @@ struct Index {
   private loadModelPreset(): void {
     const store = this.modelPresetPreferences();
     const preset = store === null ? '' : this.preferenceText(store.getSync(MODEL_PRESET_KEY, ''));
-    const settings = preset === 'qwen' ? dashScopeModelSettings() :
-      (preset === 'deepseek' ? deepSeekModelSettings() : null);
+    const settings = cloudModelSettingsForPreset(preset);
     if (settings === null) return;
     this.baseUrl = settings.baseUrl;
     this.apiKey = settings.apiKey;

@@ -110,7 +110,7 @@ export struct ConfigPage {
   }
 
   private isDashScopePresetSelected(): boolean {
-    return this.selectedModel === 'qwen-max' &&
+    return this.selectedModel === 'deepseek-v4-flash-0731' &&
       this.baseUrl === 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
   }
 
@@ -777,7 +777,7 @@ export struct ConfigPage {
 
           Column() {
             Row() {
-              Button('DeepSeek V4')
+              Button('CSI DSV4')
                 .height(36)
                 .layoutWeight(1)
                 .fontSize(11)
@@ -794,7 +794,7 @@ export struct ConfigPage {
                   this.customParametersJson = settings.customParametersJson;
                   this.onSelectModelPreset('deepseek');
                 })
-              Button('云端 Qwen Max')
+              Button('DashScope DSV4')
                 .height(36)
                 .layoutWeight(1)
                 .fontSize(11)
@@ -808,7 +808,7 @@ export struct ConfigPage {
                   this.baseUrl = settings.baseUrl;
                   this.selectedModel = settings.model;
                   this.customParametersJson = settings.customParametersJson;
-                  this.onSelectModelPreset('qwen');
+                  this.onSelectModelPreset('dashscope-dsv4');
                 })
             }
             .width('100%')
@@ -835,7 +835,7 @@ export struct ConfigPage {
           .margin({ bottom: 14 })
 
           this.InputLabel('Model', 0)
-          TextInput({ text: this.selectedModel, placeholder: 'qwen-max' })
+          TextInput({ text: this.selectedModel, placeholder: 'deepseek-v4-flash-0731' })
             .height(42)
             .fontSize(13)
             .fontColor(COLOR_TEXT)

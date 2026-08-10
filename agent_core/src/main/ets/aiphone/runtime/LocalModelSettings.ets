@@ -17,7 +17,7 @@ const DEEPSEEK_BASE_URL: string = 'http://113.46.219.251:8080/v1/chat/completion
 const DEEPSEEK_MODEL: string = 'Deepseek-V4-Flash-0731';
 const DASHSCOPE_PROVIDER: string = 'DashScope';
 const DASHSCOPE_BASE_URL: string = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
-const DASHSCOPE_MODEL: string = 'qwen-max';
+const DASHSCOPE_MODEL: string = 'deepseek-v4-flash-0731';
 const DEFAULT_CUSTOM_PARAMETERS_JSON: string = '{"enable_thinking":false}';
 
 let dashScopeApiKey: string = '';
@@ -69,6 +69,11 @@ export function dashScopeModelSettings(): LocalModelSettings {
     customParametersJson: DEFAULT_CUSTOM_PARAMETERS_JSON,
     ignoreToolSurfaceUpdates: false
   };
+}
+
+export function cloudModelSettingsForPreset(preset: string): LocalModelSettings | null {
+  if (preset === 'dashscope-dsv4' || preset === 'qwen') return dashScopeModelSettings();
+  return preset === 'deepseek' ? deepSeekModelSettings() : null;
 }
 
 export function defaultLocalModelSettings(): LocalModelSettings {

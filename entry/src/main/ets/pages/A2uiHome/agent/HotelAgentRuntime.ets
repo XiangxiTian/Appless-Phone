@@ -36,6 +36,7 @@ import {
   HotelSearchResult,
   LeaderAgent,
   LeaderPlanningContext,
+  UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH,
   LinkedMessageBus,
   LocalModel,
   SingleDataUiTaskRenderer,
@@ -503,11 +504,17 @@ function uiTaskPayload(message: AgentMessage): CreateUiTaskPayload | null {
   const payload = recordOf(message.payload);
   if (payload === null ||
     (!hasOnlyKeys(payload, 'dataTaskIds,expectedOutputSchema,intent,skillId,taskId') &&
-      !hasOnlyKeys(payload, 'dataTaskIds,expectedOutputSchema,intent,personaId,skillId,taskId')) ||
+      !hasOnlyKeys(payload, 'dataTaskIds,expectedOutputSchema,intent,personaId,skillId,taskId') &&
+      !hasOnlyKeys(payload, 'dataTaskIds,expectedOutputSchema,intent,originalUserInput,skillId,taskId') &&
+      !hasOnlyKeys(payload,
+        'dataTaskIds,expectedOutputSchema,intent,originalUserInput,personaId,skillId,taskId')) ||
     payload['taskId'] !== message.taskId ||
     !Array.isArray(payload['dataTaskIds']) || payload['dataTaskIds'].length !== 1 ||
     !nonempty(payload['dataTaskIds'][0]) || payload['dataTaskIds'][0] === message.taskId ||
     (payload['personaId'] !== undefined && !nonempty(payload['personaId'])) ||
+    (payload['originalUserInput'] !== undefined &&
+      (!nonempty(payload['originalUserInput']) ||
+        (payload['originalUserInput'] as string).length > UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH)) ||
     typeof payload['skillId'] !== 'string' ||
     !nonempty(payload['intent']) ||
     !nonempty(payload['expectedOutputSchema'])) {

@@ -17,6 +17,8 @@ import { DataResult } from '../message/DataResult';
 import { LinkedMessageBus } from '../message/LinkedMessageBus';
 import {
   CreateUiTaskPayload,
+  UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH,
+  UiRenderProgressSink,
   UiRenderResult,
   UiRenderResultPayload,
   UiRenderState,
@@ -560,8 +562,26 @@ export class UiAgent extends MessageDrivenAgent {
       return;
     }
     context.terminalRenderStarted = terminal;
+    const lease = new ContextSurfaceWriteLease(context);
+    let progressChain: Promise<void> = Promise.resolve();
+    const progressSink: UiRenderProgressSink = (progress: UiRenderResult): Promise<void> => {
+      progressChain = progressChain.then(async (): Promise<void> => {
+        if (!this.isActive(key, context) || !lease.isActive()) {
+          return;
+        }
+        this.validateRenderedJsonl(progress, false);
+        await this.writer.write(
+          context.turnId,
+          context.surfaceId,
+          progress.jsonl,
+          lease
+        );
+      });
+      return progressChain;
+    };
     const rendered: UiRenderResult =
-      await this.renderer.result(task, data, offers, context.surfaceId);
+      await this.renderer.result(task, data, offers, context.surfaceId, progressSink);
+    await progressChain;
     if (!this.isActive(key, context)) {
       return;
     }
@@ -570,7 +590,7 @@ export class UiAgent extends MessageDrivenAgent {
       context.turnId,
       context.surfaceId,
       rendered.jsonl,
-      new ContextSurfaceWriteLease(context)
+      lease
     );
     if (!this.isActive(key, context)) {
       return;
@@ -863,12 +883,16 @@ export class UiAgent extends MessageDrivenAgent {
     const personaId = values['personaId'];
     const skillId = values['skillId'];
     const intent = values['intent'];
+    const originalUserInput = values['originalUserInput'];
     const expectedOutputSchema = values['expectedOutputSchema'];
     if (typeof payloadTaskId !== 'string' || payloadTaskId !== taskId ||
       !Array.isArray(dataTaskIds) || !this.validDataTaskIds(dataTaskIds as Object[], taskId) ||
       (personaId !== undefined && (typeof personaId !== 'string' || personaId.trim().length === 0)) ||
       typeof skillId !== 'string' ||
       typeof intent !== 'string' || intent.trim().length === 0 ||
+      (originalUserInput !== undefined &&
+        (typeof originalUserInput !== 'string' || originalUserInput.trim().length === 0 ||
+          originalUserInput.length > UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH)) ||
       typeof expectedOutputSchema !== 'string' || expectedOutputSchema.trim().length === 0) {
       return null;
     }
@@ -882,6 +906,8 @@ export class UiAgent extends MessageDrivenAgent {
     if (current.taskId !== next.taskId ||
       current.skillId !== next.skillId ||
       current.expectedOutputSchema !== next.expectedOutputSchema ||
+      (current.originalUserInput !== undefined &&
+        current.originalUserInput !== next.originalUserInput) ||
       (current.personaId !== undefined && current.personaId !== next.personaId) ||
       current.dataTaskIds.length !== next.dataTaskIds.length) {
       return false;

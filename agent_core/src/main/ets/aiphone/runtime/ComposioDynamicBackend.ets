@@ -1,5 +1,9 @@
 import { ComposioConfig } from '../../composio/ComposioConfig';
-import { ComposioSessionClient, proxyToolkitAccountsFromAuthConfigs } from '../../composio/ComposioSessionClient';
+import {
+  ComposioPreservedExecution,
+  ComposioSessionClient,
+  proxyToolkitAccountsFromAuthConfigs
+} from '../../composio/ComposioSessionClient';
 import { A2uiLabelValueData } from './A2uiTypes';
 import {
   dynamicCompoundControlPrefix,
@@ -9,7 +13,21 @@ import {
   isUnsafeMcpTool,
   normalizedDynamicToolTokens
 } from './DynamicToolRegistry';
-import { DynamicGenericToolResult, dynamicReceiptFromProviderPayload } from './DynamicToolTypes';
+import {
+  DynamicGenericToolResult,
+  DynamicRegistrationMetadata,
+  dynamicReceiptFromProviderPayload
+} from './DynamicToolTypes';
+import {
+  composioProviderDataFromObservation,
+  extractComposioProviderData,
+  githubUserEventsNormalizedOutputSchema
+} from '../../composio/ComposioProviderData';
+
+export {
+  composioProviderDataFromObservation,
+  githubUserEventsNormalizedOutputSchema
+} from '../../composio/ComposioProviderData';
 
 interface ComposioExecuteArgs {
   operation?: string;
@@ -52,6 +70,7 @@ interface ComposioInputSchemaProperty {
 }
 
 interface ComposioInputSchema {
+  type?: string;
   required?: string[];
   properties?: Record<string, ComposioInputSchemaProperty>;
 }
@@ -60,6 +79,58 @@ interface ComposioArrayHit {
   found: boolean;
   label: string;
   items: Object[];
+}
+
+interface ComposioExecutionObservation {
+  observation: string;
+  providerData?: Object;
+  providerDataMeta?: Object;
+}
+
+interface GitHubOperationSpec {
+  operationTarget: string;
+  section: string;
+  toolSlug: string;
+  useCase: string;
+}
+
+interface GitHubSchemaValidation {
+  ok: boolean;
+  message: string;
+  schema: Object;
+  args: Object;
+}
+
+interface GitHubSectionExecution {
+  ok: boolean;
+  empty: boolean;
+  data: Object | null;
+  inputSchema: Object;
+  receipt: string;
+  result: DynamicGenericToolResult;
+  provenance: Object;
+  providerDataMeta?: Object;
+}
+
+interface GitHubNormalizedSection {
+  data: Object | null;
+  empty: boolean;
+}
+
+type GitHubJsonValue = Object | string | number | boolean | null | undefined;
+type GitHubJsonRecord = Record<string, GitHubJsonValue>;
+
+const GITHUB_PROFILE_TARGET: string = 'github.profile';
+const GITHUB_REPOSITORIES_TARGET: string = 'github.repositories';
+const GITHUB_EVENTS_TARGET: string = 'github.events';
+const GITHUB_DASHBOARD_TARGET: string = 'github.user.dashboard';
+const GITHUB_PROFILE_TOOL: string = 'GITHUB_GET_A_USER';
+const GITHUB_REPOSITORIES_TOOL: string = 'GITHUB_LIST_REPOSITORIES_FOR_A_USER';
+const GITHUB_EVENTS_TOOL: string = 'GITHUB_LIST_EVENTS_FOR_USER';
+const MAX_TRUSTED_GITHUB_SCHEMA_CHARS: number = 3000;
+
+function emptyGitHubRecord(): GitHubJsonRecord {
+  return new Object() as GitHubJsonRecord;
 }
 
 interface FixedArgumentAlias {
@@ -339,6 +410,42 @@ function repoNameFromPrompt(prompt: string): string {
 function ownerNameFromPrompt(prompt: string): string {
   if (prompt.indexOf('XiaoLuoLYG/Appless-Phone') >= 0 || prompt.indexOf('Appless-Phone') >= 0) {
     return 'XiaoLuoLYG';
+  }
+  return '';
+}
+
+const GITHUB_USER_SCOPED_READ_TOOLS: string[] = [
+  'github_list_events_for_user',
+  'github_get_a_user',
+  'github_list_repositories_for_a_user'
+];
+
+function isGitHubUserScopedReadTool(toolSlug: string): boolean {
+  return GITHUB_USER_SCOPED_READ_TOOLS.indexOf(toolSlug.trim().toLowerCase()) >= 0;
+}
+
+function validGitHubLogin(value: string): string {
+  const login = value.trim();
+  if (login.length === 0 || login.length > 39 || login.startsWith('-') || login.endsWith('-') ||
+    login.indexOf('--') >= 0) {
+    return '';
+  }
+  return /^[A-Za-z0-9-]+$/.test(login) ? login : '';
+}
+
+function structuredDynamicQuery(args: Object | null): string {
+  const query = argumentRecord(args)['query'];
+  return typeof query === 'string' ? validGitHubLogin(query) : '';
+}
+
+function explicitGitHubUsernameFromPrompt(prompt: string): string {
+  const chinese = prompt.match(/github\s*用户\s*[:：]?\s*([^\s,，。；;：:、!?！？/\\()\[\]{}<>"']+)/i);
+  if (chinese !== null && chinese.length > 1) {
+    return validGitHubLogin(chinese[1]);
+  }
+  const english = prompt.match(/github\s+user\s*[:：]?\s*([^\s,，。；;：:、!?！？/\\()\[\]{}<>"']+)/i);
+  if (english !== null && english.length > 1) {
+    return validGitHubLogin(english[1]);
   }
   return '';
 }
@@ -1123,10 +1230,29 @@ function driveQueryFor(keyword: string): string {
   return "name contains '" + escaped + "' and trashed = false";
 }
 
-function specialArgumentsForTool(toolSlug: string, prompt: string, schema: ComposioInputSchema): Record<string, Object | string | number | boolean> {
+function specialArgumentsForTool(
+  toolSlug: string,
+  prompt: string,
+  schema: ComposioInputSchema,
+  dynamicArgs: Object | null
+): Record<string, Object | string | number | boolean> {
   const lower = toolSlug.toLowerCase();
   const keyword = promptSearchKeyword(prompt);
   const args: Record<string, Object | string | number | boolean> = {};
+  if (isGitHubUserScopedReadTool(lower)) {
+    const structured = structuredDynamicQuery(dynamicArgs);
+    const username = structured.length > 0 ? structured : explicitGitHubUsernameFromPrompt(prompt);
+    if (username.length > 0) {
+      setIfSupported(args, schema, 'username', username);
+    }
+    if (hasProperty(schema, 'page')) {
+      args['page'] = 1;
+    }
+    if (hasProperty(schema, 'per_page')) {
+      args['per_page'] = 10;
+    }
+    return args;
+  }
   if (lower === 'github_find_pull_requests') {
     setIfSupported(args, schema, 'owner', ownerNameFromPrompt(prompt));
     setIfSupported(args, schema, 'repo', repoNameFromPrompt(prompt));
@@ -1250,11 +1376,12 @@ export function composioArgumentsForTool(
   tool: ComposioSearchTool,
   prompt: string,
   fixedToolId: string = '',
-  fixedArgs: Object | null = null
+  fixedArgs: Object | null = null,
+  dynamicArgs: Object | null = null
 ): Object {
   const schema = parsedInputSchema(textOf(tool.inputSchema));
   const slug = textOf(tool.toolSlug).trim();
-  const args = specialArgumentsForTool(slug, prompt, schema);
+  const args = specialArgumentsForTool(slug, prompt, schema, dynamicArgs);
   mergeFixedArguments(args, schema, fixedToolId, fixedArgs);
   const properties = schema.properties ?? {};
   const names = propertyNames(schema);
@@ -1279,6 +1406,9 @@ export function composioArgumentsForTool(
       return;
     }
     if (args[name] === undefined && isOpaqueIdentifierName(name)) {
+      return;
+    }
+    if (args[name] === undefined && isGitHubUserScopedReadTool(slug) && name.toLowerCase() === 'username') {
       return;
     }
     if (args[name] === undefined && properties[name] !== undefined) {
@@ -2165,7 +2295,8 @@ export function composioDynamicResultFromObservation(
   phase: string,
   observation: string,
   toolSlug: string = '',
-  prompt: string = ''
+  prompt: string = '',
+  preserveProviderData: boolean = false
 ): DynamicGenericToolResult {
   try {
     const payload = JSON.parse(observation) as ComposioSearchObservation;
@@ -2191,7 +2322,7 @@ export function composioDynamicResultFromObservation(
           providerPhase: 'execution'
         };
       }
-      return {
+      const result: DynamicGenericToolResult = {
         sourceTag: 'Composio',
         toolName: toolSlug.length > 0 ? toolSlug : 'dynamic.search',
         title: resultTitleForTool(toolSlug),
@@ -2201,6 +2332,14 @@ export function composioDynamicResultFromObservation(
         rawPreview: rawPreviewForExecute(payload as Object, observation, draftId),
         providerPhase: 'execution'
       };
+      if (preserveProviderData) {
+        const extracted = extractComposioProviderData(observation, toolSlug);
+        if (extracted.data !== null) {
+          result.providerData = extracted.data;
+          result.providerDataMeta = extracted.meta as Object;
+        }
+      }
+      return result;
     }
     const slug = firstToolSlug(payload);
     const rows = rowsForSearch(payload);
@@ -2239,11 +2378,39 @@ export function composioDynamicResultFromObservation(
   }
 }
 
+async function executeComposioObservation(
+  current: ComposioSearchExecuteClient | ComposioSessionClient,
+  toolSlug: string,
+  args: Object,
+  preserveProviderData: boolean
+): Promise<ComposioExecutionObservation> {
+  if (preserveProviderData && current instanceof ComposioSessionClient) {
+    const preserved: ComposioPreservedExecution = await current.executePreservingProviderData(toolSlug, args);
+    const result: ComposioExecutionObservation = { observation: preserved.observation };
+    if (preserved.providerData !== null) {
+      result.providerData = preserved.providerData;
+      result.providerDataMeta = preserved.providerDataMeta as Object;
+    }
+    return result;
+  }
+  const observation = await current.execute(toolSlug, args);
+  const result: ComposioExecutionObservation = { observation: observation };
+  if (preserveProviderData) {
+    const extracted = extractComposioProviderData(observation, toolSlug);
+    if (extracted.data !== null) {
+      result.providerData = extracted.data;
+      result.providerDataMeta = extracted.meta as Object;
+    }
+  }
+  return result;
+}
+
 async function callComposioSearchAndExecuteParsed(
   current: ComposioSearchExecuteClient | ComposioSessionClient,
   prompt: string,
   parsed: ComposioExecuteArgs,
-  allowFixedContract: boolean
+  allowFixedContract: boolean,
+  preserveProviderData: boolean = false
 ): Promise<DynamicGenericToolResult> {
   const fixedToolId = textOf(parsed.fixedToolId).trim();
   const selected = selectedQualifiedName(parsed);
@@ -2302,21 +2469,687 @@ async function callComposioSearchAndExecuteParsed(
   if (fixedToolId === 'x.post.search' && !isXPostReadSlug(slug)) {
     return xDiscoveryFailure(prompt, searchObservation);
   }
-  const args = composioArgumentsForTool(tool, prompt, fixedToolId, parsed.fixedArgs ?? null);
+  const args = composioArgumentsForTool(tool, prompt, fixedToolId, parsed.fixedArgs ?? null, parsed as Object);
   const authorizationMessage = selectedSlugAuthorizationMessage(slug, fixedToolId, allowFixedContract);
   if (authorizationMessage.length > 0) {
     return blockedSelectedSlugResult(slug, authorizationMessage);
   }
-  const executionObservation = await current.execute(slug, args);
+  const execution = await executeComposioObservation(current, slug, args, preserveProviderData);
+  const executionObservation = execution.observation;
   const result = composioDynamicResultFromObservation('execute', executionObservation, slug, prompt);
+  if (execution.providerData !== undefined) {
+    result.providerData = execution.providerData;
+    result.providerDataMeta = execution.providerDataMeta;
+  }
   result.registration = {
     provider: 'Composio',
     qualifiedName: slug,
     inputSchema: composioToolSchema(tool.inputSchema),
-    outputSchema: composioToolSchema(tool.outputSchema),
+    outputSchema: preserveProviderData && slug.trim().toUpperCase() === 'GITHUB_LIST_EVENTS_FOR_USER' ?
+      githubUserEventsNormalizedOutputSchema() : composioToolSchema(tool.outputSchema),
     receipt: dynamicReceiptFromProviderPayload(executionObservation)
   };
   return result;
+}
+
+function githubOperationSpec(operationTarget: string): GitHubOperationSpec | null {
+  if (operationTarget === GITHUB_PROFILE_TARGET) {
+    return {
+      operationTarget: GITHUB_PROFILE_TARGET,
+      section: 'profile',
+      toolSlug: GITHUB_PROFILE_TOOL,
+      useCase: 'Get the public profile for the exact GitHub username.'
+    };
+  }
+  if (operationTarget === GITHUB_REPOSITORIES_TARGET) {
+    return {
+      operationTarget: GITHUB_REPOSITORIES_TARGET,
+      section: 'repositories',
+      toolSlug: GITHUB_REPOSITORIES_TOOL,
+      useCase: 'List public repositories for the exact GitHub username.'
+    };
+  }
+  if (operationTarget === GITHUB_EVENTS_TARGET) {
+    return {
+      operationTarget: GITHUB_EVENTS_TARGET,
+      section: 'events',
+      toolSlug: GITHUB_EVENTS_TOOL,
+      useCase: 'List recent public events for the exact GitHub username.'
+    };
+  }
+  return null;
+}
+
+export function isGitHubUserOperationTarget(operationTarget: string): boolean {
+  return operationTarget === GITHUB_PROFILE_TARGET || operationTarget === GITHUB_REPOSITORIES_TARGET ||
+    operationTarget === GITHUB_EVENTS_TARGET || operationTarget === GITHUB_DASHBOARD_TARGET;
+}
+
+function githubOperationInputSchema(): Object {
+  return JSON.parse('{"type":"object","required":["query","operationTarget"],"properties":{' +
+    '"query":{"type":"string","description":"Exact GitHub username."},' +
+    '"operationTarget":{"type":"string","enum":["github.profile","github.repositories",' +
+    '"github.events","github.user.dashboard"]}}}') as Object;
+}
+
+function githubProfileOutputSchema(): Object {
+  return JSON.parse('{"type":"object","required":["schemaVersion","username","profile","provenance"],' +
+    '"properties":{"schemaVersion":{"type":"string"},"username":{"type":"string"},' +
+    '"profile":{"type":"object","required":["login"],"properties":{' +
+    '"login":{"type":"string"},"name":{"type":"string"},"bio":{"type":"string"},' +
+    '"avatarUrl":{"type":"string"},"url":{"type":"string"},"followers":{"type":"number"},' +
+    '"following":{"type":"number"},"publicRepositories":{"type":"number"}}},' +
+    '"provenance":{"type":"object"}}}') as Object;
+}
+
+function githubRepositoriesOutputSchema(): Object {
+  return JSON.parse('{"type":"object","required":["schemaVersion","username","repositories",' +
+    '"metrics","languages","provenance"],"properties":{"schemaVersion":{"type":"string"},' +
+    '"username":{"type":"string"},"repositories":{"type":"array","items":{"type":"object",' +
+    '"required":["name","url","stars","forks"],"properties":{"name":{"type":"string"},' +
+    '"fullName":{"type":"string"},"url":{"type":"string"},"description":{"type":"string"},' +
+    '"language":{"type":"string"},"stars":{"type":"number"},"forks":{"type":"number"},' +
+    '"updatedAt":{"type":"string"},"pushedAt":{"type":"string"}}}},' +
+    '"metrics":{"type":"object"},"languages":{"type":"array","items":{"type":"object",' +
+    '"required":["language","repositoryCount","ratio"],"properties":{' +
+    '"language":{"type":"string"},"repositoryCount":{"type":"number"},"ratio":{"type":"number"}}}},' +
+    '"provenance":{"type":"object"}}}') as Object;
+}
+
+function githubEventsOutputSchema(): Object {
+  return JSON.parse('{"type":"object","required":["schemaVersion","username","recentActivity",' +
+    '"activityCount","activityMetadata","provenance"],"properties":{' +
+    '"schemaVersion":{"type":"string"},"username":{"type":"string"},' +
+    '"recentActivity":{"type":"array"},"activityCount":{"type":"number"},' +
+    '"activityMetadata":{"type":"object"},"provenance":{"type":"object"}}}') as Object;
+}
+
+export function githubUserDashboardOutputSchema(): Object {
+  return JSON.parse('{"type":"object","required":["schemaVersion","username","partial","sections",' +
+    '"limitations"],"properties":{"schemaVersion":{"type":"string"},"username":{"type":"string"},' +
+    '"partial":{"type":"boolean"},"profile":{"type":"object"},"repositories":{"type":"array"},' +
+    '"repositoryMetrics":{"type":"object"},"languages":{"type":"array","items":{"type":"object",' +
+    '"required":["language","repositoryCount","ratio"],"properties":{' +
+    '"language":{"type":"string"},"repositoryCount":{"type":"number"},"ratio":{"type":"number"}}}},' +
+    '"recentActivity":{"type":"array","items":{"type":"object",' +
+    '"required":["time","summary"],"properties":{' +
+    '"time":{"type":"string"},"summary":{"type":"string"}}}},' +
+    '"sections":{"type":"array"},"limitations":{"type":"array","items":{"type":"string"}}}}') as Object;
+}
+
+function githubOutputSchemaForTarget(operationTarget: string): Object {
+  if (operationTarget === GITHUB_PROFILE_TARGET) return githubProfileOutputSchema();
+  if (operationTarget === GITHUB_REPOSITORIES_TARGET) return githubRepositoriesOutputSchema();
+  if (operationTarget === GITHUB_EVENTS_TARGET) return githubEventsOutputSchema();
+  return githubUserDashboardOutputSchema();
+}
+
+function githubRecord(value: GitHubJsonValue): GitHubJsonRecord | null {
+  if (value === undefined || value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as GitHubJsonRecord;
+}
+
+function githubText(record: GitHubJsonRecord | null, names: string[]): string {
+  if (record === null) return '';
+  for (let index = 0; index < names.length; index++) {
+    const value = record[names[index]];
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  return '';
+}
+
+function githubNumber(record: GitHubJsonRecord | null, names: string[]): number | undefined {
+  if (record === null) return undefined;
+  for (let index = 0; index < names.length; index++) {
+    const value = record[names[index]];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function githubBoolean(record: GitHubJsonRecord | null, names: string[]): boolean | undefined {
+  if (record === null) return undefined;
+  for (let index = 0; index < names.length; index++) {
+    const value = record[names[index]];
+    if (typeof value === 'boolean') return value;
+  }
+  return undefined;
+}
+
+function githubArray(record: GitHubJsonRecord | null, names: string[]): Object[] | null {
+  if (record === null) return null;
+  for (let index = 0; index < names.length; index++) {
+    const value = record[names[index]];
+    if (Array.isArray(value)) return value as Object[];
+  }
+  return null;
+}
+
+function putGitHubText(target: GitHubJsonRecord, name: string, value: string): void {
+  if (value.length > 0) target[name] = value;
+}
+
+function putGitHubNumber(target: GitHubJsonRecord, name: string, value: number | undefined): void {
+  if (value !== undefined) target[name] = value;
+}
+
+function putGitHubBoolean(target: GitHubJsonRecord, name: string, value: boolean | undefined): void {
+  if (value !== undefined) target[name] = value;
+}
+
+function githubProfileData(providerData: Object, username: string, provenance: Object): GitHubNormalizedSection {
+  const source = githubRecord(providerData);
+  const login = githubText(source, ['login']);
+  if (login.length === 0) return { data: null, empty: false };
+  const profile = emptyGitHubRecord();
+  profile['login'] = login;
+  putGitHubText(profile, 'name', githubText(source, ['name']));
+  putGitHubText(profile, 'bio', githubText(source, ['bio']));
+  putGitHubText(profile, 'avatarUrl', githubText(source, ['avatar_url', 'avatarUrl']));
+  putGitHubText(profile, 'url', githubText(source, ['html_url', 'url']));
+  putGitHubText(profile, 'company', githubText(source, ['company']));
+  putGitHubText(profile, 'location', githubText(source, ['location']));
+  putGitHubText(profile, 'blog', githubText(source, ['blog']));
+  putGitHubText(profile, 'createdAt', githubText(source, ['created_at', 'createdAt']));
+  putGitHubText(profile, 'updatedAt', githubText(source, ['updated_at', 'updatedAt']));
+  putGitHubNumber(profile, 'followers', githubNumber(source, ['followers']));
+  putGitHubNumber(profile, 'following', githubNumber(source, ['following']));
+  putGitHubNumber(profile, 'publicRepositories', githubNumber(source, ['public_repos', 'publicRepositories']));
+  const data = emptyGitHubRecord();
+  data['schemaVersion'] = 'github-user-profile.v1';
+  data['username'] = username;
+  data['profile'] = profile as Object;
+  data['provenance'] = provenance;
+  return { data: data as Object, empty: false };
+}
+
+function normalizedGitHubRepository(value: Object): Object | null {
+  const source = githubRecord(value);
+  const name = githubText(source, ['name']);
+  const url = githubText(source, ['html_url', 'url']);
+  if (name.length === 0 || url.length === 0) return null;
+  const repository = emptyGitHubRecord();
+  repository['name'] = name;
+  repository['url'] = url;
+  putGitHubText(repository, 'fullName', githubText(source, ['full_name', 'fullName']));
+  repository['description'] = githubText(source, ['description']);
+  putGitHubText(repository, 'language', githubText(source, ['language']));
+  putGitHubText(repository, 'visibility', githubText(source, ['visibility']));
+  putGitHubText(repository, 'updatedAt', githubText(source, ['updated_at', 'updatedAt']));
+  putGitHubText(repository, 'pushedAt', githubText(source, ['pushed_at', 'pushedAt']));
+  putGitHubNumber(repository, 'stars', githubNumber(source, ['stargazers_count', 'stars']));
+  putGitHubNumber(repository, 'forks', githubNumber(source, ['forks_count', 'forks']));
+  putGitHubNumber(repository, 'watchers', githubNumber(source, ['watchers_count', 'watchers']));
+  putGitHubNumber(repository, 'openIssues', githubNumber(source, ['open_issues_count', 'openIssues']));
+  putGitHubBoolean(repository, 'private', githubBoolean(source, ['private']));
+  putGitHubBoolean(repository, 'fork', githubBoolean(source, ['fork']));
+  putGitHubBoolean(repository, 'archived', githubBoolean(source, ['archived']));
+  const topics = githubArray(source, ['topics']);
+  if (topics !== null) repository['topics'] = topics as Object;
+  return repository as Object;
+}
+
+function githubRepositorySortTime(value: Object): string {
+  const record = githubRecord(value);
+  const pushedAt = githubText(record, ['pushedAt']);
+  return pushedAt.length > 0 ? pushedAt : githubText(record, ['updatedAt']);
+}
+
+function githubRepositoriesData(providerData: Object, username: string, provenance: Object): GitHubNormalizedSection {
+  const source = githubRecord(providerData);
+  const rawRepositories = githubArray(source, ['repositories']);
+  if (rawRepositories === null) return { data: null, empty: false };
+  const repositories: Object[] = [];
+  for (let index = 0; index < rawRepositories.length; index++) {
+    const normalized = normalizedGitHubRepository(rawRepositories[index]);
+    if (normalized !== null) repositories.push(normalized);
+  }
+  repositories.sort((left: Object, right: Object): number =>
+    githubRepositorySortTime(right).localeCompare(githubRepositorySortTime(left))
+  );
+  let stars = 0;
+  let forks = 0;
+  let languageRepositoryCount = 0;
+  const languageCounts: Map<string, number> = new Map();
+  repositories.forEach((repository: Object) => {
+    const record = githubRecord(repository);
+    stars += githubNumber(record, ['stars']) ?? 0;
+    forks += githubNumber(record, ['forks']) ?? 0;
+    const language = githubText(record, ['language']);
+    if (language.length > 0) {
+      languageCounts.set(language, (languageCounts.get(language) ?? 0) + 1);
+      languageRepositoryCount++;
+    }
+  });
+  const languages: Object[] = [];
+  languageCounts.forEach((count: number, language: string) => {
+    const metric = emptyGitHubRecord();
+    metric['language'] = language;
+    metric['repositoryCount'] = count;
+    metric['ratio'] = count / languageRepositoryCount;
+    languages.push(metric as Object);
+  });
+  languages.sort((left: Object, right: Object): number => {
+    const leftCount = githubNumber(githubRecord(left), ['repositoryCount']) ?? 0;
+    const rightCount = githubNumber(githubRecord(right), ['repositoryCount']) ?? 0;
+    return rightCount - leftCount;
+  });
+  const metrics = emptyGitHubRecord();
+  metrics['returnedRepositoryCount'] = repositories.length;
+  metrics['returnedStars'] = stars;
+  metrics['returnedForks'] = forks;
+  const data = emptyGitHubRecord();
+  data['schemaVersion'] = 'github-user-repositories.v1';
+  data['username'] = username;
+  data['repositories'] = repositories as Object;
+  data['metrics'] = metrics as Object;
+  data['languages'] = languages as Object;
+  data['provenance'] = provenance;
+  return { data: data as Object, empty: repositories.length === 0 };
+}
+
+function githubEventsData(providerData: Object, username: string, provenance: Object): GitHubNormalizedSection {
+  const source = githubRecord(providerData);
+  const events = githubArray(source, ['events']);
+  if (events === null) return { data: null, empty: false };
+  const metadata = githubRecord(source === null ? undefined : source['metadata']) ?? emptyGitHubRecord();
+  const count = githubNumber(source, ['count']) ?? events.length;
+  const data = emptyGitHubRecord();
+  data['schemaVersion'] = 'github-user-activity.v1';
+  data['username'] = username;
+  data['recentActivity'] = events as Object;
+  data['activityCount'] = count;
+  data['activityMetadata'] = metadata as Object;
+  data['provenance'] = provenance;
+  return { data: data as Object, empty: events.length === 0 };
+}
+
+function normalizeGitHubSection(
+  spec: GitHubOperationSpec,
+  providerData: Object,
+  username: string,
+  provenance: Object
+): GitHubNormalizedSection {
+  if (spec.operationTarget === GITHUB_PROFILE_TARGET) {
+    return githubProfileData(providerData, username, provenance);
+  }
+  if (spec.operationTarget === GITHUB_REPOSITORIES_TARGET) {
+    return githubRepositoriesData(providerData, username, provenance);
+  }
+  return githubEventsData(providerData, username, provenance);
+}
+
+function githubErrorResult(toolName: string, message: string, rawPreview: string = ''): DynamicGenericToolResult {
+  return {
+    sourceTag: 'Composio', toolName: toolName, title: 'GitHub 用户数据读取失败', status: 'error',
+    summary: message, rows: [{ label: '结果摘要', value: message.substring(0, 360) }],
+    rawPreview: rawPreview.substring(0, 16000), providerPhase: 'discovery'
+  };
+}
+
+function githubSchemaValidation(tool: ComposioSearchTool, username: string): GitHubSchemaValidation {
+  const raw = textOf(tool.inputSchema).trim();
+  if (raw.length === 0) {
+    return { ok: false, message: 'Composio did not return an input schema.', schema: new Object(), args: new Object() };
+  }
+  if (raw.length > MAX_TRUSTED_GITHUB_SCHEMA_CHARS) {
+    return { ok: false, message: 'Composio input schema exceeds the trusted size limit.', schema: new Object(), args: new Object() };
+  }
+  let schema: ComposioInputSchema;
+  try {
+    schema = JSON.parse(raw) as ComposioInputSchema;
+  } catch (_error) {
+    return { ok: false, message: 'Composio returned an invalid input schema.', schema: new Object(), args: new Object() };
+  }
+  if (schema.type !== undefined && schema.type !== 'object') {
+    return { ok: false, message: 'Composio input schema is not an object.', schema: schema as Object, args: new Object() };
+  }
+  const properties = schema.properties;
+  if (properties === undefined || Object.keys(properties).length === 0 || properties['username'] === undefined ||
+    properties['username'].type !== 'string') {
+    return { ok: false, message: 'Composio input schema does not declare username:string.', schema: schema as Object, args: new Object() };
+  }
+  const required = schema.required ?? [];
+  if (required.indexOf('username') < 0) {
+    return { ok: false, message: 'Composio input schema does not require username.', schema: schema as Object, args: new Object() };
+  }
+  const constructibleRequired = ['username', 'page', 'per_page'];
+  const unsupportedRequired = required.filter((name: string): boolean => constructibleRequired.indexOf(name) < 0);
+  if (unsupportedRequired.length > 0) {
+    return {
+      ok: false,
+      message: 'Composio input schema added unsupported required fields: ' + unsupportedRequired.join(', ') + '.',
+      schema: schema as Object,
+      args: new Object()
+    };
+  }
+  const args = new Object() as Record<string, Object | string | number | boolean>;
+  args['username'] = username;
+  if (properties['page'] !== undefined) {
+    if (properties['page'].type !== 'integer' && properties['page'].type !== 'number') {
+      return { ok: false, message: 'Composio page field has an unexpected type.', schema: schema as Object, args: new Object() };
+    }
+    args['page'] = 1;
+  }
+  if (properties['per_page'] !== undefined) {
+    if (properties['per_page'].type !== 'integer' && properties['per_page'].type !== 'number') {
+      return { ok: false, message: 'Composio per_page field has an unexpected type.', schema: schema as Object, args: new Object() };
+    }
+    args['per_page'] = 10;
+  }
+  const missingRequired = required.filter((name: string): boolean => args[name] === undefined);
+  if (missingRequired.length > 0) {
+    return {
+      ok: false,
+      message: 'Constructed arguments are missing required fields: ' + missingRequired.join(', ') + '.',
+      schema: schema as Object,
+      args: new Object()
+    };
+  }
+  const unknownArguments = Object.keys(args).filter((name: string): boolean => properties[name] === undefined);
+  if (unknownArguments.length > 0) {
+    return { ok: false, message: 'Constructed arguments are not declared by the input schema.', schema: schema as Object, args: new Object() };
+  }
+  return { ok: true, message: '', schema: schema as Object, args: args as Object };
+}
+
+function exactGitHubTool(searchObservation: string, spec: GitHubOperationSpec): ComposioSearchTool | null {
+  let payload: ComposioSearchObservation;
+  try {
+    payload = JSON.parse(searchObservation) as ComposioSearchObservation;
+  } catch (_error) {
+    return null;
+  }
+  if (!Array.isArray(payload.tools)) return null;
+  for (let index = 0; index < payload.tools.length; index++) {
+    const candidate = payload.tools[index] as ComposioSearchTool;
+    if (textOf(candidate.toolSlug).trim().toUpperCase() === spec.toolSlug) return candidate;
+  }
+  return null;
+}
+
+function githubProvenance(
+  spec: GitHubOperationSpec,
+  status: string,
+  receipt: string = '',
+  message: string = ''
+): Object {
+  const provenance = emptyGitHubRecord();
+  provenance['section'] = spec.section;
+  provenance['status'] = status;
+  provenance['provider'] = 'Composio';
+  provenance['source'] = 'GitHub API';
+  provenance['operationTarget'] = spec.operationTarget;
+  provenance['toolSlug'] = spec.toolSlug;
+  provenance['qualifiedName'] = spec.toolSlug;
+  if (receipt.length > 0) provenance['receipt'] = receipt;
+  if (message.length > 0) provenance['message'] = message.substring(0, 360);
+  return provenance as Object;
+}
+
+async function executeGitHubSection(
+  current: ComposioSearchExecuteClient | ComposioSessionClient,
+  spec: GitHubOperationSpec,
+  username: string
+): Promise<GitHubSectionExecution> {
+  const useCase = spec.useCase + ' Required tool slug: ' + spec.toolSlug + '.';
+  let searchObservation = '';
+  let tool: ComposioSearchTool | null = null;
+  try {
+    for (let attempt = 0; attempt < 3 && tool === null; attempt++) {
+      searchObservation = await current.search(useCase);
+      tool = exactGitHubTool(searchObservation, spec);
+    }
+  } catch (error) {
+    const message = 'Composio GitHub tool search failed: ' + textOf(error) + '.';
+    const result = githubErrorResult(spec.toolSlug, message);
+    return {
+      ok: false, empty: false, data: null, inputSchema: new Object(), receipt: '', result: result,
+      provenance: githubProvenance(spec, 'error', '', message)
+    };
+  }
+  if (tool === null) {
+    const message = 'Composio search did not return the exact required tool ' + spec.toolSlug + '.';
+    const result = githubErrorResult(spec.toolSlug, message, searchObservation);
+    return {
+      ok: false, empty: false, data: null, inputSchema: new Object(), receipt: '', result: result,
+      provenance: githubProvenance(spec, 'error', '', message)
+    };
+  }
+  const validation = githubSchemaValidation(tool, username);
+  if (!validation.ok) {
+    const result = githubErrorResult(spec.toolSlug, validation.message, searchObservation);
+    return {
+      ok: false, empty: false, data: null, inputSchema: validation.schema, receipt: '', result: result,
+      provenance: githubProvenance(spec, 'error', '', validation.message)
+    };
+  }
+  try {
+    const execution = await executeComposioObservation(current, spec.toolSlug, validation.args, true);
+    const providerResult = composioDynamicResultFromObservation(
+      'execute', execution.observation, spec.toolSlug, username
+    );
+    const receipt = dynamicReceiptFromProviderPayload(execution.observation);
+    if (providerResult.status !== 'success') {
+      return {
+        ok: false, empty: false, data: null, inputSchema: validation.schema, receipt: receipt,
+        result: providerResult,
+        provenance: githubProvenance(spec, 'error', receipt, providerResult.summary),
+        providerDataMeta: execution.providerDataMeta
+      };
+    }
+    if (execution.providerData === undefined) {
+      const message = 'Composio returned no structured provider data for ' + spec.toolSlug + '.';
+      const result = githubErrorResult(spec.toolSlug, message, execution.observation);
+      return {
+        ok: false, empty: false, data: null, inputSchema: validation.schema, receipt: receipt, result: result,
+        provenance: githubProvenance(spec, 'error', receipt, message),
+        providerDataMeta: execution.providerDataMeta
+      };
+    }
+    const successProvenance = githubProvenance(spec, 'success', receipt);
+    const normalized = normalizeGitHubSection(spec, execution.providerData, username, successProvenance);
+    if (normalized.data === null) {
+      const message = 'Composio provider data did not match the expected ' + spec.section + ' shape.';
+      const result = githubErrorResult(spec.toolSlug, message, execution.observation);
+      return {
+        ok: false, empty: false, data: null, inputSchema: validation.schema, receipt: receipt, result: result,
+        provenance: githubProvenance(spec, 'error', receipt, message),
+        providerDataMeta: execution.providerDataMeta
+      };
+    }
+    const status = normalized.empty ? 'empty' : 'success';
+    const provenance = githubProvenance(spec, status, receipt);
+    const normalizedRecord = githubRecord(normalized.data);
+    if (normalizedRecord !== null) normalizedRecord['provenance'] = provenance;
+    providerResult.toolName = spec.toolSlug;
+    providerResult.title = 'GitHub 用户' + spec.section;
+    providerResult.summary = normalized.empty ? 'GitHub ' + spec.section + ' 返回空结果。' :
+      'GitHub ' + spec.section + ' 数据读取成功。';
+    providerResult.providerData = normalized.data;
+    providerResult.providerDataMeta = execution.providerDataMeta;
+    return {
+      ok: true, empty: normalized.empty, data: normalized.data, inputSchema: validation.schema,
+      receipt: receipt, result: providerResult, provenance: provenance,
+      providerDataMeta: execution.providerDataMeta
+    };
+  } catch (error) {
+    const message = 'Composio GitHub execution failed: ' + textOf(error) + '.';
+    const result = githubErrorResult(spec.toolSlug, message);
+    return {
+      ok: false, empty: false, data: null, inputSchema: validation.schema, receipt: '', result: result,
+      provenance: githubProvenance(spec, 'error', '', message)
+    };
+  }
+}
+
+function registrationForGitHubTarget(
+  operationTarget: string,
+  toolName: string,
+  inputSchema: Object,
+  receipt: string
+): DynamicRegistrationMetadata {
+  return {
+    provider: 'Composio', qualifiedName: toolName, inputSchema: inputSchema,
+    outputSchema: githubOutputSchemaForTarget(operationTarget), receipt: receipt,
+    selectedToolId: 'dynamic.search'
+  };
+}
+
+function attachGitHubRegistration(
+  result: DynamicGenericToolResult,
+  operationTarget: string,
+  toolName: string,
+  inputSchema: Object,
+  receipt: string
+): DynamicGenericToolResult {
+  result.registration = registrationForGitHubTarget(
+    operationTarget, toolName, inputSchema, receipt
+  );
+  return result;
+}
+
+async function callComposioGitHubTargetWithClient(
+  current: ComposioSearchExecuteClient | ComposioSessionClient,
+  operationTarget: string,
+  username: string
+): Promise<DynamicGenericToolResult> {
+  if (!isGitHubUserOperationTarget(operationTarget)) {
+    const result = githubErrorResult(operationTarget, 'Unknown trusted GitHub operationTarget: ' + operationTarget + '.');
+    result.status = 'unsafe_action_blocked';
+    return attachGitHubRegistration(
+      result, operationTarget, operationTarget, githubOperationInputSchema(), ''
+    );
+  }
+  if (validGitHubLogin(username).length === 0) {
+    return attachGitHubRegistration(
+      githubErrorResult(operationTarget, 'GitHub username must be an exact valid login.'),
+      operationTarget, operationTarget, githubOperationInputSchema(), ''
+    );
+  }
+  if (operationTarget !== GITHUB_DASHBOARD_TARGET) {
+    const spec = githubOperationSpec(operationTarget) as GitHubOperationSpec;
+    const section = await executeGitHubSection(current, spec, username);
+    return attachGitHubRegistration(
+      section.result, operationTarget, spec.toolSlug, section.inputSchema, section.receipt
+    );
+  }
+  const specs: GitHubOperationSpec[] = [
+    githubOperationSpec(GITHUB_PROFILE_TARGET) as GitHubOperationSpec,
+    githubOperationSpec(GITHUB_REPOSITORIES_TARGET) as GitHubOperationSpec,
+    githubOperationSpec(GITHUB_EVENTS_TARGET) as GitHubOperationSpec
+  ];
+  const sections: GitHubSectionExecution[] = [];
+  for (let index = 0; index < specs.length; index++) {
+    sections.push(await executeGitHubSection(current, specs[index], username));
+  }
+  const dashboard = emptyGitHubRecord();
+  dashboard['schemaVersion'] = 'github-user-dashboard.v1';
+  dashboard['username'] = username;
+  dashboard['partial'] = sections.some((section: GitHubSectionExecution): boolean => !section.ok);
+  dashboard['sections'] = sections.map((section: GitHubSectionExecution): Object => section.provenance) as Object;
+  dashboard['limitations'] = [
+    'Recent events are a bounded activity feed, not an all-time contribution calendar.',
+    'Repository metrics summarize only repositories returned by this provider page.'
+  ] as Object;
+  let successfulSections = 0;
+  const profile = sections[0].data === null ? null : githubRecord(sections[0].data);
+  const repositories = sections[1].data === null ? null : githubRecord(sections[1].data);
+  const events = sections[2].data === null ? null : githubRecord(sections[2].data);
+  if (sections[0].ok && profile !== null) {
+    dashboard['profile'] = profile['profile'];
+    successfulSections++;
+  }
+  if (sections[1].ok && repositories !== null) {
+    dashboard['repositories'] = repositories['repositories'];
+    dashboard['repositoryMetrics'] = repositories['metrics'];
+    dashboard['languages'] = repositories['languages'];
+    successfulSections++;
+  }
+  if (sections[2].ok && events !== null) {
+    const recentActivity = events['recentActivity'];
+    const dashboardActivity: Object[] = [];
+    if (Array.isArray(recentActivity)) {
+      recentActivity.forEach((item: Object) => {
+        const event = githubRecord(item);
+        const activity = emptyGitHubRecord();
+        activity['time'] = githubText(event, ['occurredAt']);
+        activity['summary'] = githubText(event, ['summary', 'title']);
+        dashboardActivity.push(activity as Object);
+      });
+    }
+    dashboard['recentActivity'] = dashboardActivity as Object;
+    successfulSections++;
+  }
+  const failedSections = specs.length - successfulSections;
+  const rawPreview = emptyGitHubRecord();
+  rawPreview['operationTarget'] = operationTarget;
+  rawPreview['username'] = username;
+  rawPreview['sections'] = dashboard['sections'];
+  const combinedMeta = emptyGitHubRecord();
+  combinedMeta['truncated'] = sections.some((section: GitHubSectionExecution): boolean =>
+    githubBoolean(githubRecord(section.providerDataMeta), ['truncated']) === true
+  );
+  combinedMeta['sections'] = sections.map((section: GitHubSectionExecution): Object =>
+    section.providerDataMeta ?? new Object()
+  ) as Object;
+  const result: DynamicGenericToolResult = {
+    sourceTag: 'Composio',
+    toolName: GITHUB_DASHBOARD_TARGET,
+    title: 'GitHub 用户数据看板',
+    status: successfulSections === specs.length ? 'success' : (successfulSections > 0 ? 'partial' : 'error'),
+    summary: successfulSections === specs.length ? 'GitHub 用户资料、仓库和最近活动读取成功。' :
+      (successfulSections > 0 ? 'GitHub 用户看板部分可用：' + failedSections.toString() + ' 个分区失败。' :
+        'GitHub 用户看板的三个分区均读取失败。'),
+    rows: [
+      { label: 'GitHub 用户', value: username },
+      { label: '成功分区', value: successfulSections.toString() },
+      { label: '失败分区', value: failedSections.toString() }
+    ],
+    rawPreview: JSON.stringify(rawPreview),
+    providerPhase: 'execution',
+    providerData: dashboard as Object,
+    providerDataMeta: combinedMeta as Object
+  };
+  return attachGitHubRegistration(
+    result, operationTarget, GITHUB_DASHBOARD_TARGET, githubOperationInputSchema(), ''
+  );
+}
+
+export async function callComposioGithubOperationTargetForTest(
+  current: ComposioSearchExecuteClient,
+  operationTarget: string,
+  username: string
+): Promise<DynamicGenericToolResult> {
+  return callComposioGitHubTargetWithClient(current, operationTarget, username);
+}
+
+export async function callComposioGithubOperationTarget(
+  operationTarget: string,
+  username: string,
+  prompt: string
+): Promise<DynamicGenericToolResult> {
+  if (!isGitHubUserOperationTarget(operationTarget)) {
+    const result = githubErrorResult(operationTarget, 'Unknown trusted GitHub operationTarget: ' + operationTarget + '.');
+    result.status = 'unsafe_action_blocked';
+    return attachGitHubRegistration(
+      result, operationTarget, operationTarget, githubOperationInputSchema(), ''
+    );
+  }
+  if (validGitHubLogin(username).length === 0) {
+    return attachGitHubRegistration(
+      githubErrorResult(operationTarget, 'GitHub username must be an exact valid login.'),
+      operationTarget, operationTarget, githubOperationInputSchema(), ''
+    );
+  }
+  if (!composioConfig.isConfigured()) {
+    const missing = composioDynamicMissingConfigResult(prompt, operationTarget);
+    return attachGitHubRegistration(
+      missing, operationTarget, operationTarget, githubOperationInputSchema(), ''
+    );
+  }
+  const current = await clientForPrompt('GitHub ' + prompt);
+  return callComposioGitHubTargetWithClient(current, operationTarget, username);
 }
 
 export async function callComposioSearchAndExecute(
@@ -2397,7 +3230,8 @@ async function clientForPrompt(prompt: string): Promise<ComposioSessionClient> {
 async function callComposioParsed(
   prompt: string,
   parsed: ComposioExecuteArgs,
-  allowFixedContract: boolean
+  allowFixedContract: boolean,
+  preserveProviderData: boolean = false
 ): Promise<DynamicGenericToolResult | null> {
   const fixedToolId = textOf(parsed.fixedToolId).trim();
   const missingFixedArgs = missingFixedWriteArgs(fixedToolId, parsed.fixedArgs ?? null);
@@ -2426,13 +3260,28 @@ async function callComposioParsed(
     if (authorizationMessage.length > 0) {
       return blockedSelectedSlugResult(slug, authorizationMessage);
     }
-    return composioDynamicResultFromObservation('execute', await current.execute(slug, parsed.arguments ?? new Object()), slug, prompt);
+    const execution = await executeComposioObservation(
+      current, slug, parsed.arguments ?? new Object(), preserveProviderData
+    );
+    const result = composioDynamicResultFromObservation('execute', execution.observation, slug, prompt);
+    if (execution.providerData !== undefined) {
+      result.providerData = execution.providerData;
+      result.providerDataMeta = execution.providerDataMeta;
+    }
+    return result;
   }
-  return callComposioSearchAndExecuteParsed(current, prompt, parsed, allowFixedContract);
+  return callComposioSearchAndExecuteParsed(current, prompt, parsed, allowFixedContract, preserveProviderData);
 }
 
 export async function callComposioDynamic(prompt: string, args: Object | null): Promise<DynamicGenericToolResult | null> {
   return callComposioParsed(prompt, parsedExecuteArgs(args), false);
+}
+
+export async function callComposioDynamicWithProviderData(
+  prompt: string,
+  args: Object | null
+): Promise<DynamicGenericToolResult | null> {
+  return callComposioParsed(prompt, parsedExecuteArgs(args), false, true);
 }
 
 export async function callComposioFixedDynamic(

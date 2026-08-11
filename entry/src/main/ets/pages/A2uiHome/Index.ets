@@ -293,6 +293,10 @@ import {
   A2UI_MOTION_MOVE_CURVE,
   A2UI_MOTION_NORMAL_MS
 } from './style/A2uiHomeMotion';
+import {
+  clearUiLabModelSettings,
+  configureUiLabModelSettings
+} from './lab/UiLabRuntimeConfig';
 
 const CONNECTION_TEST_PROMPT: string = '连接检查：请返回 A2UI v0.9.1 setup surface，说明 Local API 已可用。';
 const ENABLE_MULTI_AGENT_UI_LAYOUT_LLM: boolean = false;
@@ -312,6 +316,7 @@ const MODEL_PRESET_STORE_NAME: string = 'aiphone_model_preset_store';
 const MODEL_PRESET_KEY: string = 'model_preset';
 const ANYTHING_DEMO_ROUTE_URL: string = 'pages/A2uiHome/AnythingDemo';
 const MOVIE_DEMO_ROUTE_URL: string = 'pages/A2uiHome/MovieDemo';
+const UI_AGENT_LAB_ROUTE_URL: string = 'pages/A2uiHome/UiAgentLab';
 const READ_CALENDAR_PERMISSION: Permissions = 'ohos.permission.READ_CALENDAR';
 const WRITE_CALENDAR_PERMISSION: Permissions = 'ohos.permission.WRITE_CALENDAR';
 const APPROX_LOCATION_PERMISSION: Permissions = 'ohos.permission.APPROXIMATELY_LOCATION';
@@ -3319,6 +3324,19 @@ struct Index {
         }
         resolve(true);
       });
+    });
+  }
+
+  private openUiAgentLab(): void {
+    configureUiLabModelSettings(this.getSettings());
+    router.pushUrl({ url: UI_AGENT_LAB_ROUTE_URL }, (error) => {
+      if (error) {
+        clearUiLabModelSettings();
+        aiLogError('[AIPhone][UiAgentLabRouteFailed] code=' + error.code.toString());
+        this.getUIContext().getPromptAction().showToast({ message: 'UI Lab 打开失败。' });
+        return;
+      }
+      aiLogInfo('[AIPhone][UiAgentLabRouteOpened]');
     });
   }
   private showBimRoutePaused(): void {
@@ -6800,6 +6818,9 @@ struct Index {
         },
         onSelectModelPreset: (preset: string) => {
           this.saveModelPreset(preset);
+        },
+        onOpenUiAgentLab: () => {
+          this.openUiAgentLab();
         },
         onTestConnection: () => {
           this.testConnection();

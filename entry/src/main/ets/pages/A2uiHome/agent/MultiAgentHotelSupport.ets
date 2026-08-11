@@ -2,6 +2,7 @@ import {
   A2uiAction,
   A2uiApplyResult,
   A2uiEnvelope,
+  A2uiParserProfile,
   A2uiRuntimeDataModel,
   A2uiSurfaceState,
   A2uiSurfaceStore,
@@ -34,6 +35,8 @@ export type HotelSurfaceApplyCallback = (
   generation: number,
   turnId: string
 ) => boolean;
+
+export type HotelSurfaceDocumentProjector = (surface: A2uiSurfaceState) => HtmlHomeDocument;
 
 export interface HotelActionContext {
   conversationId: string;
@@ -183,7 +186,7 @@ export class HotelSurfaceAuthority implements SurfaceActionAuthorizer {
   private turnId: string = '';
   private surfaceId: string = '';
   private sourceToolId: string = '';
-  private readonly allowed: Set<string> = new Set<string>();
+  private readonly allowed: Map<string, string> = new Map<string, string>();
   private pendingFollowUpLease: HotelFollowUpAuthorityLease | null = null;
 
   activate(
@@ -204,7 +207,7 @@ export class HotelSurfaceAuthority implements SurfaceActionAuthorizer {
       this.collect(document, block.actions);
     });
     if (exactPageAction !== undefined && exactPageAction.args !== undefined) {
-      this.allowed.add(this.actionKey(exactPageAction.id, exactPageAction.args));
+      this.allowed.set(this.actionKey(exactPageAction.id, exactPageAction.args), sourceToolId);
     }
   }
 
@@ -278,6 +281,23 @@ export class HotelSurfaceAuthority implements SurfaceActionAuthorizer {
     };
   }
 
+  contextFor(actionId: string, args: Object): HotelActionContext | null {
+    if (this.pendingFollowUpLease !== null || this.conversationId.length === 0 ||
+      this.turnId.length === 0 || this.surfaceId.length === 0) {
+      return null;
+    }
+    const sourceToolId = this.allowed.get(this.actionKey(actionId, args));
+    if (sourceToolId === undefined || sourceToolId.length === 0) {
+      return null;
+    }
+    return {
+      conversationId: this.conversationId,
+      turnId: this.turnId,
+      surfaceId: this.surfaceId,
+      sourceToolId
+    };
+  }
+
   private collect(document: HtmlHomeDocument, actions: HtmlHomeAction[]): void {
     actions.forEach((candidate: HtmlHomeAction) => {
       const clicked: A2uiAction = {
@@ -293,18 +313,22 @@ export class HotelSurfaceAuthority implements SurfaceActionAuthorizer {
       if (clicked.args === undefined || !isHtmlHomeActionAllowed(document, clicked)) {
         return;
       }
+      const sourceToolId = candidate.sourceToolId === undefined ||
+        candidate.sourceToolId.trim().length === 0 ? this.sourceToolId : candidate.sourceToolId.trim();
       let execution: A2uiAction | null = null;
       if ((clicked.id === 'hotel.detail' || clicked.id === 'hotel.navigate') &&
-        this.sourceToolId === 'hotel.search') {
+        sourceToolId === 'hotel.search') {
         execution = clicked;
-      } else if (clicked.id === 'hotel.booking.open' && this.sourceToolId === 'hotel.detail') {
+      } else if (clicked.id === 'hotel.booking.open' && sourceToolId === 'hotel.detail') {
         execution = clicked;
       } else {
-        const route = resolveRegisteredPageAction(this.sourceToolId, clicked);
+        const route = resolveRegisteredPageAction(sourceToolId, clicked);
         execution = route === null ? null : route.action;
       }
       if (execution !== null && execution.args !== undefined) {
-        this.allowed.add(this.actionKey(execution.id, execution.args));
+        const key = this.actionKey(execution.id, execution.args);
+        const existing = this.allowed.get(key);
+        this.allowed.set(key, existing === undefined || existing === sourceToolId ? sourceToolId : '');
       }
     });
   }
@@ -381,6 +405,8 @@ export class HotelRuntimeSurfaceWriter implements UiSurfaceWriter {
   private searchRecord: HotelSearchSurfaceSnapshot | null = null;
   private disposed: boolean = false;
   private readonly autoActivate: boolean;
+  private readonly documentProjector: HotelSurfaceDocumentProjector | null;
+  private readonly parserProfile: A2uiParserProfile;
   private automaticGeneration: number = 0;
   private pinnedAutomaticTurnId: string = '';
 
@@ -390,7 +416,9 @@ export class HotelRuntimeSurfaceWriter implements UiSurfaceWriter {
     callback: HotelSurfaceApplyCallback | null,
     authority: HotelSurfaceAuthority,
     visibility: HotelVisibility,
-    autoActivate: boolean = false
+    autoActivate: boolean = false,
+    documentProjector?: HotelSurfaceDocumentProjector,
+    parserProfile: A2uiParserProfile = 'legacy'
   ) {
     this.conversationId = conversationId;
     this.downstream = downstream;
@@ -398,6 +426,8 @@ export class HotelRuntimeSurfaceWriter implements UiSurfaceWriter {
     this.authority = authority;
     this.visibility = visibility;
     this.autoActivate = autoActivate;
+    this.documentProjector = documentProjector === undefined ? null : documentProjector;
+    this.parserProfile = parserProfile;
   }
 
   async write(
@@ -414,7 +444,7 @@ export class HotelRuntimeSurfaceWriter implements UiSurfaceWriter {
       this.automaticGeneration++;
       this.visibility.expect(turnId, this.automaticGeneration);
     }
-    const parsed = parseA2uiJsonl(jsonl);
+    const parsed = parseA2uiJsonl(jsonl, this.parserProfile);
     if (parsed.error.length > 0) {
       throw new Error(parsed.error);
     }
@@ -461,12 +491,7 @@ export class HotelRuntimeSurfaceWriter implements UiSurfaceWriter {
     });
     record.revision += 1;
     record.surface = record.store.getSurface();
-    record.document = createHtmlHomeDocument({
-      surface: record.surface,
-      messages: [],
-      isBusy: false,
-      isAwaitingFirstSurface: false
-    });
+    record.document = this.projectDocument(record.surface);
     const detected = this.sourceToolId(record.surface);
     if (detected.length > 0) {
       record.sourceToolId = detected;
@@ -534,12 +559,7 @@ export class HotelRuntimeSurfaceWriter implements UiSurfaceWriter {
     }
     const snapshotStore = new A2uiSurfaceStore();
     const surface = snapshotStore.seed(record.surface);
-    const document = createHtmlHomeDocument({
-      surface,
-      messages: [],
-      isBusy: false,
-      isAwaitingFirstSurface: false
-    });
+    const document = this.projectDocument(surface);
     try {
       if (this.callback !== null && !this.callback(surface, generation, record.turnId)) {
         return false;
@@ -685,5 +705,17 @@ export class HotelRuntimeSurfaceWriter implements UiSurfaceWriter {
     } catch (_error) {
       return '';
     }
+  }
+
+  private projectDocument(surface: A2uiSurfaceState): HtmlHomeDocument {
+    if (this.documentProjector !== null) {
+      return this.documentProjector(surface);
+    }
+    return createHtmlHomeDocument({
+      surface,
+      messages: [],
+      isBusy: false,
+      isAwaitingFirstSurface: false
+    });
   }
 }

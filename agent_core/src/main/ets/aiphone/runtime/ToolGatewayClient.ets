@@ -166,6 +166,8 @@ import {
 } from './SocialHubTypes';
 import {
   callComposioDynamic,
+  callComposioDynamicWithProviderData,
+  callComposioGithubOperationTarget,
   callComposioFixedDynamic,
   callComposioFixedRaw,
   composioDynamicResultFromObservation,
@@ -230,6 +232,7 @@ import {
   DynamicGenericToolResult,
   DynamicMcpTool,
   DynamicReadExecution,
+  DynamicReadExecutionProfile,
   DynamicReadExecutor,
   DynamicRegistrationMetadata,
   DynamicStructuredData,
@@ -6545,7 +6548,7 @@ function genericResultSource(result: DynamicGenericToolResult): DataSource {
 }
 
 function genericResultHasData(result: DynamicGenericToolResult): boolean {
-  if (result.status !== 'success') {
+  if (result.status !== 'success' && result.status !== 'partial') {
     return false;
   }
   if (mediaVideoPlaybackUrl(result as A2uiGenericToolResultData).length > 0) {
@@ -6563,7 +6566,7 @@ function genericResultHasData(result: DynamicGenericToolResult): boolean {
 }
 
 function genericResultIsFailure(result: DynamicGenericToolResult): boolean {
-  return result.status !== 'success' && result.status !== 'empty';
+  return result.status !== 'success' && result.status !== 'partial' && result.status !== 'empty';
 }
 
 function firstGenericFailure(results: DynamicGenericToolResult[]): string {
@@ -6585,6 +6588,7 @@ export function genericStructuredDataResult(
   const warnings: string[] = [];
   let dataCount = 0;
   let failureCount = 0;
+  let partialCount = 0;
   results.forEach((result: DynamicGenericToolResult) => {
     if (genericResultHasData(result)) {
       dataCount += 1;
@@ -6593,12 +6597,16 @@ export function genericStructuredDataResult(
       failureCount += 1;
       warnings.push(result.sourceTag + '：' + (result.summary.length > 0 ? result.summary : result.title));
     }
+    if (result.status === 'partial') {
+      partialCount += 1;
+      warnings.push(result.sourceTag + '：' + (result.summary.length > 0 ? result.summary : result.title));
+    }
     if (!sourceAlreadyIncluded(sources, result.sourceTag, result.toolName)) {
       sources.push(genericResultSource(result));
     }
   });
   if (dataCount > 0) {
-    return failureCount > 0 ?
+    return failureCount > 0 || partialCount > 0 ?
       partialDataResult(toolId, outputSchema, data, sources, warnings) :
       successfulDataResult(toolId, outputSchema, data, sources);
   }
@@ -10872,6 +10880,8 @@ interface DynamicReadRequestArgs {
   operation?: Object | string | number | boolean | null;
   qualifiedName?: Object | string | number | boolean | null;
   toolSlug?: Object | string | number | boolean | null;
+  query?: Object | string | number | boolean | null;
+  operationTarget?: Object | string | number | boolean | null;
 }
 
 function dynamicReadRequestArgs(args: Object | null): DynamicReadRequestArgs {
@@ -10933,7 +10943,14 @@ function dynamicExecutionResult(
   result: DynamicGenericToolResult,
   registration: DynamicRegistrationMetadata
 ): DynamicReadExecution {
-  return { results: [result], registration: registration };
+  const execution: DynamicReadExecution = { results: [result], registration: registration };
+  if (result.providerData !== undefined) {
+    execution.providerData = result.providerData;
+    execution.providerDataMeta = result.providerDataMeta;
+    result.providerData = undefined;
+    result.providerDataMeta = undefined;
+  }
+  return execution;
 }
 
 function dynamicReadFailure(
@@ -11066,8 +11083,29 @@ async function dynamicManifestReadExecution(
   return dynamicExecutionResult(result, metadata);
 }
 
-async function defaultDynamicReadExecutor(prompt: string, args: Object | null): Promise<DynamicReadExecution> {
-  const selected = dynamicQualifiedName(dynamicReadRequestArgs(args));
+async function defaultDynamicReadExecutor(
+  prompt: string,
+  args: Object | null,
+  profile?: DynamicReadExecutionProfile
+): Promise<DynamicReadExecution> {
+  const request = dynamicReadRequestArgs(args);
+  const operationTarget = textOf(request.operationTarget).trim();
+  if (profile?.allowTrustedOperationTargets === true && operationTarget.length > 0) {
+    const targeted = await callComposioGithubOperationTarget(
+      operationTarget, textOf(request.query).trim(), prompt
+    );
+    const providedRegistration = targeted.registration;
+    const metadata = providedRegistration ?? dynamicRegistration(
+      targeted.sourceTag,
+      targeted.toolName,
+      new Object(),
+      new Object(),
+      dynamicReceiptFromProviderPayload(targeted.rawPreview)
+    );
+    targeted.registration = undefined;
+    return dynamicExecutionResult(targeted, metadata);
+  }
+  const selected = dynamicQualifiedName(request);
   if (selected.length > 0) {
     const selectedManifest = selectedDynamicManifest(selected);
     if (selectedManifest !== null) {
@@ -11078,7 +11116,8 @@ async function defaultDynamicReadExecutor(prompt: string, args: Object | null): 
   if (discovery !== null) {
     return dynamicManifestReadExecution(discovery, prompt);
   }
-  const result = await callComposioDynamic(prompt, args);
+  const result = profile?.preserveProviderData === true ?
+    await callComposioDynamicWithProviderData(prompt, args) : await callComposioDynamic(prompt, args);
   if (result === null) {
     return dynamicReadFailure('dynamic.search', selected,
       new Object(), 'No matching dynamic read provider was found.', 'no_tool_found');
@@ -11098,12 +11137,19 @@ async function defaultDynamicReadExecutor(prompt: string, args: Object | null): 
   return dynamicExecutionResult(result, metadata);
 }
 
-function dynamicStructuredDataResult(execution: DynamicReadExecution): DataResult {
+function dynamicStructuredDataResult(
+  execution: DynamicReadExecution,
+  exposeProviderData: boolean = false
+): DataResult {
   const base = genericStructuredDataResult('dynamic.search', 'dynamicToolConnect', execution.results);
   const data: DynamicStructuredData = {
     results: execution.results,
     registration: execution.registration
   };
+  if (exposeProviderData && execution.providerData !== undefined) {
+    data.providerData = execution.providerData;
+    if (execution.providerDataMeta !== undefined) data.providerDataMeta = execution.providerDataMeta;
+  }
   base.data = data;
   const source: DataSource = {
     provider: execution.registration.provider,
@@ -11126,7 +11172,7 @@ function dynamicStructuredDataResult(execution: DynamicReadExecution): DataResul
     code = 'DYNAMIC_UNSUPPORTED_TRANSPORT';
   } else if (status === 'no_tool_found') {
     code = 'DYNAMIC_NO_PROVIDER';
-  } else if (status !== 'success' && status !== 'empty') {
+  } else if (status !== 'success' && status !== 'partial' && status !== 'empty') {
     code = 'DYNAMIC_PROVIDER_ERROR';
   }
   if (code.length > 0) {
@@ -11140,7 +11186,20 @@ function dynamicStructuredDataResult(execution: DynamicReadExecution): DataResul
   return base;
 }
 
-async function callStructuredDynamicTool(prompt: string, args: Object | null): Promise<DataResult> {
+async function callStructuredDynamicTool(
+  prompt: string,
+  args: Object | null,
+  profile?: DynamicReadExecutionProfile
+): Promise<DataResult> {
+  const operationTarget = textOf(dynamicReadRequestArgs(args).operationTarget).trim();
+  if (operationTarget.length > 0 && profile?.allowTrustedOperationTargets !== true) {
+    return errorDataResult(
+      'dynamic.search',
+      'dynamicToolConnect',
+      'DYNAMIC_TRUSTED_TARGET_NOT_ALLOWED',
+      'Trusted dynamic operationTarget values are available only to an authorized host profile.'
+    );
+  }
   const authorizationMessage = dynamicReadAuthorizationMessage(args);
   if (authorizationMessage.length > 0) {
     return errorDataResult(
@@ -11148,7 +11207,10 @@ async function callStructuredDynamicTool(prompt: string, args: Object | null): P
     );
   }
   try {
-    return dynamicStructuredDataResult(await dynamicReadExecutor(prompt, args));
+    return dynamicStructuredDataResult(
+      await dynamicReadExecutor(prompt, args, profile),
+      profile?.preserveProviderData === true
+    );
   } catch (error) {
     const message = describeThrown(error);
     const qualifiedName = dynamicQualifiedName(dynamicReadRequestArgs(args));
@@ -15459,6 +15521,22 @@ export async function callStructuredTool(
     'STRUCTURED_ADAPTER_MISSING',
     'Structured adapter is not migrated for ' + toolId + '.'
   );
+}
+
+/** Trusted UI Lab execution entrypoint. The profile is supplied by host code, never model-generated args. */
+export async function callStructuredToolForUiLab(
+  toolId: string,
+  prompt: string,
+  args: Object | null
+): Promise<DataResult> {
+  if (toolId === 'dynamic.search') {
+    const profile: DynamicReadExecutionProfile = {
+      preserveProviderData: true,
+      allowTrustedOperationTargets: true
+    };
+    return callStructuredDynamicTool(prompt, args, profile);
+  }
+  return callStructuredTool(toolId, prompt, args);
 }
 
 class CurrentHotelToolLookup implements ToolDefinitionLookup {

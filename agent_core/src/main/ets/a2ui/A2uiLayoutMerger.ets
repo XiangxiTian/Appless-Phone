@@ -1,6 +1,15 @@
 import { ActionOffer } from '../agent/action/ActionOfferTypes';
 import { AIPHONE_COMPONENT_CATALOG_JSON } from '../aiphone/runtime/A2uiComponentCatalogConst';
-import { A2uiAction, A2uiComponent, A2uiEnvelope } from '../aiphone/runtime/A2uiTypes';
+import {
+  A2UI_COMPONENT_HERO_BANNER,
+  A2UI_COMPONENT_INFO_ROWS,
+  A2UI_COMPONENT_LIST,
+  A2UI_COMPONENT_SEGMENTED_RING_CHART,
+  A2uiAction,
+  A2uiComponent,
+  A2uiEnvelope
+} from '../aiphone/runtime/A2uiTypes';
+import { A2uiComponentCatalogSchema } from './A2uiComponentCatalogSchema';
 
 type JsonValue = Object | string | number | boolean | null | undefined;
 type JsonRecord = Record<string, JsonValue>;
@@ -16,6 +25,19 @@ interface LayoutBaseline {
   componentEnvelope: A2uiEnvelope;
   rootId: string;
   dataPaths: string[];
+  dataValues: Map<string, JsonValue>;
+}
+
+export interface A2uiLayoutMergeResult {
+  jsonl: string;
+  accepted: boolean;
+  reason: string;
+  diagnostic?: A2uiLayoutMergeDiagnostic;
+}
+
+export interface A2uiLayoutMergeDiagnostic {
+  componentId: string;
+  rule: string;
 }
 
 function objectRecord(value: JsonValue): JsonRecord | null {
@@ -54,6 +76,8 @@ function baselineOf(lines: string[], surfaceId: string): LayoutBaseline | null {
   let componentEnvelope: A2uiEnvelope | null = null;
   let rootId: string = '';
   const dataPaths: string[] = [];
+  const dataValues: Map<string, JsonValue> = new Map<string, JsonValue>();
+  const updatePaths: string[] = [];
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index].trim();
     if (line.length === 0) {
@@ -80,14 +104,16 @@ function baselineOf(lines: string[], surfaceId: string): LayoutBaseline | null {
     }
     const data = objectRecord(record['updateDataModel']);
     if (data !== null) {
-      if (data['surfaceId'] !== surfaceId || typeof data['path'] !== 'string') {
+      if (data['surfaceId'] !== surfaceId || typeof data['path'] !== 'string' ||
+        Object.keys(data).indexOf('value') < 0) {
         return null;
       }
       const path = data['path'] as string;
-      if (path.length === 0 || dataPaths.indexOf(path) >= 0) {
+      if (path.length === 0 || updatePaths.indexOf(path) >= 0) {
         return null;
       }
-      dataPaths.push(path);
+      updatePaths.push(path);
+      collectExistingPaths(data['value'], path, dataPaths, dataValues);
     }
   }
   if (componentLineIndex < 0 || componentEnvelope === null || rootId.length === 0 || dataPaths.length === 0) {
@@ -97,35 +123,220 @@ function baselineOf(lines: string[], surfaceId: string): LayoutBaseline | null {
     componentLineIndex: componentLineIndex,
     componentEnvelope: componentEnvelope,
     rootId: rootId,
-    dataPaths: dataPaths
+    dataPaths: dataPaths,
+    dataValues: dataValues
   };
 }
 
-function catalogNames(): Set<string> {
-  const names: Set<string> = new Set<string>();
-  try {
-    const items = JSON.parse(AIPHONE_COMPONENT_CATALOG_JSON) as Object[];
-    for (let index = 0; index < items.length; index++) {
-      const record = objectRecord(items[index]);
-      if (record !== null && typeof record['name'] === 'string') {
-        names.add(record['name'] as string);
-      }
-    }
-  } catch (_error) {
-  }
-  return names;
+function validDataPath(path: string, baselinePaths: string[]): boolean {
+  return baselinePaths.indexOf(path) >= 0;
 }
 
-function validDataPath(path: string, baselinePaths: string[]): boolean {
-  for (let index = 0; index < baselinePaths.length; index++) {
-    if (path === baselinePaths[index] || path.startsWith(baselinePaths[index] + '/')) {
-      return true;
+function decodePointerToken(value: string): string | null {
+  let output: string = '';
+  for (let index = 0; index < value.length; index++) {
+    const next = value.charAt(index);
+    if (next !== '~') {
+      output += next;
+      continue;
+    }
+    if (index + 1 >= value.length) return null;
+    const escaped = value.charAt(index + 1);
+    if (escaped === '0') output += '~';
+    else if (escaped === '1') output += '/';
+    else return null;
+    index++;
+  }
+  return output;
+}
+
+function itemValueAtPath(item: JsonValue, path: string): JsonValue {
+  if (!path.startsWith('/')) return undefined;
+  if (path === '/') return item;
+  const encoded = path.substring(1).split('/');
+  let current: JsonValue = item;
+  for (let index = 0; index < encoded.length; index++) {
+    const token = decodePointerToken(encoded[index]);
+    if (token === null) return undefined;
+    if (Array.isArray(current)) {
+      if (!/^(0|[1-9][0-9]*)$/.test(token)) return undefined;
+      const values = current as JsonValue[];
+      const itemIndex = Number(token);
+      if (itemIndex >= values.length) return undefined;
+      current = values[itemIndex];
+      continue;
+    }
+    const source = objectRecord(current);
+    if (source === null || Object.keys(source).indexOf(token) < 0) return undefined;
+    current = source[token];
+  }
+  return current;
+}
+
+function primitiveTextValue(value: JsonValue): boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+}
+
+function arrayFieldMappingSourceFailure(
+  component: string,
+  labelPath: string,
+  valuePath: string,
+  timePath: JsonValue,
+  source: JsonValue
+): string {
+  if (!Array.isArray(source)) return 'mapping_source_not_array';
+  const items = source as JsonValue[];
+  if (component === A2UI_COMPONENT_SEGMENTED_RING_CHART && items.length === 0) {
+    return 'mapping_source_size_invalid';
+  }
+  let hasInfoValue: boolean = false;
+  for (let index = 0; index < items.length; index++) {
+    const label = itemValueAtPath(items[index], labelPath);
+    const value = itemValueAtPath(items[index], valuePath);
+    if (typeof label !== 'string') return 'mapping_label_not_string';
+    if (component === A2UI_COMPONENT_INFO_ROWS) {
+      if (value !== undefined && value !== null) {
+        if (!primitiveTextValue(value)) return 'mapping_value_not_primitive';
+        hasInfoValue = true;
+      }
+      if (timePath !== undefined) {
+        const time = itemValueAtPath(items[index], timePath as string);
+        if (time !== undefined && time !== null && typeof time !== 'string') return 'mapping_time_not_string';
+      }
+    } else if (typeof value !== 'number' || !Number.isFinite(value as number)) {
+      return 'mapping_value_not_number';
     }
   }
-  return false;
+  if (component === A2UI_COMPONENT_INFO_ROWS && items.length > 0 && !hasInfoValue) {
+    return 'mapping_value_missing';
+  }
+  return '';
+}
+
+function arrayFieldMappingFailure(
+  record: JsonRecord,
+  baselineValues: Map<string, JsonValue>,
+  itemScopeValues?: JsonValue[]
+): string {
+  const labelPath = record['labelPath'];
+  const valuePath = record['valuePath'];
+  const timePath = record['timePath'];
+  const hasMapping = labelPath !== undefined || valuePath !== undefined || timePath !== undefined;
+  if (!hasMapping) return '';
+  const component = record['component'];
+  if (component !== A2UI_COMPONENT_INFO_ROWS && component !== A2UI_COMPONENT_SEGMENTED_RING_CHART) {
+    return 'mapping_component_unsupported';
+  }
+  if (typeof labelPath !== 'string' || typeof valuePath !== 'string' ||
+    !(labelPath as string).startsWith('/') || !(valuePath as string).startsWith('/')) {
+    return 'mapping_paths_invalid';
+  }
+  if (timePath !== undefined &&
+    (component !== A2UI_COMPONENT_INFO_ROWS || typeof timePath !== 'string' || !(timePath as string).startsWith('/'))) {
+    return 'mapping_time_path_invalid';
+  }
+  const dataPath = record['dataPath'];
+  if (typeof dataPath !== 'string') return 'mapping_data_path_missing';
+  if (itemScopeValues === undefined) {
+    return arrayFieldMappingSourceFailure(
+      component as string,
+      labelPath as string,
+      valuePath as string,
+      timePath,
+      baselineValues.get(dataPath as string)
+    );
+  }
+  for (let index = 0; index < itemScopeValues.length; index++) {
+    const failure = arrayFieldMappingSourceFailure(
+      component as string,
+      labelPath as string,
+      valuePath as string,
+      timePath,
+      itemValueAtPath(itemScopeValues[index], dataPath as string)
+    );
+    if (failure.length > 0) return failure;
+  }
+  return '';
+}
+
+function rememberDiagnostic(
+  diagnostics: A2uiLayoutMergeDiagnostic[],
+  componentId: string,
+  rule: string
+): void {
+  if (diagnostics.length === 0) {
+    diagnostics.push({ componentId: componentId, rule: rule });
+  }
+}
+
+function listChildren(record: JsonRecord): JsonRecord | null {
+  if (record['component'] !== A2UI_COMPONENT_LIST) {
+    return null;
+  }
+  const children = objectRecord(record['children']);
+  if (children === null || !exactKeys(children, ['componentId', 'path']) ||
+    typeof children['componentId'] !== 'string' || (children['componentId'] as string).length === 0 ||
+    typeof children['path'] !== 'string' || (children['path'] as string).length === 0) {
+    return null;
+  }
+  return children;
+}
+
+function pointerToken(value: string): string {
+  return value.replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+function childPath(path: string, token: string): string {
+  return path === '/' ? '/' + token : path + '/' + token;
+}
+
+function collectExistingPaths(
+  value: JsonValue,
+  path: string,
+  output: string[],
+  pathValues?: Map<string, JsonValue>
+): void {
+  if (output.indexOf(path) < 0) output.push(path);
+  if (pathValues !== undefined) pathValues.set(path, value);
+  if (value === null || value === undefined || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    const items = value as JsonValue[];
+    for (let index = 0; index < items.length; index++) {
+      collectExistingPaths(items[index], childPath(path, index.toString()), output, pathValues);
+    }
+    return;
+  }
+  const source = value as JsonRecord;
+  const keys = Object.keys(source);
+  for (let index = 0; index < keys.length; index++) {
+    collectExistingPaths(source[keys[index]], childPath(path, pointerToken(keys[index])), output, pathValues);
+  }
+}
+
+function listItemScopePaths(value: JsonValue): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const items = value as JsonValue[];
+  if (items.length === 0) return ['/'];
+  const paths: string[] = [];
+  collectExistingPaths(items[0], '/', paths);
+  for (let index = 1; index < items.length; index++) {
+    const itemPaths: string[] = [];
+    collectExistingPaths(items[index], '/', itemPaths);
+    for (let pathIndex = paths.length - 1; pathIndex >= 0; pathIndex--) {
+      if (itemPaths.indexOf(paths[pathIndex]) < 0) paths.splice(pathIndex, 1);
+    }
+  }
+  return paths;
 }
 
 function childIds(record: JsonRecord): string[] | null {
+  if (record['component'] === A2UI_COMPONENT_LIST) {
+    if (record['child'] !== undefined || record['dataPath'] !== undefined) {
+      return null;
+    }
+    const dynamicChildren = listChildren(record);
+    return dynamicChildren === null ? null : [dynamicChildren['componentId'] as string];
+  }
   if (record['child'] !== undefined && record['children'] !== undefined) {
     return null;
   }
@@ -228,7 +439,10 @@ function candidateComponents(
   value: JsonValue,
   rootId: string,
   baselinePaths: string[],
-  offers: ActionOffer[]
+  baselineValues: Map<string, JsonValue>,
+  offers: ActionOffer[],
+  componentCatalogJson: string,
+  diagnostics: A2uiLayoutMergeDiagnostic[]
 ): A2uiComponent[] | null {
   if (!Array.isArray(value)) {
     return null;
@@ -237,30 +451,53 @@ function candidateComponents(
   if (rawComponents.length === 0 || rawComponents.length > MAX_LAYOUT_COMPONENTS) {
     return null;
   }
-  const catalog = catalogNames();
+  const catalog = A2uiComponentCatalogSchema.parse(componentCatalogJson);
   const availableOffers = offerMap(offers);
-  if (catalog.size === 0 || availableOffers === null) {
+  if (catalog === null || availableOffers === null) {
     return null;
   }
   const byId: Map<string, JsonRecord> = new Map<string, JsonRecord>();
   const childrenById: Map<string, string[]> = new Map<string, string[]>();
   const parentCount: Map<string, number> = new Map<string, number>();
+  const listTemplateIds: Set<string> = new Set<string>();
   const output: A2uiComponent[] = [];
   const usedOffers: Set<string> = new Set<string>();
+  let heroCount: number = 0;
   for (let index = 0; index < rawComponents.length; index++) {
     const record = objectRecord(rawComponents[index]);
-    if (record === null || !allowedKeys(record, COMPONENT_KEYS) || !validComponentFields(record) ||
-      typeof record['id'] !== 'string' || (record['id'] as string).length === 0 ||
-      typeof record['component'] !== 'string' || !catalog.has(record['component'] as string)) {
+    if (record === null || typeof record['id'] !== 'string' || (record['id'] as string).length === 0) {
       return null;
     }
     const id = record['id'] as string;
-    if (byId.has(id)) {
+    if (typeof record['component'] !== 'string' || !catalog.has(record['component'] as string)) {
+      rememberDiagnostic(diagnostics, id, 'component_not_allowed');
       return null;
     }
-    if (record['dataPath'] !== undefined &&
-      (typeof record['dataPath'] !== 'string' || !validDataPath(record['dataPath'] as string, baselinePaths))) {
+    const componentName = record['component'] as string;
+    if ((catalog.usesWireSchema() && !catalog.validatesSyntax(componentName, record)) ||
+      (!catalog.usesWireSchema() &&
+        (!allowedKeys(record, COMPONENT_KEYS) || !validComponentFields(record)))) {
+      rememberDiagnostic(diagnostics, id, 'component_schema_invalid');
       return null;
+    }
+    if (record['component'] === A2UI_COMPONENT_HERO_BANNER) {
+      heroCount++;
+      if (heroCount > 1) return null;
+    }
+    if (byId.has(id)) {
+      rememberDiagnostic(diagnostics, id, 'duplicate_component_id');
+      return null;
+    }
+    if (record['component'] === A2UI_COMPONENT_LIST) {
+      if (record['actions'] !== undefined) {
+        return null;
+      }
+      const dynamicChildren = listChildren(record);
+      if (dynamicChildren === null ||
+        !validDataPath(dynamicChildren['path'] as string, baselinePaths)) {
+        return null;
+      }
+      listTemplateIds.add(dynamicChildren['componentId'] as string);
     }
     const childList = childIds(record);
     if (childList === null) {
@@ -286,6 +523,81 @@ function candidateComponents(
   }
   if (!byId.has(rootId)) {
     return null;
+  }
+  const listIds: string[] = [];
+  const itemScopePathsById: Map<string, string[]> = new Map<string, string[]>();
+  const itemScopeValuesById: Map<string, JsonValue[]> = new Map<string, JsonValue[]>();
+  listTemplateIds.forEach((templateId: string) => {
+    const template = byId.get(templateId);
+    if (template === undefined || template['component'] === A2UI_COMPONENT_LIST ||
+      template['component'] === A2UI_COMPONENT_HERO_BANNER || template['actions'] !== undefined) {
+      listIds.push('');
+    }
+  });
+  if (listIds.indexOf('') >= 0) {
+    return null;
+  }
+  byId.forEach((record: JsonRecord, id: string) => {
+    if (record['component'] === A2UI_COMPONENT_LIST) {
+      listIds.push(id);
+    }
+  });
+  for (let index = 0; index < listIds.length; index++) {
+    const listRecord = byId.get(listIds[index]);
+    const dynamicChildren = listRecord === undefined ? null : listChildren(listRecord);
+    const scopeValue = dynamicChildren === null ? undefined :
+      baselineValues.get(dynamicChildren['path'] as string);
+    const scopePaths = dynamicChildren === null ? null : listItemScopePaths(scopeValue);
+    if (scopePaths === null) return null;
+    const scopeValues = scopeValue as JsonValue[];
+    const descendants: string[] = (childrenById.get(listIds[index]) ?? []).slice();
+    const checked: Set<string> = new Set<string>();
+    while (descendants.length > 0) {
+      const descendantId = descendants.shift();
+      if (descendantId === undefined || checked.has(descendantId)) {
+        return null;
+      }
+      checked.add(descendantId);
+      itemScopePathsById.set(descendantId, scopePaths);
+      itemScopeValuesById.set(descendantId, scopeValues);
+      const descendant = byId.get(descendantId);
+      if (descendant === undefined || descendant['component'] === A2UI_COMPONENT_LIST ||
+        descendant['component'] === A2UI_COMPONENT_HERO_BANNER || descendant['actions'] !== undefined) {
+        return null;
+      }
+      const grandchildren = childrenById.get(descendantId) ?? [];
+      for (let childIndex = 0; childIndex < grandchildren.length; childIndex++) {
+        descendants.push(grandchildren[childIndex]);
+      }
+    }
+  }
+  for (let index = 0; index < output.length; index++) {
+    const component = output[index];
+    const record = byId.get(component.id);
+    const allowedPaths = itemScopePathsById.get(component.id) ?? baselinePaths;
+    if (record === undefined) {
+      return null;
+    }
+    const mappingFailure = arrayFieldMappingFailure(
+      record,
+      baselineValues,
+      itemScopeValuesById.get(component.id)
+    );
+    if (mappingFailure.length > 0) {
+      rememberDiagnostic(diagnostics, component.id, mappingFailure);
+      return null;
+    }
+    if (catalog.usesWireSchema() && !catalog.validates(component.component, record, allowedPaths)) {
+      return null;
+    }
+    if (component.dataPath !== undefined &&
+      (typeof component.dataPath !== 'string' ||
+        (component.dataPath !== '/' && !validDataPath(component.dataPath, allowedPaths)))) {
+      return null;
+    }
+    if (component.dataPath === '/' && !itemScopePathsById.has(component.id)) {
+      return null;
+    }
   }
   const ids = Array.from(byId.keys());
   for (let index = 0; index < ids.length; index++) {
@@ -330,7 +642,9 @@ function candidateEnvelope(
   candidateJsonl: string,
   surfaceId: string,
   baseline: LayoutBaseline,
-  offers: ActionOffer[]
+  offers: ActionOffer[],
+  componentCatalogJson: string,
+  diagnostics: A2uiLayoutMergeDiagnostic[]
 ): A2uiEnvelope | null {
   const lines = candidateJsonl.trim().split(/\r?\n/);
   if (lines.length !== 1) {
@@ -344,7 +658,15 @@ function candidateEnvelope(
   if (update === null || !exactKeys(update, ['components', 'surfaceId']) || update['surfaceId'] !== surfaceId) {
     return null;
   }
-  const components = candidateComponents(update['components'], baseline.rootId, baseline.dataPaths, offers);
+  const components = candidateComponents(
+    update['components'],
+    baseline.rootId,
+    baseline.dataPaths,
+    baseline.dataValues,
+    offers,
+    componentCatalogJson,
+    diagnostics
+  );
   if (components === null) {
     return null;
   }
@@ -361,20 +683,55 @@ export function mergeA2uiLayout(
   baselineJsonl: string,
   candidateJsonl: string,
   surfaceId: string,
-  offers: ActionOffer[]
+  offers: ActionOffer[],
+  componentCatalogJson: string = AIPHONE_COMPONENT_CATALOG_JSON
 ): string {
-  if (baselineJsonl.length === 0 || candidateJsonl.length === 0 || surfaceId.length === 0) {
+  const result = mergeA2uiLayoutWithStatus(
+    baselineJsonl,
+    candidateJsonl,
+    surfaceId,
+    offers,
+    componentCatalogJson
+  );
+  if (!result.accepted) {
     return baselineJsonl;
+  }
+  return result.jsonl;
+}
+
+export function mergeA2uiLayoutWithStatus(
+  baselineJsonl: string,
+  candidateJsonl: string,
+  surfaceId: string,
+  offers: ActionOffer[],
+  componentCatalogJson: string = AIPHONE_COMPONENT_CATALOG_JSON
+): A2uiLayoutMergeResult {
+  if (baselineJsonl.length === 0 || candidateJsonl.length === 0 || surfaceId.length === 0) {
+    return { jsonl: baselineJsonl, accepted: false, reason: 'empty_input' };
   }
   const lines = baselineJsonl.split('\n');
   const baseline = baselineOf(lines, surfaceId);
   if (baseline === null) {
-    return baselineJsonl;
+    return { jsonl: baselineJsonl, accepted: false, reason: 'invalid_baseline' };
   }
-  const candidate = candidateEnvelope(candidateJsonl, surfaceId, baseline, offers);
+  const diagnostics: A2uiLayoutMergeDiagnostic[] = [];
+  const candidate = candidateEnvelope(
+    candidateJsonl,
+    surfaceId,
+    baseline,
+    offers,
+    componentCatalogJson,
+    diagnostics
+  );
   if (candidate === null) {
-    return baselineJsonl;
+    const rejected: A2uiLayoutMergeResult = {
+      jsonl: baselineJsonl,
+      accepted: false,
+      reason: 'candidate_rejected'
+    };
+    if (diagnostics.length > 0) rejected.diagnostic = diagnostics[0];
+    return rejected;
   }
   lines[baseline.componentLineIndex] = JSON.stringify(candidate);
-  return lines.join('\n');
+  return { jsonl: lines.join('\n'), accepted: true, reason: 'accepted' };
 }

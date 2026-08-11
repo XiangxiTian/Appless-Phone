@@ -24,7 +24,8 @@ import {
   isYouTubeToolId,
   resolveBackendForTool,
   isSurfaceDerivedHotelActionId,
-  toolDefinitionForToolId
+  toolDefinitionForToolId,
+  toolPlanningDescriptionForToolId
 } from '@loop/agent-core';
 import { BackendAvailability, BackendResolution, ToolBackendType, ToolDefinition } from '@loop/agent-core';
 
@@ -185,6 +186,7 @@ export default function toolDefinitionRegistryTest() {
       const publicX = aiphoneToolDescriptionForModel('x.post.search');
       const mail = aiphoneToolDescriptionForModel('mail.search');
       const dynamic = aiphoneToolDescriptionForModel('dynamic.search');
+      const uiLabDynamic = toolPlanningDescriptionForToolId('dynamic.search', true);
       const gmailDraft = aiphoneToolDescriptionForModel('gmail.draft.create');
 
       expect(socialFeed.indexOf('SocialHub inbox')).assertLarger(-1);
@@ -197,6 +199,13 @@ export default function toolDefinitionRegistryTest() {
       expect(mail.indexOf('Never use it for SocialHub messages')).assertLarger(-1);
       expect(dynamic.indexOf('Composio-backed app/toolkit')).assertLarger(-1);
       expect(dynamic.indexOf('use social.feed.search')).assertLarger(-1);
+      expect(dynamic.indexOf('exactly one provider operation')).assertLarger(-1);
+      expect(dynamic.indexOf('actions. One dynamic.search DataTask')).assertLarger(-1);
+      expect(dynamic.indexOf('actions. Do not One dynamic.search DataTask')).assertEqual(-1);
+      expect(dynamic.indexOf('github.user.dashboard')).assertEqual(-1);
+      expect(dynamic.indexOf('operationTarget')).assertEqual(-1);
+      expect(uiLabDynamic.indexOf('github.user.dashboard')).assertLarger(-1);
+      expect(uiLabDynamic.indexOf('operationTarget')).assertLarger(-1);
       expect(gmailDraft.indexOf('create a draft first')).assertLarger(-1);
       expect(gmailDraft.indexOf('exact current mail reply Send button')).assertLarger(-1);
       expect(aiphoneToolDescriptionForModel('gmail.message.send')).assertEqual('');

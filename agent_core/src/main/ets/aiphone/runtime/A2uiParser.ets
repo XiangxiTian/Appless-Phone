@@ -4,11 +4,23 @@ import {
   A2UI_COMPONENT_COLUMN,
   A2UI_COMPONENT_CONFIRM_PANEL,
   A2UI_COMPONENT_ERROR_NOTICE,
+  A2UI_COMPONENT_EXPANDABLE_CARD,
   A2UI_COMPONENT_FLIGHT_BOARD,
   A2UI_COMPONENT_FOOD_CHOICES,
   A2UI_COMPONENT_GENERIC_TOOL_RESULTS,
+  A2UI_COMPONENT_HERO_BANNER,
   A2UI_COMPONENT_INFO_ROWS,
+  A2UI_COMPONENT_LIST,
+  A2UI_COMPONENT_MATRIX_HEATMAP,
+  A2UI_COMPONENT_MASONRY_GRID,
+  A2UI_COMPONENT_MEDIA_SLIDER,
+  A2UI_COMPONENT_METRIC_GRID,
+  A2UI_COMPONENT_MULTI_SERIES_LINE_CHART,
   A2UI_COMPONENT_ROW,
+  A2UI_COMPONENT_SCENE_TABS,
+  A2UI_COMPONENT_SCHEDULE_STACK,
+  A2UI_COMPONENT_SEGMENTED_RING_CHART,
+  A2UI_COMPONENT_SKELETON_CARD,
   A2UI_COMPONENT_SOCIAL_HUB,
   A2UI_COMPONENT_STRIPE_RECEIVING_ACCOUNT_CARD,
   A2UI_COMPONENT_SURFACE_ROOT,
@@ -24,6 +36,8 @@ import {
   A2uiEnvelope,
   A2uiStreamParseResult
 } from './A2uiTypes';
+import { A2uiComponentCatalogSchema } from '../../a2ui/A2uiComponentCatalogSchema';
+import { UI_AGENT_LAB_COMPONENT_CATALOG_JSON } from './A2uiComponentCatalogConst';
 
 const KNOWN_COMPONENTS: string[] = [
   A2UI_COMPONENT_SURFACE_ROOT,
@@ -45,7 +59,19 @@ const KNOWN_COMPONENTS: string[] = [
   A2UI_COMPONENT_GENERIC_TOOL_RESULTS,
   A2UI_COMPONENT_SOCIAL_HUB,
   A2UI_COMPONENT_STRIPE_RECEIVING_ACCOUNT_CARD,
-  A2UI_COMPONENT_AGGREGATE_SEARCH
+  A2UI_COMPONENT_AGGREGATE_SEARCH,
+  A2UI_COMPONENT_SCHEDULE_STACK,
+  A2UI_COMPONENT_SKELETON_CARD,
+  A2UI_COMPONENT_EXPANDABLE_CARD,
+  A2UI_COMPONENT_MEDIA_SLIDER,
+  A2UI_COMPONENT_SCENE_TABS,
+  A2UI_COMPONENT_MASONRY_GRID,
+  A2UI_COMPONENT_LIST,
+  A2UI_COMPONENT_HERO_BANNER,
+  A2UI_COMPONENT_METRIC_GRID,
+  A2UI_COMPONENT_SEGMENTED_RING_CHART,
+  A2UI_COMPONENT_MULTI_SERIES_LINE_CHART,
+  A2UI_COMPONENT_MATRIX_HEATMAP
 ];
 
 function normalizeString(value: string | Object | undefined | null, fallback: string): string {
@@ -76,6 +102,40 @@ function normalizeStringList(value: string[] | undefined | null): string[] {
     }
   });
   return result;
+}
+
+type ParserJsonValue = Object | string | number | boolean | null | undefined;
+type ParserJsonRecord = Record<string, ParserJsonValue>;
+
+function rawListChildren(value: A2uiComponent): ParserJsonRecord | null {
+  const source = value as Object as ParserJsonRecord;
+  const children = source['children'];
+  if (children === undefined || children === null || typeof children !== 'object' || Array.isArray(children)) {
+    return null;
+  }
+  return children as ParserJsonRecord;
+}
+
+const UI_LAB_CATALOG_SCHEMA: A2uiComponentCatalogSchema | null =
+  A2uiComponentCatalogSchema.parse(UI_AGENT_LAB_COMPONENT_CATALOG_JSON);
+export type A2uiParserProfile = 'legacy' | 'ui-lab';
+
+function catalogFieldsJson(value: A2uiComponent, component: string, profile: A2uiParserProfile): string {
+  const source = value as Object as ParserJsonRecord;
+  const needsPresentationFields = component === A2UI_COMPONENT_METRIC_GRID ||
+    component === A2UI_COMPONENT_SEGMENTED_RING_CHART ||
+    (component === A2UI_COMPONENT_LIST && source['title'] !== undefined) ||
+    (component === A2UI_COMPONENT_EXPANDABLE_CARD && source['rows'] !== undefined) ||
+    (component === A2UI_COMPONENT_INFO_ROWS &&
+      (source['labelPath'] !== undefined || source['valuePath'] !== undefined || source['timePath'] !== undefined));
+  if (profile !== 'ui-lab' && !needsPresentationFields) {
+    return '';
+  }
+  if (UI_LAB_CATALOG_SCHEMA === null || !UI_LAB_CATALOG_SCHEMA.has(component) ||
+    !UI_LAB_CATALOG_SCHEMA.validatesRuntimeSyntax(component, value as Object)) {
+    throw new Error('A2UI UI Lab component does not match catalog schema: ' + component);
+  }
+  return UI_LAB_CATALOG_SCHEMA.presentationFieldsJson(component, value as Object);
 }
 
 function normalizeActions(value: A2uiAction[] | undefined | null): A2uiAction[] {
@@ -110,12 +170,16 @@ function normalizeActions(value: A2uiAction[] | undefined | null): A2uiAction[] 
     if (action.args !== undefined && action.args !== null) {
       normalized.args = action.args;
     }
+    const sourceSectionId = normalizeString(action.sourceSectionId, '');
+    if (sourceSectionId.length > 0) {
+      normalized.sourceSectionId = sourceSectionId;
+    }
     result.push(normalized);
   });
   return result;
 }
 
-function normalizeComponent(value: A2uiComponent): A2uiComponent {
+function normalizeComponent(value: A2uiComponent, profile: A2uiParserProfile): A2uiComponent {
   const id = normalizeString(value.id, '');
   const component = normalizeString(value.component, '');
   if (id.length === 0 || component.length === 0) {
@@ -124,11 +188,29 @@ function normalizeComponent(value: A2uiComponent): A2uiComponent {
   if (!isKnownComponent(component)) {
     throw new Error('A2UI component is not registered: ' + component);
   }
-  return {
+  const presentationFieldsJson = catalogFieldsJson(value, component, profile);
+  const listChildren = rawListChildren(value);
+  if (component !== A2UI_COMPONENT_LIST && listChildren !== null) {
+    throw new Error('A2UI children object is only supported by List');
+  }
+  let child = normalizeString(value.child, '');
+  let children = normalizeStringList(value.children);
+  let dataPath = normalizeString(value.dataPath, '');
+  if (component === A2UI_COMPONENT_LIST && listChildren !== null) {
+    child = normalizeString(listChildren['componentId'] as string | Object | undefined | null, '');
+    dataPath = normalizeString(listChildren['path'] as string | Object | undefined | null, '');
+    children = [];
+    if (child.length === 0 || dataPath.length === 0) {
+      throw new Error('A2UI List children requires path and componentId');
+    }
+  } else if (component === A2UI_COMPONENT_LIST) {
+    throw new Error('A2UI List requires official children path and componentId');
+  }
+  const normalized: A2uiComponent = {
     id: id,
     component: component,
-    child: normalizeString(value.child, ''),
-    children: normalizeStringList(value.children),
+    child: child,
+    children: children,
     title: normalizeString(value.title, ''),
     text: normalizeString(value.text, ''),
     body: normalizeString(value.body, ''),
@@ -136,12 +218,16 @@ function normalizeComponent(value: A2uiComponent): A2uiComponent {
     tone: normalizeString(value.tone, ''),
     variant: normalizeString(value.variant, ''),
     path: normalizeString(value.path, ''),
-    dataPath: normalizeString(value.dataPath, ''),
+    dataPath: dataPath,
     actions: normalizeActions(value.actions)
   };
+  if (presentationFieldsJson.length > 0) {
+    normalized.catalogFieldsJson = presentationFieldsJson;
+  }
+  return normalized;
 }
 
-function normalizeEnvelope(value: A2uiEnvelope): A2uiEnvelope {
+function normalizeEnvelope(value: A2uiEnvelope, profile: A2uiParserProfile): A2uiEnvelope {
   const messageCount =
     (value.createSurface !== undefined && value.createSurface !== null ? 1 : 0) +
     (value.updateComponents !== undefined && value.updateComponents !== null ? 1 : 0) +
@@ -176,7 +262,7 @@ function normalizeEnvelope(value: A2uiEnvelope): A2uiEnvelope {
     }
     const components: A2uiComponent[] = [];
     value.updateComponents.components.forEach((component: A2uiComponent) => {
-      components.push(normalizeComponent(component));
+      components.push(normalizeComponent(component, profile));
     });
     return {
       version: normalizeString(value.version, ''),
@@ -215,15 +301,19 @@ function normalizeEnvelope(value: A2uiEnvelope): A2uiEnvelope {
   };
 }
 
-export function parseA2uiEnvelope(content: string): A2uiEnvelope {
+export function parseA2uiEnvelope(content: string, profile: A2uiParserProfile = 'legacy'): A2uiEnvelope {
   const parsed = JSON.parse(content) as A2uiEnvelope;
   if (parsed === undefined || parsed === null) {
     throw new Error('A2UI envelope is empty');
   }
-  return normalizeEnvelope(parsed);
+  return normalizeEnvelope(parsed, profile);
 }
 
-export function parseA2uiJsonlChunk(chunk: string, previousRemainder: string = ''): A2uiStreamParseResult {
+export function parseA2uiJsonlChunk(
+  chunk: string,
+  previousRemainder: string = '',
+  profile: A2uiParserProfile = 'legacy'
+): A2uiStreamParseResult {
   const text = previousRemainder + chunk;
   const lines = text.split('\n');
   const hasTrailingNewline = text.endsWith('\n');
@@ -237,7 +327,7 @@ export function parseA2uiJsonlChunk(chunk: string, previousRemainder: string = '
       continue;
     }
     try {
-      envelopes.push(parseA2uiEnvelope(line));
+      envelopes.push(parseA2uiEnvelope(line, profile));
     } catch (parseError) {
       error = parseError instanceof Error ? parseError.message : 'invalid A2UI stream line';
       break;
@@ -251,8 +341,11 @@ export function parseA2uiJsonlChunk(chunk: string, previousRemainder: string = '
   };
 }
 
-export function parseA2uiJsonl(content: string): A2uiStreamParseResult {
-  const result = parseA2uiJsonlChunk(content.endsWith('\n') ? content : content + '\n', '');
+export function parseA2uiJsonl(
+  content: string,
+  profile: A2uiParserProfile = 'legacy'
+): A2uiStreamParseResult {
+  const result = parseA2uiJsonlChunk(content.endsWith('\n') ? content : content + '\n', '', profile);
   return {
     envelopes: result.envelopes,
     remainder: '',

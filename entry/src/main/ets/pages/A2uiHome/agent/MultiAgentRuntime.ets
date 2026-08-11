@@ -28,6 +28,7 @@ import {
   TaskErrorPayload,
   TurnResultPayload,
   TurnResultStatus,
+  UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH,
   UiAgent,
   UiRenderResultPayload,
   UserInputPayload,
@@ -861,11 +862,16 @@ export class MultiAgentRuntime {
     }
     const keys: string = Object.keys(task).sort().join(',');
     return (keys === 'dataTaskIds,expectedOutputSchema,intent,skillId,taskId' ||
-      keys === 'dataTaskIds,expectedOutputSchema,intent,personaId,skillId,taskId') &&
+      keys === 'dataTaskIds,expectedOutputSchema,intent,personaId,skillId,taskId' ||
+      keys === 'dataTaskIds,expectedOutputSchema,intent,originalUserInput,skillId,taskId' ||
+      keys === 'dataTaskIds,expectedOutputSchema,intent,originalUserInput,personaId,skillId,taskId') &&
       task.taskId === message.taskId &&
       Array.isArray(task.dataTaskIds) &&
       typeof task.skillId === 'string' &&
       nonempty(task.intent) &&
+      (task.originalUserInput === undefined ||
+        (nonempty(task.originalUserInput) &&
+          task.originalUserInput.length <= UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH)) &&
       nonempty(task.expectedOutputSchema) &&
       (task.personaId === undefined || nonempty(task.personaId));
   }

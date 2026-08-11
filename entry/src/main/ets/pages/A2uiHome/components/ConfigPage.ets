@@ -66,6 +66,7 @@ export struct ConfigPage {
   @State showComposioAuthPanel: boolean = false;
   onBack: () => void = () => {};
   onSelectModelPreset: (preset: string) => void = (_preset: string) => {};
+  onOpenUiAgentLab: () => void = () => {};
   onTestConnection: () => void = () => {};
   onOpenComposioAuth: () => void = () => {};
   onRefreshComposioAuth: () => void = () => {};
@@ -732,6 +733,43 @@ export struct ConfigPage {
         .width('100%')
         .alignItems(VerticalAlign.Center)
         .margin({ bottom: 16 })
+
+        Row() {
+          Column() {
+            Text('UI Lab')
+              .fontSize(18)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(COLOR_INK)
+            Text('在独立 ArkWeb 页面验证 UI Agent 的生成与交互链路')
+              .fontSize(12)
+              .fontColor(COLOR_MUTED)
+              .lineHeight(18)
+              .margin({ top: 4 })
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
+
+          Button('打开')
+            .height(38)
+            .width(76)
+            .fontSize(13)
+            .fontColor(COLOR_BUTTON_TEXT)
+            .backgroundColor(COLOR_ACCENT_DEEP)
+            .borderRadius(10)
+            .border({ width: 1, color: COLOR_ACCENT })
+            .margin({ left: 12 })
+            .onClick(() => {
+              this.onOpenUiAgentLab();
+            })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+        .padding(16)
+        .backgroundColor(COLOR_PANEL)
+        .borderRadius(16)
+        .border({ width: 1, color: COLOR_CARD_EDGE })
+        .shadow({ radius: 22, color: COLOR_PANEL_SHADOW, offsetX: 0, offsetY: 10 })
+        .margin({ bottom: 14 })
 
         this.ComposioAuthSummarySection()
 

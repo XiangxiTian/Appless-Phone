@@ -13,6 +13,7 @@ import {
   LinkedMessageBus,
   TaskErrorPayload,
   UiAgent,
+  UiRenderProgressSink,
   UiRenderResult,
   UiRenderResultPayload,
   UiSurfaceWriteLease,
@@ -113,6 +114,23 @@ class RecordingRenderer implements UiTaskRenderer {
     const status: ActionStatusPayload = payload as ActionStatusPayload;
     this.calls.push(`action:${status.runId}:${surfaceId}`);
     return render(`action:${status.status}`);
+  }
+}
+
+class ProgressiveResultRenderer extends RecordingRenderer {
+  async result(
+    task: CreateUiTaskPayload,
+    data: DataResult[],
+    offers: ActionOffer[],
+    surfaceId: string,
+    progressSink?: UiRenderProgressSink
+  ): Promise<UiRenderResult> {
+    await super.result(task, data, offers, surfaceId);
+    if (progressSink !== undefined) {
+      await progressSink(render('partial-1'));
+      await progressSink(render('partial-2'));
+    }
+    return render('final');
   }
 }
 
@@ -547,6 +565,28 @@ async function settle(): Promise<void> {
 
 export default function uiAgentTest() {
   describe('uiAgent', () => {
+    it('serializes renderer progress before the final surface write', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const renderer = new ProgressiveResultRenderer();
+      const writer = new RecordingSurfaceWriter();
+      const agent = new UiAgent(bus, renderer, writer);
+      const observer = bus.openReader();
+      agent.start();
+
+      bus.publish(uiTaskMessage());
+      await receiveUiState(observer, 'skeleton');
+      publishData(bus, 'conversation-a', 'turn-1', 'data-1', 101);
+      await receiveUiState(observer, 'result');
+
+      expect(writer.writes.length).assertEqual(4);
+      expect(JSON.parse(writer.writes[1].jsonl) as string).assertEqual('partial-1');
+      expect(JSON.parse(writer.writes[2].jsonl) as string).assertEqual('partial-2');
+      expect(JSON.parse(writer.writes[3].jsonl) as string).assertEqual('final');
+      expect(writer.writes[1].surfaceId).assertEqual(writer.writes[3].surfaceId);
+      agent.stop();
+      observer.close();
+    });
+
     it('renders multiple Data results in declared order after reverse arrival', 0, async () => {
       const bus = new LinkedMessageBus();
       const renderer = new RecordingRenderer();

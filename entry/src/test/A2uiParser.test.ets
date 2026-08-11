@@ -16,6 +16,236 @@ import { SocialHubItemData } from '@loop/agent-core';
 
 export default function a2uiParserTest() {
   describe('a2uiParser', () => {
+    it('accepts the fixed UI Lab catalog components in the shared surface writer parser', 0, () => {
+      const parsed = parseA2uiEnvelope(
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"lab","components":[' +
+        '{"id":"root","component":"SurfaceRoot","children":["schedule","skeleton","expandable","media","tabs","grid",' +
+        '"hero","metrics","ring","line","heat"]},' +
+        '{"id":"schedule","component":"ScheduleStack","dataPath":"/results/0/data"},' +
+        '{"id":"skeleton","component":"SkeletonCard","status":"loading"},' +
+        '{"id":"expandable","component":"ExpandableCard","dataPath":"/results/0/data"},' +
+        '{"id":"media","component":"MediaSlider","dataPath":"/results/0/data"},' +
+        '{"id":"tabs","component":"SceneTabs","dataPath":"/results/0/data"},' +
+        '{"id":"grid","component":"MasonryGrid","dataPath":"/results/0/data"},' +
+        '{"id":"hero","component":"HeroBanner","text":"OVERVIEW","title":"Summary","body":"Verified results."},' +
+        '{"id":"metrics","component":"MetricGrid","title":"Metrics","dataPath":"/results/0/data"},' +
+        '{"id":"ring","component":"SegmentedRingChart","dataPath":"/results/0/data"},' +
+        '{"id":"line","component":"MultiSeriesLineChart","dataPath":"/results/0/data"},' +
+        '{"id":"heat","component":"MatrixHeatmap","body":"Activity","dataPath":"/results/0/data"}' +
+        ']}}',
+        'ui-lab'
+      );
+
+      expect(parsed.updateComponents !== undefined).assertTrue();
+      if (parsed.updateComponents !== undefined) {
+        expect(parsed.updateComponents.components.length).assertEqual(12);
+        expect(parsed.updateComponents.components[3].component).assertEqual('ExpandableCard');
+        expect(parsed.updateComponents.components[6].component).assertEqual('MasonryGrid');
+        expect(parsed.updateComponents.components[7].component).assertEqual('HeroBanner');
+        expect(parsed.updateComponents.components[11].component).assertEqual('MatrixHeatmap');
+      }
+    });
+
+    it('preserves catalog-declared direct presentation fields after parsing', 0, () => {
+      const parsed = parseA2uiEnvelope(
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"lab-bindings","components":[' +
+        '{"id":"metrics","component":"MetricGrid","title":{"path":"/dashboard/title"},"items":[' +
+        '{"id":"stars","label":{"path":"/dashboard/label"},"value":{"path":"/dashboard/stars"},' +
+        '"unit":"stars"}]},' +
+        '{"id":"ring","component":"SegmentedRingChart","segments":[' +
+        '{"label":"ArkTS","value":{"path":"/dashboard/arkts"}},' +
+        '{"label":"TypeScript","value":{"path":"/dashboard/typescript"}}]},' +
+        '{"id":"activity","component":"InfoRows","dataPath":"/dashboard/activity",' +
+        '"labelPath":"/time","valuePath":"/summary","timePath":"/time"}]}}',
+        'ui-lab'
+      );
+
+      expect(parsed.updateComponents !== undefined).assertTrue();
+      if (parsed.updateComponents !== undefined) {
+        const metrics = parsed.updateComponents.components[0];
+        const ring = parsed.updateComponents.components[1];
+        const activity = parsed.updateComponents.components[2];
+        const metricFields = JSON.parse(metrics.catalogFieldsJson as string) as Record<string, Object | string>;
+        const ringFields = JSON.parse(ring.catalogFieldsJson as string) as Record<string, Object>;
+        const activityFields = JSON.parse(activity.catalogFieldsJson as string) as Record<string, string>;
+        const metricItems = metricFields['items'] as Object[];
+        const firstMetric = metricItems[0] as Record<string, Object | string>;
+        const ringItems = ringFields['segments'] as Object[];
+        expect((metricFields['title'] as Record<string, string>)['path']).assertEqual('/dashboard/title');
+        expect((firstMetric['value'] as Record<string, string>)['path']).assertEqual('/dashboard/stars');
+        expect((ringItems[0] as Record<string, Object>)['value'] !== undefined).assertTrue();
+        expect(ringItems.length).assertEqual(2);
+        expect(activity.dataPath).assertEqual('/dashboard/activity');
+        expect(activityFields['labelPath']).assertEqual('/time');
+        expect(activityFields['valuePath']).assertEqual('/summary');
+        expect(activityFields['timePath']).assertEqual('/time');
+        expect(metrics.catalogFieldsJson?.indexOf('properties')).assertEqual(-1);
+        expect(metrics.catalogFieldsJson?.indexOf('props')).assertEqual(-1);
+      }
+    });
+
+    it('preserves direct dashboard fields for the current writer default profile', 0, () => {
+      const parsed = parseA2uiEnvelope(
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"lab-default","components":[' +
+        '{"id":"metrics","component":"MetricGrid","items":[' +
+        '{"label":"Stars","value":{"path":"/dashboard/stars"}}]},' +
+        '{"id":"ring","component":"SegmentedRingChart","segments":[' +
+        '{"label":"ArkTS","value":{"path":"/dashboard/arkts"}}]}]}}'
+      );
+
+      const metrics = parsed.updateComponents?.components[0];
+      const ring = parsed.updateComponents?.components[1];
+      expect(metrics?.catalogFieldsJson?.includes('/dashboard/stars')).assertTrue();
+      expect(ring?.catalogFieldsJson?.includes('/dashboard/arkts')).assertTrue();
+    });
+
+    it('accepts and preserves a direct ring with one segment in the UI Lab parser', 0, () => {
+      const parsed = parseA2uiEnvelope(
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"lab-ring","components":[' +
+        '{"id":"ring","component":"SegmentedRingChart","segments":[' +
+        '{"label":"ArkTS","value":{"path":"/dashboard/arkts"}}]}]}}',
+        'ui-lab'
+      );
+
+      expect(parsed.updateComponents !== undefined).assertTrue();
+      if (parsed.updateComponents !== undefined) {
+        const ring = parsed.updateComponents.components[0];
+        const ringFields = JSON.parse(ring.catalogFieldsJson as string) as Record<string, Object>;
+        const ringItems = ringFields['segments'] as Object[];
+        const firstSegment = ringItems[0] as Record<string, Object | string>;
+        expect(ring.component).assertEqual('SegmentedRingChart');
+        expect(ringItems.length).assertEqual(1);
+        expect(firstSegment['label'] as string).assertEqual('ArkTS');
+        expect((firstSegment['value'] as Record<string, string>)['path']).assertEqual('/dashboard/arkts');
+      }
+    });
+
+    it('rejects unknown fields and every malformed action in runtime catalog components', 0, () => {
+      const validAction = '{"id":"card.open","label":"Open","prompt":"Open","variant":"primary","kind":"prompt"}';
+      const invalidComponents: string[] = [
+        '{"id":"card","component":"ExpandableCard","title":"Card","properties":{},"actions":[' +
+          validAction + ']}',
+        '{"id":"card","component":"ExpandableCard","title":"Card","actions":[' + validAction + ',' +
+          '{"id":"card.close","label":"Close","variant":"secondary","kind":"prompt"}]}',
+        '{"id":"card","component":"ExpandableCard","dataPath":"/card","rows":[' +
+          '{"label":"Detail","value":{"path":"/detail"}}]}'
+      ];
+      let rejected: number = 0;
+      for (let index = 0; index < invalidComponents.length; index++) {
+        try {
+          parseA2uiEnvelope('{"updateComponents":{"surfaceId":"lab-runtime","components":[' +
+            invalidComponents[index] + ']}}', 'ui-lab');
+        } catch (_error) {
+          rejected++;
+        }
+      }
+      expect(rejected).assertEqual(invalidComponents.length);
+    });
+
+    it('keeps legacy shared components compatible but rejects them in the explicit UI Lab profile', 0, () => {
+      const actionBar = '{"updateComponents":{"surfaceId":"profile","components":[' +
+        '{"id":"actions","component":"ActionBar","properties":{},"actions":[' +
+        '{"id":"card.open","label":"Open","prompt":"Open","variant":"primary","kind":"prompt"}]}]}}';
+      const legacy = parseA2uiEnvelope(actionBar);
+      let strictRejected: boolean = false;
+      try {
+        parseA2uiEnvelope(actionBar, 'ui-lab');
+      } catch (_error) {
+        strictRejected = true;
+      }
+      expect(legacy.updateComponents?.components[0].actions?.[0].id).assertEqual('card.open');
+      expect(strictRejected).assertTrue();
+    });
+
+    it('forwards the UI Lab profile through JSONL and streaming chunk parsers', 0, () => {
+      const actionBar = '{"updateComponents":{"surfaceId":"profile-jsonl","components":[' +
+        '{"id":"actions","component":"ActionBar","properties":{},"actions":[' +
+        '{"id":"card.open","label":"Open","prompt":"Open","variant":"primary","kind":"prompt"}]}]}}\n';
+      const jsonl = parseA2uiJsonl(actionBar, 'ui-lab');
+      const chunk = parseA2uiJsonlChunk(actionBar, '', 'ui-lab');
+      expect(jsonl.error.length > 0).assertTrue();
+      expect(chunk.error.length > 0).assertTrue();
+      expect(chunk.remainder).assertEqual('');
+    });
+
+    it('preserves action sourceSectionId in the explicit UI Lab profile', 0, () => {
+      const parsed = parseA2uiEnvelope(
+        '{"updateComponents":{"surfaceId":"action-source","components":[' +
+        '{"id":"actions","component":"ActionBar","actions":[' +
+        '{"id":"card.open","label":"Open","prompt":"Open","variant":"primary","kind":"prompt",' +
+        '"sourceSectionId":"tool.github"}]}]}}',
+        'ui-lab'
+      );
+      expect(parsed.updateComponents?.components[0].actions?.[0].sourceSectionId).assertEqual('tool.github');
+    });
+
+    it('rejects invalid HeroBanner and chart component shapes', 0, () => {
+      const invalidComponents: string[] = [
+        '{"id":"hero","component":"HeroBanner","body":"Missing title"}',
+        '{"id":"hero","component":"HeroBanner","title":"Summary","dataPath":"/summary"}',
+        '{"id":"metrics","component":"MetricGrid","title":"Metrics"}',
+        '{"id":"ring","component":"SegmentedRingChart","dataPath":"/data","actions":[]}',
+        '{"id":"line","component":"MultiSeriesLineChart","dataPath":"/data","children":[]}',
+        '{"id":"heat","component":"MatrixHeatmap","dataPath":"/data","path":"M0 0"}'
+      ];
+      let rejected: number = 0;
+      for (let index = 0; index < invalidComponents.length; index++) {
+        try {
+          parseA2uiEnvelope(
+            '{"version":"v0.9.1","updateComponents":{"surfaceId":"lab","components":[' +
+            invalidComponents[index] + ']}}',
+            'ui-lab'
+          );
+        } catch (_error) {
+          rejected++;
+        }
+      }
+      expect(rejected).assertEqual(invalidComponents.length);
+    });
+
+    it('normalizes official List children into internal item binding fields', 0, () => {
+      const parsed = parseA2uiEnvelope(
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"lab-list","components":[' +
+        '{"id":"root","component":"SurfaceRoot","child":"items"},' +
+        '{"id":"items","component":"List","title":{"path":"/headings/items"},' +
+        '"children":{"path":"/results/0/data/items","componentId":"item-card"}},' +
+        '{"id":"item-card","component":"ExpandableCard","title":{"path":"/name"},' +
+        '"rows":[{"label":"Address","value":{"path":"/address"}}]}]}}'
+      );
+
+      expect(parsed.updateComponents !== undefined).assertTrue();
+      if (parsed.updateComponents !== undefined) {
+        const list = parsed.updateComponents.components[1];
+        expect(list.component).assertEqual('List');
+        expect(list.dataPath).assertEqual('/results/0/data/items');
+        expect(list.child).assertEqual('item-card');
+        expect(list.children?.length).assertEqual(0);
+        const listFields = JSON.parse(list.catalogFieldsJson as string) as Record<string, Object>;
+        expect((listFields['title'] as Record<string, string>)['path']).assertEqual('/headings/items');
+        const item = parsed.updateComponents.components[2];
+        const itemFields = JSON.parse(item.catalogFieldsJson as string) as Record<string, Object>;
+        const rows = itemFields['rows'] as Object[];
+        const firstRow = rows[0] as Record<string, Object | string>;
+        expect(rows.length).assertEqual(1);
+        expect(firstRow['label'] as string).assertEqual('Address');
+        expect((firstRow['value'] as Record<string, string>)['path']).assertEqual('/address');
+      }
+    });
+
+    it('rejects a List that uses static children instead of the official binding object', 0, () => {
+      let rejected = false;
+      try {
+        parseA2uiEnvelope(
+          '{"updateComponents":{"surfaceId":"lab-list","components":[' +
+          '{"id":"items","component":"List","children":["item-card"]},' +
+          '{"id":"item-card","component":"ExpandableCard"}]}}'
+        );
+      } catch (_error) {
+        rejected = true;
+      }
+      expect(rejected).assertTrue();
+    });
+
     it('builds a surface from A2UI JSONL envelopes', 0, () => {
       const stream =
         '{"version":"v0.9.1","createSurface":{"surfaceId":"travel","root":"root","title":"北京到上海","intent":"travel","status":"thinking"}}\n' +

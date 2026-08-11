@@ -5,6 +5,7 @@ import { aiLogInfo } from '../aiphone/runtime/AiphoneLogger';
 import { buildReActFormatRules, buildSkillsSection, SkillSnapshot } from '../skill/SkillSnapshot';
 import { LocalModel } from './LocalModel';
 import { LlmProvider } from './LlmProvider';
+import { mergeOpenAiRequestJson } from './OpenAiRequestJson';
 
 const MODEL_CONNECT_TIMEOUT_MS = 20000;
 const MODEL_READ_TIMEOUT_MS = 40000;
@@ -208,26 +209,7 @@ export class OpenAiCompatibleModel implements LocalModel {
     systemPrompt?: string
   ): string {
     const baseJson = JSON.stringify(this.buildRequest(prompt, conversation, systemPrompt));
-    const customJson = this.provider.customParametersJson.trim();
-    if (customJson.length === 0) {
-      return baseJson;
-    }
-    try {
-      const parsed = JSON.parse(customJson) as Object;
-      if (parsed === undefined || parsed === null || Array.isArray(parsed)) {
-        return baseJson;
-      }
-      if (customJson.search(/"model"\s*:/) >= 0 || customJson.search(/"messages"\s*:/) >= 0) {
-        return baseJson;
-      }
-      const normalizedCustomJson = JSON.stringify(parsed);
-      if (normalizedCustomJson.length <= 2) {
-        return baseJson;
-      }
-      return baseJson.substring(0, baseJson.length - 1) + ',' + normalizedCustomJson.substring(1);
-    } catch (_error) {
-      return baseJson;
-    }
+    return mergeOpenAiRequestJson(baseJson, this.provider.customParametersJson);
   }
 
   private parseContent(body: string): string {

@@ -657,7 +657,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   }
 ];
 
-const DYNAMIC_SEARCH_PLANNING_DESCRIPTION: string =
+const DYNAMIC_SEARCH_PLANNING_PREFIX: string =
   'dynamic.search inputSchema=dynamicToolSearchQuery outputSchema=dynamicToolConnect. ' +
   'Use for ModelScope/remote MCP discovery, weather requests, Composio-backed app/toolkit requests, and domains ' +
   'not covered by fixed tools. Use dynamic.search when the user names unsupported external apps or SaaS toolkits ' +
@@ -671,17 +671,42 @@ const DYNAMIC_SEARCH_PLANNING_DESCRIPTION: string =
   'those fixed tool IDs instead of dynamic.search. Use dynamic.search for Outlook only when the user explicitly ' +
   'names Outlook or Composio Outlook; ordinary mailbox aggregation uses mail.search. World Cup page, schedule, ' +
   'next-match, preview, team, or player-card requests are covered by worldcup.open. First-party movie discovery, ' +
-  'now-showing, box-office, trailer, or star-update page requests are covered by movie.open, not dynamic.search. For ' +
-  'Composio, first call with the full user task to discover candidate tools; only call again with ' +
-  '{"operation":"execute","toolSlug":"returned slug","arguments":{...}} for read/search/list/get actions. Do not ' +
-  'use Composio for payment, Gmail, Calendar, SocialHub, Maps, Food, Travel, World Cup page/schedule requests, or ' +
+  'now-showing, box-office, trailer, or star-update page requests are covered by movie.open, not dynamic.search. ';
+
+const DYNAMIC_SEARCH_PLANNING_SUFFIX: string =
+  'Do not use Composio for payment, Gmail, Calendar, SocialHub, Maps, Food, Travel, World Cup page/schedule requests, or ' +
   'other fixed-tool domains unless the user explicitly asks for an unsupported external app/toolkit. For ferry or ' +
   'boat ticket requests, use dynamic.search; fixed travel tools only cover train and flight options, and ' +
   'dynamic.search may return no_tool_found truthfully.';
 
-export function toolPlanningDescriptionForToolId(toolId: string): string {
+const LEGACY_DYNAMIC_SEARCH_PLANNING_DESCRIPTION: string = DYNAMIC_SEARCH_PLANNING_PREFIX +
+  'For Composio, first call with the full user task to discover candidate tools; only call again with ' +
+  '{"operation":"execute","toolSlug":"returned slug","arguments":{...}} for read/search/list/get actions. ' +
+  'One dynamic.search DataTask discovers and executes exactly one provider operation. When one user request needs ' +
+  'multiple independent datasets from the same app or toolkit, emit multiple focused dynamic.search DataTasks in ' +
+  'the same round even when their toolId is identical. Each task.goal must name exactly one operation target, and ' +
+  'structured input.query must carry only the exact entity or keyword. ' + DYNAMIC_SEARCH_PLANNING_SUFFIX;
+
+const UI_LAB_TRUSTED_GITHUB_PLANNING_DESCRIPTION: string = DYNAMIC_SEARCH_PLANNING_PREFIX +
+  'One dynamic.search DataTask normally discovers and executes exactly one provider operation. Its structured ' +
+  'input.query must carry only the exact entity or keyword. UI Lab provides four trusted GitHub user read targets: ' +
+  'github.profile, github.repositories, github.events, and github.user.dashboard. When the user asks for a GitHub ' +
+  'profile/repositories/events overview, emit one required dynamic.search DataTask with input exactly shaped like ' +
+  '{"query":"sindresorhus","operationTarget":"github.user.dashboard"}; do not emit three repeated tasks. For a ' +
+  'single requested section choose its matching target. Never invent another operationTarget or pass provider slugs, ' +
+  'arguments, operation=execute, or credentials in model-generated input. ' +
+  'GITHUB_LIST_EVENTS_FOR_USER schema-preserving results normalize raw GitHub events into ' +
+  'events[{kind,title,summary,repo{name,url?},occurredAt,details,visibility}], count, and metadata. Authenticated ' +
+  'self-queries may include private events; retain them and use visibility=private. Prefer these readable fields over ' +
+  'raw provider payloads. ' + DYNAMIC_SEARCH_PLANNING_SUFFIX;
+
+export function toolPlanningDescriptionForToolId(
+  toolId: string,
+  allowTrustedOperationTargets: boolean = false
+): string {
   if (toolId === 'dynamic.search') {
-    return DYNAMIC_SEARCH_PLANNING_DESCRIPTION;
+    return allowTrustedOperationTargets ? UI_LAB_TRUSTED_GITHUB_PLANNING_DESCRIPTION :
+      LEGACY_DYNAMIC_SEARCH_PLANNING_DESCRIPTION;
   }
   const definition = toolDefinitionForToolId(toolId);
   if (definition === null) {

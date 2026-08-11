@@ -804,6 +804,7 @@ function publishUiTask(bus: CountingBus, input: AgentMessage, taskId: string): v
     dataTaskIds: [taskId + ':data'],
     skillId: '',
     intent: 'manual UI correlation',
+    originalUserInput: 'manual UI correlation request',
     expectedOutputSchema: 'hotelSearchResults'
   };
   bus.publish({

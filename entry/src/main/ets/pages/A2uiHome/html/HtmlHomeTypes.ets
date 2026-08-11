@@ -26,6 +26,7 @@ export interface HtmlHomeAction {
   variant: string;
   kind: string;
   sourceComponentId?: string;
+  sourceToolId?: string;
   args?: Object;
 }
 

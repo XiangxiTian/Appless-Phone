@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  ActionOffer,
   A2uiAction,
   A2uiRuntimeDataModel,
   A2uiSurfaceStore,
@@ -29,6 +30,9 @@ import {
   ObservationDigest,
   TaskErrorPayload,
   TurnResultPayload,
+  UiRenderProgressSink,
+  UiRenderResult,
+  UiTaskRenderer,
   UiRenderResultPayload,
   UiSurfaceWriteLease,
   UiSurfaceWriter,
@@ -36,6 +40,7 @@ import {
   createSeedA2uiSurface,
   gmailDraftPreviewA2ui,
   gmailThreadResultsA2ui,
+  genericToolResultsA2ui,
   hotelSearchDataResult,
   parseA2uiJsonl,
   parseHotelSearchRequest,
@@ -67,7 +72,12 @@ import {
   registeredPageSourceToolId,
   resolveVirtualRegisteredPageAction
 } from '../main/ets/pages/A2uiHome/agent/RegisteredPageActionRoute';
-import { MonotonicHotelIds } from '../main/ets/pages/A2uiHome/agent/MultiAgentHotelSupport';
+import {
+  HotelRuntimeSurfaceWriter,
+  HotelSurfaceAuthority,
+  HotelVisibility,
+  MonotonicHotelIds
+} from '../main/ets/pages/A2uiHome/agent/MultiAgentHotelSupport';
 import { BimRouteDecision, BimTurnGate } from '../main/ets/pages/A2uiHome/bim/BimRuntime';
 
 const SEARCH_TEXT: string = '帮我找深圳酒店';
@@ -949,6 +959,51 @@ class RecordingWriter implements UiSurfaceWriter {
   }
 }
 
+class ProgressRecordingRenderer implements UiTaskRenderer {
+  resultSinkCount: number = 0;
+  progressWriteCount: number = 0;
+
+  private render(surfaceId: string, title: string): UiRenderResult {
+    const result: DynamicGenericToolResult = {
+      sourceTag: 'test',
+      toolName: 'time',
+      title,
+      status: 'success',
+      summary: title,
+      rows: [],
+      rawPreview: ''
+    };
+    return { jsonl: genericToolResultsA2ui(surfaceId, 'time', [result]) };
+  }
+
+  skeleton(_task: CreateUiTaskPayload, surfaceId: string): Promise<UiRenderResult> {
+    return Promise.resolve(this.render(surfaceId, 'skeleton'));
+  }
+
+  async result(
+    _task: CreateUiTaskPayload,
+    _data: DataResult[],
+    _offers: ActionOffer[],
+    surfaceId: string,
+    progressSink?: UiRenderProgressSink
+  ): Promise<UiRenderResult> {
+    if (progressSink !== undefined) {
+      this.resultSinkCount++;
+      await progressSink(this.render(surfaceId, 'partial'));
+      this.progressWriteCount++;
+    }
+    return this.render(surfaceId, 'final');
+  }
+
+  error(_task: CreateUiTaskPayload, _message: string, surfaceId: string): Promise<UiRenderResult> {
+    return Promise.resolve(this.render(surfaceId, 'error'));
+  }
+
+  actionStatus(_payload: Object, surfaceId: string): Promise<UiRenderResult> {
+    return Promise.resolve(this.render(surfaceId, 'action'));
+  }
+}
+
 class TrackingBus extends LinkedMessageBus {
   readonly messages: AgentMessage[] = [];
 
@@ -1329,8 +1384,68 @@ function useLastRenderedSurfaceAsHost(
   };
 }
 
+class AlwaysActiveSurfaceWriteLease implements UiSurfaceWriteLease {
+  isActive(): boolean {
+    return true;
+  }
+}
+
 export default function multiAgentCanaryRuntimeTest() {
   describe('multiAgentCanaryRuntime', () => {
+    it('keeps UI Lab catalog bindings without widening the default parser profile', 0, async () => {
+      const jsonl = '{"version":"v0.9.1","createSurface":{"surfaceId":"profile-bindings",' +
+        '"root":"root","title":"Bindings","status":"ready"}}\n' +
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"profile-bindings","components":[' +
+        '{"id":"root","component":"SurfaceRoot","child":"content"},' +
+        '{"id":"content","component":"Column","children":["copy","hero","line"]},' +
+        '{"id":"copy","component":"Text","title":{"path":"/copy/title"}},' +
+        '{"id":"hero","component":"HeroBanner","title":{"path":"/hero/title"},' +
+        '"body":{"path":"/hero/body"}},' +
+        '{"id":"line","component":"MultiSeriesLineChart","title":{"path":"/chart/title"},' +
+        '"dataPath":"/chart"}]}}\n';
+      const lease: UiSurfaceWriteLease = new AlwaysActiveSurfaceWriteLease();
+      const uiLabSurfaces: A2uiSurfaceState[] = [];
+      const uiLabWriter = new HotelRuntimeSurfaceWriter(
+        'ui-lab-profile',
+        new RecordingWriter(),
+        (surface: A2uiSurfaceState): boolean => {
+          uiLabSurfaces.push(surface);
+          return true;
+        },
+        new HotelSurfaceAuthority(),
+        new HotelVisibility(),
+        true,
+        undefined,
+        'ui-lab'
+      );
+      await uiLabWriter.write('ui-lab-turn', 'profile-bindings', jsonl, lease);
+      expect(uiLabSurfaces.length).assertEqual(1);
+      const uiLabComponents = uiLabSurfaces[0].components;
+      expect(uiLabComponents[2].catalogFieldsJson?.includes('/copy/title')).assertTrue();
+      expect(uiLabComponents[3].catalogFieldsJson?.includes('/hero/title')).assertTrue();
+      expect(uiLabComponents[3].catalogFieldsJson?.includes('/hero/body')).assertTrue();
+      expect(uiLabComponents[4].catalogFieldsJson?.includes('/chart/title')).assertTrue();
+
+      const legacySurfaces: A2uiSurfaceState[] = [];
+      const legacyWriter = new HotelRuntimeSurfaceWriter(
+        'legacy-profile',
+        new RecordingWriter(),
+        (surface: A2uiSurfaceState): boolean => {
+          legacySurfaces.push(surface);
+          return true;
+        },
+        new HotelSurfaceAuthority(),
+        new HotelVisibility(),
+        true
+      );
+      await legacyWriter.write('legacy-turn', 'profile-bindings', jsonl, lease);
+      expect(legacySurfaces.length).assertEqual(1);
+      const legacyComponents = legacySurfaces[0].components;
+      expect(legacyComponents[2].catalogFieldsJson === undefined).assertTrue();
+      expect(legacyComponents[3].catalogFieldsJson === undefined).assertTrue();
+      expect(legacyComponents[4].catalogFieldsJson === undefined).assertTrue();
+    });
+
     it('keeps the existing runtime behavior when turnGate is undefined', 0, async () => {
       const options = canaryOptions(
         new QueueModel([ANSWER_DECISION]),
@@ -1466,6 +1581,27 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(externalCalls).assertEqual(0);
       expect(model.prompts[0].indexOf('"toolId":"time"')).assertLarger(-1);
       expect(surfaces.length).assertLarger(0);
+      runtime.dispose();
+    });
+
+    it('forwards the UI progress sink through the ordinary mail-detail bridge branch', 0, async () => {
+      const renderer = new ProgressRecordingRenderer();
+      const options = canaryOptions(
+        new QueueModel([TIME_DECISION, TIME_DONE_DECISION]),
+        new RecordingGenericExecutor(),
+        new RecordingOpener(),
+        [],
+        []
+      );
+      options.dataExecutor = undefined;
+      options.uiRenderer = renderer;
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const outcome = await runtime.submit('查一下现在的时间', { text: '' }) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('success');
+      expect(renderer.resultSinkCount).assertEqual(1);
+      expect(renderer.progressWriteCount).assertEqual(1);
       runtime.dispose();
     });
 
@@ -1918,6 +2054,7 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(prompt.indexOf('public X/Twitter posts')).assertLarger(-1);
       expect(prompt.indexOf('mailbox/email/inbox')).assertLarger(-1);
       expect(prompt.indexOf('Composio-backed app/toolkit')).assertLarger(-1);
+      expect(prompt.indexOf('github.user.dashboard')).assertEqual(-1);
       expect(prompt.indexOf('Video selection contract')).assertLarger(-1);
       expect(prompt.indexOf('Explicit Google Maps/Google Places/GMap/谷歌地图 requests use exactly maps.place.search'))
         .assertLarger(-1);
@@ -1940,6 +2077,25 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(catalogEnd - catalogStart).assertLess(64001);
       expect(prompt.length).assertLess(100001);
       expect(model.prompts.length).assertEqual(1);
+      runtime.dispose();
+    });
+
+    it('exposes trusted GitHub operation targets only for an authorized host profile', 0, async () => {
+      const model = new QueueModel([ANSWER_DECISION]);
+      const options = canaryOptions(
+        model,
+        new CanaryHotelExecutor(),
+        new RecordingOpener(),
+        [],
+        []
+      );
+      options.allowTrustedOperationTargets = true;
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      await runtime.submit('为 GitHub 用户 sindresorhus 生成数据看板', { text: '' });
+
+      expect(model.prompts[0].indexOf('github.user.dashboard')).assertLarger(-1);
+      expect(model.prompts[0].indexOf('operationTarget')).assertLarger(-1);
       runtime.dispose();
     });
 

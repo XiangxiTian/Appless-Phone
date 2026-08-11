@@ -36,7 +36,11 @@ import {
   leaderSameRoundDependencyConsumerTaskToolIds,
   leaderTasksHaveSameRoundDependency
 } from './LeaderDependencyAuthority';
-import { CreateUiTaskPayload, UiRenderResultPayload } from '../ui/UiAgentTypes';
+import {
+  CreateUiTaskPayload,
+  UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH,
+  UiRenderResultPayload
+} from '../ui/UiAgentTypes';
 import { CreateDataTaskPayload } from '../data/DataAgentTypes';
 import { ActionPlanRequestPayload, ActionResultPayload } from '../action/ActionAgentTypes';
 import {
@@ -62,6 +66,7 @@ interface LeaderTurnState {
   dataTaskIds: string[];
   expectedOutputSchema: string;
   uiIntent: string;
+  originalUserInput: string;
   pendingActionDecision: LeaderDecision | null;
   observations: ObservationDigest[];
   turnObservations: ObservationDigest[];
@@ -276,6 +281,7 @@ export class LeaderAgent extends MessageDrivenAgent {
       dataTaskIds: [],
       expectedOutputSchema: '',
       uiIntent: '',
+      originalUserInput: this.boundedText(inputText, UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH),
       pendingActionDecision: null,
       observations: input.recentObservations as ObservationDigest[],
       turnObservations: [],
@@ -1457,6 +1463,7 @@ export class LeaderAgent extends MessageDrivenAgent {
       dataTaskIds: [dataTaskId],
       skillId: this.currentSkillId(input),
       intent: task.intent,
+      originalUserInput: this.originalUserInput(input),
       expectedOutputSchema: task.expectedOutputSchema
     };
     const personaId: string = this.currentPersonaId(input);
@@ -1546,6 +1553,7 @@ export class LeaderAgent extends MessageDrivenAgent {
       dataTaskIds: state.dataTaskIds.slice(),
       skillId: state.skillId,
       intent: state.uiIntent,
+      originalUserInput: state.originalUserInput,
       expectedOutputSchema: state.expectedOutputSchema
     };
     if (state.personaId.length > 0) {
@@ -1721,6 +1729,11 @@ export class LeaderAgent extends MessageDrivenAgent {
   private currentPersonaId(input: AgentMessage): string {
     const state: LeaderTurnState | undefined = this.turns.get(this.turnKey(input));
     return state === undefined ? '' : state.personaId;
+  }
+
+  private originalUserInput(input: AgentMessage): string {
+    const state: LeaderTurnState | undefined = this.turns.get(this.turnKey(input));
+    return state === undefined ? '' : state.originalUserInput;
   }
 
   private copyPlanningContext(context: LeaderPlanningContext): LeaderPlanningContext {

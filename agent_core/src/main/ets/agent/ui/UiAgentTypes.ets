@@ -1,12 +1,15 @@
 import { DataResult } from '../message/DataResult';
 import { ActionOffer } from '../action/ActionOfferTypes';
 
+export const UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH: number = 512;
+
 export interface CreateUiTaskPayload {
   taskId: string;
   dataTaskIds: string[];
   personaId?: string;
   skillId: string;
   intent: string;
+  originalUserInput?: string;
   expectedOutputSchema: string;
 }
 
@@ -21,13 +24,16 @@ export interface UiRenderResult {
   jsonl: string;
 }
 
+export type UiRenderProgressSink = (rendered: UiRenderResult) => Promise<void>;
+
 export interface UiTaskRenderer {
   skeleton(task: CreateUiTaskPayload, surfaceId: string): Promise<UiRenderResult>;
   result(
     task: CreateUiTaskPayload,
     data: DataResult[],
     offers: ActionOffer[],
-    surfaceId: string
+    surfaceId: string,
+    progressSink?: UiRenderProgressSink
   ): Promise<UiRenderResult>;
   error(task: CreateUiTaskPayload, message: string, surfaceId: string): Promise<UiRenderResult>;
   actionStatus(payload: Object, surfaceId: string): Promise<UiRenderResult>;
@@ -39,7 +45,8 @@ export interface SingleDataUiTaskRenderer {
     task: CreateUiTaskPayload,
     data: DataResult,
     offers: ActionOffer[],
-    surfaceId: string
+    surfaceId: string,
+    progressSink?: UiRenderProgressSink
   ): Promise<UiRenderResult>;
   error(task: CreateUiTaskPayload, message: string, surfaceId: string): Promise<UiRenderResult>;
   actionStatus(payload: Object, surfaceId: string): Promise<UiRenderResult>;
@@ -60,12 +67,13 @@ export class SingleDataUiTaskRendererAdapter implements UiTaskRenderer {
     task: CreateUiTaskPayload,
     data: DataResult[],
     offers: ActionOffer[],
-    surfaceId: string
+    surfaceId: string,
+    progressSink?: UiRenderProgressSink
   ): Promise<UiRenderResult> {
     if (data.length !== 1) {
       return Promise.reject(new Error('Single-data renderer requires exactly one result'));
     }
-    return this.renderer.result(task, data[0], offers, surfaceId);
+    return this.renderer.result(task, data[0], offers, surfaceId, progressSink);
   }
 
   error(task: CreateUiTaskPayload, message: string, surfaceId: string): Promise<UiRenderResult> {

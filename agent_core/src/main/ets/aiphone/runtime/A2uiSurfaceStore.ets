@@ -43,7 +43,7 @@ import { AggregateSearchResult, emptyAggregateSearchResult } from './AggregateSe
 function cloneComponents(values: A2uiComponent[]): A2uiComponent[] {
   const next: A2uiComponent[] = [];
   values.forEach((component: A2uiComponent) => {
-    next.push({
+    const cloned: A2uiComponent = {
       id: component.id,
       component: component.component,
       child: component.child,
@@ -57,7 +57,11 @@ function cloneComponents(values: A2uiComponent[]): A2uiComponent[] {
       path: component.path,
       dataPath: component.dataPath,
       actions: component.actions === undefined ? [] : component.actions.slice()
-    });
+    };
+    if (component.catalogFieldsJson !== undefined && component.catalogFieldsJson.length > 0) {
+      cloned.catalogFieldsJson = component.catalogFieldsJson;
+    }
+    next.push(cloned);
   });
   return next;
 }
@@ -73,7 +77,7 @@ function componentIndex(components: A2uiComponent[], id: string): number {
 
 function upsertComponents(current: A2uiComponent[], updates: A2uiComponent[]): A2uiComponent[] {
   const next = cloneComponents(current);
-  updates.forEach((component: A2uiComponent) => {
+  cloneComponents(updates).forEach((component: A2uiComponent) => {
     const index = componentIndex(next, component.id);
     if (index >= 0) {
       next[index] = component;

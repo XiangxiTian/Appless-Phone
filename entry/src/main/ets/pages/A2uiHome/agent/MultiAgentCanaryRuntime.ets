@@ -7,6 +7,7 @@ import {
   ActionPlanRequestPayload,
   ActionValidationResult,
   A2uiAction,
+  A2uiParserProfile,
   A2uiRuntimeDataModel,
   A2uiSurfaceStore,
   A2uiSurfaceState,
@@ -36,6 +37,7 @@ import {
   ToolDefinition,
   ToolDefinitionLookup,
   UiLayoutPlanner,
+  UiRenderProgressSink,
   UiRenderResult,
   UiSurfaceWriteLease,
   UiSurfaceWriter,
@@ -75,6 +77,7 @@ import {
 import { mailDetailIdentityDigest, MultiAgentRuntime } from './MultiAgentRuntime';
 import { MultiAgentTurnOutcome } from './MultiAgentRuntimeTypes';
 import { isHtmlHomeActionAllowed } from '../html/HtmlHomeActionPolicy';
+import { HtmlHomeDocument } from '../html/HtmlHomeTypes';
 import {
   authorizeHotelDataTask,
   HotelActionContext,
@@ -188,6 +191,9 @@ export interface MultiAgentCanaryOptions {
   ) => Promise<void>;
   downstreamWriter?: UiSurfaceWriter;
   uiLayoutPlanner?: UiLayoutPlanner;
+  uiRenderer?: UiTaskRenderer;
+  surfaceDocumentProjector?: (surface: A2uiSurfaceState) => HtmlHomeDocument;
+  a2uiParserProfile?: A2uiParserProfile;
   settingsFingerprint?: string;
   submitTimeoutMs?: number;
   actionTimeoutMs?: number;
@@ -200,6 +206,8 @@ export interface MultiAgentCanaryOptions {
     args: Object,
     onPartial?: (result: DataResult) => void
   ) => Promise<DataResult>;
+  /** Host-only planning capability. UI Lab enables trusted operationTarget values; Home keeps this disabled. */
+  allowTrustedOperationTargets?: boolean;
   bus?: LinkedMessageBus;
   conversationId?: string;
 }
@@ -446,11 +454,12 @@ class MailDetailInPlaceBridge implements UiTaskRenderer, UiSurfaceWriter, MailDe
     task: CreateUiTaskPayload,
     data: DataResult[],
     offers: ActionOffer[],
-    surfaceId: string
+    surfaceId: string,
+    progressSink?: UiRenderProgressSink
   ): Promise<UiRenderResult> {
     const state = this.surfaces.get(surfaceId);
     if (state === undefined || state.uiTaskId !== task.taskId) {
-      return this.renderer.result(task, data, offers, surfaceId);
+      return this.renderer.result(task, data, offers, surfaceId, progressSink);
     }
     if (data.length !== 1 || data[0].toolId !== task.intent) {
       state.event = {
@@ -1436,7 +1445,11 @@ function isLuckinOrderToolVisible(toolId: string, prompt: string): boolean {
   return true;
 }
 
-function canaryPlanningContext(previousPersonaId: string, prompt: string = ''): LeaderPlanningContext {
+function canaryPlanningContext(
+  previousPersonaId: string,
+  prompt: string = '',
+  allowTrustedOperationTargets: boolean = false
+): LeaderPlanningContext {
   const tools: LeaderToolMetadata[] = allToolDefinitions()
     .filter((definition: ToolDefinition): boolean =>
       definition.toolId !== 'gmail.message.send' &&
@@ -1459,7 +1472,7 @@ function canaryPlanningContext(previousPersonaId: string, prompt: string = ''): 
         inputSchema: definition.inputSchema,
         outputSchema: definition.outputSchema,
         actions,
-        planningHint: toolPlanningDescriptionForToolId(definition.toolId)
+        planningHint: toolPlanningDescriptionForToolId(definition.toolId, allowTrustedOperationTargets)
       };
     }
   );
@@ -1473,7 +1486,7 @@ function canaryPlanningContext(previousPersonaId: string, prompt: string = ''): 
     inputSchema: 'dynamicToolSearchQuery',
     outputSchema: 'dynamicToolConnect',
     actions: [],
-    planningHint: toolPlanningDescriptionForToolId('dynamic.search')
+    planningHint: toolPlanningDescriptionForToolId('dynamic.search', allowTrustedOperationTargets)
   });
   tools.push({
     toolId: memory.toolId,
@@ -1599,15 +1612,19 @@ export class MultiAgentCanaryRuntime {
       onOwnedSurface,
       this.authority,
       visibility,
-      true
+      true,
+      options.surfaceDocumentProjector,
+      options.a2uiParserProfile
     );
     this.surfaceWriter = writer;
     const structuredRenderer = new StructuredToolUiRenderer(
       options.uiLayoutPlanner === undefined ? null : options.uiLayoutPlanner,
       6000
     );
+    const primaryRenderer: UiTaskRenderer = options.uiRenderer === undefined ?
+      structuredRenderer : options.uiRenderer;
     const mailDetailBridge = new MailDetailInPlaceBridge(
-      structuredRenderer,
+      primaryRenderer,
       writer,
       this.currentHostGeneration,
       options.onMailDetail
@@ -1650,7 +1667,10 @@ export class MultiAgentCanaryRuntime {
       mailDetailBridge
     );
     this.aiphoneExecutor = aiphoneExecutor;
-    const initialContext = canaryPlanningContext(this.lastLeaderPersonaId);
+    const allowTrustedOperationTargets = options.allowTrustedOperationTargets === true;
+    const initialContext = canaryPlanningContext(
+      this.lastLeaderPersonaId, '', allowTrustedOperationTargets
+    );
     const dataTaskInputNormalizer: LeaderDataTaskInputNormalizer = (
       input: InputUserPayload,
       task: LeaderDecisionDataTask,
@@ -1668,7 +1688,7 @@ export class MultiAgentCanaryRuntime {
         leaderPlanner : new BimGatedLeaderPlanner(leaderPlanner, options.turnGate),
       planningContext: initialContext,
       planningContextProvider: (prompt: string): LeaderPlanningContext =>
-        canaryPlanningContext(this.lastLeaderPersonaId, prompt),
+        canaryPlanningContext(this.lastLeaderPersonaId, prompt, allowTrustedOperationTargets),
       currentLocalDateProvider: options.currentLocalDate,
       dataTaskInputNormalizer,
       dataAuthorizer: authorizeCanaryDataTask,
@@ -1848,8 +1868,9 @@ export class MultiAgentCanaryRuntime {
     return this.runAction(route.action, context);
   }
 
-  currentActionContext(): MultiAgentCanaryActionContext | null {
-    const context = this.authority.context();
+  currentActionContext(action?: A2uiAction): MultiAgentCanaryActionContext | null {
+    const context = action !== undefined && action.args !== undefined ?
+      this.authority.contextFor(action.id, action.args) : this.authority.context();
     if (context === null) {
       return null;
     }

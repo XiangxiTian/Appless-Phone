@@ -1,11 +1,16 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   callComposioDynamic,
+  callComposioGithubOperationTargetForTest,
   callComposioFixedSearchAndExecuteForTest,
   callComposioSearchAndExecute,
   composioDynamicMissingConfigResult,
   composioArgumentsForTool,
   composioDynamicResultFromObservation,
+  composioProviderDataFromObservation,
+  githubUserEventsNormalizedOutputSchema,
+  limitComposioObservation,
+  preservedComposioExecutionFromResponse,
   composioPreferredToolScore,
   composioExactToolSlugForFixedTool,
   composioPhoneNumberIdsFromObservation,
@@ -78,6 +83,7 @@ class RecordingComposioSearchExecuteClient implements ComposioSearchExecuteClien
   executionObservation: string;
   searchedUseCases: string[] = [];
   executedSlugs: string[] = [];
+  executedArgs: Object[] = [];
 
   constructor(searchObservation: string, executionObservation: string) {
     this.searchObservation = searchObservation;
@@ -89,9 +95,42 @@ class RecordingComposioSearchExecuteClient implements ComposioSearchExecuteClien
     return this.searchObservation;
   }
 
-  async execute(toolSlug: string, _args: Object): Promise<string> {
+  async execute(toolSlug: string, args: Object): Promise<string> {
     this.executedSlugs.push(toolSlug);
+    this.executedArgs.push(args);
     return this.executionObservation;
+  }
+}
+
+class QueuedComposioSearchExecuteClient implements ComposioSearchExecuteClient {
+  searchObservations: string[];
+  executionObservations: string[];
+  searchIndex: number = 0;
+  executionIndex: number = 0;
+  searchedUseCases: string[] = [];
+  executedSlugs: string[] = [];
+  executedArgs: Object[] = [];
+
+  constructor(searchObservations: string[], executionObservations: string[]) {
+    this.searchObservations = searchObservations;
+    this.executionObservations = executionObservations;
+  }
+
+  async search(useCase: string): Promise<string> {
+    this.searchedUseCases.push(useCase);
+    const observation = this.searchIndex < this.searchObservations.length ?
+      this.searchObservations[this.searchIndex] : '';
+    this.searchIndex++;
+    return observation;
+  }
+
+  async execute(toolSlug: string, args: Object): Promise<string> {
+    this.executedSlugs.push(toolSlug);
+    this.executedArgs.push(args);
+    const observation = this.executionIndex < this.executionObservations.length ?
+      this.executionObservations[this.executionIndex] : '';
+    this.executionIndex++;
+    return observation;
   }
 }
 
@@ -112,6 +151,336 @@ function successfulExecutionObservation(): string {
 
 export default function composioDynamicBackendTest() {
   describe('composioDynamicBackend', () => {
+    it('aggregates the trusted GitHub dashboard from three exact read-only provider tools', 0, async () => {
+      const schema = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string"},"page":{"type":"integer"},"per_page":{"type":"integer"}}}';
+      const client = new QueuedComposioSearchExecuteClient(
+        [
+          searchObservationForTool('GITHUB_GET_A_USER', schema),
+          searchObservationForTool('GITHUB_LIST_REPOSITORIES_FOR_A_USER', schema),
+          searchObservationForTool('GITHUB_LIST_EVENTS_FOR_USER', schema)
+        ],
+        [
+          '{"data":{"login":"sindresorhus","name":"Sindre","bio":"Open source",' +
+            '"avatar_url":"https://avatars.example/sindre","html_url":"https://github.com/sindresorhus",' +
+            '"followers":10,"following":2,"public_repos":3}}',
+          '{"data":{"repositories":[' +
+            '{"name":"alpha","full_name":"sindresorhus/alpha","html_url":"https://github.com/sindresorhus/alpha",' +
+            '"description":"Alpha repository","language":"TypeScript","stargazers_count":7,"forks_count":2,"updated_at":"2026-07-01T00:00:00Z",' +
+            '"pushed_at":"2026-07-02T00:00:00Z"},' +
+            '{"name":"beta","full_name":"sindresorhus/beta","html_url":"https://github.com/sindresorhus/beta",' +
+            '"description":null,"language":"TypeScript","stargazers_count":5,"forks_count":1,"updated_at":"2026-06-01T00:00:00Z"},' +
+            '{"name":"gamma","full_name":"sindresorhus/gamma","html_url":"https://github.com/sindresorhus/gamma",' +
+            '"language":"Python","stargazers_count":3,"forks_count":0,"updated_at":"2026-05-01T00:00:00Z"}' +
+            ']}}',
+          '{"data":{"events":[{"type":"PushEvent","created_at":"2026-08-01T00:00:00Z",' +
+            '"repo":{"name":"sindresorhus/alpha"},"payload":{"ref":"refs/heads/main"},"public":true}]}}'
+        ]
+      );
+
+      const result = await callComposioGithubOperationTargetForTest(
+        client, 'github.user.dashboard', 'sindresorhus'
+      );
+      const dashboard = result.providerData as Record<string, Object | string | number | boolean>;
+      const metrics = dashboard['repositoryMetrics'] as Record<string, number>;
+      const repositories = dashboard['repositories'] as Array<Record<string, Object | string | number | boolean>>;
+      const languages = dashboard['languages'] as Object[];
+      const activity = dashboard['recentActivity'] as Array<Record<string, string>>;
+
+      expect(result.status).assertEqual('success');
+      expect(result.toolName).assertEqual('github.user.dashboard');
+      expect(result.registration?.qualifiedName).assertEqual('github.user.dashboard');
+      expect(client.executedSlugs.join(',')).assertEqual(
+        'GITHUB_GET_A_USER,GITHUB_LIST_REPOSITORIES_FOR_A_USER,GITHUB_LIST_EVENTS_FOR_USER'
+      );
+      expect(client.executedArgs.length).assertEqual(3);
+      expect(JSON.stringify(client.executedArgs[0])).assertContain('"username":"sindresorhus"');
+      expect(dashboard['partial']).assertFalse();
+      expect(metrics['returnedRepositoryCount']).assertEqual(3);
+      expect(metrics['returnedStars']).assertEqual(15);
+      expect(metrics['returnedForks']).assertEqual(3);
+      expect(repositories[0]['description']).assertEqual('Alpha repository');
+      expect(Object.keys(repositories[1]).indexOf('description')).assertLarger(-1);
+      expect(repositories[1]['description']).assertEqual('');
+      expect(languages.length).assertEqual(2);
+      const primaryLanguage = languages[0] as Record<string, Object | string | number>;
+      const secondaryLanguage = languages[1] as Record<string, Object | string | number>;
+      expect(primaryLanguage['language']).assertEqual('TypeScript');
+      expect(primaryLanguage['repositoryCount']).assertEqual(2);
+      expect(primaryLanguage['ratio']).assertEqual(2 / 3);
+      expect(secondaryLanguage['language']).assertEqual('Python');
+      expect(secondaryLanguage['repositoryCount']).assertEqual(1);
+      expect(secondaryLanguage['ratio']).assertEqual(1 / 3);
+      const dashboardOutputSchema = JSON.stringify(result.registration?.outputSchema);
+      expect(dashboardOutputSchema).assertContain('"ratio":{"type":"number"}');
+      expect(dashboardOutputSchema).assertContain('"required":["time","summary"]');
+      expect(dashboardOutputSchema).assertContain('"time":{"type":"string"},"summary":{"type":"string"}');
+      expect(dashboardOutputSchema).assertContain('"recentActivity":{"type":"array"');
+      expect(dashboardOutputSchema.indexOf('"activityMetadata"')).assertEqual(-1);
+      expect(activity.length).assertEqual(1);
+      expect(activity[0]['summary']).assertEqual('向 sindresorhus/alpha 的 main 分支执行了推送');
+      expect(activity[0]['summary'].indexOf('0 个提交')).assertEqual(-1);
+      expect(activity[0]['time']).assertEqual('2026-08-01T00:00:00Z');
+      expect(dashboard['activityMetadata'] === undefined).assertTrue();
+      expect(JSON.stringify(activity[0]).indexOf('title')).assertEqual(-1);
+      expect(JSON.stringify(activity[0]).indexOf('kind')).assertEqual(-1);
+      expect(JSON.stringify(activity[0]).indexOf('repo')).assertEqual(-1);
+      expect(JSON.stringify(activity[0]).indexOf('details')).assertEqual(-1);
+      expect(JSON.stringify(activity[0]).indexOf('visibility')).assertEqual(-1);
+      expect(JSON.stringify(dashboard).indexOf('contributions')).assertEqual(-1);
+    });
+
+    it('distinguishes unknown and explicit zero GitHub push commit counts', 0, () => {
+      const observation = '{"data":{"events":[' +
+        '{"type":"PushEvent","created_at":"2026-08-04T06:00:00Z",' +
+        '"repo":{"name":"owner/unknown"},"payload":{"ref":"refs/heads/main"}},' +
+        '{"type":"PushEvent","created_at":"2026-08-04T07:00:00Z",' +
+        '"repo":{"name":"owner/zero"},"payload":{"ref":"refs/heads/release","distinct_size":0}}]}}';
+      const preserved = composioDynamicResultFromObservation(
+        'execute', observation, 'GITHUB_LIST_EVENTS_FOR_USER', 'GitHub user activity', true
+      );
+      const provider = preserved.providerData as Record<string, Object>;
+      const events = provider['events'] as Array<Record<string, Object | string>>;
+      const unknown = events[0];
+      const explicitZero = events[1];
+      const unknownDetails = unknown['details'] as Record<string, Object | string | number>;
+      const zeroDetails = explicitZero['details'] as Record<string, Object | string | number>;
+
+      expect(unknown['summary']).assertEqual('向 owner/unknown 的 main 分支执行了推送');
+      expect(unknownDetails['commitCount'] === undefined).assertTrue();
+      expect((unknown['summary'] as string).indexOf('0 个提交')).assertEqual(-1);
+      expect(explicitZero['summary']).assertEqual(
+        '向 owner/zero 的 release 分支执行了推送（未包含新提交）'
+      );
+      expect(zeroDetails['commitCount']).assertEqual(0);
+    });
+
+    it('fails closed before execute for absent malformed oversized or expanded GitHub schemas', 0, async () => {
+      const validPrefix = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string","description":"';
+      const invalidSchemas: string[] = [
+        '{}',
+        '{not-json',
+        validPrefix + 'x'.repeat(3100) + '"}}',
+        '{"type":"object","required":["username","installation_id"],"properties":{' +
+          '"username":{"type":"string"},"installation_id":{"type":"string"}}}'
+      ];
+      for (let index = 0; index < invalidSchemas.length; index++) {
+        const client = new RecordingComposioSearchExecuteClient(
+          searchObservationForTool('GITHUB_GET_A_USER', invalidSchemas[index]),
+          '{"data":{"login":"must-not-execute"}}'
+        );
+        const result = await callComposioGithubOperationTargetForTest(
+          client, 'github.profile', 'sindresorhus'
+        );
+        expect(result.status).assertEqual('error');
+        expect(client.executedSlugs.length).assertEqual(0);
+      }
+    });
+
+    it('reports partial dashboard provenance and fails only when every section fails', 0, async () => {
+      const schema = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string"}}}';
+      const partialClient = new QueuedComposioSearchExecuteClient(
+        [
+          searchObservationForTool('GITHUB_GET_A_USER', schema),
+          searchObservationForTool('GITHUB_LIST_REPOSITORIES_FOR_A_USER', schema),
+          searchObservationForTool('GITHUB_LIST_EVENTS_FOR_USER', '{}')
+        ],
+        [
+          '{"data":{"login":"sindresorhus","followers":10,"deep":' +
+            '{"next":'.repeat(20) + '{"value":1}' + '}'.repeat(20) + '}}',
+          '{"error":{"message":"repositories unavailable"}}'
+        ]
+      );
+      const partial = await callComposioGithubOperationTargetForTest(
+        partialClient, 'github.user.dashboard', 'sindresorhus'
+      );
+      const partialData = partial.providerData as Record<string, Object | string | number | boolean>;
+      const partialMeta = partial.providerDataMeta as Record<string, Object | string | number | boolean>;
+      expect(partial.status).assertEqual('partial');
+      expect(partialData['partial']).assertTrue();
+      expect(partialMeta['truncated']).assertTrue();
+      expect(JSON.stringify(partialData['sections'])).assertContain('"status":"error"');
+      expect(partialData['profile'] === undefined).assertFalse();
+      expect(partialClient.executedSlugs.length).assertEqual(2);
+
+      const missing = '{"source":"Composio","authorizedToolkits":["github"],"tools":[]}';
+      const failedClient = new QueuedComposioSearchExecuteClient([missing, missing, missing], []);
+      const failed = await callComposioGithubOperationTargetForTest(
+        failedClient, 'github.user.dashboard', 'sindresorhus'
+      );
+      expect(failed.status).assertEqual('error');
+      expect((failed.providerData as Record<string, boolean>)['partial']).assertTrue();
+      expect(failedClient.executedSlugs.length).assertEqual(0);
+    });
+
+    it('normalizes single target identity and rejects unknown targets or invalid usernames without search', 0, async () => {
+      const schema = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string"}}}';
+      const profileClient = new RecordingComposioSearchExecuteClient(
+        searchObservationForTool('github_get_a_user', schema),
+        '{"data":{"login":"sindresorhus","public_repos":3}}'
+      );
+      const profile = await callComposioGithubOperationTargetForTest(
+        profileClient, 'github.profile', 'sindresorhus'
+      );
+      expect(profile.status).assertEqual('success');
+      expect(profile.toolName).assertEqual('GITHUB_GET_A_USER');
+      expect(profile.registration?.qualifiedName).assertEqual('GITHUB_GET_A_USER');
+      expect(profileClient.executedSlugs[0]).assertEqual('GITHUB_GET_A_USER');
+
+      const rejectedClient = new QueuedComposioSearchExecuteClient([], []);
+      const unknown = await callComposioGithubOperationTargetForTest(
+        rejectedClient, 'github.delete', 'sindresorhus'
+      );
+      const invalidUser = await callComposioGithubOperationTargetForTest(
+        rejectedClient, 'github.profile', 'bad_user'
+      );
+      expect(unknown.status).assertEqual('unsafe_action_blocked');
+      expect(invalidUser.status).assertEqual('error');
+      expect(rejectedClient.searchedUseCases.length).assertEqual(0);
+      expect(rejectedClient.executedSlugs.length).assertEqual(0);
+    });
+
+    it('passes structured dynamic query through a full GitHub user-events discovery and execute', 0, async () => {
+      const slug = 'GITHUB_LIST_EVENTS_FOR_USER';
+      const schema = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string"},"page":{"type":"integer"},"per_page":{"type":"integer"}}}';
+      const client = new RecordingComposioSearchExecuteClient(
+        searchObservationForTool(slug, schema),
+        successfulExecutionObservation()
+      );
+      await callComposioSearchAndExecute(
+        client,
+        '请汇总这个 GitHub 账号的公开资料、仓库和最近动态',
+        looseObject('{"query":"sindresorhus","platforms":["github"]}')
+      );
+      const args = client.executedArgs[0] as Record<string, Object | string | number | boolean | null | undefined>;
+      expect(client.executedSlugs[0]).assertEqual(slug);
+      expect(args['username']).assertEqual('sindresorhus');
+      expect(args['page']).assertEqual(1);
+      expect(args['per_page']).assertEqual(10);
+    });
+
+    it('maps structured query only for the GitHub user-read allowlist', 0, () => {
+      const slugs: string[] = [
+        'GITHUB_LIST_EVENTS_FOR_USER',
+        'GITHUB_GET_A_USER',
+        'GITHUB_LIST_REPOSITORIES_FOR_A_USER'
+      ];
+      const schema = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string"},"page":{"type":"integer"},"per_page":{"type":"integer"}}}';
+      for (let index = 0; index < slugs.length; index++) {
+        const tool = composioTool('{"toolSlug":' + JSON.stringify(slugs[index]) + ',"inputSchema":' +
+          JSON.stringify(schema) + '}');
+        const args = composioArgumentsForTool(
+          tool,
+          '请汇总这个 GitHub 账号的公开资料、仓库和最近动态',
+          '',
+          null,
+          looseObject('{"query":"sindresorhus","platforms":["github"]}')
+        ) as Record<string, Object | string | number | boolean | null | undefined>;
+        expect(args['username']).assertEqual('sindresorhus');
+        expect(args['page']).assertEqual(1);
+        expect(args['per_page']).assertEqual(10);
+      }
+    });
+
+    it('extracts only an explicit GitHub user login when structured query is absent', 0, () => {
+      const schema = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string"},"page":{"type":"integer"},"per_page":{"type":"integer"}}}';
+      const tool = composioTool('{"toolSlug":"GITHUB_LIST_EVENTS_FOR_USER","inputSchema":' +
+        JSON.stringify(schema) + '}');
+      const explicit = composioArgumentsForTool(
+        tool,
+        '请查看 GitHub 用户 sindresorhus 的最近公开活动',
+        '',
+        null,
+        looseObject('{"platforms":["github"]}')
+      ) as Record<string, Object | string | number | boolean | null | undefined>;
+      const ambiguous = composioArgumentsForTool(
+        tool,
+        '请在 GitHub 上找一位活跃开发者并查看最近公开活动',
+        '',
+        null,
+        looseObject('{"platforms":["github"]}')
+      ) as Record<string, Object | string | number | boolean | null | undefined>;
+
+      expect(explicit['username']).assertEqual('sindresorhus');
+      expect(ambiguous['username'] === undefined).assertTrue();
+      expect(JSON.stringify(ambiguous).indexOf('请在 GitHub')).assertEqual(-1);
+    });
+
+    it('validates the complete explicit GitHub login token without prefix truncation', 0, () => {
+      const schema = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string"}}}';
+      const tool = composioTool('{"toolSlug":"GITHUB_GET_A_USER","inputSchema":' +
+        JSON.stringify(schema) + '}');
+      const invalid: string[] = [
+        'foo_bar',
+        'a--b',
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        '-leading',
+        'trailing-'
+      ];
+      for (let index = 0; index < invalid.length; index++) {
+        const args = composioArgumentsForTool(
+          tool,
+          '请查看 GitHub 用户 ' + invalid[index] + ' 的公开资料',
+          '',
+          null,
+          looseObject('{"platforms":["github"]}')
+        ) as Record<string, Object | string | number | boolean | null | undefined>;
+        expect(args['username'] === undefined).assertTrue();
+      }
+      const valid = composioArgumentsForTool(
+        tool,
+        '请查看 GitHub User foo-bar 的公开资料',
+        '',
+        null,
+        looseObject('{"platforms":["github"]}')
+      ) as Record<string, Object | string | number | boolean | null | undefined>;
+      expect(valid['username']).assertEqual('foo-bar');
+    });
+
+    it('fails closed for a sentence-shaped dynamic query and omits undeclared pagination', 0, () => {
+      const usernameOnlySchema = '{"type":"object","required":["username"],"properties":{' +
+        '"username":{"type":"string"}}}';
+      const usernameOnlyTool = composioTool('{"toolSlug":"GITHUB_LIST_EVENTS_FOR_USER","inputSchema":' +
+        JSON.stringify(usernameOnlySchema) + '}');
+      const usernameOnly = composioArgumentsForTool(
+        usernameOnlyTool,
+        '请汇总这个 GitHub 账号的公开资料、仓库和最近动态',
+        '',
+        null,
+        looseObject('{"query":"sindresorhus","platforms":["github"]}')
+      ) as Record<string, Object | string | number | boolean | null | undefined>;
+      const noSchemaTool = composioTool('{"toolSlug":"GITHUB_LIST_REPOSITORIES_FOR_A_USER","inputSchema":"{}"}');
+      const noSchema = composioArgumentsForTool(
+        noSchemaTool,
+        '请汇总这个 GitHub 账号的公开资料、仓库和最近动态',
+        '',
+        null,
+        looseObject('{"query":"sindresorhus","platforms":["github"]}')
+      ) as Record<string, Object | string | number | boolean | null | undefined>;
+      const sentenceQuery = composioArgumentsForTool(
+        usernameOnlyTool,
+        '请汇总这个 GitHub 账号的公开资料、仓库和最近动态',
+        '',
+        null,
+        looseObject('{"query":"请查看 sindresorhus 的 GitHub 活动","platforms":["github"]}')
+      ) as Record<string, Object | string | number | boolean | null | undefined>;
+
+      expect(usernameOnly['username']).assertEqual('sindresorhus');
+      expect(usernameOnly['page'] === undefined).assertTrue();
+      expect(usernameOnly['per_page'] === undefined).assertTrue();
+      expect(noSchema['username']).assertEqual('sindresorhus');
+      expect(noSchema['page'] === undefined).assertTrue();
+      expect(noSchema['per_page'] === undefined).assertTrue();
+      expect(sentenceQuery['username'] === undefined).assertTrue();
+    });
+
     it('pins restored social community reads to exact provider slugs', 0, () => {
       expect(composioExactToolSlugForFixedTool('social.x.community.search'))
         .assertEqual('TWITTER_RECENT_SEARCH');
@@ -681,6 +1050,7 @@ export default function composioDynamicBackendTest() {
       const preview = JSON.parse(result.rawPreview) as Record<string, Object[]>;
 
       expect(result.status).assertEqual('success');
+      expect(result.providerData === undefined).assertTrue();
       expect(preview.messages.length).assertEqual(1);
       expect(JSON.stringify(preview).indexOf('[ECCV 2026]')).assertLarger(-1);
       expect(result.rawPreview.length).assertLess(16000);
@@ -885,6 +1255,272 @@ export default function composioDynamicBackendTest() {
       expect(result.title).assertEqual('Composio GitHub 结果');
       expect(result.summary.indexOf('返回 1 条')).assertLarger(-1);
       expect(JSON.stringify(result.rows).indexOf('Add Composio dynamic backend')).assertLarger(-1);
+    });
+
+    it('normalizes GitHub push star release issue comment and unknown events only for UI Lab', 0, () => {
+      const observation = '{"data":{"events":[' +
+        '{"type":"PushEvent","public":false,"created_at":"2026-08-04T00:58:39Z",' +
+        '"repo":{"id":7,"name":"xojs/eslint-config-xo"},' +
+        '"actor":{"id":8,"login":"sindresorhus","avatar_url":"https://avatar"},' +
+        '"payload":{"ref":"refs/heads/main","distinct_size":2,"commits":[' +
+        '{"sha":"abc123","message":"fix parser"},{"sha":"def456","message":"add tests"}]}}' +
+        ',{"type":"WatchEvent","public":true,"created_at":"2026-08-04T01:00:00Z",' +
+        '"repo":{"name":"thesysdev/openui"},"payload":{"action":"started"}}' +
+        ',{"type":"ReleaseEvent","created_at":"2026-08-04T02:00:00Z",' +
+        '"repo":{"name":"xojs/eslint-config-xo"},"payload":{"action":"published",' +
+        '"release":{"tag_name":"v1.0.0","name":"First release","html_url":"https://github.com/x/r/1"}}}' +
+        ',{"type":"IssuesEvent","created_at":"2026-08-04T03:00:00Z",' +
+        '"repo":{"name":"owner/issues"},"payload":{"action":"closed",' +
+        '"issue":{"number":12,"title":"Bug","state":"closed","html_url":"https://github.com/i/12"}}}' +
+        ',{"type":"IssueCommentEvent","created_at":"2026-08-04T04:00:00Z",' +
+        '"repo":{"name":"owner/comments"},"payload":{"action":"created",' +
+        '"issue":{"number":13,"title":"Question"},"comment":{"body":"large raw body","html_url":"https://github.com/c/13"}}}' +
+        ',{"type":"MysteryEvent","created_at":"2026-08-04T05:00:00Z",' +
+        '"repo":{"name":"owner/mystery"},"payload":{"action":"moved","secret":"do-not-show"}}]}}';
+      const legacy = composioDynamicResultFromObservation(
+        'execute', observation, 'GITHUB_LIST_EVENTS_FOR_USER', 'GitHub user activity'
+      );
+      const preserved = composioDynamicResultFromObservation(
+        'execute', observation, 'GITHUB_LIST_EVENTS_FOR_USER', 'GitHub user activity', true
+      );
+      const provider = preserved.providerData as Record<string, Object>;
+      const events = provider['events'] as Object[];
+      const push = events[0] as Record<string, Object | string>;
+      const pushDetails = push['details'] as Record<string, Object | string | number>;
+      const star = events[1] as Record<string, Object | string>;
+      const release = events[2] as Record<string, Object | string>;
+      const issue = events[3] as Record<string, Object | string>;
+      const comment = events[4] as Record<string, Object | string>;
+      const fallback = events[5] as Record<string, Object | string>;
+      const metadata = provider['metadata'] as Record<string, Object | string | boolean>;
+
+      expect(legacy.providerData === undefined).assertTrue();
+      expect(preserved.providerData === undefined).assertFalse();
+      expect(provider['count'] as number).assertEqual(6);
+      expect(metadata['schemaVersion']).assertEqual('github-user-events.v1');
+      expect(push['kind']).assertEqual('push');
+      expect(push['visibility']).assertEqual('private');
+      expect(push['title']).assertEqual('更新了 xojs/eslint-config-xo');
+      expect(push['summary']).assertContain('main 分支推送了 2 个提交');
+      expect(pushDetails['commitCount']).assertEqual(2);
+      expect(star['kind']).assertEqual('star');
+      expect(star['visibility']).assertEqual('public');
+      expect(star['summary']).assertContain('点了 Star');
+      expect(release['kind']).assertEqual('release');
+      expect(release['visibility']).assertEqual('unknown');
+      expect(release['title']).assertContain('v1.0.0');
+      expect(issue['kind']).assertEqual('issue');
+      expect(issue['title']).assertContain('关闭了');
+      expect(comment['kind']).assertEqual('issue_comment');
+      expect(comment['title']).assertContain('Issue #13');
+      expect(fallback['kind']).assertEqual('other');
+      expect(fallback['summary']).assertContain('MysteryEvent');
+      expect(JSON.stringify(preserved.providerData).indexOf('结果 1')).assertEqual(-1);
+      expect(JSON.stringify(preserved.providerData).indexOf('sindresorhus')).assertEqual(-1);
+      expect(JSON.stringify(preserved.providerData).indexOf('abc123')).assertEqual(-1);
+      expect(JSON.stringify(preserved.providerData).indexOf('large raw body')).assertEqual(-1);
+      expect(JSON.stringify(preserved.providerData).indexOf('do-not-show')).assertEqual(-1);
+      expect(JSON.stringify(legacy.rows).indexOf('结果 1')).assertLarger(-1);
+    });
+
+    it('distinguishes pull request issue comments and maps secondary GitHub event families', 0, () => {
+      const observation = '{"data":{"events":[' +
+        '{"type":"IssueCommentEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"action":"edited","issue":{"number":8,"pull_request":{"url":"api"}},' +
+        '"comment":{"html_url":"comment"}}}' +
+        ',{"type":"PullRequestReviewEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"action":"submitted","pull_request":{"number":9,"title":"PR","html_url":"pr"},' +
+        '"review":{"state":"approved","html_url":"review"}}}' +
+        ',{"type":"PullRequestReviewCommentEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"action":"deleted","pull_request":{"number":9},' +
+        '"comment":{"html_url":"review-comment"}}}' +
+        ',{"type":"CommitCommentEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"comment":{"commit_id":"secret-sha","html_url":"commit-comment","body":"raw body"}}}' +
+        ',{"type":"DeleteEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"ref_type":"branch","ref":"old"}}' +
+        ',{"type":"DiscussionEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"action":"created","discussion":{"number":2,"title":"Ideas","html_url":"discussion"}}}' +
+        ',{"type":"GollumEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"pages":[{"title":"Home","sha":"wiki-sha"}]}}' +
+        ',{"type":"MemberEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"action":"added","member":{"login":"alice","avatar_url":"avatar"}}}' +
+        ',{"type":"PublicEvent","repo":{"name":"o/r"},"created_at":"2026-08-04","payload":{}}' +
+        ',{"type":"WatchEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"action":"stopped"}}' +
+        ',{"type":"PullRequestEvent","repo":{"name":"o/r"},"created_at":"2026-08-04",' +
+        '"payload":{"action":"closed","number":10,"pull_request":{"number":10,"merged":true}}}]}}';
+      const provider = composioProviderDataFromObservation(
+        observation, 'GITHUB_LIST_EVENTS_FOR_USER'
+      ) as Record<string, Object>;
+      const events = provider['events'] as Array<Record<string, Object | string>>;
+      const encoded = JSON.stringify(provider);
+
+      expect(events[0]['kind']).assertEqual('pull_request_comment');
+      expect(events[1]['kind']).assertEqual('pull_request_review');
+      expect(events[2]['kind']).assertEqual('pull_request_review_comment');
+      expect(events[3]['kind']).assertEqual('commit_comment');
+      expect(events[4]['kind']).assertEqual('delete');
+      expect(events[5]['kind']).assertEqual('discussion');
+      expect(events[6]['kind']).assertEqual('wiki');
+      expect(events[7]['kind']).assertEqual('member');
+      expect(events[8]['kind']).assertEqual('public');
+      expect(events[0]['title']).assertContain('编辑了评论');
+      expect(events[2]['title']).assertContain('删除了评论');
+      expect(events[9]['kind']).assertEqual('other');
+      expect(events[9]['summary']).assertContain('WatchEvent');
+      expect(events[10]['kind']).assertEqual('pull_request');
+      expect(events[10]['title']).assertContain('合并了');
+      expect((events[10]['title'] as string).indexOf('关闭了')).assertEqual(-1);
+      expect(encoded.indexOf('secret-sha')).assertEqual(-1);
+      expect(encoded.indexOf('raw body')).assertEqual(-1);
+      expect(encoded.indexOf('wiki-sha')).assertEqual(-1);
+      expect(encoded.indexOf('avatar')).assertEqual(-1);
+    });
+
+    it('publishes the normalized GitHub events output contract and accepts a direct event array', 0, () => {
+      const schema = githubUserEventsNormalizedOutputSchema();
+      const normalized = composioProviderDataFromObservation(
+        '{"data":[{"type":"WatchEvent","repo":{"name":"owner/repo"},' +
+        '"created_at":"2026-08-05T00:00:00Z","payload":{"action":"started"}}]}',
+        'GITHUB_LIST_EVENTS_FOR_USER'
+      ) as Record<string, Object | number>;
+      const events = normalized['events'] as Array<Record<string, Object | string>>;
+
+      expect(JSON.stringify(schema)).assertContain('WatchEvent=star');
+      expect(JSON.stringify(schema)).assertContain('not an all-time total');
+      expect(JSON.stringify(schema)).assertContain('visibility');
+      expect(normalized['count'] as number).assertEqual(1);
+      expect(events[0]['kind']).assertEqual('star');
+      expect(events[0]['title']).assertContain('owner/repo');
+    });
+
+    it('keeps the provider output schema unchanged on the legacy dynamic execution path', 0, async () => {
+      const rawOutputSchema = '{"type":"object","properties":{"events":{' +
+        '"type":"array","description":"raw-provider-schema"}}}';
+      const client = new RecordingComposioSearchExecuteClient(
+        searchObservationForTool('GITHUB_LIST_EVENTS_FOR_USER', '{}', rawOutputSchema),
+        '{"data":{"events":[{"type":"PushEvent","public":false,"repo":{"name":"private/repo"}}]}}'
+      );
+      const result = await callComposioSearchAndExecute(
+        client, 'GitHub user events', looseObject('{"query":"sindresorhus"}')
+      );
+      const registration = result.registration as DynamicRegistrationMetadata;
+      const encoded = JSON.stringify(registration.outputSchema);
+
+      expect(encoded).assertContain('raw-provider-schema');
+      expect(encoded.indexOf('github-user-events.v1')).assertEqual(-1);
+      expect(result.providerData === undefined).assertTrue();
+    });
+
+    it('preserves common provider arrays and strings while redacting binary blobs', 0, () => {
+      const entries: Object[] = [];
+      entries.push(JSON.parse('{"name":"first","description":' + JSON.stringify('ordinary description '.repeat(200)) +
+        ',"blob":' + JSON.stringify('A'.repeat(4000)) + '}') as Object);
+      for (let index = 1; index < 140; index++) {
+        entries.push(JSON.parse('{"name":"item-' + index.toString() + '","value":' + index.toString() + '}') as Object);
+      }
+      const observation = '{"data":{"response_data":{"data":{"events":' +
+        JSON.stringify(entries) + '},"logs":[{"blob":' + JSON.stringify('B'.repeat(4000)) + '}]}},' +
+        '"error":null}';
+      const preserved = composioDynamicResultFromObservation(
+        'execute', observation, 'GITHUB_LIST_REPOSITORIES_FOR_A_USER', 'GitHub repositories', true
+      );
+      const provider = preserved.providerData as Record<string, Object>;
+      const meta = preserved.providerDataMeta as Record<string, Object | string | number | boolean>;
+      const events = provider['events'] as Object[];
+      const first = events[0] as Record<string, Object | string>;
+
+      expect(events.length).assertEqual(140);
+      expect(meta['truncated']).assertFalse();
+      expect((first['description'] as string).length).assertEqual(4200);
+      expect(first['blob']).assertEqual('[omitted binary data]');
+      expect(JSON.stringify(provider).indexOf('logs')).assertEqual(-1);
+      expect(JSON.stringify(provider).length).assertLess(64001);
+    });
+
+    it('marks providerData metadata when a hard structural limit truncates content', 0, () => {
+      const items: Object[] = [];
+      for (let index = 0; index < 1100; index++) {
+        items.push(JSON.parse('{"name":"item-' + index.toString() + '"}') as Object);
+      }
+      const observation = '{"data":{"items":' + JSON.stringify(items) + '}}';
+      const preserved = composioDynamicResultFromObservation(
+        'execute', observation, 'GITHUB_GET_A_USER', 'GitHub profile', true
+      );
+      const meta = preserved.providerDataMeta as Record<string, Object | string | number | boolean>;
+      const provider = preserved.providerData as Record<string, Object>;
+      const arrays = meta['arrays'] as Object[];
+      const firstArray = arrays[0] as Record<string, Object | string | number>;
+
+      expect(meta['truncated']).assertTrue();
+      expect(meta['reason']).assertEqual('provider_data_array_limit');
+      expect((provider['items'] as Object[]).length).assertEqual(1000);
+      expect(firstArray['originalCount']).assertEqual(1100);
+      expect(firstArray['retainedCount']).assertEqual(1000);
+    });
+
+    it('keeps structured UI Lab data from a response larger than the legacy 200K observation limit', 0, () => {
+      const raw = '{"data":{"events":[{"type":"PushEvent","repo":{"name":"openui"},' +
+        '"actor":{"login":"developer"}}],"binary":' + JSON.stringify('A'.repeat(210000)) + '},' +
+        '"error":null}';
+      const legacy = limitComposioObservation(raw);
+      const legacyEnvelope = JSON.parse(legacy) as Record<string, Object | string | boolean>;
+      const preserved = preservedComposioExecutionFromResponse(raw);
+      const provider = preserved.providerData as Record<string, Object>;
+      const events = provider['events'] as Object[];
+
+      expect(raw.length).assertLarger(200000);
+      expect(legacyEnvelope['truncated']).assertTrue();
+      expect(preserved.observation).assertEqual(legacy);
+      expect(events.length).assertEqual(1);
+      expect(JSON.stringify(events[0])).assertContain('PushEvent');
+      expect(JSON.stringify(provider).indexOf('AAAAAA')).assertEqual(-1);
+      expect(preserved.providerDataMeta.truncated).assertFalse();
+      expect(preserved.providerDataMeta.redactedBinaryFields).assertEqual(1);
+    });
+
+    it('recursively removes normalized credential keys while preserving ordinary business content', 0, () => {
+      const observation = '{"data":{"messages":[{"subject":"Quarterly update",' +
+        '"body":"ordinary mail body","access_token":"short-access","refresh-token":"short-refresh",' +
+        '"apiKey":"short-api","xApiKey":"short-x-api","X-API-Key":"short-header-api",' +
+        '"Authorization":"Bearer short-auth","cookie":"sid=short-cookie",' +
+        '"set_cookie":"short-set-cookie","password":"short-password","passwd":"short-passwd",' +
+        '"client_secret":"short-client-secret","private-key":"short-private-key",' +
+        '"credential":"short-credential","auth_token":"short-auth-token","jwt":"short-jwt",' +
+        '"idToken":"short-id-token","nextPageToken":"next-page-2","pageToken":"page-3","token_count":17,' +
+        '"auth":"Bearer short-auth-field","headerValue":"Bearer short-header-value",' +
+        '"session_id":"short-session","signature":"short-signature","signing_key":"short-signing",' +
+        '"nested":{"bearer":"short-bearer","sender":"alice@example.com",' +
+        '"auth":{"method":"oauth2","account":"alice","accessToken":"nested-access",' +
+        '"Authorization":"Bearer nested-auth"}}}]}}';
+      const provider = composioProviderDataFromObservation(observation) as Record<string, Object>;
+      const encoded = JSON.stringify(provider);
+
+      expect(encoded).assertContain('Quarterly update');
+      expect(encoded).assertContain('ordinary mail body');
+      expect(encoded).assertContain('alice@example.com');
+      expect(encoded.indexOf('short-access')).assertEqual(-1);
+      expect(encoded.indexOf('short-refresh')).assertEqual(-1);
+      expect(encoded.indexOf('short-api')).assertEqual(-1);
+      expect(encoded.indexOf('short-x-api')).assertEqual(-1);
+      expect(encoded.indexOf('short-header-api')).assertEqual(-1);
+      expect(encoded.indexOf('short-cookie')).assertEqual(-1);
+      expect(encoded.indexOf('short-password')).assertEqual(-1);
+      expect(encoded.indexOf('short-client-secret')).assertEqual(-1);
+      expect(encoded.indexOf('short-auth-token')).assertEqual(-1);
+      expect(encoded.indexOf('short-jwt')).assertEqual(-1);
+      expect(encoded.indexOf('short-auth-field')).assertEqual(-1);
+      expect(encoded.indexOf('short-header-value')).assertEqual(-1);
+      expect(encoded.indexOf('short-session')).assertEqual(-1);
+      expect(encoded.indexOf('short-signature')).assertEqual(-1);
+      expect(encoded.indexOf('short-bearer')).assertEqual(-1);
+      expect(encoded.indexOf('nested-access')).assertEqual(-1);
+      expect(encoded.indexOf('nested-auth')).assertEqual(-1);
+      expect(encoded).assertContain('next-page-2');
+      expect(encoded).assertContain('page-3');
+      expect(encoded).assertContain('"token_count":17');
+      expect(encoded).assertContain('"method":"oauth2"');
+      expect(encoded).assertContain('"account":"alice"');
     });
 
     it('treats Gmail draft payloads with draft ids as successful execute results', 0, () => {

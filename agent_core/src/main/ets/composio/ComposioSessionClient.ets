@@ -3,6 +3,10 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ComposioConfig } from './ComposioConfig';
 import { bindComposioPhysicalNetwork, ComposioNetworkLease, restoreComposioNetwork } from './ComposioNetwork';
 import { normalizeComposioAuthConfigsResponse } from './ComposioAuthClient';
+import {
+  ComposioProviderDataMeta,
+  extractComposioProviderData
+} from './ComposioProviderData';
 
 const LOG_DOMAIN: number = 0x1200;
 const LOG_TAG: string = 'LoopComposio';
@@ -113,6 +117,12 @@ interface TruncatedObservation {
   preview: string;
 }
 
+export interface ComposioPreservedExecution {
+  observation: string;
+  providerData: Object | null;
+  providerDataMeta: ComposioProviderDataMeta;
+}
+
 interface HttpResult {
   code: number;
   text: string;
@@ -146,6 +156,26 @@ function safeText(value: Object | string | number | boolean | null | undefined):
   } catch (_error) {
     return `${value}`;
   }
+}
+
+export function limitComposioObservation(text: string): string {
+  if (text.length <= MAX_OBSERVATION_CHARS) return text;
+  const truncated: TruncatedObservation = {
+    source: 'Composio', truncated: true, preview: text.substring(0, MAX_OBSERVATION_CHARS)
+  };
+  return JSON.stringify(truncated);
+}
+
+export function preservedComposioExecutionFromResponse(
+  text: string,
+  toolSlug: string = ''
+): ComposioPreservedExecution {
+  const extracted = extractComposioProviderData(text, toolSlug);
+  return {
+    observation: limitComposioObservation(text),
+    providerData: extracted.data,
+    providerDataMeta: extracted.meta
+  };
 }
 
 export function describeComposioFailure(error: Error | Object | string): string {
@@ -283,6 +313,14 @@ export class ComposioSessionClient {
   }
 
   async execute(toolSlug: string, args: Object): Promise<string> {
+    return limitComposioObservation(await this.executeResponseText(toolSlug, args));
+  }
+
+  async executePreservingProviderData(toolSlug: string, args: Object): Promise<ComposioPreservedExecution> {
+    return preservedComposioExecutionFromResponse(await this.executeResponseText(toolSlug, args), toolSlug);
+  }
+
+  private async executeResponseText(toolSlug: string, args: Object): Promise<string> {
     const normalizedSlug = toolSlug.trim().toUpperCase();
     if (!this.discoveredTools.has(normalizedSlug)) {
       return `Composio 拒绝执行：${normalizedSlug} 尚未通过当前 Session 的 search 发现。`;
@@ -302,7 +340,7 @@ export class ComposioSessionClient {
       if (!this.isSuccess(response.code)) {
         return this.httpError('执行工具', response);
       }
-      return this.limitObservation(response.text);
+      return response.text;
     } catch (error) {
       return this.safeFailure('执行工具', error);
     }
@@ -492,7 +530,7 @@ export class ComposioSessionClient {
       tools: candidates,
       instruction: 'Choose one returned toolSlug and call composio with operation=execute and arguments matching inputSchema.'
     };
-    return this.limitObservation(JSON.stringify(observation));
+    return limitComposioObservation(JSON.stringify(observation));
   }
 
   private searchSchemaText(schema: Object | undefined): string {
@@ -636,15 +674,4 @@ export class ComposioSessionClient {
     return `Composio ${action}失败：${message}`;
   }
 
-  private limitObservation(text: string): string {
-    if (text.length <= MAX_OBSERVATION_CHARS) {
-      return text;
-    }
-    const truncated: TruncatedObservation = {
-      source: 'Composio',
-      truncated: true,
-      preview: text.substring(0, MAX_OBSERVATION_CHARS)
-    };
-    return JSON.stringify(truncated);
-  }
 }

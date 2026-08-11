@@ -94,6 +94,7 @@ export { LlmProvider } from './src/main/ets/model/LlmProvider';
 export { ScriptedLocalModel } from './src/main/ets/model/ScriptedLocalModel';
 export { ScriptedA2uiModel, buildTaskCardComponents } from './src/main/ets/a2ui/ScriptedA2uiModel';
 export { OpenAiCompatibleModel } from './src/main/ets/model/OpenAiCompatibleModel';
+export { mergeOpenAiRequestJson } from './src/main/ets/model/OpenAiRequestJson';
 export { createLoopModel, createLoopModelInfo, LoopModelInfo } from './src/main/ets/model/LoopModelFactory';
 export { ModelScopeClient } from './src/main/ets/modelscope/ModelScopeClient';
 export { ModelScopeConfig } from './src/main/ets/modelscope/ModelScopeConfig';
@@ -105,15 +106,43 @@ export {
 export { ModelScopeTool } from './src/main/ets/modelscope/ModelScopeTool';
 export { ComposioConfig } from './src/main/ets/composio/ComposioConfig';
 export * from './src/main/ets/composio/ComposioAuthClient';
-export { ComposioSessionClient, describeComposioFailure } from './src/main/ets/composio/ComposioSessionClient';
+export {
+  ComposioPreservedExecution,
+  ComposioSessionClient,
+  describeComposioFailure,
+  limitComposioObservation,
+  preservedComposioExecutionFromResponse
+} from './src/main/ets/composio/ComposioSessionClient';
 export { ComposioTool } from './src/main/ets/composio/ComposioTool';
 export * from './src/main/ets/composio/ComposioUserId';
 export { A2UI_VERSION, AGENUI_CATALOG_ID, buildCreateSurface, buildDeleteSurface, parseJsonl, extractJsonObjects, newSurfaceId } from './src/main/ets/a2ui/A2uiProtocol';
 export { A2uiComponentDef, CreateSurfaceBody, UpdateComponentsBody } from './src/main/ets/a2ui/A2uiTypes';
-export { A2uiModel } from './src/main/ets/a2ui/A2uiModel';
+export { A2uiModel, A2uiTextDeltaListener } from './src/main/ets/a2ui/A2uiModel';
 export { A2uiAgentRunner, A2uiLineListener, A2uiErrorListener, UiLayoutPlanner } from './src/main/ets/a2ui/A2uiAgentRunner';
-export { mergeA2uiLayout } from './src/main/ets/a2ui/A2uiLayoutMerger';
-export { OpenAiA2uiModel } from './src/main/ets/a2ui/OpenAiA2uiModel';
+export {
+  A2uiLayoutMergeDiagnostic,
+  A2uiLayoutMergeResult,
+  mergeA2uiLayout,
+  mergeA2uiLayoutWithStatus
+} from './src/main/ets/a2ui/A2uiLayoutMerger';
+export {
+  A2uiStreamComponentBatch,
+  A2uiStreamComponentScanResult,
+  A2uiUpdateComponentsStreamScanner
+} from './src/main/ets/a2ui/A2uiUpdateComponentsStreamScanner';
+export {
+  A2UI_CATALOG_RESERVED_COMPONENT_FIELDS,
+  A2uiCatalogFieldSchema,
+  A2uiCatalogValuePolicy,
+  A2uiCatalogValueType,
+  A2uiComponentCatalogSchema,
+  A2uiComponentWireSchema
+} from './src/main/ets/a2ui/A2uiComponentCatalogSchema';
+export {
+  buildA2uiChatRequestJson,
+  buildA2uiLayoutSystemPrompt,
+  OpenAiA2uiModel
+} from './src/main/ets/a2ui/OpenAiA2uiModel';
 export { createA2uiModelInfo, A2uiModelInfo } from './src/main/ets/a2ui/A2uiModelFactory';
 export { aiphoneErrorJsonl, aiphoneInfoJsonl, splitJsonl } from './src/main/ets/aiphone/AiphoneA2ui';
 export { runAiphoneTool } from './src/main/ets/aiphone/AiphoneToolExecutor';
@@ -158,6 +187,10 @@ export * from './src/main/ets/aiphone/runtime/GmailToolA2ui';
 export * from './src/main/ets/aiphone/runtime/GmailToolNormalizer';
 export * from './src/main/ets/aiphone/runtime/GmailToolTypes';
 export * from './src/main/ets/aiphone/runtime/GoogleOAuthClient';
+export {
+  AIPHONE_COMPONENT_CATALOG_JSON,
+  UI_AGENT_LAB_COMPONENT_CATALOG_JSON
+} from './src/main/ets/aiphone/runtime/A2uiComponentCatalogConst';
 export * from './src/main/ets/aiphone/runtime/HuaweiCalendarClient';
 export * from './src/main/ets/aiphone/runtime/LocalModelSettings';
 export * from './src/main/ets/aiphone/runtime/MailToolA2ui';

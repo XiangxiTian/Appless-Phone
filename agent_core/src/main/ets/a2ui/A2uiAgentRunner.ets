@@ -1,12 +1,13 @@
 import { ConversationContext } from '../agent/ConversationContext';
-import { A2uiModel } from './A2uiModel';
+import { A2uiModel, A2uiTextDeltaListener } from './A2uiModel';
 import { buildCreateSurface, newSurfaceId, parseJsonl } from './A2uiProtocol';
+import { aiLogInfo } from '../aiphone/runtime/AiphoneLogger';
 
 export type A2uiLineListener = (line: string) => void;
 export type A2uiErrorListener = (message: string) => void;
 
 export interface UiLayoutPlanner {
-  plan(task: string, surfaceId: string): Promise<string | null>;
+  plan(task: string, surfaceId: string, onTextDelta?: A2uiTextDeltaListener): Promise<string | null>;
 }
 
 export class A2uiAgentRunner implements UiLayoutPlanner {
@@ -16,10 +17,18 @@ export class A2uiAgentRunner implements UiLayoutPlanner {
     this.model = model;
   }
 
-  async plan(task: string, surfaceId: string): Promise<string | null> {
+  async plan(
+    task: string,
+    surfaceId: string,
+    onTextDelta?: A2uiTextDeltaListener
+  ): Promise<string | null> {
     try {
-      return await this.generate(task, surfaceId);
-    } catch (_error) {
+      const candidate = await this.generate(task, surfaceId, undefined, onTextDelta);
+      aiLogInfo('[A2uiLayoutPlan] surface=' + surfaceId + ' outcome=candidate chars=' + candidate.length.toString());
+      return candidate;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      aiLogInfo('[A2uiLayoutPlan] surface=' + surfaceId + ' outcome=null reason=' + JSON.stringify(message));
       return null;
     }
   }
@@ -55,8 +64,9 @@ export class A2uiAgentRunner implements UiLayoutPlanner {
   private generate(
     task: string,
     surfaceId: string,
-    conversation?: ConversationContext
+    conversation?: ConversationContext,
+    onTextDelta?: A2uiTextDeltaListener
   ): Promise<string> {
-    return this.model.generate(task, surfaceId, conversation);
+    return this.model.generate(task, surfaceId, conversation, onTextDelta);
   }
 }

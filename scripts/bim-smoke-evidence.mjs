@@ -1,3 +1,5 @@
+import { multiAgentEvidenceRecords } from './multi-agent-smoke-evidence.mjs';
+
 function parsedLayout(layout) {
   if (typeof layout !== 'string') return layout && typeof layout === 'object' ? layout : {};
   try {
@@ -21,18 +23,78 @@ function layoutText(layout) {
   return values;
 }
 
+function childNodes(node) {
+  if (node === null || typeof node !== 'object') return [];
+  return node.children || node.nodes || [];
+}
+
+function nodeValue(node, key) {
+  if (node === null || typeof node !== 'object') return undefined;
+  if (node[key] !== undefined) return node[key];
+  return node.attributes && typeof node.attributes === 'object' ? node.attributes[key] : undefined;
+}
+
+function pointFromBounds(bounds) {
+  const match = typeof bounds === 'string' ? /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/.exec(bounds) : null;
+  if (match === null) return null;
+  return {
+    x: Math.round((Number(match[1]) + Number(match[3])) / 2),
+    y: Math.round((Number(match[2]) + Number(match[4])) / 2)
+  };
+}
+
+function headerHeartNode(layout) {
+  let result = null;
+  const visit = (node) => {
+    if (result !== null || node === null || typeof node !== 'object') return;
+    const children = childNodes(node);
+    const titleIndex = children.findIndex((child) => nodeValue(child, 'text') === 'Appless');
+    if (titleIndex >= 0) {
+      result = children.slice(titleIndex + 1).find((child) => {
+        const clickable = nodeValue(child, 'clickable');
+        return clickable === true || clickable === 'true';
+      }) || null;
+    }
+    for (const child of children) visit(child);
+  };
+  visit(parsedLayout(layout));
+  return result;
+}
+
+export function heartPointFromLayout(layout) {
+  const heart = headerHeartNode(layout);
+  return heart === null ? null : pointFromBounds(nodeValue(heart, 'bounds'));
+}
+
+export function bimDeleteConfirmationPoint(layout) {
+  let result = null;
+  const hasExactDelete = (node) => nodeValue(node, 'text') === '删除' ||
+    childNodes(node).some(hasExactDelete);
+  const visit = (node, insideDialog = false) => {
+    if (result !== null || node === null || typeof node !== 'object') return;
+    const inDialog = insideDialog || nodeValue(node, 'type') === 'Dialog';
+    const clickable = nodeValue(node, 'clickable');
+    if (inDialog && nodeValue(node, 'type') === 'Button' &&
+      (clickable === true || clickable === 'true') && hasExactDelete(node)) {
+      result = pointFromBounds(nodeValue(node, 'bounds'));
+      if (result !== null) return;
+    }
+    for (const child of childNodes(node)) visit(child, inDialog);
+  };
+  visit(parsedLayout(layout));
+  return result;
+}
+
 export function heartCountFromLayout(layout) {
   for (const value of layoutText(layout)) {
     const count = /打开心上事\s*[，,]?\s*共\s*(\d+)\s*件/.exec(value);
     if (count !== null) return Number.parseInt(count[1], 10);
     if (value === '打开心上事') return 0;
   }
-  return null;
-}
-
-export function hasRememberSuggestion(layout) {
-  const text = layoutText(layout);
-  return text.some((value) => /记在心上/.test(value) && !/已记在心上/.test(value));
+  const heart = headerHeartNode(layout);
+  if (heart === null) return null;
+  const count = layoutText(heart).find((value) => /^\d+$/.test(value));
+  return count === undefined ? 0 : Number.parseInt(count, 10);
 }
 
 export function hasBimDirectory(layout) {
@@ -45,8 +107,15 @@ export function hasBimDirectory(layout) {
 export function hasBimHome(layout) {
   const text = layoutText(layout);
   return text.includes('Appless') &&
-    text.some((value) => /^打开心上事(?:\s*[，,]\s*共\s*\d+\s*件)?$/.test(value)) &&
+    heartCountFromLayout(layout) !== null &&
     !hasBimDirectory(layout);
+}
+
+export function hasBimReadOnlyContext(...layouts) {
+  const text = layouts.flatMap(layoutText);
+  return text.some((value) => /^当前 Snapshot · v\d+$/.test(value)) &&
+    text.includes('完整上下文') &&
+    !text.some((value) => /编辑.*(?:Snapshot|完整上下文)|保存.*(?:Snapshot|完整上下文)/.test(value));
 }
 
 export function hasConversationTranscript(layout) {
@@ -55,20 +124,21 @@ export function hasConversationTranscript(layout) {
     /^(?:用户|我|你|助手|用户消息|助手消息|聊天记录|对话记录|user|assistant)\s*(?:[:：]|消息|记录)/i.test(value));
 }
 
-export function hasBimExecutionBar(layout) {
-  const text = layoutText(layout);
-  return text.includes('正在处理') && text.includes('停止') &&
-    text.some((value) => value.includes('正在更新心上事'));
-}
-
-export function hasZeroCandidateBimRoute(logText) {
-  return /\[AIPhone\]\[BimRoute\][^\n]*\bcandidates=0\b[^\n]*\bsemantic=false\b/.test(String(logText || ''));
-}
-
 export function hasMainAgentResult(logText) {
   return String(logText || '').split('\n').some((line) =>
     /\[AIPhone\]\[MultiAgentTurnResult\][^\n]*\bstatus=(?:success|partial|empty)\b/.test(line) &&
     /\bmessageChars=[1-9]\d*\b/.test(line));
+}
+
+export function hasSnapshotOnlyMainAgent(logText) {
+  const value = String(logText || '');
+  if (/\[AIPhone\]\[(?:BimRoute|BimGate)\]|BIM_MAIN_TURN_NOT_ADMITTED|bim_takeover/.test(value)) return false;
+  const records = multiAgentEvidenceRecords(value);
+  const inputs = records.filter((item) => item.marker === 'MultiAgentInput');
+  const terminals = records.filter((item) => item.marker === 'MultiAgentTurnResult' &&
+    ['success', 'partial', 'empty'].includes(item.fields.status) &&
+    /^[1-9]\d*$/.test(item.fields.messageChars || ''));
+  return inputs.length === 1 && terminals.length === 1;
 }
 
 export function bimSmokeStatus(statuses) {
@@ -81,9 +151,22 @@ export function bimScenarioStatus(ok, blockedReason) {
   return ok ? 'PASS' : 'FAIL';
 }
 
-export function bimCleanSessionBlocker(cleanRequested, cleanSucceeded) {
-  if (!cleanRequested) return 'BIM smoke requires explicit --clean-data or AIPHONE_SMOKE_CLEAN_DATA=1.';
-  return cleanSucceeded ? '' : 'BIM app data could not be cleaned; count evidence is not isolated.';
+export function bimSentinelEvidence(logText) {
+  const value = String(logText || '');
+  const eventMatch = value.match(/\[AIPhone\]\[BimSentinel\] mode=mock events=(\d+) ok=true/);
+  const reminderScheduled = /\[AIPhone\]\[BimSentinelMockScheduled\] reminderId=\d+/.test(value);
+  const inAppScheduled = /\[AIPhone\]\[BimSentinelMockScheduled\] transport=in_app_timer/.test(value);
+  return {
+    scheduled: reminderScheduled || inAppScheduled,
+    triggered: /\[AIPhone\]\[BimSentinelMockTriggered\]/.test(value),
+    completed: eventMatch !== null,
+    eventCount: eventMatch === null ? null : Number.parseInt(eventMatch[1], 10),
+    transport: reminderScheduled ? 'reminder' : inAppScheduled ? 'in_app_timer' : ''
+  };
+}
+
+export function bimSentinelUsesInAppTimer(text) {
+  return text.join('\n').includes('系统提醒已满，10 秒后应用内测试');
 }
 
 export function sanitizeBimFailureReason(error) {
@@ -95,7 +178,9 @@ export function sanitizeBimFailureReason(error) {
     .slice(0, 500);
 }
 
-const BIM_SCENARIO_IDS = ['suggestion', 'remember', 'directory', 'detail', 'update', 'main-agent'];
+const BIM_SCENARIO_IDS = [
+  'home', 'main-agent', 'curator-create', 'directory', 'sentinel', 'detail', 'cleanup'
+];
 
 export function completeBimScenarios(scenarios, failureReason, failedId = '') {
   const completed = scenarios.slice();

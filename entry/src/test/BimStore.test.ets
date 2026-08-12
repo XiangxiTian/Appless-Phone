@@ -3,6 +3,7 @@ import { describe, expect, it } from '@ohos/hypium';
 import { A2uiSurfaceState, LeaderBimDashboardItem } from '@loop/agent-core';
 import {
   BimContextSnapshot,
+  BimPublishedState,
   BimRecord,
   BimRetrievalIndex,
   BimStore,
@@ -246,6 +247,29 @@ export default function bimStoreTest() {
       expect(store.list().length).assertEqual(1);
     });
 
+    it('limits non-ended matters to ten while keeping ended archives', 0, () => {
+      const store = new BimStore(nativePreferences());
+      for (let index = 0; index < 10; index++) {
+        expect(store.create(record('active-' + index.toString()))).assertTrue();
+      }
+
+      expect(store.create(record('active-10'))).assertFalse();
+      expect(store.markEnded('active-0', '2026-08-10T10:00:00+08:00')).assertTrue();
+      expect(store.create(record('active-10'))).assertTrue();
+      expect(store.reactivate('active-0', '2026-08-10T10:01:00+08:00')).assertFalse();
+      expect(store.list().length).assertEqual(11);
+    });
+
+    it('derives markdown fields when reading a legacy record', 0, () => {
+      const parsed = parseBimRecords(JSON.stringify([record('legacy')]));
+      const raw = parsed[0] as Object as
+        Record<string, Object | string | number | boolean | undefined>;
+
+      expect(raw['snapshotVersion']).assertEqual(1);
+      expect((raw['snapshotMarkdown'] as string).indexOf('东京旅行')).assertLarger(-1);
+      expect((raw['fullContextMarkdown'] as string).indexOf('东京旅行')).assertLarger(-1);
+    });
+
     it('rejects records with unknown top-level fields', 0, () => {
       const raw = '[' + JSON.stringify(record()).slice(0, -1) + ',"unexpected":true}]';
 
@@ -317,6 +341,66 @@ export default function bimStoreTest() {
         expect(saved.retrievalIndex.keywords[1]).assertEqual('机票');
         expect(saved.lastInteractionAt).assertEqual('2026-08-03T11:00:00+08:00');
       }
+    });
+
+    it('publishes a complete BIM state only at the expected version', 0, () => {
+      const store = new BimStore(nativePreferences());
+      expect(store.create(record())).assertTrue();
+      const state: BimPublishedState = {
+        title: '东京旅行',
+        fullContextMarkdown: '# 东京旅行\n\n四人出行',
+        snapshotMarkdown: '已确定四人出行，酒店尚未预订。',
+        context: {
+          summary: '四人出行', facts: ['同行四人'], constraints: [], decisions: []
+        },
+        retrievalIndex: index('东京 四人'),
+        relatedBimIds: []
+      };
+
+      expect(store.publishState(
+        'bim-1', 1, state, '2026-08-10T10:00:00+08:00'
+      )).assertTrue();
+      expect(store.get('bim-1')?.snapshotVersion).assertEqual(2);
+      expect(store.get('bim-1')?.snapshotMarkdown).assertEqual('已确定四人出行，酒店尚未预订。');
+      expect(store.publishState(
+        'bim-1', 1, state, '2026-08-10T10:01:00+08:00'
+      )).assertFalse();
+      expect(store.get('bim-1')?.snapshotVersion).assertEqual(2);
+    });
+
+    it('rejects a Snapshot too large for the all-BIM foreground budget', 0, () => {
+      const store = new BimStore(nativePreferences());
+      expect(store.create(record())).assertTrue();
+
+      expect(store.publishState('bim-1', 1, {
+        title: '东京旅行',
+        fullContextMarkdown: '# 东京旅行\n\n' + 'x'.repeat(4000),
+        snapshotMarkdown: 'x'.repeat(3001),
+        context: context('东京旅行'),
+        retrievalIndex: index('东京旅行'),
+        relatedBimIds: []
+      }, '2026-08-10T10:00:00+08:00')).assertFalse();
+      expect(store.get('bim-1')?.snapshotVersion).assertEqual(1);
+    });
+
+    it('keeps an existing larger v2 Snapshot readable until Curator replaces it', 0, () => {
+      const existing = record();
+      existing.snapshotMarkdown = 'x'.repeat(3001);
+
+      const parsed = parseBimRecords(JSON.stringify([existing]));
+
+      expect(parsed.length).assertEqual(1);
+      expect(parsed[0].snapshotMarkdown.length).assertEqual(3001);
+    });
+
+    it('persists only valid Sentinel success timestamps', 0, () => {
+      const native = nativePreferences();
+      const store = new BimStore(native);
+
+      expect(store.markSentinelSuccess('bad')).assertFalse();
+      expect(store.markSentinelSuccess('2026-08-10T09:00:00+08:00')).assertTrue();
+      expect(new BimStore(native).lastSentinelSuccessAt())
+        .assertEqual('2026-08-10T09:00:00+08:00');
     });
 
     it('keeps only confirmed outcomes and one current surface per dashboard section', 0, () => {
@@ -418,12 +502,12 @@ export default function bimStoreTest() {
 
     it('wakes quiet and tucked records in the same current-state replacement', 0, () => {
       const store = new BimStore(nativePreferences());
-      expect(store.create(record('bim-quiet'))).assertTrue();
-      expect(store.create(record('bim-tucked'))).assertTrue();
-      expect(store.applyLifecycleSweep([
-        { id: 'bim-quiet', lifecycle: 'quiet' },
-        { id: 'bim-tucked', lifecycle: 'tucked' }
-      ], '2026-08-03T10:30:00+08:00')).assertTrue();
+      const quiet = record('bim-quiet');
+      quiet.lifecycle = 'quiet';
+      const tucked = record('bim-tucked');
+      tucked.lifecycle = 'tucked';
+      expect(store.create(quiet)).assertTrue();
+      expect(store.create(tucked)).assertTrue();
 
       expect(store.replaceCurrentState(
         'bim-quiet', context('quiet update'), index('quiet update'),
@@ -457,11 +541,9 @@ export default function bimStoreTest() {
     it('keeps lifecycle and current state unchanged when a waking replacement cannot flush', 0, () => {
       const native = new MemoryPreferences();
       const store = new BimStore(native as Object as preferences.Preferences);
-      expect(store.create(record())).assertTrue();
-      expect(store.applyLifecycleSweep(
-        [{ id: 'bim-1', lifecycle: 'quiet' }],
-        '2026-08-03T10:30:00+08:00'
-      )).assertTrue();
+      const quiet = record();
+      quiet.lifecycle = 'quiet';
+      expect(store.create(quiet)).assertTrue();
       native.failFlush = true;
 
       expect(store.replaceCurrentState(
@@ -519,16 +601,6 @@ export default function bimStoreTest() {
       expect(store.list().length).assertEqual(0);
     });
 
-    it('applies valid lifecycle sweeps and preserves their metadata', 0, () => {
-      const store = new BimStore(nativePreferences());
-      store.create(record());
-
-      expect(store.applyLifecycleSweep([{ id: 'bim-1', lifecycle: 'quiet' }],
-        '2026-08-04T10:00:00+08:00')).assertTrue();
-      expect(store.get('bim-1')?.lifecycle).assertEqual('quiet');
-      expect(store.lastLifecycleSweepAt()).assertEqual('2026-08-04T10:00:00+08:00');
-    });
-
     it('restores the prior document when flush fails', 0, () => {
       const native = new MemoryPreferences();
       const store = new BimStore(native as Object as preferences.Preferences);
@@ -550,22 +622,5 @@ export default function bimStoreTest() {
       expect(store.get('bim-1')?.lifecycle).assertEqual('active');
     });
 
-    it('keeps prior sweep metadata after a failed rollback and later record save', 0, () => {
-      const native = new MemoryPreferences();
-      const store = new BimStore(native as Object as preferences.Preferences);
-      expect(store.create(record())).assertTrue();
-      expect(store.applyLifecycleSweep([{ id: 'bim-1', lifecycle: 'quiet' }],
-        '2026-08-04T10:00:00+08:00')).assertTrue();
-      native.failFlush = true;
-      native.failRollbackWrite = true;
-
-      expect(store.applyLifecycleSweep([{ id: 'bim-1', lifecycle: 'active' }],
-        '2026-08-05T10:00:00+08:00')).assertFalse();
-      native.failFlush = false;
-      expect(store.markEnded('bim-1', '2026-08-06T10:00:00+08:00')).assertTrue();
-      expect(store.lastLifecycleSweepAt()).assertEqual('2026-08-04T10:00:00+08:00');
-      expect(new BimStore(native as Object as preferences.Preferences).lastLifecycleSweepAt())
-        .assertEqual('2026-08-04T10:00:00+08:00');
-    });
   });
 }

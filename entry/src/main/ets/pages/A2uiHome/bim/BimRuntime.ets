@@ -1,60 +1,563 @@
 import {
-  A2uiObservationDigest,
-  A2uiSurfaceState,
-  ActionExecutionResult,
-  AgentMessage,
-  InputUserPayload,
-  LeaderBimContextUpdate,
-  LeaderBimDashboardItem,
-  LeaderBimSuggestion,
-  LeaderPlanner,
-  LeaderPlannerResult,
-  LeaderPlanningContext,
-  LeaderPlanningSignal,
   LocalModel,
-  UserInputPayload,
-  aiLogInfo,
+  LeaderBimDashboardItem,
   calendarDateFromPrompt,
   emptyA2uiSurface,
   extractJsonObjects,
   mapsRouteInputFromPrompt,
-  summarizeAppliedA2uiSurface
+  validLeaderBimDashboardItems
 } from '@loop/agent-core';
 import {
   BimContextSnapshot,
-  BimLifecycleUpdate,
-  BimLifecycleState,
+  BimPublishedState,
   BimRecord,
   BimRetrievalIndex,
   BimStore,
-  isValidBimSurfaceJson
+  createBimRecord
 } from './BimStore';
 
-const MAX_BIM_SEMANTIC_CANDIDATES: number = 6;
-const MAX_BIM_ROUTE_PROMPT_CHARS: number = 12000;
-const MAX_BIM_EXECUTION_PROMPT_CHARS: number = 32000;
-const MAX_PROMPT_INDEX_VALUE_CHARS: number = 48;
-const WEEKLY_LIFECYCLE_SWEEP_MS: number = 7 * 24 * 60 * 60 * 1000;
+const MAX_SENTINEL_EVENTS: number = 10;
+const MAX_ATTENTIONS_PER_BIM: number = 8;
+const MAX_ATTENTION_CHARS: number = 480;
+const MAX_BIM_EVIDENCE_CHARS: number = 2000;
+const CONFIRMED_WRITE_TOOL_IDS: string[] = [
+  'calendar.event.create',
+  'calendar.event.update',
+  'calendar.event.delete',
+  'gmail.message.send',
+  'luckin.order.create',
+  'ride.order.create',
+  'ride.order.cancel',
+  'web.monitor.create',
+  'whatsapp.message.send'
+];
 
-export type BimRouteStatus = 'none' | 'matched' | 'ambiguous' | 'unknown';
-
-export interface BimRouteDecision {
-  status: BimRouteStatus;
-  primaryBimId: string;
-  secondaryBimIds: string[];
-  reason: string;
+export interface BimSnapshotItem {
+  id: string;
+  title: string;
+  version: number;
+  lifecycle: 'active' | 'quiet' | 'tucked';
+  markdown: string;
 }
 
-export type BimSurfaceDestination = 'reject' | 'home' | 'detail';
-
-export interface BimPageActionPresentation {
-  destination: BimSurfaceDestination;
-  appendAssistantMessage: boolean;
+export interface BimLoadedContext {
+  id: string;
+  title: string;
+  version: number;
+  fullContextMarkdown: string;
+  contextJson: string;
+  retrievalIndex: BimRetrievalIndex;
+  dashboardSurfaceJsons: string[];
 }
 
-export interface BimPageActionAdmission {
-  accepted: boolean;
-  prepareVirtualHome: boolean;
+export function activeBimSnapshots(records: BimRecord[]): BimSnapshotItem[] {
+  const snapshots: BimSnapshotItem[] = [];
+  for (let index = 0; index < records.length; index++) {
+    const record = records[index];
+    if (record.lifecycle === 'ended') continue;
+    snapshots.push({
+      id: record.id,
+      title: record.title,
+      version: record.snapshotVersion,
+      lifecycle: record.lifecycle,
+      markdown: record.snapshotMarkdown
+    });
+  }
+  return snapshots;
+}
+
+export function buildBimSnapshotPrompt(query: string, records: BimRecord[]): string {
+  const snapshots = activeBimSnapshots(records);
+  const blocks: string[] = [];
+  for (let index = 0; index < snapshots.length; index++) {
+    const item = snapshots[index];
+    blocks.push('## ' + item.title + '\n- bimId: ' + item.id +
+      '\n- version: ' + item.version.toString() + '\n- lifecycle: ' + item.lifecycle +
+      '\n\n' + item.markdown);
+  }
+  return '[BIM_SNAPSHOTS]\n' + blocks.join('\n\n') +
+    '\n[/BIM_SNAPSHOTS]\n\n' + query.trim();
+}
+
+export interface BimForegroundRequest {
+  query: string;
+  prompt: string;
+  sourceBimId: string;
+}
+
+export function buildBimForegroundRequest(
+  query: string,
+  records: BimRecord[],
+  sourceBimId: string = ''
+): BimForegroundRequest {
+  const trimmed = query.trim();
+  return {
+    query: trimmed,
+    prompt: buildBimSnapshotPrompt(trimmed, records),
+    sourceBimId
+  };
+}
+
+export function bimDetailSubmitError(baseUrl: string): string {
+  return baseUrl.trim().length === 0 ? '请先填写 Base URL。' : '';
+}
+
+export function safeBimToolResultSummary(summary: string): string {
+  return summary.split('\n')
+    .filter((line: string): boolean => line.toLowerCase().indexOf('credential') < 0)
+    .join('\n')
+    .substring(0, MAX_BIM_EVIDENCE_CHARS);
+}
+
+export class BimSkill {
+  private readonly store: BimStore;
+
+  constructor(store: BimStore) {
+    this.store = store;
+  }
+
+  load(ids: string[]): BimLoadedContext[] {
+    const loaded: BimLoadedContext[] = [];
+    const seen: string[] = [];
+    for (let index = 0; index < ids.length && seen.length < 10; index++) {
+      const id = ids[index].trim();
+      if (id.length === 0 || seen.indexOf(id) >= 0) continue;
+      seen.push(id);
+      const record = this.store.get(id);
+      if (record === undefined || record.lifecycle === 'ended') continue;
+      loaded.push({
+        id: record.id,
+        title: record.title,
+        version: record.snapshotVersion,
+        fullContextMarkdown: record.fullContextMarkdown,
+        contextJson: record.contextJson,
+        retrievalIndex: record.retrievalIndex,
+        dashboardSurfaceJsons: record.dashboardSurfaceJsons === undefined ?
+          [] : record.dashboardSurfaceJsons.slice()
+      });
+    }
+    return loaded;
+  }
+}
+
+export interface BimTurnEvidence {
+  query: string;
+  sourceBimId: string;
+  visibleSource: string;
+  assistantReply: string;
+  surfaceSummary: string;
+  toolResultSummary: string;
+  userConfirmedCompletion: boolean;
+  userConfirmedCreate: boolean;
+}
+
+export interface BimCuratorResult {
+  updatedBimIds: string[];
+  createdBimIds: string[];
+  error: string;
+}
+
+interface BimCuratorUpdate extends BimPublishedState {
+  bimId: string;
+  expectedVersion: number;
+}
+
+interface BimCuratorCreate {
+  id: string;
+  title: string;
+  fullContextMarkdown: string;
+  snapshotMarkdown: string;
+  context: BimContextSnapshot;
+  retrievalIndex: BimRetrievalIndex;
+}
+
+interface BimCuratorEnvelope {
+  updates: BimCuratorUpdate[];
+  creates: BimCuratorCreate[];
+}
+
+type BimJsonValue = Object | string | number | boolean | null | undefined;
+
+function exactObjectKeys(value: Object, expected: string[]): boolean {
+  return Object.keys(value).sort().join(',') === expected.slice().sort().join(',');
+}
+
+function oneJsonObject(raw: string): Object | null {
+  try {
+    const objects = extractJsonObjects(raw);
+    if (objects.length !== 1) return null;
+    const parsed = JSON.parse(objects[0]) as Object;
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function parsedLoadBimIds(raw: string, records: BimRecord[]): string[] | null {
+  const object = oneJsonObject(raw);
+  if (object === null || !exactObjectKeys(object, ['loadBimIds'])) return null;
+  const value = object as Record<string, BimJsonValue>;
+  const rawIds = value['loadBimIds'];
+  if (!Array.isArray(rawIds) || rawIds.length > 10) return null;
+  const allowed: string[] = [];
+  for (let index = 0; index < records.length; index++) {
+    if (records[index].lifecycle !== 'ended') allowed.push(records[index].id);
+  }
+  const ids: string[] = [];
+  const values = rawIds as Object[];
+  for (let index = 0; index < values.length; index++) {
+    const id = values[index];
+    if (typeof id !== 'string' || allowed.indexOf(id) < 0 || ids.indexOf(id) >= 0) return null;
+    ids.push(id);
+  }
+  return ids;
+}
+
+function parsedSentinelLoadBimIds(raw: string, records: BimRecord[]): string[] | null {
+  const strict = parsedLoadBimIds(raw, records);
+  if (strict !== null) return strict;
+  const match = /loadBimIds\s*\[\s*(\[[^\]]*\])\s*\]/.exec(raw);
+  if (match === null) return null;
+  try {
+    const parsed = JSON.parse(match[1]) as Object;
+    if (!Array.isArray(parsed) || parsed.length > 10) return null;
+    const values = parsed as Object[];
+    const ids: string[] = [];
+    for (let index = 0; index < values.length; index++) {
+      if (typeof values[index] !== 'string') return null;
+      const value = values[index] as string;
+      const matches = records.filter((record: BimRecord): boolean =>
+        record.lifecycle !== 'ended' && (record.id === value || record.title === value));
+      if (matches.length !== 1 || ids.indexOf(matches[0].id) >= 0) return null;
+      ids.push(matches[0].id);
+    }
+    return ids;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function curatorSelectionPrompt(records: BimRecord[], evidence: BimTurnEvidence): string {
+  return 'You are the BIM Curator selector. Read only BIM Snapshots and turn evidence. ' +
+    'Return one JSON object only: {"loadBimIds":[...]}. Select only clearly related non-ended BIM IDs. ' +
+    'A correction can replace old locations, dates, status, or next steps; those conflicts are evidence of an ' +
+    'update, not evidence that the matter is unrelated. A valid sourceBimId is strong relation evidence. ' +
+    'Return an empty list when none is clearly related. Do not update BIM or call tools.\n' +
+    JSON.stringify({ snapshots: activeBimSnapshots(records), evidence });
+}
+
+function curatorUpdatePrompt(loaded: BimLoadedContext[], evidence: BimTurnEvidence): string {
+  return 'You are the BIM Curator. Return one JSON object only with exactly updates and creates arrays. ' +
+    'Each update must contain bimId, expectedVersion, title, fullContextMarkdown, snapshotMarkdown, context, ' +
+    'retrievalIndex, and relatedBimIds. context.dashboardItems is required, even when empty. ' +
+    'Return one complete next Context + View, never patches, and replace superseded facts everywhere. ' +
+    'Creates may contain at most one item with id, title, fullContextMarkdown, snapshotMarkdown, context, ' +
+    'and retrievalIndex, and only when the user explicitly asked to remember or keep following the matter. ' +
+    'context and retrievalIndex MUST be JSON objects, never strings. ' +
+    'The top-level updates/creates wrapper is mandatory; never return a bare update or create item. ' +
+    'Use this exact shape: {"updates":[{"bimId":"...","expectedVersion":1,"title":"...",' +
+    '"fullContextMarkdown":"...","snapshotMarkdown":"...",' +
+    '"context":{"summary":"...","facts":[],"constraints":[],"decisions":[],"dashboardItems":[]},' +
+    '"retrievalIndex":{"summary":"...","entities":[],"timeAnchors":[],"locations":[],' +
+    '"commitments":[],"keywords":[]},"relatedBimIds":[]}],"creates":[{"id":"...","title":"...",' +
+    '"fullContextMarkdown":"...","snapshotMarkdown":"...",' +
+    '"context":{"summary":"...","facts":[],"constraints":[],"decisions":[]},' +
+    '"retrievalIndex":{"summary":"...","entities":[],"timeAnchors":[],"locations":[],' +
+    '"commitments":[],"keywords":[]}}]}. ' +
+    'Never claim payment, booking, ticketing, or completion without the user assertion or provider receipt ' +
+    'in the evidence. Do not call business tools.\n' + JSON.stringify({ loaded, evidence });
+}
+
+function parsedContext(value: BimJsonValue): BimContextSnapshot | null {
+  if (value === null || value === undefined || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, BimJsonValue>;
+  if (!exactObjectKeys(value as Object, ['summary', 'facts', 'constraints', 'decisions']) &&
+    !exactObjectKeys(value as Object, ['summary', 'facts', 'constraints', 'decisions', 'dashboardItems'])) {
+    return null;
+  }
+  if (typeof raw['summary'] !== 'string' || !Array.isArray(raw['facts']) ||
+    !Array.isArray(raw['constraints']) || !Array.isArray(raw['decisions']) ||
+    !validLeaderBimDashboardItems(raw['dashboardItems'] as LeaderBimDashboardItem[] | undefined)) return null;
+  return value as BimContextSnapshot;
+}
+
+function parsedIndex(value: BimJsonValue): BimRetrievalIndex | null {
+  if (value === null || value === undefined || typeof value !== 'object' || Array.isArray(value) ||
+    !exactObjectKeys(value as Object,
+      ['summary', 'entities', 'timeAnchors', 'locations', 'commitments', 'keywords'])) return null;
+  const raw = value as Record<string, BimJsonValue>;
+  if (typeof raw['summary'] !== 'string' || !Array.isArray(raw['entities']) ||
+    !Array.isArray(raw['timeAnchors']) || !Array.isArray(raw['locations']) ||
+    !Array.isArray(raw['commitments']) || !Array.isArray(raw['keywords'])) return null;
+  return value as BimRetrievalIndex;
+}
+
+function parsedStringList(value: BimJsonValue): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const raw = value as Object[];
+  const result: string[] = [];
+  for (let index = 0; index < raw.length; index++) {
+    if (typeof raw[index] !== 'string') return null;
+    result.push(raw[index] as string);
+  }
+  return result;
+}
+
+function parsedCuratorUpdate(value: Object): BimCuratorUpdate | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value) || !exactObjectKeys(value,
+    ['bimId', 'expectedVersion', 'title', 'fullContextMarkdown', 'snapshotMarkdown', 'context',
+      'retrievalIndex', 'relatedBimIds'])) return null;
+  const raw = value as Record<string, BimJsonValue>;
+  const context = parsedContext(raw['context']);
+  const retrievalIndex = parsedIndex(raw['retrievalIndex']);
+  const relatedBimIds = parsedStringList(raw['relatedBimIds']);
+  if (typeof raw['bimId'] !== 'string' || typeof raw['expectedVersion'] !== 'number' ||
+    typeof raw['title'] !== 'string' || context?.dashboardItems === undefined ||
+    typeof raw['fullContextMarkdown'] !== 'string' || typeof raw['snapshotMarkdown'] !== 'string' ||
+    context === null || retrievalIndex === null || relatedBimIds === null) return null;
+  return {
+    bimId: raw['bimId'] as string,
+    expectedVersion: raw['expectedVersion'] as number,
+    title: raw['title'] as string,
+    fullContextMarkdown: raw['fullContextMarkdown'] as string,
+    snapshotMarkdown: raw['snapshotMarkdown'] as string,
+    context,
+    retrievalIndex,
+    relatedBimIds
+  };
+}
+
+function parsedCuratorCreate(value: Object): BimCuratorCreate | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value) || !exactObjectKeys(value,
+    ['id', 'title', 'fullContextMarkdown', 'snapshotMarkdown', 'context', 'retrievalIndex'])) return null;
+  const raw = value as Record<string, BimJsonValue>;
+  const context = parsedContext(raw['context']);
+  const retrievalIndex = parsedIndex(raw['retrievalIndex']);
+  if (typeof raw['id'] !== 'string' || typeof raw['title'] !== 'string' ||
+    typeof raw['fullContextMarkdown'] !== 'string' || typeof raw['snapshotMarkdown'] !== 'string' ||
+    context === null || retrievalIndex === null) return null;
+  return {
+    id: raw['id'] as string,
+    title: raw['title'] as string,
+    fullContextMarkdown: raw['fullContextMarkdown'] as string,
+    snapshotMarkdown: raw['snapshotMarkdown'] as string,
+    context,
+    retrievalIndex
+  };
+}
+
+function parsedCuratorEnvelope(raw: string): BimCuratorEnvelope | null {
+  const object = oneJsonObject(raw);
+  if (object === null || !exactObjectKeys(object, ['updates', 'creates'])) return null;
+  const value = object as Record<string, BimJsonValue>;
+  if (!Array.isArray(value['updates']) || !Array.isArray(value['creates'])) return null;
+  const rawUpdates = value['updates'] as Object[];
+  const rawCreates = value['creates'] as Object[];
+  if (rawCreates.length > 1 || rawUpdates.length > 10) return null;
+  const updates: BimCuratorUpdate[] = [];
+  const creates: BimCuratorCreate[] = [];
+  for (let index = 0; index < rawUpdates.length; index++) {
+    const update = parsedCuratorUpdate(rawUpdates[index]);
+    if (update === null || updates.some((item: BimCuratorUpdate): boolean =>
+      item.bimId === update.bimId)) return null;
+    updates.push(update);
+  }
+  for (let index = 0; index < rawCreates.length; index++) {
+    const create = parsedCuratorCreate(rawCreates[index]);
+    if (create === null) return null;
+    creates.push(create);
+  }
+  return { updates, creates };
+}
+
+export function explicitBimCreateRequest(query: string): boolean {
+  return /帮我记住|记在心上|持续跟进/.test(query);
+}
+
+function unverifiedCompletionClaim(update: BimCuratorUpdate, evidence: BimTurnEvidence): boolean {
+  const state = update.fullContextMarkdown + '\n' + update.snapshotMarkdown + '\n' +
+    JSON.stringify(update.context);
+  const providerClaim = /已支付|已预订|已出票/;
+  const completionClaim = /已完成/;
+  let receipt = false;
+  if ((providerClaim.test(evidence.toolResultSummary) || completionClaim.test(evidence.toolResultSummary)) &&
+    evidence.toolResultSummary.indexOf('status=success') >= 0) {
+    for (let index = 0; index < CONFIRMED_WRITE_TOOL_IDS.length; index++) {
+      if (evidence.toolResultSummary.indexOf('toolId: ' + CONFIRMED_WRITE_TOOL_IDS[index]) >= 0) {
+        receipt = true;
+        break;
+      }
+    }
+  }
+  const userAssertedCompletion = /已完成|已经完成|完成了/.test(evidence.query) &&
+    !/如果|若|是否|有没有|吗|？|\?/.test(evidence.query);
+  return (providerClaim.test(state) || (completionClaim.test(state) && !userAssertedCompletion)) &&
+    !evidence.userConfirmedCompletion && !receipt;
+}
+
+function curatorError(message: string): BimCuratorResult {
+  return { updatedBimIds: [], createdBimIds: [], error: message };
+}
+
+export async function runBimCurator(
+  store: BimStore,
+  model: LocalModel,
+  evidence: BimTurnEvidence,
+  nowIso: string
+): Promise<BimCuratorResult> {
+  const records = store.list();
+  let loadIds: string[] | null = null;
+  for (let attempt = 0; attempt < 2 && loadIds === null; attempt++) {
+    try {
+      loadIds = parsedLoadBimIds(
+        await model.complete(curatorSelectionPrompt(records, evidence)), records
+      );
+    } catch (_error) {
+      loadIds = null;
+    }
+  }
+  if (loadIds === null) return curatorError('BIM_CURATOR_SELECTION_INVALID');
+  const explicitCreate = explicitBimCreateRequest(evidence.query) && evidence.userConfirmedCreate;
+  if (loadIds.length === 0 && !explicitCreate) {
+    return { updatedBimIds: [], createdBimIds: [], error: '' };
+  }
+  const loaded = new BimSkill(store).load(loadIds);
+  let envelope: BimCuratorEnvelope | null = null;
+  for (let attempt = 0; attempt < 2 && envelope === null; attempt++) {
+    try {
+      const repair = attempt === 0 ? '' :
+        '\nPrevious output was invalid. dashboardItems must be inside the context object, not beside context: ' +
+        '"context":{"summary":"...","facts":[],"constraints":[],"decisions":[],' +
+        '"dashboardItems":[...]}. When evidence contains a date, progress, status, or next step, ' +
+        'dashboardItems must include those visible cards and must not be empty. ' +
+        'Each dashboard item has exactly kind, title, value, detail, status. Allowed kind values are ' +
+        'progress, metric, person, timeline, task, hotel, flight, transport, event. Example: ' +
+        '{"kind":"task","title":"下一步","value":"确认展位","detail":"","status":"待处理"}. ' +
+        'Never use type or label keys. ' +
+        'Return the complete wrapper again; do not omit or relocate any required field.';
+      envelope = parsedCuratorEnvelope(await model.complete(curatorUpdatePrompt(loaded, evidence) + repair));
+    } catch (_error) {
+      envelope = null;
+    }
+  }
+  if (envelope === null) return curatorError('BIM_CURATOR_UPDATE_INVALID');
+  const loadedIds = loaded.map((item: BimLoadedContext): string => item.id);
+  const updatedBimIds: string[] = [];
+  const createdBimIds: string[] = [];
+  let error = '';
+  for (let index = 0; index < envelope.updates.length; index++) {
+    const update = envelope.updates[index];
+    if (loadedIds.indexOf(update.bimId) < 0 || unverifiedCompletionClaim(update, evidence) ||
+      !store.publishState(update.bimId, update.expectedVersion, update, nowIso)) {
+      error = 'BIM_CURATOR_PUBLISH_REJECTED';
+      continue;
+    }
+    updatedBimIds.push(update.bimId);
+  }
+  if (explicitCreate && envelope.creates.length === 1) {
+    const create = envelope.creates[0];
+    const surface = emptyA2uiSurface('surface-' + create.id);
+    surface.title = create.title;
+    surface.intent = 'bim';
+    surface.status = 'ready';
+    const record = createBimRecord(
+      create.id, create.title, create.context, create.retrievalIndex, JSON.stringify(surface), nowIso
+    );
+    record.snapshotMarkdown = create.snapshotMarkdown;
+    record.fullContextMarkdown = create.fullContextMarkdown;
+    if (store.create(record)) {
+      createdBimIds.push(record.id);
+    } else {
+      error = 'BIM_CURATOR_CREATE_REJECTED';
+    }
+  }
+  return { updatedBimIds, createdBimIds, error };
+}
+
+export interface BimAttentionEvent {
+  bimId: string;
+  title: string;
+  observedAt: string;
+  attentions: string[];
+}
+
+function sentinelSelectionPrompt(records: BimRecord[]): string {
+  return 'You are the read-only BIM Sentinel selector. Read only BIM Snapshots. ' +
+    'Return one JSON object only: {"loadBimIds":[...]}. Select only BIMs that may need attention now. ' +
+    'Use bimId values, never titles. Never return Execution or Action text. ' +
+    'Return an empty list when none does. Do not update BIM or call tools.\n' +
+    JSON.stringify({ snapshots: activeBimSnapshots(records) });
+}
+
+function sentinelAttentionPrompt(loaded: BimLoadedContext[]): string {
+  return 'You are the read-only BIM Sentinel. Return one JSON object only: ' +
+    '{"events":[{"bimId":"...","attentions":["..."]}]}. ' +
+    'Use only loaded BIM IDs and concrete attention supported by the Full Context. ' +
+    'Return an empty events list when no user attention is needed. Do not update BIM or call tools.\n' +
+    JSON.stringify({ loaded });
+}
+
+function parsedAttentionEvents(raw: string, loaded: BimLoadedContext[]): BimAttentionEvent[] | null {
+  const object = oneJsonObject(raw);
+  if (object === null || !exactObjectKeys(object, ['events'])) return null;
+  const values = object as Record<string, BimJsonValue>;
+  if (!Array.isArray(values['events'])) return null;
+  const rawEvents = values['events'] as Object[];
+  if (rawEvents.length > MAX_SENTINEL_EVENTS) return null;
+  const result: BimAttentionEvent[] = [];
+  for (let index = 0; index < rawEvents.length; index++) {
+    const rawEvent = rawEvents[index];
+    if (rawEvent === null || typeof rawEvent !== 'object' || Array.isArray(rawEvent) ||
+      !exactObjectKeys(rawEvent, ['bimId', 'attentions'])) return null;
+    const event = rawEvent as Record<string, BimJsonValue>;
+    const attentions = parsedStringList(event['attentions']);
+    if (typeof event['bimId'] !== 'string' || attentions === null || attentions.length === 0 ||
+      attentions.length > MAX_ATTENTIONS_PER_BIM) return null;
+    const bimId = event['bimId'] as string;
+    const loadedItem = loaded.find((item: BimLoadedContext): boolean => item.id === bimId);
+    if (loadedItem === undefined) return null;
+    let target = result.find((item: BimAttentionEvent): boolean => item.bimId === bimId);
+    if (target === undefined) {
+      target = { bimId, title: loadedItem.title, observedAt: '', attentions: [] };
+      result.push(target);
+    }
+    for (let attentionIndex = 0; attentionIndex < attentions.length; attentionIndex++) {
+      const attention = attentions[attentionIndex].trim();
+      if (attention.length === 0 || attention.length > MAX_ATTENTION_CHARS) return null;
+      if (target.attentions.indexOf(attention) < 0 &&
+        target.attentions.length >= MAX_ATTENTIONS_PER_BIM) return null;
+      if (target.attentions.indexOf(attention) < 0) target.attentions.push(attention);
+    }
+  }
+  return result;
+}
+
+export async function runBimSentinel(
+  store: BimStore,
+  model: LocalModel,
+  observedAt: string = new Date().toISOString()
+): Promise<BimAttentionEvent[]> {
+  const records = store.list();
+  const loadIds = parsedSentinelLoadBimIds(await model.complete(sentinelSelectionPrompt(records)), records);
+  if (loadIds === null) throw new Error('BIM_SENTINEL_SELECTION_INVALID');
+  if (loadIds.length === 0) return [];
+  const loaded = new BimSkill(store).load(loadIds);
+  const events = parsedAttentionEvents(await model.complete(sentinelAttentionPrompt(loaded)), loaded);
+  if (events === null) throw new Error('BIM_SENTINEL_ATTENTION_INVALID');
+  for (let index = 0; index < events.length; index++) events[index].observedAt = observedAt;
+  return events;
+}
+
+export function bimAttentionVisibleText(event: BimAttentionEvent): string {
+  return '来自心上事「' + event.title + '」';
+}
+
+export function buildBimAttentionPrompt(event: BimAttentionEvent): string {
+  return '[BIM_ATTENTION]\n' + JSON.stringify({
+    bimId: event.bimId,
+    observedAt: event.observedAt,
+    attentions: event.attentions
+  }) + '\n[/BIM_ATTENTION]\n请根据这些待关注事项主动帮助用户。';
 }
 
 export function refreshedSelectedBimRecord(
@@ -78,492 +581,10 @@ export function bimDetailRenderKey(recordId: string, renderTick: number): string
   return recordId + '-' + renderTick.toString();
 }
 
-export function bimContextUpdateForSave(
-  record: BimRecord,
-  surfaceJson: string,
-  update: LeaderBimContextUpdate | undefined
-): LeaderBimContextUpdate | undefined {
-  if (update !== undefined) {
-    try {
-      const current = JSON.parse(record.contextJson) as BimContextSnapshot;
-      if (current.dashboardItems !== undefined && update.dashboardItems === undefined) return undefined;
-    } catch (_error) {
-      return undefined;
-    }
-    return update;
-  }
-  if (surfaceJson === record.surfaceJson || !isValidBimSurfaceJson(surfaceJson)) return undefined;
-  try {
-    const surface = JSON.parse(surfaceJson) as A2uiSurfaceState;
-    const context = JSON.parse(record.contextJson) as BimContextSnapshot;
-    if (surface.status !== 'ready' || surface.error.length > 0 ||
-      typeof context.summary !== 'string' ||
-      !Array.isArray(context.facts) ||
-      !Array.isArray(context.constraints) ||
-      !Array.isArray(context.decisions)) {
-      return undefined;
-    }
-    const preserved: LeaderBimContextUpdate = {
-      summary: context.summary,
-      facts: context.facts.slice(),
-      constraints: context.constraints.slice(),
-      decisions: context.decisions.slice(),
-      entities: record.retrievalIndex.entities.slice(),
-      timeAnchors: record.retrievalIndex.timeAnchors.slice(),
-      locations: record.retrievalIndex.locations.slice(),
-      commitments: record.retrievalIndex.commitments.slice(),
-      keywords: record.retrievalIndex.keywords.slice()
-    };
-    if (context.dashboardItems !== undefined) {
-      preserved.dashboardItems = context.dashboardItems.map(
-        (item: LeaderBimDashboardItem): LeaderBimDashboardItem => ({
-          kind: item.kind,
-          title: item.title,
-          value: item.value,
-          detail: item.detail,
-          status: item.status
-        })
-      );
-    }
-    return preserved;
-  } catch (_error) {
-    return undefined;
-  }
-}
-
-export function initialBimContextForNewBim(
-  outcomeSurfaceId: string,
-  currentSurface: A2uiSurfaceState,
-  suggestion: LeaderBimSuggestion,
-  initialUpdate?: LeaderBimContextUpdate
-): BimContextSnapshot {
-  if (initialUpdate !== undefined) {
-    const context: BimContextSnapshot = {
-      summary: initialUpdate.summary,
-      facts: initialUpdate.facts.slice(),
-      constraints: initialUpdate.constraints.slice(),
-      decisions: initialUpdate.decisions.slice()
-    };
-    if (initialUpdate.dashboardItems !== undefined) {
-      context.dashboardItems = initialUpdate.dashboardItems.map(
-        (item: LeaderBimDashboardItem): LeaderBimDashboardItem => ({
-          kind: item.kind,
-          title: item.title,
-          value: item.value,
-          detail: item.detail,
-          status: item.status
-        })
-      );
-    }
-    return context;
-  }
-  const facts: string[] = [];
-  if (outcomeSurfaceId.length > 0 && outcomeSurfaceId === currentSurface.surfaceId) {
-    const digest = summarizeAppliedA2uiSurface('', currentSurface).text.trim().substring(0, 240);
-    if (digest.length > 0) {
-      facts.push(digest);
-    }
-  }
-  return {
-    summary: suggestion.title.trim() + '：' + suggestion.summary.trim(),
-    facts,
-    constraints: [],
-    decisions: []
-  };
-}
-
-export function bimRememberFailureMessage(localError: string): string {
-  const message = localError.trim();
-  return message.length > 0 ? message : '心上事保存失败';
-}
-
-export function surfaceForNewBim(
-  outcomeSurfaceId: string,
-  currentSurface: A2uiSurfaceState,
-  suggestion: LeaderBimSuggestion
-): string {
-  if (outcomeSurfaceId.length > 0 && outcomeSurfaceId === currentSurface.surfaceId) {
-    return JSON.stringify(currentSurface);
-  }
-  const surface = emptyA2uiSurface('surface_bim_suggestion');
-  surface.title = suggestion.title;
-  surface.intent = 'bim';
-  surface.status = 'ready';
-  surface.components = [
-    { id: 'root', component: 'SurfaceRoot', child: 'summary' },
-    { id: 'summary', component: 'Text', text: suggestion.summary }
-  ];
-  return JSON.stringify(surface);
-}
-
-export function bimTurnOwnsTransientState(ownerGeneration: number, turnGeneration: number): boolean {
-  return ownerGeneration === turnGeneration;
-}
-
-export function bimSurfaceDestination(
-  callbackIsCurrent: boolean,
-  activeBimId: string,
-  turnStartedInDetail: boolean
-): BimSurfaceDestination {
-  if (!callbackIsCurrent) return 'reject';
-  return activeBimId.length > 0 && turnStartedInDetail ? 'detail' : 'home';
-}
-
-export function bimPageActionPresentation(
-  callbackIsCurrent: boolean,
-  activeBimId: string,
-  turnStartedInDetail: boolean
-): BimPageActionPresentation {
-  const destination = bimSurfaceDestination(callbackIsCurrent, activeBimId, turnStartedInDetail);
-  return {
-    destination,
-    appendAssistantMessage: destination === 'home'
-  };
-}
-
-export function shouldPrepareVirtualPageAction(
-  callbackIsCurrent: boolean,
-  transientOwnerGeneration: number,
-  actionGeneration: number,
-  activeBimId: string,
-  turnStartedInDetail: boolean
-): boolean {
-  if (!callbackIsCurrent) {
-    return false;
-  }
-  const ownedActiveBimId = bimTurnOwnsTransientState(
-    transientOwnerGeneration, actionGeneration
-  ) ? activeBimId : '';
-  return bimPageActionPresentation(
-    true, ownedActiveBimId, turnStartedInDetail
-  ).destination === 'home';
-}
-
-export function bimPageActionAdmission(
-  activeRuntimeIsMultiAgent: boolean,
-  originHostGeneration: number | undefined,
-  currentHostGeneration: number,
-  transientOwnerGeneration: number,
-  activeBimId: string,
-  turnStartedInDetail: boolean
-): BimPageActionAdmission {
-  const originIsValid = originHostGeneration !== undefined &&
-    Number.isSafeInteger(originHostGeneration) && originHostGeneration > 0;
-  const currentIsValid = Number.isSafeInteger(currentHostGeneration) && currentHostGeneration > 0;
-  const accepted = activeRuntimeIsMultiAgent && originIsValid && currentIsValid &&
-    originHostGeneration === currentHostGeneration;
-  return {
-    accepted,
-    prepareVirtualHome: accepted && shouldPrepareVirtualPageAction(
-      true,
-      transientOwnerGeneration,
-      currentHostGeneration,
-      activeBimId,
-      turnStartedInDetail
-    )
-  };
-}
-
-export async function runBimPageActionWithAdmission(
-  admission: BimPageActionAdmission,
-  prepareVirtualHome: () => void,
-  execute: () => Promise<ActionExecutionResult>
-): Promise<ActionExecutionResult> {
-  if (!admission.accepted) {
-    return {
-      status: 'error',
-      errorCode: 'BIM_PAGE_ACTION_GENERATION_STALE',
-      message: 'Page action no longer belongs to the current turn.'
-    };
-  }
-  if (admission.prepareVirtualHome) {
-    prepareVirtualHome();
-  }
-  return execute();
-}
-
-interface BimRouteState {
-  route: Promise<BimRouteDecision>;
-  settledAt: number;
-}
-
-export function bimGateWaitMs(
-  routeSettledBeforePlanner: boolean,
-  plannedSettledAt: number,
-  routeSettledAt: number
-): number {
-  return routeSettledBeforePlanner ? 0 : Math.max(1, routeSettledAt - plannedSettledAt);
-}
-
-export class BimTurnGate {
-  private readonly routes: Map<number, BimRouteState> = new Map<number, BimRouteState>();
-  private readonly turnGenerations: Map<string, number> = new Map<string, number>();
-
-  begin(hostGeneration: number, route: Promise<BimRouteDecision>): void {
-    const state: BimRouteState = { route, settledAt: 0 };
-    this.routes.set(hostGeneration, state);
-    route.then(
-      (): void => {
-        state.settledAt = Date.now();
-      },
-      (): void => {
-        state.settledAt = Date.now();
-      }
-    );
-  }
-
-  bind(turnId: string, hostGeneration: number): void {
-    this.turnGenerations.set(turnId, hostGeneration);
-  }
-
-  routeFor(turnId: string): Promise<BimRouteDecision> | null {
-    const hostGeneration: number | undefined = this.turnGenerations.get(turnId);
-    if (hostGeneration === undefined) return null;
-    const state: BimRouteState | undefined = this.routes.get(hostGeneration);
-    return state === undefined ? null : state.route;
-  }
-
-  routeSettledAtFor(turnId: string): number {
-    const hostGeneration: number | undefined = this.turnGenerations.get(turnId);
-    if (hostGeneration === undefined) return 0;
-    const state: BimRouteState | undefined = this.routes.get(hostGeneration);
-    return state === undefined ? 0 : state.settledAt;
-  }
-
-  clear(hostGeneration: number): void {
-    this.routes.delete(hostGeneration);
-    this.turnGenerations.forEach((generation: number, turnId: string): void => {
-      if (generation === hostGeneration) this.turnGenerations.delete(turnId);
-    });
-  }
-}
-
-export class BimGatedLeaderPlanner implements LeaderPlanner {
-  private readonly inner: LeaderPlanner;
-  private readonly gate: BimTurnGate;
-  private readonly logInfo: (message: string) => void;
-
-  constructor(inner: LeaderPlanner, gate: BimTurnGate, logInfo?: (message: string) => void) {
-    this.inner = inner;
-    this.gate = gate;
-    this.logInfo = logInfo === undefined ? aiLogInfo : logInfo;
-  }
-
-  async plan(
-    message: AgentMessage,
-    input: InputUserPayload,
-    context: LeaderPlanningContext,
-    round?: number,
-    signal?: LeaderPlanningSignal,
-    currentLocalDate?: string
-  ): Promise<LeaderPlannerResult> {
-    let plannedSettledAt: number = 0;
-    let routeSettledBeforePlanner: boolean = false;
-    const planned: Promise<LeaderPlannerResult> =
-      this.inner.plan(message, input, context, round, signal, currentLocalDate);
-    const recordPlannedSettlement = (): void => {
-      routeSettledBeforePlanner = this.gate.routeSettledAtFor(message.turnId) !== 0;
-      plannedSettledAt = Date.now();
-    };
-    planned.then(recordPlannedSettlement, recordPlannedSettlement);
-    planned.catch((): void => {});
-    const route: Promise<BimRouteDecision> | null = this.gate.routeFor(message.turnId);
-    if (route === null) return planned;
-    const decision: BimRouteDecision = await route;
-    const waitMs: number = bimGateWaitMs(
-      plannedSettledAt === 0 || routeSettledBeforePlanner,
-      plannedSettledAt,
-      this.gate.routeSettledAtFor(message.turnId)
-    );
-    this.logInfo('[AIPhone][BimGate] toolGateWaitMs=' + waitMs.toString());
-    if (decision.status !== 'none') {
-      throw new Error('BIM_MAIN_TURN_NOT_ADMITTED');
-    }
-    return planned;
-  }
-}
-
-interface RankedBimRecord {
-  record: BimRecord;
-  score: number;
-  updatedAt: number;
-}
-
-interface BimRoutePromptCandidate {
-  id: string;
-  title: string;
-  lifecycle: BimLifecycleState;
-  retrievalIndex: BimRetrievalIndex;
-}
-
-interface BimExecutionPrimary {
-  id: string;
-  title: string;
-  contextJson: string;
-  appliedSurfaceDigest: A2uiObservationDigest;
-}
-
-interface BimExecutionSecondary {
-  id: string;
-  title: string;
-  retrievalIndex: BimRetrievalIndex;
-}
-
-interface BimExecutionContext {
-  primary: BimExecutionPrimary;
-  secondary: BimExecutionSecondary[];
-  query: string;
-}
-
-function normalized(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, '');
-}
-
-function includesExact(query: string, values: string[]): boolean {
-  for (let index = 0; index < values.length; index++) {
-    const value = normalized(values[index]);
-    if (value.length > 0 && query.indexOf(value) >= 0) return true;
-  }
-  return false;
-}
-
-function includesSubstring(query: string, values: string[]): boolean {
-  for (let index = 0; index < values.length; index++) {
-    const value = normalized(values[index]);
-    if (value.length > 0 && (query.indexOf(value) >= 0 || value.indexOf(query) >= 0)) return true;
-  }
-  return false;
-}
-
-function exactWakeValues(record: BimRecord): string[] {
-  return [record.title].concat(
-    record.retrievalIndex.entities,
-    record.retrievalIndex.locations,
-    record.retrievalIndex.timeAnchors
-  );
-}
-
-function candidateScore(query: string, record: BimRecord): number {
-  const exactValues: string[] = exactWakeValues(record);
-  if (includesExact(query, exactValues)) return 2;
-  const index: BimRetrievalIndex = record.retrievalIndex;
-  const values: string[] = [record.title].concat(
-    index.entities,
-    index.timeAnchors,
-    index.locations,
-    index.commitments,
-    index.keywords
-  );
-  return includesSubstring(query, values) ? 1 : 0;
-}
-
-function truncated(values: string[], count: number): string[] {
-  return values.slice(0, count).map((value: string): string => value.substring(0, MAX_PROMPT_INDEX_VALUE_CHARS));
-}
-
-export function compactBimRetrievalIndexForPrompt(index: BimRetrievalIndex): BimRetrievalIndex {
-  return {
-    summary: index.summary,
-    entities: truncated(index.entities, 4),
-    timeAnchors: truncated(index.timeAnchors, 4),
-    locations: truncated(index.locations, 4),
-    commitments: truncated(index.commitments, 4),
-    keywords: truncated(index.keywords, 8)
-  };
-}
-
-function parsedPersistedSurface(record: BimRecord): A2uiSurfaceState {
-  if (!isValidBimSurfaceJson(record.surfaceJson)) {
-    throw new Error('BIM_SURFACE_INVALID');
-  }
-  try {
-    return JSON.parse(record.surfaceJson) as A2uiSurfaceState;
-  } catch (_error) {
-    throw new Error('BIM_SURFACE_INVALID');
-  }
-}
-
-export function buildBimExecutionPrompt(
-  primary: BimRecord,
-  secondary: BimRecord[],
-  query: string
-): string {
-  const surface = parsedPersistedSurface(primary);
-  const secondaryContext: BimExecutionSecondary[] = secondary.map(
-    (record: BimRecord): BimExecutionSecondary => ({
-      id: record.id,
-      title: record.title,
-      retrievalIndex: compactBimRetrievalIndexForPrompt(record.retrievalIndex)
-    })
-  );
-  const context: BimExecutionContext = {
-    primary: {
-      id: primary.id,
-      title: primary.title,
-      contextJson: primary.contextJson,
-      appliedSurfaceDigest: summarizeAppliedA2uiSurface('', surface)
-    },
-    secondary: secondaryContext,
-    query
-  };
-  const prompt = '[BIM_CONTEXT]\n' +
-    'Continue the primary matter using its semantic context and applied Surface digest. ' +
-    'BIM state is separate from Persona Memory; never call memory.update for a BIM update. ' +
-    'Changing matter state such as participants, room preferences, dates, budgets, constraints, or decisions ' +
-    'is not by itself a search or business-tool request. For a state-only change, answer without capabilities ' +
-    'and return the complete updated bimContextUpdate. Call a business tool only when the user explicitly asks ' +
-    'to search, read, or execute it. ' +
-    'Preserve still-valid sections, preserve new user constraints verbatim when safe, replace superseded results, ' +
-    'and return bimContextUpdate in the terminal decision. dashboardItems must contain only the latest state, ' +
-    'using generic progress, metric, person, timeline, task, hotel, flight, transport, or event items. ' +
-    'Replace reversed people and metrics in place. Use hotel, flight, transport, or event cards only after the ' +
-    'user explicitly says they are confirmed or a real provider confirms them; never save search candidates.\n' +
-    'For travel, flight, or train searches, put a self-contained query in dataTasks[].input.query with dates, ' +
-    'route, and other constraints resolved from this BIM context.\n' +
-    JSON.stringify(context);
-  if (prompt.length > MAX_BIM_EXECUTION_PROMPT_CHARS) {
-    throw new Error('BIM_CONTEXT_LIMIT');
-  }
-  return prompt;
-}
-
 export function originalQueryFromBimPrompt(prompt: string): string {
-  if (prompt.indexOf('[BIM_CONTEXT]\n') !== 0) return prompt;
-  const contextStart = prompt.lastIndexOf('\n{"primary":');
-  if (contextStart < 0) return prompt;
-  try {
-    const context = JSON.parse(prompt.substring(contextStart + 1)) as BimExecutionContext;
-    return typeof context.query === 'string' && context.query.trim().length > 0 ?
-      context.query : prompt;
-  } catch (_error) {
-    return prompt;
-  }
-}
-
-export function buildBimAgentInput(primary: BimRecord, query: string): UserInputPayload {
-  const surface = parsedPersistedSurface(primary);
-  return {
-    text: query,
-    recentMessages: [],
-    previousPersonaId: '',
-    currentSurfaceSummary: {
-      surfaceId: surface.surfaceId,
-      kind: surface.intent,
-      status: surface.status,
-      entityRefs: [],
-      actionOfferIds: []
-    },
-    recentObservations: []
-  };
-}
-
-export function bimTravelQueryNeedsDetails(query: string): boolean {
-  const value = query.trim().toLowerCase();
-  const asksTravel = value.indexOf('机票') >= 0 || value.indexOf('航班') >= 0 ||
-    value.indexOf('飞机') >= 0 || value.indexOf('高铁') >= 0 || value.indexOf('火车') >= 0 ||
-    value.indexOf('flight') >= 0 || value.indexOf('train') >= 0;
-  const asksSearch = /查|搜|找|看|search|find/.test(value);
-  return asksTravel && asksSearch && !bimTravelQueryIsComplete(value);
+  if (prompt.indexOf('[BIM_SNAPSHOTS]\n') !== 0) return prompt;
+  const end = prompt.indexOf('[/BIM_SNAPSHOTS]\n\n');
+  return end < 0 ? prompt : prompt.substring(end + '[/BIM_SNAPSHOTS]\n\n'.length);
 }
 
 export function bimTravelQueryIsComplete(query: string, now: Date = new Date()): boolean {
@@ -572,295 +593,4 @@ export function bimTravelQueryIsComplete(query: string, now: Date = new Date()):
   const hasFlightNumber = flightNumber !== null && /[A-Z]/i.test(flightNumber[0]);
   return (mapsRouteInputFromPrompt(value) !== null || hasFlightNumber) &&
     calendarDateFromPrompt(value, now).length > 0;
-}
-
-// ponytail: O(n) over at most 100 local matters and six semantic candidates; add an indexed store only after device measurements show need.
-export function localBimCandidates(query: string, records: BimRecord[]): BimRecord[] {
-  const normalizedQuery: string = normalized(query);
-  if (normalizedQuery.length === 0) return [];
-  const ranked: RankedBimRecord[] = [];
-  for (let index = 0; index < records.length; index++) {
-    const record: BimRecord = records[index];
-    if (record.lifecycle === 'ended') continue;
-    const score: number = candidateScore(normalizedQuery, record);
-    if (score === 0 || (record.lifecycle === 'tucked' && !includesExact(normalizedQuery, exactWakeValues(record)))) {
-      continue;
-    }
-    const candidate: RankedBimRecord = { record, score, updatedAt: new Date(record.updatedAt).getTime() };
-    let insertAt: number = ranked.length;
-    for (let position = 0; position < ranked.length; position++) {
-      const current: RankedBimRecord = ranked[position];
-      if (candidate.score > current.score ||
-        (candidate.score === current.score && candidate.updatedAt > current.updatedAt)) {
-        insertAt = position;
-        break;
-      }
-    }
-    if (insertAt < MAX_BIM_SEMANTIC_CANDIDATES) ranked.splice(insertAt, 0, candidate);
-    if (ranked.length > MAX_BIM_SEMANTIC_CANDIDATES) ranked.pop();
-  }
-  return ranked.map((item: RankedBimRecord): BimRecord => item.record);
-}
-
-function unknownDecision(): BimRouteDecision {
-  return { status: 'unknown', primaryBimId: '', secondaryBimIds: [], reason: '' };
-}
-
-function routePrompt(query: string, records: BimRecord[]): string {
-  const candidates: BimRoutePromptCandidate[] = records.map((record: BimRecord): BimRoutePromptCandidate => ({
-    id: record.id,
-    title: record.title,
-    lifecycle: record.lifecycle,
-    retrievalIndex: compactBimRetrievalIndexForPrompt(record.retrievalIndex)
-  }));
-  return 'Choose the relevant local matter for the query. Return one JSON object only with ' +
-    'status (none|matched|ambiguous), primaryBimId, secondaryBimIds, and a short reason. ' +
-    'A query is relevant when it updates, checks, or takes an action to further the matter; ' +
-    'for example, a hotel, flight, restaurant, ticket, or schedule request for an existing trip remains relevant ' +
-    'even when that specific result is not stored yet. ' +
-    'Use only candidate IDs. matched requires one primary; none has no IDs; ambiguous has two to six secondary IDs.\n' +
-    JSON.stringify({ query, candidates });
-}
-
-function validOutputShape(value: Object): boolean {
-  return Object.keys(value).sort().join(',') === 'primaryBimId,reason,secondaryBimIds,status';
-}
-
-function validReason(value: Object | string | number | boolean | null): boolean {
-  return typeof value === 'string' && value.trim().length > 0 && value.length <= 240;
-}
-
-function outputIds(value: Object | string | number | boolean | null): string[] | null {
-  if (!Array.isArray(value)) return null;
-  const ids: string[] = [];
-  const rawIds: string[] = value as string[];
-  for (let index = 0; index < rawIds.length; index++) {
-    const id: string = rawIds[index];
-    if (typeof id !== 'string' || id.trim().length === 0 || ids.indexOf(id) >= 0) return null;
-    ids.push(id);
-  }
-  return ids;
-}
-
-function parseRouteDecision(raw: string, candidates: BimRecord[]): BimRouteDecision {
-  try {
-    const objects: string[] = extractJsonObjects(raw);
-    if (objects.length !== 1) return unknownDecision();
-    const parsed: Object = JSON.parse(objects[0]) as Object;
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed) || !validOutputShape(parsed)) {
-      return unknownDecision();
-    }
-    const value: Record<string, Object | string | number | boolean | null> =
-      parsed as Record<string, Object | string | number | boolean | null>;
-    const status: string = value['status'] as string;
-    const primary: Object | string | number | boolean | null = value['primaryBimId'];
-    const secondary: string[] | null = outputIds(value['secondaryBimIds']);
-    if (typeof status !== 'string' ||
-      (status !== 'none' && status !== 'matched' && status !== 'ambiguous') ||
-      typeof primary !== 'string' || secondary === null || !validReason(value['reason'])) {
-      return unknownDecision();
-    }
-    const reason: string = value['reason'] as string;
-    const candidateIds: string[] = candidates.map((candidate: BimRecord): string => candidate.id);
-    if ((primary.length > 0 && candidateIds.indexOf(primary) < 0) ||
-      secondary.some((id: string): boolean => candidateIds.indexOf(id) < 0 || id === primary)) {
-      return unknownDecision();
-    }
-    if (status === 'none' && primary.length === 0 && secondary.length === 0) {
-      return { status, primaryBimId: primary, secondaryBimIds: secondary, reason };
-    }
-    if (status === 'matched' && primary.length > 0) {
-      return { status, primaryBimId: primary, secondaryBimIds: secondary, reason };
-    }
-    if (status === 'ambiguous' && primary.length === 0 && secondary.length >= 2 &&
-      secondary.length <= MAX_BIM_SEMANTIC_CANDIDATES) {
-      return { status, primaryBimId: primary, secondaryBimIds: secondary, reason };
-    }
-  } catch (_error) {
-    return unknownDecision();
-  }
-  return unknownDecision();
-}
-
-function logRoute(startedAt: number, candidates: number, semantic: boolean, status: BimRouteStatus): void {
-  aiLogInfo('[AIPhone][BimRoute] routeMs=' + Math.max(0, Date.now() - startedAt).toString() +
-    ' candidates=' + candidates.toString() + ' semantic=' + (semantic ? 'true' : 'false') + ' status=' + status);
-}
-
-export async function routeBimQuery(
-  query: string,
-  records: BimRecord[],
-  model: LocalModel
-): Promise<BimRouteDecision> {
-  const startedAt: number = Date.now();
-  const localCandidates: BimRecord[] = localBimCandidates(query, records);
-  if (localCandidates.length === 0) {
-    const decision: BimRouteDecision = { status: 'none', primaryBimId: '', secondaryBimIds: [], reason: '' };
-    logRoute(startedAt, 0, false, decision.status);
-    return decision;
-  }
-  const semanticCandidates: BimRecord[] = localCandidates.slice(0, MAX_BIM_SEMANTIC_CANDIDATES);
-  const prompt: string = routePrompt(query, semanticCandidates);
-  if (prompt.length > MAX_BIM_ROUTE_PROMPT_CHARS) {
-    const decision: BimRouteDecision = unknownDecision();
-    logRoute(startedAt, semanticCandidates.length, false, decision.status);
-    return decision;
-  }
-  let decision: BimRouteDecision = unknownDecision();
-  try {
-    decision = parseRouteDecision(await model.complete(prompt), semanticCandidates);
-  } catch (_error) {
-    decision = unknownDecision();
-  }
-  logRoute(startedAt, semanticCandidates.length, true, decision.status);
-  return decision;
-}
-
-export interface BimLifecycleDecision {
-  id: string;
-  lifecycle: 'active' | 'quiet' | 'tucked';
-  reason: string;
-}
-
-export interface BimLifecycleSweepResult {
-  ok: boolean;
-  decisions: BimLifecycleDecision[];
-}
-
-interface BimLifecyclePromptCandidate {
-  id: string;
-  title: string;
-  lifecycle: 'active' | 'quiet' | 'tucked';
-  retrievalIndex: BimRetrievalIndex;
-  lastInteractionAt: string;
-  lastLifecycleCheckAt: string;
-}
-
-function timestampMs(value: string): number {
-  if (typeof value !== 'string' || value.length === 0) return -1;
-  const parsed: number = new Date(value).getTime();
-  return isNaN(parsed) ? -1 : parsed;
-}
-
-function isActiveBimLifecycle(value: Object | string | number | boolean | null): boolean {
-  return value === 'active' || value === 'quiet' || value === 'tucked';
-}
-
-function lifecyclePrompt(candidates: BimRecord[]): string {
-  const items: BimLifecyclePromptCandidate[] = [];
-  for (let index = 0; index < candidates.length; index++) {
-    const record = candidates[index];
-    if (!isActiveBimLifecycle(record.lifecycle)) continue;
-    items.push({
-      id: record.id,
-      title: record.title,
-      lifecycle: record.lifecycle as 'active' | 'quiet' | 'tucked',
-      retrievalIndex: record.retrievalIndex,
-      lastInteractionAt: record.lastInteractionAt,
-      lastLifecycleCheckAt: record.lastLifecycleCheckAt
-    });
-  }
-  return 'Judge only the local matter lifecycle. Return one JSON array only; every item must have ' +
-    'id, lifecycle (active|quiet|tucked), and a short reason. Do not end matters, call tools, ' +
-    'or change context or surfaces. Use only the listed IDs.\n' + JSON.stringify(items);
-}
-
-function validLifecycleDecisionShape(value: Object): boolean {
-  return Object.keys(value).sort().join(',') === 'id,lifecycle,reason';
-}
-
-function parsedLifecycleDecision(raw: Object, candidateIds: string[], seen: string[]): BimLifecycleDecision | null {
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw) || !validLifecycleDecisionShape(raw)) {
-    return null;
-  }
-  const value: Record<string, Object | string | number | boolean | null> =
-    raw as Record<string, Object | string | number | boolean | null>;
-  const id: Object | string | number | boolean | null = value['id'];
-  const lifecycle: Object | string | number | boolean | null = value['lifecycle'];
-  const reason: Object | string | number | boolean | null = value['reason'];
-  if (typeof id !== 'string' || candidateIds.indexOf(id) < 0 || seen.indexOf(id) >= 0 ||
-    !isActiveBimLifecycle(lifecycle) || typeof reason !== 'string' ||
-    reason.trim().length === 0 || reason.length > 240) {
-    return null;
-  }
-  return { id, lifecycle: lifecycle as 'active' | 'quiet' | 'tucked', reason };
-}
-
-export function weeklySweepDue(nowIso: string, lastSweepAt: string): boolean {
-  const now: number = timestampMs(nowIso);
-  if (now < 0) return false;
-  const lastSweep: number = timestampMs(lastSweepAt);
-  return lastSweep < 0 || now - lastSweep >= WEEKLY_LIFECYCLE_SWEEP_MS;
-}
-
-export function lifecycleSweepCandidates(
-  records: BimRecord[], lastSweepAt: string, nowIso: string
-): BimRecord[] {
-  const lastSweep: number = timestampMs(lastSweepAt);
-  const now: number = timestampMs(nowIso);
-  if (lastSweep < 0 || now < lastSweep) return [];
-  const candidates: BimRecord[] = [];
-  for (let index = 0; index < records.length; index++) {
-    const record = records[index];
-    if (!isActiveBimLifecycle(record.lifecycle)) continue;
-    const lastInteraction: number = timestampMs(record.lastInteractionAt);
-    if (lastInteraction >= 0 && lastInteraction <= lastSweep) {
-      candidates.push(record);
-    }
-  }
-  return candidates;
-}
-
-export async function judgeBimLifecycle(
-  model: LocalModel, candidates: BimRecord[]
-): Promise<BimLifecycleDecision[]> {
-  const raw: string = await model.complete(lifecyclePrompt(candidates));
-  const parsed: Object = JSON.parse(raw.trim()) as Object;
-  if (!Array.isArray(parsed) || parsed.length > candidates.length) {
-    throw new Error('BIM_LIFECYCLE_OUTPUT_INVALID');
-  }
-  const candidateIds: string[] = candidates.map((record: BimRecord): string => record.id);
-  const seen: string[] = [];
-  const decisions: BimLifecycleDecision[] = [];
-  const items: Object[] = parsed as Object[];
-  for (let index = 0; index < items.length; index++) {
-    const decision: BimLifecycleDecision | null = parsedLifecycleDecision(items[index], candidateIds, seen);
-    if (decision === null) throw new Error('BIM_LIFECYCLE_OUTPUT_INVALID');
-    seen.push(decision.id);
-    decisions.push(decision);
-  }
-  return decisions;
-}
-
-export async function runWeeklyBimLifecycleSweep(
-  store: BimStore, model: LocalModel, nowIso: string
-): Promise<BimLifecycleSweepResult> {
-  try {
-    const lastSweepAt: string = store.lastLifecycleSweepAt();
-    const candidates: BimRecord[] = lifecycleSweepCandidates(store.list(), lastSweepAt, nowIso);
-    if (candidates.length === 0) {
-      return { ok: store.applyLifecycleSweep([], nowIso), decisions: [] };
-    }
-    const decisions: BimLifecycleDecision[] = await judgeBimLifecycle(model, candidates);
-    if (store.lastLifecycleSweepAt() !== lastSweepAt) {
-      return { ok: false, decisions: [] };
-    }
-    for (let index = 0; index < candidates.length; index++) {
-      const captured: BimRecord = candidates[index];
-      const current: BimRecord | undefined = store.get(captured.id);
-      if (current === undefined || current.lifecycle !== captured.lifecycle ||
-        current.lastInteractionAt !== captured.lastInteractionAt ||
-        current.lastLifecycleCheckAt !== captured.lastLifecycleCheckAt ||
-        current.updatedAt !== captured.updatedAt) {
-        return { ok: false, decisions: [] };
-      }
-    }
-    const updates: BimLifecycleUpdate[] = decisions.map((decision: BimLifecycleDecision): BimLifecycleUpdate => ({
-      id: decision.id,
-      lifecycle: decision.lifecycle
-    }));
-    return { ok: store.applyLifecycleSweep(updates, nowIso), decisions };
-  } catch (_error) {
-    return { ok: false, decisions: [] };
-  }
 }

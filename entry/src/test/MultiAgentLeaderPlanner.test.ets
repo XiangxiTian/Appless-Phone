@@ -1296,6 +1296,73 @@ export default function multiAgentLeaderPlannerTest() {
       expect(decision.bimSuggestion === undefined).assertTrue();
     });
 
+    it('keeps snapshot-only BIM creation out of the foreground tool plan', 0, async () => {
+      const model = new QueueLocalModel([LIVE_ANSWER_WITHOUT_REASON_CODE]);
+      const decision = await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        {
+          text: '[BIM_SNAPSHOTS]\n## 东京旅行\n后续每周跟进准备进度\n[/BIM_SNAPSHOTS]\n\n' +
+            '请帮我记在心上，标题是双机验收。'
+        },
+        actionOwnerContext(),
+        1
+      );
+
+      expect(model.prompts.length).assertEqual(1);
+      expect(model.prompts[0].indexOf('"toolId":"memory.update"')).assertEqual(-1);
+      expect(model.prompts[0].indexOf('asynchronous BIM Curator')).assertLarger(-1);
+      expect(model.prompts[0].indexOf('Do not claim the matter is saved before host confirmation')).assertLarger(-1);
+      expect(decision.requestedCapabilityIds.length).assertEqual(0);
+      expect(decision.bimSuggestion === undefined).assertTrue();
+      expect(decision.bimContextUpdate === undefined).assertTrue();
+    });
+
+    it('ignores BIM fields in every snapshot-only foreground decision without another model call', 0, async () => {
+      const prefix = LIVE_ANSWER_WITHOUT_REASON_CODE.substring(
+        0, LIVE_ANSWER_WITHOUT_REASON_CODE.length - 1
+      );
+      const invalid = prefix +
+        ',"bimSuggestion":{"title":"东京旅行","summary":"继续旅行",' +
+        '"reason":"稍后处理","keywords":["东京"]},' +
+        '"bimContextUpdate":{"summary":"继续旅行","facts":[],"constraints":[],' +
+        '"decisions":[],"entities":["东京"],"timeAnchors":[],"locations":["东京"],' +
+        '"commitments":[],"keywords":["东京"]}}';
+      const model = new QueueLocalModel([invalid]);
+
+      const decision = await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        { text: '[BIM_SNAPSHOTS]\n## 东京旅行\n待确认酒店\n[/BIM_SNAPSHOTS]\n\n继续安排' },
+        planningContext(),
+        1,
+        (): boolean => true
+      );
+
+      expect(model.prompts.length).assertEqual(1);
+      expect(decision.bimSuggestion === undefined).assertTrue();
+      expect(decision.bimContextUpdate === undefined).assertTrue();
+    });
+
+    it('preserves a snapshot-only foreground tool plan while ignoring BIM fields', 0, async () => {
+      const invalid = TRAVEL_DECISION.substring(0, TRAVEL_DECISION.length - 1) +
+        ',"bimSuggestion":{"title":"东京旅行","summary":"继续旅行",' +
+        '"reason":"稍后处理","keywords":["东京"]}}';
+      const model = new QueueLocalModel([invalid]);
+
+      const decision = await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        { text: '[BIM_SNAPSHOTS]\n## 东京旅行\n待确认酒店\n[/BIM_SNAPSHOTS]\n\n' +
+          '我明天要从北京去上海，帮我搜索出行方案' },
+        planningContext(),
+        1,
+        (): boolean => true
+      );
+
+      expect(model.prompts.length).assertEqual(1);
+      expect(decision.requestedCapabilityIds.join(',')).assertEqual('travel.search');
+      expect(decision.dataTasks[0].toolId).assertEqual('travel.search');
+      expect(decision.bimSuggestion === undefined).assertTrue();
+    });
+
     it('repairs an empty initial dashboard into known current state', 0, async () => {
       const prefix: string = LIVE_ANSWER_WITHOUT_REASON_CODE.substring(
         0, LIVE_ANSWER_WITHOUT_REASON_CODE.length - 1

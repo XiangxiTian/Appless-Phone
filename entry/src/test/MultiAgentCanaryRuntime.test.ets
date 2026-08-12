@@ -78,9 +78,12 @@ import {
   HotelVisibility,
   MonotonicHotelIds
 } from '../main/ets/pages/A2uiHome/agent/MultiAgentHotelSupport';
-import { BimRouteDecision, BimTurnGate } from '../main/ets/pages/A2uiHome/bim/BimRuntime';
 
 const SEARCH_TEXT: string = '帮我找深圳酒店';
+function bimSnapshotPrompt(query: string): string {
+  return '[BIM_SNAPSHOTS]\n## 展会计划\n- bimId: bim-expo\n- version: 1\n' +
+    '- lifecycle: active\n\n展会行程待跟进。\n[/BIM_SNAPSHOTS]\n\n' + query;
+}
 const SEARCH_INPUT: string = '{"originQuery":"帮我找深圳酒店","place":"深圳",' +
   '"placeType":"CITY","countryCode":"CN","checkInDate":"2026-08-15",' +
   '"stayNights":2,"adultCount":2,"childCount":0,"childAgeDetails":[],' +
@@ -1446,7 +1449,7 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(legacyComponents[4].catalogFieldsJson === undefined).assertTrue();
     });
 
-    it('keeps the existing runtime behavior when turnGate is undefined', 0, async () => {
+    it('keeps the existing runtime behavior', 0, async () => {
       const options = canaryOptions(
         new QueueModel([ANSWER_DECISION]),
         new CanaryHotelExecutor(),
@@ -1454,50 +1457,12 @@ export default function multiAgentCanaryRuntimeTest() {
         [],
         []
       );
-      options.turnGate = undefined;
       const runtime = new MultiAgentCanaryRuntime(options);
 
       const outcome = await runtime.submit('你好', { text: '' }) as MultiAgentSettledOutcome;
 
       expect(outcome.status).assertEqual('success');
       expect(outcome.message).assertEqual('你好');
-      runtime.dispose();
-    });
-
-    it('binds the host generation before Leader can publish matched BIM work', 0, async () => {
-      const model = new QueueModel([HOTEL_DECISION]);
-      const executor = new CanaryHotelExecutor();
-      const bus = new TrackingBus();
-      const gate: BimTurnGate = new BimTurnGate();
-      const decision: BimRouteDecision = {
-        status: 'matched',
-        primaryBimId: 'bim-trip',
-        secondaryBimIds: [],
-        reason: 'matched'
-      };
-      gate.begin(41, Promise.resolve(decision));
-      const options = canaryOptions(
-        model,
-        executor,
-        new RecordingOpener(),
-        [],
-        [],
-        bus
-      );
-      options.turnGate = gate;
-      const runtime = new MultiAgentCanaryRuntime(options);
-
-      const outcome = await runtime.submit(SEARCH_TEXT, { text: '' }, 41) as MultiAgentSettledOutcome;
-      const errors = bus.messages.filter((message: AgentMessage): boolean =>
-        message.type === AgentMessageType.TASK_ERROR
-      );
-
-      expect(outcome.status).assertEqual('error');
-      expect(model.prompts.length).assertEqual(1);
-      expect(executor.calls.length).assertEqual(0);
-      expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(0);
-      expect(errors.length).assertEqual(1);
-      expect((errors[0].payload as TaskErrorPayload).message).assertEqual('BIM_MAIN_TURN_NOT_ADMITTED');
       runtime.dispose();
     });
 
@@ -2132,9 +2097,7 @@ export default function multiAgentCanaryRuntimeTest() {
         [],
         []
       ));
-      const bimPrompt = '[BIM_CONTEXT]\nContinue the primary matter.\n' +
-        '{"primary":{"id":"bim-trip","title":"东京旅行","contextJson":"{}",' +
-        '"appliedSurfaceDigest":{}},"secondary":[],"query":"' + SEARCH_TEXT + '"}';
+      const bimPrompt = bimSnapshotPrompt(SEARCH_TEXT);
 
       const outcome = await runtime.submit(
         bimPrompt, { text: SEARCH_TEXT }
@@ -2168,9 +2131,7 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       const originalQuery = '帮我查去展会的机票';
-      const bimPrompt = '[BIM_CONTEXT]\nContinue the primary matter.\n' +
-        '{"primary":{"id":"bim-expo","title":"展会计划","contextJson":"{}",' +
-        '"appliedSurfaceDigest":{}},"secondary":[],"query":"' + originalQuery + '"}';
+      const bimPrompt = bimSnapshotPrompt(originalQuery);
 
       const outcome = await runtime.submit(bimPrompt, { text: originalQuery }) as MultiAgentSettledOutcome;
 
@@ -2203,9 +2164,7 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       const originalQuery = F01_QUERY;
-      const bimPrompt = '[BIM_CONTEXT]\nContinue the primary matter.\n' +
-        '{"primary":{"id":"bim-trip","title":"东京旅行","contextJson":"{}",' +
-        '"appliedSurfaceDigest":{}},"secondary":[],"query":"' + originalQuery + '"}';
+      const bimPrompt = bimSnapshotPrompt(originalQuery);
 
       const outcome = await runtime.submit(
         bimPrompt, { text: originalQuery }
@@ -2239,9 +2198,7 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       const originalQuery = '帮我查从深圳出发去展会的机票';
-      const bimPrompt = '[BIM_CONTEXT]\nContinue the primary matter.\n' +
-        '{"primary":{"id":"bim-expo","title":"展会计划","contextJson":"{}",' +
-        '"appliedSurfaceDigest":{}},"secondary":[],"query":"' + originalQuery + '"}';
+      const bimPrompt = bimSnapshotPrompt(originalQuery);
 
       const outcome = await runtime.submit(
         bimPrompt, { text: originalQuery }
@@ -2276,9 +2233,7 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       const originalQuery = '帮我查去展会的高铁';
-      const bimPrompt = '[BIM_CONTEXT]\nContinue the primary matter.\n' +
-        '{"primary":{"id":"bim-expo","title":"展会计划","contextJson":"{}",' +
-        '"appliedSurfaceDigest":{}},"secondary":[],"query":"' + originalQuery + '"}';
+      const bimPrompt = bimSnapshotPrompt(originalQuery);
 
       const outcome = await runtime.submit(bimPrompt, { text: originalQuery }) as MultiAgentSettledOutcome;
 
@@ -2310,9 +2265,7 @@ export default function multiAgentCanaryRuntimeTest() {
         return canaryStructuredResult('flight.search', 'flights');
       };
       const runtime = new MultiAgentCanaryRuntime(options);
-      const bimPrompt = '[BIM_CONTEXT]\nContinue the primary matter.\n' +
-        '{"primary":{"id":"bim-expo","title":"展会计划","contextJson":"{}",' +
-        '"appliedSurfaceDigest":{}},"secondary":[],"query":"帮我查去展会的机票"}';
+      const bimPrompt = bimSnapshotPrompt('帮我查去展会的机票');
 
       const outcome = await runtime.submit(
         bimPrompt, { text: '帮我查去展会的机票' }
@@ -2343,9 +2296,7 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       const originalQuery = '帮我查从北京到上海 2026年8月的航班';
-      const bimPrompt = '[BIM_CONTEXT]\nContinue the primary matter.\n' +
-        '{"primary":{"id":"bim-expo","title":"展会计划","contextJson":"{}",' +
-        '"appliedSurfaceDigest":{}},"secondary":[],"query":"' + originalQuery + '"}';
+      const bimPrompt = bimSnapshotPrompt(originalQuery);
 
       const outcome = await runtime.submit(
         bimPrompt, { text: originalQuery }

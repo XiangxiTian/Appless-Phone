@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,18 +48,19 @@ import {
   visibleMailBodyText
 } from './multi-agent-smoke-evidence.mjs';
 import {
-  bimCleanSessionBlocker,
+  bimDeleteConfirmationPoint,
   bimScenarioStatus,
+  bimSentinelEvidence,
+  bimSentinelUsesInAppTimer,
   bimSmokeStatus,
   completeBimScenarios,
   hasBimDirectory,
-  hasBimExecutionBar,
   hasBimHome,
+  hasBimReadOnlyContext,
   hasConversationTranscript,
-  hasMainAgentResult,
-  hasRememberSuggestion,
-  hasZeroCandidateBimRoute,
+  hasSnapshotOnlyMainAgent,
   heartCountFromLayout,
+  heartPointFromLayout,
   sanitizeBimFailureReason
 } from './bim-smoke-evidence.mjs';
 
@@ -78,11 +79,13 @@ function snapshotCaseArtifacts(caseId, attempt, sourcePrefixes, summary) {
     const prefix = sourcePrefixes.find((candidate) =>
       fileName.startsWith(`${candidate}-`) || fileName.startsWith(`${candidate}.`));
     if (prefix === undefined) continue;
+    const sourcePath = join(outDir, fileName);
+    if (!statSync(sourcePath).isFile()) continue;
     const extension = extname(fileName);
     const stage = fileName.slice(prefix.length + 1, extension.length > 0 ? -extension.length : undefined)
       .replace(/[^a-zA-Z0-9_-]+/g, '-') || 'artifact';
     const destinationPath = join(destinationDir, `${attempt}-${stage}-${timestamp}${extension}`);
-    copyFileSync(join(outDir, fileName), destinationPath);
+    copyFileSync(sourcePath, destinationPath);
     if (extension === '.png') evidenceScreens.push({ caseId, attempt, path: destinationPath });
   }
   writeFileSync(
@@ -649,6 +652,7 @@ if (listCases) {
       id: 'BIM',
       mode: 'device-smoke',
       automated: true,
+      preservesAppData: true,
       requires: ['local-model', 'heart-things']
     }], null, 2));
     process.exit(0);
@@ -1181,13 +1185,15 @@ function attrIsFalse(value) {
   return value === false || value === 'false';
 }
 
-function dumpLayout(localName = 'latest-layout.json') {
+function dumpLayout(localName = 'latest-layout.json', bundleName = 'com.example.aiphonedemo') {
   const remote = '/data/local/tmp/aiphone-smoke-layout.json';
   const local = join(outDir, localName);
   let lastError = null;
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
-      hdc(['shell', 'uitest', 'dumpLayout', '-p', remote, '-b', 'com.example.aiphonedemo']);
+      const args = ['shell', 'uitest', 'dumpLayout', '-p', remote];
+      if (bundleName.length > 0) args.push('-b', bundleName);
+      hdc(args);
       hdc(['file', 'recv', remote, local]);
       const raw = readFileSync(local, 'utf8').trim();
       if (raw.length === 0) {
@@ -1271,10 +1277,6 @@ function findHotelDetailTextCenter(layout, marker) {
     item.text.split('|').some((value) =>
       matchesHotelDetailAccessibleLabel(value, marker)));
   return match === undefined ? null : { x: match.bounds.x, y: match.bounds.y };
-}
-
-function findTextCenters(layout, marker) {
-  return findTextMatches(layout, marker).map((match) => ({ x: match.bounds.x, y: match.bounds.y }));
 }
 
 function findTextMatches(layout, marker) {
@@ -3774,7 +3776,7 @@ async function waitForBimLayout(prefix, predicate, attempts = 12) {
   return latest;
 }
 
-async function submitBimPrompt(query, prefix, captureExecutionBar = false) {
+async function submitBimPrompt(query, prefix) {
   clearHilog();
   const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim().split(/\s+/)[0] || '';
   const controls = await waitForControls(`${prefix}-controls-layout.json`);
@@ -3791,15 +3793,9 @@ async function submitBimPrompt(query, prefix, captureExecutionBar = false) {
     }
   }
   if (!typed) throw new Error(`Could not type full BIM query: ${query}`);
-  let executionBar = null;
   const logs = await captureWhile(appPid, async () => {
     const submit = await waitForControls(`${prefix}-submit-layout.json`, 2);
     hdc(['shell', 'uitest', 'uiInput', 'click', String(submit.generate.x), String(submit.generate.y)]);
-    if (!captureExecutionBar) return;
-    executionBar = await waitForBimLayout(`${prefix}-execution`, (layout) => hasBimExecutionBar(layout), 10);
-    if (executionBar !== null && hasBimExecutionBar(executionBar.layout)) {
-      executionBar.screenPath = captureScreen(`${prefix}-execution-screen.png`);
-    }
   }, {
     idleActionTimeoutMs: 0,
     completionEvidence: (text) => ({
@@ -3812,7 +3808,7 @@ async function submitBimPrompt(query, prefix, captureExecutionBar = false) {
   writeFileSync(logPath, safeLogText + '\n');
   const final = await waitForBimLayout(`${prefix}-final`, () => true, 1);
   final.screenPath = captureScreen(`${prefix}-final-screen.png`);
-  return { logs: safeLogText, logPath, executionBar, ...final };
+  return { logs: safeLogText, logPath, ...final };
 }
 
 function tapBimText(layout, text, label) {
@@ -3821,115 +3817,254 @@ function tapBimText(layout, text, label) {
   hdc(['shell', 'uitest', 'uiInput', 'click', String(point.x), String(point.y)]);
 }
 
+function tapBimHeart(layout) {
+  const point = heartPointFromLayout(layout);
+  if (point === null) throw new Error('Heart entry was not visible.');
+  hdc(['shell', 'uitest', 'uiInput', 'click', String(point.x), String(point.y)]);
+}
+
+async function runBimSentinelMockSmoke() {
+  const testPoint = await findTextCenterWithScroll(
+    '10秒测试 Sentinel', 'bim-sentinel-action', 6
+  );
+  if (testPoint === null) throw new Error('Sentinel debug action was not visible.');
+
+  clearHilog();
+  const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim().split(/\s+/)[0] || '';
+  let reminderScreenPath = '';
+  let reminderLayoutPath = '';
+  let reminderMissing = false;
+  const logs = await captureWhile(appPid, async () => {
+    hdc(['shell', 'uitest', 'uiInput', 'click', String(testPoint.x), String(testPoint.y)]);
+    await sleep(900);
+    const permissionLayout = dumpLayout('bim-sentinel-permission-layout.json', '');
+    let inAppTimer = bimSentinelUsesInAppTimer(collectLayoutText(permissionLayout));
+    const allow = findExactTextCenter(permissionLayout, '允许');
+    if (allow !== null) {
+      hdc(['shell', 'uitest', 'uiInput', 'click', String(allow.x), String(allow.y)]);
+      await sleep(900);
+      const scheduledLayout = dumpLayout('bim-sentinel-scheduled-layout.json', '');
+      inAppTimer = bimSentinelUsesInAppTimer(collectLayoutText(scheduledLayout));
+    }
+    await sleep(11000);
+    if (inAppTimer) return;
+    hdc(['shell', 'uitest', 'uiInput', 'swipe', '220', '20', '220', '1800', '800']);
+    await sleep(1200);
+    const reminderLayout = dumpLayout('bim-sentinel-reminder-layout.json', '');
+    reminderLayoutPath = join(outDir, 'bim-sentinel-reminder-layout.json');
+    writeFileSync(
+      join(outDir, 'bim-sentinel-reminder-layout-text.txt'),
+      collectLayoutText(reminderLayout).join('\n') + '\n'
+    );
+    const reminder = findTextCenter(reminderLayout, '检查心上事（测试）');
+    if (reminder === null) {
+      reminderMissing = true;
+      return;
+    }
+    reminderScreenPath = captureCurrentScreen('bim-sentinel-reminder-screen.png');
+    hdc(['shell', 'uitest', 'uiInput', 'click', String(reminder.x), String(reminder.y)]);
+  }, {
+    idleActionTimeoutMs: 0,
+    completionEvidence: (text) => ({
+      complete: bimSentinelEvidence(text).completed ||
+        /\[AIPhone\]\[BimSentinelMockScheduled\] ok=false/.test(text) ||
+        /\[AIPhone\]\[BimSentinel\] (?!mode=mock)/.test(text)
+    })
+  });
+  const safeLogText = sanitizeExternalUrlLogs(logs.join('\n'));
+  const logPath = join(outDir, 'bim-sentinel.log');
+  writeFileSync(logPath, safeLogText + '\n');
+  const evidence = bimSentinelEvidence(safeLogText);
+  if (reminderMissing && evidence.transport !== 'in_app_timer') {
+    throw new Error('Sentinel test reminder was not visible.');
+  }
+  if (reminderMissing) {
+    hdc(['shell', 'uitest', 'uiInput', 'keyEvent', 'Back']);
+    await sleep(700);
+  }
+  return {
+    ...evidence,
+    logPath,
+    reminderLayoutPath,
+    reminderScreenPath
+  };
+}
+
+async function openBimMarker(marker, prefix) {
+  let current = await waitForBimLayout(`${prefix}-current`, () => true, 1);
+  if (hasBimHome(current.layout)) {
+    tapBimHeart(current.layout);
+    current = await waitForBimLayout(`${prefix}-directory`, (_layout, text) =>
+      hasBimDirectory(_layout) && text.includes(marker), 30);
+  }
+  if (hasBimDirectory(current.layout)) {
+    tapBimText(current.layout, marker, marker + ' row');
+    current = await waitForBimLayout(`${prefix}-detail`, (_layout, text) =>
+      text.includes(marker) && /当前 Snapshot · v\d+/.test(text), 30);
+  }
+  if (!current.text.includes(marker) || !/当前 Snapshot · v\d+/.test(current.text)) {
+    throw new Error('Could not open the created BIM detail.');
+  }
+  const fullContextPoint = await findTextCenterWithScroll(
+    '完整上下文', `${prefix}-full-context`, 4
+  );
+  if (fullContextPoint === null) throw new Error('Full Context was not visible in BIM detail.');
+  const fullContext = await waitForBimLayout(`${prefix}-full-context-visible`, () => true, 1);
+  if (!hasBimReadOnlyContext(current.layout, fullContext.layout) ||
+    hasConversationTranscript(current.layout) || hasConversationTranscript(fullContext.layout)) {
+    throw new Error('BIM detail was not read-only or contained conversation transcript.');
+  }
+  const fullContextScreenPath = captureScreen(`${prefix}-full-context-screen.png`);
+
+  hdc(['shell', 'uitest', 'uiInput', 'keyEvent', 'Back']);
+  const directory = await waitForBimLayout(`${prefix}-return-directory`, (_layout, text) =>
+    hasBimDirectory(_layout) && text.includes(marker), 20);
+  tapBimText(directory.layout, marker, marker + ' row');
+  current = await waitForBimLayout(`${prefix}-return-detail`, (_layout, text) =>
+    text.includes(marker) && /当前 Snapshot · v\d+/.test(text), 20);
+  return { ...current, readOnlyContext: true, fullContextScreenPath };
+}
+
+async function cleanupBimMarker(marker, prefix) {
+  let detail = await openBimMarker(marker, prefix);
+  if (!detail.text.includes('已结束')) {
+    tapBimText(detail.layout, '结束', '结束 button');
+    detail = await waitForBimLayout(`${prefix}-ended`, (_layout, text) =>
+      text.includes(marker) && text.includes('已结束') && text.includes('删除'), 30);
+  }
+  tapBimText(detail.layout, '删除', '删除 button');
+  const prompt = await waitForBimLayout(`${prefix}-confirm`, (_layout, text) =>
+    text.includes('删除这件已结束的心上事？'), 20);
+  const confirm = bimDeleteConfirmationPoint(prompt.layout);
+  if (confirm === null) throw new Error('Delete confirmation action was not visible.');
+  hdc(['shell', 'uitest', 'uiInput', 'click', String(confirm.x), String(confirm.y)]);
+  const directory = await waitForBimLayout(`${prefix}-done`, (_layout, text) =>
+    hasBimDirectory(_layout) && !text.includes(marker), 30);
+  directory.screenPath = captureScreen(`${prefix}-screen.png`);
+  return directory;
+}
+
 async function runBimDeviceSmoke() {
   const scenarios = [];
-  let currentScenarioId = 'suggestion';
+  let currentScenarioId = 'home';
   let failedScenarioId = '';
   let failureReason = '';
+  let created = false;
+  let cleanupComplete = false;
+  const marker = 'BIM双机验收' + smokeRunId.replace(/\D/g, '').slice(-6);
   try {
     if (queryArgs.length > 0) throw new Error('--bim does not accept query arguments.');
-    failureReason = bimCleanSessionBlocker(cleanData, false);
-    if (!cleanData) return;
     if (target.length === 0) target = firstTarget();
+    hdc(['shell', 'uitest', 'uiInput', 'keyEvent', 'Back']);
     hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
-    const cleanSucceeded = cleanBundleData();
-    failureReason = bimCleanSessionBlocker(true, cleanSucceeded);
-    if (!cleanSucceeded) return;
     hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
     await sleep(3000);
     moveAppWindowIntoScreenshot();
+
     const initial = await waitForBimLayout('bim-initial-home', (layout) =>
-      hasBimHome(layout) && heartCountFromLayout(layout) === 0);
-    if (initial === null || !hasBimHome(initial.layout) || heartCountFromLayout(initial.layout) !== 0) {
-      throw new Error('Clean BIM session did not open exact Home with zero heart items.');
-    }
-
-    const plan = await submitBimPrompt('帮我规划八月去东京一周的旅行，之后还要继续选机票和酒店', 'bim-plan');
-    const planBlocked = bimUnavailableReason(plan.logs, plan.text);
-    const planOk = hasRememberSuggestion(plan.layout) &&
-      !/(?:预订成功|订单已确认|已出票|订票成功|订房成功)/.test(plan.text);
-    scenarios.push(bimScenario('suggestion', planOk, planBlocked, {
-      layoutPath: join(outDir, 'bim-plan-final-1-layout.json'), logPath: plan.logPath,
-      screenPath: plan.screenPath
+      hasBimHome(layout) && heartCountFromLayout(layout) !== null, 30);
+    const initialCount = heartCountFromLayout(initial.layout);
+    initial.screenPath = captureScreen('bim-initial-home-screen.png');
+    const homeOk = hasBimHome(initial.layout) && initialCount !== null;
+    scenarios.push(bimScenario('home', homeOk, '', {
+      heartCount: initialCount,
+      screenPath: initial.screenPath
     }));
-    if (!planOk || planBlocked.length > 0) {
-      failureReason = planBlocked || 'Missing visible remember suggestion or saw fabricated booking success.';
-      return;
-    }
-
-    currentScenarioId = 'remember';
-    tapBimText(plan.layout, '记在心上', '记在心上 suggestion');
-    const saved = await waitForBimLayout('bim-saved', (layout) =>
-      collectLayoutText(layout).some((value) => value.includes('已记在心上')) && heartCountFromLayout(layout) === 1);
-    saved.screenPath = captureScreen('bim-saved-screen.png');
-    const saveOk = collectLayoutText(saved.layout).some((value) => value.includes('已记在心上')) &&
-      heartCountFromLayout(saved.layout) === 1;
-    scenarios.push(bimScenario('remember', saveOk, '', { screenPath: saved.screenPath }));
-    if (!saveOk) {
-      failureReason = 'Remember action did not settle with one heart item.';
-      return;
-    }
-
-    currentScenarioId = 'directory';
-    tapBimText(saved.layout, '打开心上事', 'heart entry');
-    const directory = await waitForBimLayout('bim-directory', (layout, text) =>
-      hasBimDirectory(layout) && text.includes('东京旅行'));
-    directory.screenPath = captureScreen('bim-directory-screen.png');
-    const directoryOk = hasBimDirectory(directory.layout) && directory.text.includes('东京旅行');
-    scenarios.push(bimScenario('directory', directoryOk, '', { screenPath: directory.screenPath }));
-    if (!directoryOk) {
-      failureReason = 'Heart directory did not show 东京旅行.';
-      return;
-    }
-
-    currentScenarioId = 'detail';
-    tapBimText(directory.layout, '东京旅行', '东京旅行 row');
-    const detail = await waitForBimLayout('bim-detail', (layout, text) =>
-      /当前(?:状态|安排)/.test(text) && !hasConversationTranscript(layout));
-    detail.screenPath = captureScreen('bim-detail-screen.png');
-    const detailOk = /当前(?:状态|安排)/.test(detail.text) && !hasConversationTranscript(detail.layout);
-    scenarios.push(bimScenario('detail', detailOk, '', { screenPath: detail.screenPath }));
-    if (!detailOk) {
-      failureReason = 'Detail did not show current state or leaked a conversation transcript.';
-      return;
-    }
-
-    currentScenarioId = 'update';
-    const update = await submitBimPrompt('不要红眼航班，尽量中午前到', 'bim-update', true);
-    const updateBlocked = bimUnavailableReason(update.logs, update.text);
-    const executionSeen = update.executionBar !== null && hasBimExecutionBar(update.executionBar.layout);
-    const updateOk = executionSeen && !hasBimExecutionBar(update.layout) &&
-      update.text.includes('不要红眼航班') && !hasConversationTranscript(update.layout);
-    scenarios.push(bimScenario('update', updateOk, updateBlocked, {
-      executionScreenPath: update.executionBar?.screenPath || '', screenPath: update.screenPath,
-      logPath: update.logPath
-    }));
-    if (!updateOk || updateBlocked.length > 0) {
-      failureReason = updateBlocked || 'BIM execution bar or updated current state was not observed.';
+    if (!homeOk) {
+      failureReason = 'BIM Home or heart count was not visible.';
       return;
     }
 
     currentScenarioId = 'main-agent';
-    tapBimText(update.layout, '返回心上事列表', 'detail back');
-    const restoredDirectory = await waitForBimLayout('bim-return-directory', (layout) => hasBimDirectory(layout));
-    if (restoredDirectory === null || !hasBimDirectory(restoredDirectory.layout)) {
-      throw new Error('Detail back did not restore the exact heart directory.');
-    }
-    hdc(['shell', 'uitest', 'uiInput', 'swipe', '1100', '1200', '100', '1200', '500']);
-    const home = await waitForBimLayout('bim-home', (layout) => hasBimHome(layout));
-    if (home === null || !hasBimHome(home.layout)) {
-      throw new Error('Left swipe did not restore the exact Home surface.');
-    }
     const main = await submitBimPrompt('解释一下量子计算', 'bim-main');
     const mainBlocked = bimUnavailableReason(main.logs, main.text);
-    const mainOk = hasZeroCandidateBimRoute(main.logs) && hasMainAgentResult(main.logs) &&
-      hasBimHome(main.layout);
+    const mainOk = hasSnapshotOnlyMainAgent(main.logs) && hasBimHome(main.layout);
     scenarios.push(bimScenario('main-agent', mainOk, mainBlocked, {
-      screenPath: main.screenPath, logPath: main.logPath
+      screenPath: main.screenPath,
+      logPath: main.logPath
     }));
     if (!mainOk || mainBlocked.length > 0) {
-      failureReason = mainBlocked || 'Main Agent result was not retained after zero-candidate BIM routing.';
+      failureReason = mainBlocked || 'Main Agent did not finish exactly once without legacy BIM routing.';
+      return;
     }
+
+    currentScenarioId = 'curator-create';
+    const create = await submitBimPrompt(
+      `请帮我记在心上，标题必须是“${marker}”：验证完成后可以结束并删除。`,
+      'bim-curator-create'
+    );
+    const createBlocked = bimUnavailableReason(create.logs, create.text);
+    const confirmation = await waitForBimLayout('bim-curator-confirmation', (layout) =>
+      findExactTextCenter(layout, '♡ 记在心上') !== null, 30);
+    const beforeConfirmCount = heartCountFromLayout(confirmation.layout);
+    const remember = findExactTextCenter(confirmation.layout, '♡ 记在心上');
+    if (remember === null || beforeConfirmCount !== initialCount) {
+      throw new Error('BIM was created before the remember confirmation.');
+    }
+    confirmation.screenPath = captureScreen('bim-curator-confirmation-screen.png');
+    hdc(['shell', 'uitest', 'uiInput', 'click', String(remember.x), String(remember.y)]);
+    const published = await waitForBimLayout('bim-curator-published', (layout) => {
+      const count = heartCountFromLayout(layout);
+      return hasBimHome(layout) && count !== null && count > initialCount;
+    }, 180);
+    const publishedCount = heartCountFromLayout(published.layout);
+    created = publishedCount !== null && publishedCount > initialCount;
+    const createOk = created && !/\[AIPhone\]\[(?:BimRoute|BimGate)\]/.test(create.logs);
+    published.screenPath = captureScreen('bim-curator-published-screen.png');
+    scenarios.push(bimScenario('curator-create', createOk, createBlocked, {
+      beforeCount: initialCount,
+      confirmationCount: beforeConfirmCount,
+      confirmationScreenPath: confirmation.screenPath,
+      afterCount: publishedCount,
+      screenPath: published.screenPath,
+      logPath: create.logPath
+    }));
+    if (!createOk || createBlocked.length > 0) {
+      failureReason = createBlocked || 'Asynchronous Curator did not publish one new BIM.';
+      return;
+    }
+
+    currentScenarioId = 'directory';
+    tapBimHeart(published.layout);
+    const directory = await waitForBimLayout('bim-directory', (layout, text) =>
+      hasBimDirectory(layout) && text.includes(marker), 30);
+    directory.screenPath = captureScreen('bim-directory-screen.png');
+    const directoryOk = hasBimDirectory(directory.layout) && directory.text.includes(marker);
+    scenarios.push(bimScenario('directory', directoryOk, '', { screenPath: directory.screenPath }));
+    if (!directoryOk) {
+      failureReason = 'Heart directory did not show the asynchronously created BIM.';
+      return;
+    }
+
+    currentScenarioId = 'sentinel';
+    const sentinel = await runBimSentinelMockSmoke();
+    const sentinelOk = sentinel.scheduled && sentinel.triggered && sentinel.completed;
+    scenarios.push(bimScenario('sentinel', sentinelOk, '', sentinel));
+    if (!sentinelOk) {
+      failureReason = 'Sentinel reminder did not complete the scheduled, triggered, and finished chain.';
+      return;
+    }
+
+    currentScenarioId = 'detail';
+    const detail = await openBimMarker(marker, 'bim-detail');
+    detail.screenPath = captureScreen('bim-detail-screen.png');
+    const detailOk = detail.readOnlyContext &&
+      !hasConversationTranscript(detail.layout) &&
+      detail.text.includes(marker);
+    scenarios.push(bimScenario('detail', detailOk, '', {
+      screenPath: detail.screenPath,
+      fullContextScreenPath: detail.fullContextScreenPath
+    }));
+    if (!detailOk) {
+      failureReason = 'Detail did not show read-only Snapshot and Full Context.';
+      return;
+    }
+
+    currentScenarioId = 'cleanup';
+    const cleaned = await cleanupBimMarker(marker, 'bim-cleanup');
+    cleanupComplete = !cleaned.text.includes(marker);
+    scenarios.push(bimScenario('cleanup', cleanupComplete, '', { screenPath: cleaned.screenPath }));
+    if (!cleanupComplete) failureReason = 'Created BIM was not deleted after validation.';
   } catch (error) {
     failureReason = sanitizeBimFailureReason(error);
     failedScenarioId = currentScenarioId;
@@ -3937,6 +4072,25 @@ async function runBimDeviceSmoke() {
       scenarios.push(bimScenario(currentScenarioId, false, '', { reason: failureReason }));
     }
   } finally {
+    if (created && !cleanupComplete) {
+      try {
+        const recovered = await cleanupBimMarker(marker, 'bim-cleanup-recovery');
+        cleanupComplete = !recovered.text.includes(marker);
+        const cleanup = scenarios.find((scenario) => scenario.id === 'cleanup');
+        const recoveredScenario = bimScenario('cleanup', cleanupComplete, '', {
+          screenPath: recovered.screenPath,
+          recovered: true
+        });
+        if (cleanup === undefined) scenarios.push(recoveredScenario);
+        else Object.assign(cleanup, recoveredScenario);
+      } catch (cleanupError) {
+        const cleanupReason = sanitizeBimFailureReason(cleanupError);
+        if (!scenarios.some((scenario) => scenario.id === 'cleanup')) {
+          scenarios.push(bimScenario('cleanup', false, '', { reason: cleanupReason }));
+        }
+        if (failureReason.length === 0) failureReason = cleanupReason;
+      }
+    }
     return finishBimSmoke(scenarios, failureReason, failedScenarioId);
   }
 }

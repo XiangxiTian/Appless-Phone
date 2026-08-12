@@ -13,8 +13,6 @@ import {
   HotelPlannerIdFactory
 } from '../main/ets/pages/A2uiHome/agent/HotelLeaderPlanner';
 import {
-  bimLifecycleSweepModelConfigured,
-  bimTurnInputBusy,
   hotelModelSettingsFingerprint,
   hotelTurnReadyMessage
 } from '../main/ets/pages/A2uiHome/Index';
@@ -495,30 +493,5 @@ export default function hotelLeaderPlannerTest() {
       expect(hotelTurnReadyMessage('success', '酒店查询').indexOf('真实酒店结果')).assertLarger(-1);
     });
 
-    it('starts lifecycle sweeps only with the same complete model configuration used by the provider', 0, () => {
-      const settings: LocalModelSettings = {
-        provider: 'openai-compatible',
-        baseUrl: 'https://model.example/v1',
-        model: 'model-a',
-        apiKey: 'secret-a',
-        customParametersJson: '',
-        ignoreToolSurfaceUpdates: false
-      };
-      expect(bimLifecycleSweepModelConfigured(settings)).assertTrue();
-      settings.apiKey = ' ';
-      expect(bimLifecycleSweepModelConfigured(settings)).assertFalse();
-      settings.apiKey = 'secret-a';
-      settings.baseUrl = ' ';
-      expect(bimLifecycleSweepModelConfigured(settings)).assertFalse();
-      settings.baseUrl = 'https://model.example/v1';
-      settings.model = ' ';
-      expect(bimLifecycleSweepModelConfigured(settings)).assertFalse();
-    });
-
-    it('treats a lifecycle sweep as busy at both prompt submission entries', 0, () => {
-      expect(bimTurnInputBusy(false, false)).assertFalse();
-      expect(bimTurnInputBusy(true, false)).assertTrue();
-      expect(bimTurnInputBusy(false, true)).assertTrue();
-    });
   });
 }

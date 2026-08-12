@@ -33,6 +33,10 @@ import {
   leaderSameRoundDependencyProducerTaskToolIds,
   leaderTasksHaveSameRoundDependency
 } from '@loop/agent-core';
+import {
+  explicitBimCreateRequest,
+  originalQueryFromBimPrompt
+} from '../bim/BimRuntime';
 import { HotelLocalDateProvider, hotelSearchPlanningContract } from './HotelLeaderPlanner';
 
 const DECISION_KEYS: string[] = [
@@ -86,6 +90,11 @@ const BIM_FIELD_RULES: string =
   'Use hotel, flight, transport, and event only for outcomes explicitly confirmed by the user or a real provider; ' +
   'never turn candidates or intermediate search results into confirmed cards. Use [] when there is no item. ' +
   'Do not copy the conversation transcript and do not claim unverified external completion.';
+const SNAPSHOT_ONLY_BIM_RULES: string =
+  '[BIM_SNAPSHOTS] is read-only context for this foreground turn. Never emit bimSuggestion or ' +
+  'bimContextUpdate. When the original user query explicitly asks to remember or keep following a matter, ' +
+  'answer normally without memory.update; the asynchronous BIM Curator owns the later create or update. ' +
+  'Do not claim the matter is saved before host confirmation; tell the user to confirm the visible remember card.';
 const REQUEST_SCOPE_CONTRACT: string =
   'Request scope contract: The current user request defines a closed capability and source set. ' +
   'Persona, active Skill, saved Memory, defaults, and available tools may shape behavior but must not add an ' +
@@ -110,6 +119,10 @@ const BIM_NEW_MATTER_MEMORY_UPDATE_REPAIR_INSTRUCTION: string =
   'Return answer or clarify with requestedCapabilityIds=[], dataTasks=[], no actionIntent, a bimSuggestion, ' +
   'and a complete initial bimContextUpdate including dashboardItems. Preserve memory.update only for stable ' +
   'preferences or background facts that do not describe an ongoing matter.';
+const SNAPSHOT_ONLY_BIM_REPAIR_INSTRUCTION: string =
+  'Correction: BIM Snapshots are read-only foreground context. Return answer or clarify with ' +
+  'requestedCapabilityIds=[], dataTasks=[], no actionIntent, no bimSuggestion, and no bimContextUpdate. ' +
+  'The asynchronous BIM Curator owns later BIM writes.';
 const COMPLETED_TOOL_REUSE_ERROR: string = 'LEADER_COMPLETED_TOOL_REUSE';
 const UNBOUND_LATER_TOOL_ERROR: string = 'LEADER_UNBOUND_LATER_TOOL';
 const SAME_ROUND_DEPENDENCY_ERROR: string = 'LEADER_SAME_ROUND_DEPENDENCY';
@@ -551,7 +564,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       } else if (error instanceof Error && error.message === BIM_MEMORY_UPDATE_ERROR) {
         correction = BIM_MEMORY_UPDATE_REPAIR_INSTRUCTION;
       } else if (error instanceof Error && error.message === BIM_NEW_MATTER_MEMORY_UPDATE_ERROR) {
-        correction = BIM_NEW_MATTER_MEMORY_UPDATE_REPAIR_INSTRUCTION;
+        correction = input.text.indexOf('[BIM_SNAPSHOTS]\n') === 0 ?
+          SNAPSHOT_ONLY_BIM_REPAIR_INSTRUCTION : BIM_NEW_MATTER_MEMORY_UPDATE_REPAIR_INSTRUCTION;
       } else if (error instanceof Error && error.message === BIM_NEW_MATTER_CONTRACT_ERROR) {
         correction = BIM_NEW_MATTER_MEMORY_UPDATE_REPAIR_INSTRUCTION;
       }
@@ -686,6 +700,13 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     input: InputUserPayload,
     decision: LeaderDecision
   ): void {
+    if (input.text.indexOf('[BIM_SNAPSHOTS]\n') === 0) {
+      if (explicitBimCreateRequest(originalQueryFromBimPrompt(input.text)) &&
+        decision.requestedCapabilityIds.indexOf('memory.update') >= 0) {
+        throw new Error(BIM_NEW_MATTER_MEMORY_UPDATE_ERROR);
+      }
+      return;
+    }
     if (input.text.indexOf('[BIM_CONTEXT]') < 0 &&
       decision.requestedCapabilityIds.indexOf('memory.update') >= 0 &&
       isLongRunningMatterRequest(input.text)) {
@@ -697,6 +718,9 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     input: InputUserPayload,
     decision: LeaderDecision
   ): void {
+    if (input.text.indexOf('[BIM_SNAPSHOTS]\n') === 0) {
+      return;
+    }
     if (input.text.indexOf('[BIM_CONTEXT]') >= 0 || !isLongRunningMatterRequest(input.text)) {
       return;
     }
@@ -1616,9 +1640,16 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     currentLocalDate: string
   ): string {
     const completedToolIds: string[] = this.currentTurnCompletedToolIds(message, input, context, round);
-    const dataOwnerIds: string[] = leaderDataCapabilityIds(context);
-    const actionOwnerIds: string[] = leaderActionCapabilityIds(context);
-    const promptTools: LeaderToolMetadata[] = context.tools.map(
+    const snapshotOnlyBim: boolean = input.text.indexOf('[BIM_SNAPSHOTS]\n') === 0;
+    const foregroundBimCreate: boolean = snapshotOnlyBim &&
+      explicitBimCreateRequest(originalQueryFromBimPrompt(input.text));
+    const dataOwnerIds: string[] = leaderDataCapabilityIds(context)
+      .filter((toolId: string): boolean => !foregroundBimCreate || toolId !== 'memory.update');
+    const actionOwnerIds: string[] = leaderActionCapabilityIds(context)
+      .filter((toolId: string): boolean => !foregroundBimCreate || toolId !== 'memory.update');
+    const promptTools: LeaderToolMetadata[] = context.tools
+      .filter((tool: LeaderToolMetadata): boolean => !foregroundBimCreate || tool.toolId !== 'memory.update')
+      .map(
       (tool: LeaderToolMetadata): LeaderToolMetadata => ({
         toolId: tool.toolId,
         domain: tool.domain,
@@ -1701,7 +1732,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       OBSERVATION_REUSE_CONTRACT,
       DATA_SCOPE_CONTRACT,
       EXPLICIT_SERIAL_SEQUENCE_CONTRACT,
-      BIM_FIELD_RULES,
+      snapshotOnlyBim ? SNAPSHOT_ONLY_BIM_RULES : BIM_FIELD_RULES,
       'Never emit provider facts, action args, A2UI, credentials, or unregistered tool IDs.',
       hotelSearchPlanningContract(currentLocalDate),
       'Maximum planning rounds: 3.',
@@ -1905,7 +1936,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       decision.actionIntent = actionIntent;
     }
     const hasBimContext: boolean = inputText.indexOf('[BIM_CONTEXT]') >= 0;
-    if (rawBimSuggestion !== undefined) {
+    const snapshotOnlyBim: boolean = inputText.indexOf('[BIM_SNAPSHOTS]\n') === 0;
+    if (!snapshotOnlyBim && rawBimSuggestion !== undefined) {
       if (hasBimContext && rawBimContextUpdate === undefined) {
         throw new Error('Leader BIM suggestion is forbidden for an existing BIM context.');
       }
@@ -1916,7 +1948,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     if (hasBimContext && decision.requestedCapabilityIds.indexOf('memory.update') >= 0) {
       throw new Error(BIM_MEMORY_UPDATE_ERROR);
     }
-    if (rawBimContextUpdate !== undefined) {
+    if (!snapshotOnlyBim && rawBimContextUpdate !== undefined) {
       if (!hasBimContext && decision.bimSuggestion === undefined) {
         throw new Error('Leader BIM context update requires the internal BIM marker.');
       }

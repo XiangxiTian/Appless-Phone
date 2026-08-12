@@ -13,7 +13,8 @@ import {
   StripeReceivingAccountCardData,
   UserInputPayload,
   cloudModelSettingsForPreset,
-  defaultLocalModelSettings
+  defaultLocalModelSettings,
+  summarizeAppliedA2uiSurface
 } from '@loop/agent-core';
 import { isRollingGoHotelBookingUrl } from '@loop/agent-core';
 import {
@@ -22,7 +23,6 @@ import {
   mergeWaterfallFeedSnapshot,
   WaterfallFeedState
 } from '@loop/agent-core';
-import { LeaderBimContextUpdate, LeaderBimSuggestion } from '@loop/agent-core';
 import router from '@ohos.router';
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
 import { accessibility } from '@kit.AccessibilityKit';
@@ -145,8 +145,7 @@ import { BimDetailPage } from './components/BimDetailPage';
 import {
   BimHomePage,
   combineBimErrorMessages,
-  groupVisibleBims,
-  shouldShowBimSuggestion
+  groupVisibleBims
 } from './components/BimHomePage';
 import { ComposioAuthPage } from './components/ComposioAuthPage';
 import { BimRememberState, HomePage } from './components/HomePage';
@@ -191,34 +190,35 @@ import {
   MultiAgentTurnOutcome
 } from './agent/MultiAgentRuntimeTypes';
 import {
-  BimContextSnapshot,
   BimRecord,
-  BimRetrievalIndex,
   BimStore,
-  BIM_STORE_NAME,
-  createBimRecord
+  BIM_STORE_NAME
 } from './bim/BimStore';
 import {
-  BimRouteDecision,
-  BimTurnGate,
-  bimRememberFailureMessage,
-  bimContextUpdateForSave,
-  bimPageActionAdmission,
-  bimPageActionPresentation,
-  bimSurfaceDestination,
-  bimTurnOwnsTransientState,
-  buildBimAgentInput,
-  buildBimExecutionPrompt,
-  bimTravelQueryNeedsDetails,
-  initialBimContextForNewBim,
+  BimAttentionEvent,
+  BimCuratorResult,
+  BimForegroundRequest,
+  BimTurnEvidence,
+  bimDetailSubmitError,
+  bimAttentionVisibleText,
+  buildBimAttentionPrompt,
+  buildBimForegroundRequest,
+  explicitBimCreateRequest,
   refreshedSelectedBimRecord,
+  runBimSentinel,
+  safeBimToolResultSummary,
   selectedBimRecordForRender,
-  runWeeklyBimLifecycleSweep,
-  routeBimQuery,
-  runBimPageActionWithAdmission,
-  surfaceForNewBim,
-  weeklySweepDue
+  runBimCurator
 } from './bim/BimRuntime';
+import {
+  BIM_SENTINEL_MOCK_EVENT,
+  BimDailyReminder,
+  canRunBimSentinelMock,
+  consumeBimSentinelMockHandoff,
+  isBimReminderLimitMessage,
+  queueBimSentinelMockHandoff,
+  shouldScheduleBimDailyReminder
+} from './bim/BimDailyReminder';
 import { SystemUriOpener } from './agent/AiphoneRegisteredActionExecutor';
 import {
   RegisteredPageSnapshot,
@@ -348,16 +348,6 @@ export function hotelModelSettingsFingerprint(settings: LocalModelSettings): str
     fingerprintPart(settings.model) + '|' +
     fingerprintPart(settings.customParametersJson);
   return 'hotel-settings-v1:' + opaqueSettingsDigest(material);
-}
-
-export function bimLifecycleSweepModelConfigured(settings: LocalModelSettings): boolean {
-  return new LlmProvider(
-    settings.provider, settings.apiKey, settings.baseUrl, settings.model, settings.customParametersJson
-  ).isConfigured();
-}
-
-export function bimTurnInputBusy(turnBusy: boolean, lifecycleSweepBusy: boolean): boolean {
-  return turnBusy || lifecycleSweepBusy;
 }
 
 export function hotelTurnReadyMessage(status: HotelTurnStatus, title: string): string {
@@ -741,12 +731,11 @@ struct Index {
   @State bimLoading: boolean = true;
   @State bimStoreError: string = '';
   @State bimUiError: string = '';
+  @State bimReduceMotion: boolean = false;
   @State bimSuggestionTitle: string = '';
   @State bimSuggestionReason: string = '';
   @State bimRememberState: BimRememberState = 'ready';
   @State bimRememberError: string = '';
-  @State bimWorkingText: string = '';
-  @State bimReduceMotion: boolean = false;
   @State isVoiceListening: boolean = false;
   @State voiceInputMessage: string = '';
   @State showCheckoutWeb: boolean = false;
@@ -807,20 +796,14 @@ struct Index {
   private hotelReturnSurface: A2uiSurfaceState | null = null;
   private multiAgentRuntime: MultiAgentCanaryRuntime | null = null;
   private bimStoreInstance: BimStore | null = null;
-  private bimLifecycleSweepBusy: boolean = false;
-  private bimSuggestion: LeaderBimSuggestion | undefined = undefined;
-  private bimSuggestionContext: LeaderBimContextUpdate | undefined = undefined;
-  private bimSuggestionSurfaceId: string = '';
+  private bimCuratorTail: Promise<void> = Promise.resolve();
+  private pendingBimEvidence: BimTurnEvidence | null = null;
+  @State bimSentinelBusy: boolean = false;
   private bimRootController: SwiperController = new SwiperController();
   private readonly bimAnimationReduceHandler = (enabled: boolean): void => {
     this.bimReduceMotion = enabled;
   };
   private multiAgentModel: LocalModel | null = null;
-  private readonly bimTurnGate: BimTurnGate = new BimTurnGate();
-  private activeBimId: string = '';
-  private bimTurnStartedInDetail: boolean = false;
-  @State pendingBimSurfaceJson: string = '';
-  private bimTransientOwnerGeneration: number = 0;
   private hotelAgentRuntimeFingerprint: string = '';
   private runtimeGeneration: number = 0;
   private readonly mailDetailSuggestionGuard: MailDetailSuggestionGuard =
@@ -835,6 +818,10 @@ struct Index {
   private readonly trainPresaleHandoffListener = (): void => {
     this.refreshBoundTrainPresaleCheckoutTask();
     this.requestPendingTrainPresaleResume();
+  };
+  private bimSentinelMockSubscribed: boolean = false;
+  private readonly bimSentinelMockListener = (): void => {
+    this.requestPendingBimSentinelMock();
   };
 
   private isLuckinOptionSwitchArgs(args: Object | null): boolean {
@@ -1456,6 +1443,7 @@ struct Index {
     this.loadStripeReceivingProfile();
     void this.requestLocationPermissionOnLaunch();
     this.subscribeTrainPresaleHandoff();
+    this.subscribeBimSentinelMock();
     this.requestPendingTrainPresaleResume();
     try {
       this.bimStore().seedDemoRecordsIfMissing(new Date().toISOString());
@@ -1466,17 +1454,21 @@ struct Index {
 
   onPageShow(): void {
     this.subscribeTrainPresaleHandoff();
+    this.subscribeBimSentinelMock();
     this.requestPendingTrainPresaleResume();
-    this.requestWeeklyBimLifecycleSweep();
+    this.requestPendingBimSentinelMock();
+    this.requestDailyBimSentinel();
   }
 
   onPageHide(): void {
     this.unsubscribeTrainPresaleHandoff();
+    this.unsubscribeBimSentinelMock();
   }
 
   aboutToDisappear(): void {
     this.stopBimMotionPreference();
     this.unsubscribeTrainPresaleHandoff();
+    this.unsubscribeBimSentinelMock();
     this.disposeHotelRuntime();
   }
 
@@ -2064,33 +2056,115 @@ struct Index {
     }
   }
 
-  // ponytail: lifecycle only changes in-app ordering; add off-screen WorkScheduler only if stale ordering is measured.
-  private requestWeeklyBimLifecycleSweep(): void {
-    if (bimTurnInputBusy(this.isBusy, this.bimLifecycleSweepBusy) ||
-      !bimLifecycleSweepModelConfigured(this.getSettings())) {
-      return;
-    }
-    const nowIso: string = new Date().toISOString();
-    try {
-      if (!weeklySweepDue(nowIso, this.bimStore().lastLifecycleSweepAt())) {
-        return;
-      }
-    } catch (_error) {
-      return;
-    }
-    this.bimLifecycleSweepBusy = true;
-    void this.runWeeklyBimLifecycleSweep(nowIso);
+  private sameLocalDay(iso: string, now: Date): boolean {
+    if (iso.length === 0) return false;
+    const value = new Date(iso);
+    return !isNaN(value.getTime()) && value.getFullYear() === now.getFullYear() &&
+      value.getMonth() === now.getMonth() && value.getDate() === now.getDate();
   }
 
-  private async runWeeklyBimLifecycleSweep(nowIso: string): Promise<void> {
+  private requestDailyBimSentinel(): void {
+    if (this.isBusy || this.bimSentinelBusy) return;
+    const now = new Date();
     try {
-      const result = await runWeeklyBimLifecycleSweep(this.bimStore(), this.canaryModel(), nowIso);
-      if (result.ok) {
-        this.refreshBimRecords();
-      }
+      if (this.sameLocalDay(this.bimStore().lastSentinelSuccessAt(), now)) return;
     } catch (_error) {
+      return;
+    }
+    this.bimSentinelBusy = true;
+    void this.runDailyBimSentinel(now);
+  }
+
+  private async runDailyBimSentinel(now: Date, scheduleNext: boolean = true): Promise<void> {
+    try {
+      const events: BimAttentionEvent[] = await runBimSentinel(this.bimStore(), this.canaryModel());
+      for (let index = 0; index < events.length; index++) {
+        if (this.isBusy) throw new Error('BIM_SENTINEL_FOREGROUND_BUSY');
+        await this.submitPrompt(
+          buildBimAttentionPrompt(events[index]),
+          bimAttentionVisibleText(events[index]),
+          '',
+          null,
+          events[index].bimId
+        );
+      }
+      const checkpointWritten = this.bimStore().markSentinelSuccess(now.toISOString());
+      if (!checkpointWritten) {
+        throw new Error('BIM_SENTINEL_CHECKPOINT_FAILED');
+      }
+      if (shouldScheduleBimDailyReminder(checkpointWritten, scheduleNext)) {
+        void new BimDailyReminder().scheduleNext(now).catch((error: Error): void => {
+          aiLogError('[AIPhone][BimReminder] ' + logSnippet(error.message));
+        });
+      }
+      aiLogInfo('[AIPhone][BimSentinel] mode=' + (scheduleNext ? 'daily' : 'mock') +
+        ' events=' + events.length.toString() + ' ok=true');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      aiLogError('[AIPhone][BimSentinel] ' + logSnippet(message));
     } finally {
-      this.bimLifecycleSweepBusy = false;
+      this.bimSentinelBusy = false;
+    }
+  }
+
+  private subscribeBimSentinelMock(): void {
+    if (this.bimSentinelMockSubscribed) return;
+    const context = this.getUIContext().getHostContext() as common.Context;
+    if (context !== null) {
+      context.getApplicationContext().eventHub.on(BIM_SENTINEL_MOCK_EVENT, this.bimSentinelMockListener);
+      this.bimSentinelMockSubscribed = true;
+    }
+  }
+
+  private unsubscribeBimSentinelMock(): void {
+    if (!this.bimSentinelMockSubscribed) return;
+    const context = this.getUIContext().getHostContext() as common.Context;
+    if (context !== null) {
+      context.getApplicationContext().eventHub.off(BIM_SENTINEL_MOCK_EVENT, this.bimSentinelMockListener);
+    }
+    this.bimSentinelMockSubscribed = false;
+  }
+
+  private requestPendingBimSentinelMock(): void {
+    if (!this.isDebugBuild) {
+      consumeBimSentinelMockHandoff();
+      return;
+    }
+    if (!canRunBimSentinelMock(this.isDebugBuild, this.isBusy, this.bimSentinelBusy) ||
+      !consumeBimSentinelMockHandoff()) return;
+    this.bimSentinelBusy = true;
+    aiLogInfo('[AIPhone][BimSentinelMockTriggered] ok=true');
+    void this.runDailyBimSentinel(new Date(), false);
+  }
+
+  private async scheduleBimSentinelMock(): Promise<void> {
+    if (!canRunBimSentinelMock(this.isDebugBuild, this.isBusy, this.bimSentinelBusy)) return;
+    this.bimSentinelBusy = true;
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await ensureReminderNotificationEnabled(
+        (): Promise<boolean> => notificationManager.isNotificationEnabled(),
+        (): Promise<void> => notificationManager.requestEnableNotification(context)
+      );
+      const reminderId = await new BimDailyReminder().scheduleDebug(10);
+      aiLogInfo('[AIPhone][BimSentinelMockScheduled] reminderId=' + reminderId.toString() +
+        ' delaySeconds=10');
+      this.getUIContext().getPromptAction().showToast({ message: '10 秒测试提醒已创建' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      if (this.isDebugBuild && isBimReminderLimitMessage(message)) {
+        setTimeout((): void => {
+          queueBimSentinelMockHandoff();
+          this.requestPendingBimSentinelMock();
+        }, 10000);
+        aiLogInfo('[AIPhone][BimSentinelMockScheduled] transport=in_app_timer delaySeconds=10');
+        this.getUIContext().getPromptAction().showToast({ message: '系统提醒已满，10 秒后应用内测试' });
+        return;
+      }
+      aiLogError('[AIPhone][BimSentinelMockScheduled] ok=false error=' + logSnippet(message));
+      this.getUIContext().getPromptAction().showToast({ message: '测试提醒创建失败' });
+    } finally {
+      this.bimSentinelBusy = false;
     }
   }
 
@@ -2099,91 +2173,8 @@ struct Index {
     return grouped.active.length + grouped.quiet.length;
   }
 
-  private clearBimSuggestion(): void {
-    this.bimSuggestion = undefined;
-    this.bimSuggestionContext = undefined;
-    this.bimSuggestionSurfaceId = '';
-    this.bimSuggestionTitle = '';
-    this.bimSuggestionReason = '';
-    this.bimRememberState = 'ready';
-    this.bimRememberError = '';
-  }
-
-  private showBimSuggestion(
-    suggestion: LeaderBimSuggestion,
-    context: LeaderBimContextUpdate | undefined,
-    surfaceId: string
-  ): void {
-    this.bimSuggestion = suggestion;
-    this.bimSuggestionContext = context;
-    this.bimSuggestionSurfaceId = surfaceId;
-    this.bimSuggestionTitle = suggestion.title;
-    this.bimSuggestionReason = suggestion.reason;
-    this.bimRememberState = 'ready';
-    this.bimRememberError = '';
-  }
-
-  private rememberSuggestedBim(): void {
-    const suggestion = this.bimSuggestion;
-    if (suggestion === undefined ||
-      !shouldShowBimSuggestion(suggestion, this.activeBimId, this.isBusy)) {
-      return;
-    }
-    this.bimRememberState = 'saving';
-    this.bimRememberError = '';
-    const context = initialBimContextForNewBim(
-      this.bimSuggestionSurfaceId, this.currentSurface, suggestion, this.bimSuggestionContext
-    );
-    const initialUpdate = this.bimSuggestionContext;
-    const index: BimRetrievalIndex = {
-      summary: initialUpdate === undefined ? suggestion.summary.trim() : initialUpdate.summary,
-      entities: initialUpdate === undefined || initialUpdate.entities.length === 0 ?
-        [suggestion.title.trim()] : initialUpdate.entities.slice(),
-      timeAnchors: initialUpdate === undefined ? [] : initialUpdate.timeAnchors.slice(),
-      locations: initialUpdate === undefined ? [] : initialUpdate.locations.slice(),
-      commitments: initialUpdate === undefined ? [] : initialUpdate.commitments.slice(),
-      keywords: initialUpdate === undefined ?
-        suggestion.keywords.map((keyword: string): string => keyword.trim()) :
-        initialUpdate.keywords.slice()
-    };
-    let saved = false;
-    let errorMessage = bimRememberFailureMessage('');
-    try {
-      const store = this.bimStore();
-      saved = store.create(createBimRecord(
-        'bim-' + Date.now().toString(),
-        suggestion.title.trim(),
-        context,
-        index,
-        surfaceForNewBim(this.bimSuggestionSurfaceId, this.currentSurface, suggestion),
-        new Date().toISOString()
-      ));
-      if (!saved) {
-        errorMessage = bimRememberFailureMessage(store.lastPersistenceError());
-      }
-    } catch (_error) {
-    }
-    if (!saved) {
-      this.bimRememberState = 'error';
-      this.bimRememberError = errorMessage;
-      return;
-    }
-    this.bimRememberState = 'saved';
-    this.refreshBimRecords();
-  }
-
   private selectedBimRecord(): BimRecord | null {
     return selectedBimRecordForRender(this.selectedBimId, this.selectedBimRecordSnapshot);
-  }
-
-  private selectedBimIsBusy(): boolean {
-    return this.isBusy &&
-      this.activeBimId === this.selectedBimId &&
-      bimTurnOwnsTransientState(this.bimTransientOwnerGeneration, this.runtimeGeneration);
-  }
-
-  private selectedBimLiveSurfaceJson(): string {
-    return this.selectedBimIsBusy() ? this.pendingBimSurfaceJson : '';
   }
 
   private openBimRoot(): void {
@@ -2277,24 +2268,6 @@ struct Index {
     this.refreshBimRecords();
   }
 
-  private stopActiveBimTurn(bimId: string): void {
-    if (!this.isBusy || this.activeBimId !== bimId) {
-      return;
-    }
-    const cancelledGeneration = this.runtimeGeneration;
-    this.canaryRuntime().cancelActiveTurn('bim_user_stop');
-    this.beginRuntimeTurn('multi_agent');
-    this.bimTurnGate.clear(cancelledGeneration);
-    this.isBusy = false;
-    this.isAwaitingFirstSurface = false;
-    this.activeBimId = '';
-    this.bimTurnStartedInDetail = false;
-    this.pendingBimSurfaceJson = '';
-    this.bimTransientOwnerGeneration = 0;
-    this.bimWorkingText = '';
-    this.bimUiError = '';
-  }
-
   private canaryRuntime(): MultiAgentCanaryRuntime {
     const settings = this.getSettings();
     const fingerprint = hotelModelSettingsFingerprint(settings);
@@ -2338,29 +2311,8 @@ struct Index {
     );
     const options: MultiAgentCanaryOptions = {
       model: model,
-      turnGate: this.bimTurnGate,
       opener: opener,
       onSurface: (surface: A2uiSurfaceState, generation: number): boolean => {
-        const callbackIsCurrent = runtimeCallbackIsCurrent(
-          this.activeRuntimeOwner, this.runtimeGeneration, 'multi_agent', generation
-        );
-        const activeBimId = bimTurnOwnsTransientState(this.bimTransientOwnerGeneration, generation) ?
-          this.activeBimId : '';
-        const destination = bimSurfaceDestination(
-          callbackIsCurrent,
-          activeBimId,
-          this.bimTurnStartedInDetail
-        );
-        if (destination === 'reject') {
-          return false;
-        }
-        if (activeBimId.length > 0) {
-          this.pendingBimSurfaceJson = JSON.stringify(surface);
-          if (destination === 'detail') {
-            this.isAwaitingFirstSurface = false;
-            return true;
-          }
-        }
         const accepted = this.applyRuntimeSurface(surface, 'multi_agent', generation);
         if (accepted) {
           this.isAwaitingFirstSurface = false;
@@ -2414,25 +2366,11 @@ struct Index {
         args: Object,
         context: RegisteredPageActionContext
       ): Promise<ActionExecutionResult> => {
-        const admission = bimPageActionAdmission(
-          this.activeRuntimeOwner === 'multi_agent',
-          context.hostGeneration,
-          this.runtimeGeneration,
-          this.bimTransientOwnerGeneration,
-          this.activeBimId,
-          this.bimTurnStartedInDetail
-        );
-        return runBimPageActionWithAdmission(
-          admission,
-          (): void => {
-            if (actionId !== 'gmail.message.send') {
-              this.prepareVirtualMultiTaskAction(actionId, context);
-            }
-          },
-          (): Promise<ActionExecutionResult> => actionId === 'gmail.message.send' ?
-            this.executeRegisteredGmailReply(args) :
-            pageHandler.execute(actionId, args, context)
-        );
+        if (actionId !== 'gmail.message.send') {
+          this.prepareVirtualMultiTaskAction(actionId, context);
+        }
+        return actionId === 'gmail.message.send' ?
+          this.executeRegisteredGmailReply(args) : pageHandler.execute(actionId, args, context);
       },
       currentPageSnapshot: (): RegisteredPageSnapshot | null =>
         this.registeredPageSnapshotStore.current(),
@@ -2556,18 +2494,6 @@ struct Index {
   }
 
   private canaryHostSurface(): A2uiSurfaceState {
-    if (this.activeBimId.length > 0 &&
-      bimTurnOwnsTransientState(this.bimTransientOwnerGeneration, this.runtimeGeneration) &&
-      this.pendingBimSurfaceJson.length > 0) {
-      try {
-        return this.ownedSurface(
-          JSON.parse(this.pendingBimSurfaceJson) as A2uiSurfaceState,
-          'multi_agent',
-          this.runtimeGeneration
-        );
-      } catch (_error) {
-      }
-    }
     return this.surfaceSnapshot(this.currentSurface);
   }
 
@@ -3178,7 +3104,6 @@ struct Index {
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;
     this.messages = [];
-    this.clearBimSuggestion();
     this.registeredPageSnapshotStore.clear();
     this.registeredPageRenderGeneration = 0;
     this.currentSurface = this.surfaceSnapshot(createSeedA2uiSurface());
@@ -3326,6 +3251,41 @@ struct Index {
       });
     });
   }
+  private enqueueBimCurator(evidence: BimTurnEvidence): Promise<BimCuratorResult> {
+    const run = this.bimCuratorTail.then((): Promise<BimCuratorResult> => runBimCurator(
+      this.bimStore(), this.canaryModel(), evidence, new Date().toISOString()
+    ));
+    this.bimCuratorTail = run.then((result: BimCuratorResult): void => {
+      if (result.error.length > 0) {
+        aiLogError('[AIPhone][BimCurator] ' + result.error);
+      }
+      this.refreshBimRecords();
+    }).catch((error: Error): void => {
+      aiLogError('[AIPhone][BimCurator] ' + logSnippet(error.message));
+    });
+    return run;
+  }
+
+  private rememberSuggestedBim(): void {
+    if (this.pendingBimEvidence === null || this.bimRememberState === 'saving' ||
+      this.bimRememberState === 'saved') return;
+    const evidence = this.pendingBimEvidence;
+    evidence.userConfirmedCreate = true;
+    this.bimRememberState = 'saving';
+    this.bimRememberError = '';
+    this.enqueueBimCurator(evidence).then((result: BimCuratorResult): void => {
+      if (result.error.length > 0 || result.createdBimIds.length === 0) {
+        this.bimRememberState = 'error';
+        this.bimRememberError = '没有记下来，请重试。';
+        return;
+      }
+      this.pendingBimEvidence = null;
+      this.bimRememberState = 'saved';
+    }).catch((_error: Error): void => {
+      this.bimRememberState = 'error';
+      this.bimRememberError = '没有记下来，请重试。';
+    });
+  }
 
   private openUiAgentLab(): void {
     configureUiLabModelSettings(this.getSettings());
@@ -3339,138 +3299,22 @@ struct Index {
       aiLogInfo('[AIPhone][UiAgentLabRouteOpened]');
     });
   }
-  private showBimRoutePaused(): void {
-    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-      ok: true,
-      status: 'ready',
-      message: '已暂停，选择心上事后可继续',
-      requestDebug: this.lastModelRequest,
-      assistantDebug: this.lastModelOutput,
-      error: ''
-    }));
-  }
 
-  private showBimTravelQueryNeedsDetails(): void {
-    const message = '请补充出发地、目的地和日期后再查询机票或高铁。';
-    this.bimUiError = message;
-    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-      ok: false,
-      status: 'error',
-      message,
-      requestDebug: 'bim-travel-query-guard',
-      assistantDebug: message,
-      error: 'BIM_TRAVEL_QUERY_INCOMPLETE'
-    }));
-  }
-
-  private async choosePrimaryBim(route: BimRouteDecision): Promise<BimRouteDecision> {
-    const ids = route.secondaryBimIds.slice(0, 6);
-    const candidates: BimRecord[] = [];
-    for (let index = 0; index < ids.length; index++) {
-      const record = this.bimStore().get(ids[index]);
-      if (record !== undefined) {
-        candidates.push(record);
-      }
-    }
-    if (candidates.length === 0) {
-      return { status: 'unknown', primaryBimId: '', secondaryBimIds: [], reason: '' };
-    }
-    const buttons: [
-      promptAction.Button,
-      promptAction.Button?,
-      promptAction.Button?,
-      promptAction.Button?,
-      promptAction.Button?,
-      promptAction.Button?
-    ] = [{ text: candidates[0].title, color: '#0A59F7' }];
-    for (let index = 1; index < candidates.length; index++) {
-      buttons.push({ text: candidates[index].title, color: '#0A59F7' });
-    }
-    try {
-      const selected = await this.getUIContext().getPromptAction().showActionMenu({
-        title: '这次要放进哪件心上事？',
-        buttons
-      });
-      if (selected.index < 0 || selected.index >= candidates.length) {
-        this.showBimRoutePaused();
-        return { status: 'unknown', primaryBimId: '', secondaryBimIds: [], reason: '' };
-      }
-      const primaryBimId = candidates[selected.index].id;
-      return {
-        status: 'matched',
-        primaryBimId,
-        secondaryBimIds: candidates
-          .filter((record: BimRecord): boolean => record.id !== primaryBimId)
-          .map((record: BimRecord): string => record.id),
-        reason: route.reason
-      };
-    } catch (_error) {
-      this.showBimRoutePaused();
-      return { status: 'unknown', primaryBimId: '', secondaryBimIds: [], reason: '' };
-    }
-  }
-
-  private saveBimOutcome(
-    bimId: string,
-    secondaryBimIds: string[],
-    outcome: MultiAgentSettledOutcome
-  ): boolean {
-    const record = this.bimStore().get(bimId);
-    const update = record === undefined ? undefined :
-      bimContextUpdateForSave(record, this.pendingBimSurfaceJson, outcome.bimContextUpdate);
-    if (update === undefined) {
-      aiLogError('[AIPhone][BimSaveFailed] reason=missing_context_update surfaceChars=' +
-        this.pendingBimSurfaceJson.length);
-      return false;
-    }
-    const context: BimContextSnapshot = {
-      summary: update.summary,
-      facts: update.facts,
-      constraints: update.constraints,
-      decisions: update.decisions
-    };
-    if (update.dashboardItems !== undefined) {
-      context.dashboardItems = update.dashboardItems;
-    } else if (record !== undefined) {
-      try {
-        const previous = JSON.parse(record.contextJson) as BimContextSnapshot;
-        if (previous.dashboardItems !== undefined) {
-          context.dashboardItems = previous.dashboardItems;
-        }
-      } catch (_error) {
-      }
-    }
-    const index: BimRetrievalIndex = {
-      summary: update.summary,
-      entities: update.entities,
-      timeAnchors: update.timeAnchors,
-      locations: update.locations,
-      commitments: update.commitments,
-      keywords: update.keywords
-    };
-    const saved = this.bimStore().replaceCurrentState(
-      bimId,
-      context,
-      index,
-      this.pendingBimSurfaceJson,
-      secondaryBimIds,
-      new Date().toISOString()
-    );
-    if (saved) {
-      this.refreshBimRecords();
-    } else {
-      aiLogError('[AIPhone][BimSaveFailed] reason=' + this.bimStore().lastPersistenceError() +
-        ' surfaceChars=' + this.pendingBimSurfaceJson.length);
-    }
-    return saved;
-  }
-
-  private async submitPrompt(prompt: string, visibleText: string, actionId: string = '', actionArgs: Object | null = null): Promise<void> {
+  private async submitPrompt(
+    prompt: string,
+    visibleText: string,
+    actionId: string = '',
+    actionArgs: Object | null = null,
+    sourceBimId: string = ''
+  ): Promise<void> {
     const trimmed = prompt.trim();
-    if (trimmed.length === 0 || bimTurnInputBusy(this.isBusy, this.bimLifecycleSweepBusy)) {
+    if (trimmed.length === 0 || this.isBusy) {
       return;
     }
     const modelPrompt = modelPromptWithActionContext(trimmed, actionId, actionArgs);
+    const request: BimForegroundRequest = buildBimForegroundRequest(
+      modelPrompt, this.bimStore().list(), sourceBimId
+    );
     if (this.baseUrl.trim().length === 0) {
       aiLogError('[AIPhone][A2uiHomeSubmitBlocked] missingBaseUrl');
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
@@ -3483,11 +3327,15 @@ struct Index {
       }));
       return;
     }
-    this.clearBimSuggestion();
+    this.pendingBimEvidence = null;
+    this.bimSuggestionTitle = '';
+    this.bimSuggestionReason = '';
+    this.bimRememberState = 'ready';
+    this.bimRememberError = '';
     const turnGeneration: number = this.beginRuntimeTurn('multi_agent');
     this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
     this.appendMessage('user', visibleText);
-    aiLogInfo('[AIPhone][A2uiHomeSubmitPrompt] chars=' + modelPrompt.length.toString() +
+    aiLogInfo('[AIPhone][A2uiHomeSubmitPrompt] chars=' + request.prompt.length.toString() +
       ' model=' + this.selectedModel +
       ' baseUrl=' + this.baseUrl);
     this.inputText = inputTextAfterPromptSubmit(this.inputText);
@@ -3504,56 +3352,11 @@ struct Index {
         foodPartialThrottleMs: normalizeFoodPartialThrottleMs(this.foodPartialThrottleMs)
       });
       this.markChecking('正在生成 A2UI...');
-      const routePromise = routeBimQuery(trimmed, this.bimStore().list(), this.canaryModel());
-      this.bimTurnGate.begin(turnGeneration, routePromise);
-      const mainPromise = this.canaryRuntime().submit(
-        modelPrompt,
-        this.multiAgentInput(modelPrompt),
+      const outcome: MultiAgentTurnOutcome = await this.canaryRuntime().submit(
+        request.prompt,
+        this.multiAgentInput(request.prompt),
         turnGeneration
       );
-      let route: BimRouteDecision = await routePromise;
-      let outcome: MultiAgentTurnOutcome;
-      if (route.status === 'none') {
-        outcome = await mainPromise;
-      } else {
-        this.canaryRuntime().cancelActiveTurn('bim_takeover');
-        try {
-          await mainPromise;
-        } catch (_error) {
-        }
-        if (route.status === 'ambiguous') {
-          route = await this.choosePrimaryBim(route);
-        }
-        if (route.status !== 'matched') {
-          this.showBimRoutePaused();
-          throw new Error('BIM_ROUTE_UNKNOWN');
-        }
-        this.bimTurnGate.clear(turnGeneration);
-        const primary = this.bimStore().get(route.primaryBimId);
-        if (primary === undefined) {
-          throw new Error('BIM_PRIMARY_NOT_FOUND');
-        }
-        if (bimTravelQueryNeedsDetails(trimmed)) {
-          this.showBimTravelQueryNeedsDetails();
-          return;
-        }
-        const secondary: BimRecord[] = [];
-        for (let index = 0; index < route.secondaryBimIds.length; index++) {
-          const record = this.bimStore().get(route.secondaryBimIds[index]);
-          if (record !== undefined) {
-            secondary.push(record);
-          }
-        }
-        this.activeBimId = primary.id;
-        this.bimTurnStartedInDetail = false;
-        this.pendingBimSurfaceJson = primary.surfaceJson;
-        this.bimTransientOwnerGeneration = turnGeneration;
-        outcome = await this.canaryRuntime().submit(
-          buildBimExecutionPrompt(primary, secondary, modelPrompt),
-          buildBimAgentInput(primary, modelPrompt),
-          turnGeneration
-        );
-      }
       if (!runtimeCallbackIsCurrent(
         this.activeRuntimeOwner, this.runtimeGeneration, 'multi_agent', turnGeneration
       )) {
@@ -3564,20 +3367,7 @@ struct Index {
         throw new Error(result.message.length > 0 ?
           result.message : 'Multi-agent runtime failed to complete the turn.');
       }
-      if (this.activeBimId.length > 0 &&
-        !this.saveBimOutcome(this.activeBimId, route.secondaryBimIds, result)) {
-        throw new Error('BIM_SAVE_FAILED');
-      }
       this.isBusy = false;
-      if (this.activeBimId.length === 0) {
-        if (shouldShowBimSuggestion(result.bimSuggestion, this.activeBimId, this.isBusy)) {
-          this.showBimSuggestion(
-            result.bimSuggestion as LeaderBimSuggestion,
-            result.bimContextUpdate,
-            result.surfaceId
-          );
-        }
-      }
       this.isAwaitingFirstSurface = false;
       if (result.surfaceId.length > 0 &&
         result.surfaceId === this.currentSurface.surfaceId &&
@@ -3603,6 +3393,26 @@ struct Index {
         error: ''
       }));
       this.appendMessage('assistant', readyMessage);
+      const bimEvidence: BimTurnEvidence = {
+        query: request.query,
+        sourceBimId: request.sourceBimId,
+        visibleSource: visibleText,
+        assistantReply: readyMessage,
+        surfaceSummary: this.currentSurface.title + ' | ' + this.currentSurface.status,
+        toolResultSummary: safeBimToolResultSummary(
+          summarizeAppliedA2uiSurface('', this.currentSurface).text
+        ),
+        // Human confirmation is a separate flow; free-form foreground text never proves completion.
+        userConfirmedCompletion: false,
+        userConfirmedCreate: false
+      };
+      if (request.sourceBimId.length === 0 && explicitBimCreateRequest(request.query)) {
+        this.pendingBimEvidence = bimEvidence;
+        this.bimSuggestionTitle = visibleText.length > 28 ? visibleText.substring(0, 28) + '…' : visibleText;
+        this.bimSuggestionReason = '确认后由后台整理成新的心上事';
+      } else {
+        this.enqueueBimCurator(bimEvidence);
+      }
     } catch (error) {
       if (this.runtimeGeneration !== turnGeneration) {
         return;
@@ -3610,13 +3420,10 @@ struct Index {
       this.isAwaitingFirstSurface = false;
       const message = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][A2uiHomeModelException] ' + logSnippet(message));
-      if (message === 'BIM_ROUTE_UNKNOWN') {
-        return;
-      }
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
         ok: false,
         status: 'error',
-        message: message === 'BIM_SAVE_FAILED' ? '心上事保存失败' : 'A2UI 生成异常，请到配置页查看详情。',
+        message: 'A2UI 生成异常，请到配置页查看详情。',
         requestDebug: this.lastModelRequest,
         assistantDebug: this.lastModelOutput,
         error: message
@@ -3630,22 +3437,13 @@ struct Index {
           this.scheduleMultiTaskPayloadRefresh();
         }
       }
-      this.bimTurnGate.clear(turnGeneration);
-      if (bimTurnOwnsTransientState(this.bimTransientOwnerGeneration, turnGeneration)) {
-        this.activeBimId = '';
-        this.bimTurnStartedInDetail = false;
-        this.pendingBimSurfaceJson = '';
-        this.bimTransientOwnerGeneration = 0;
-      }
     }
   }
 
   private async submitBimPrompt(bimId: string, text: string): Promise<void> {
     const query = text.trim();
-    if (query.length === 0) {
-      return;
-    }
-    if (bimTurnInputBusy(this.isBusy, this.bimLifecycleSweepBusy)) {
+    if (query.length === 0) return;
+    if (this.isBusy) {
       this.bimUiError = 'Appless 正在处理其他请求';
       return;
     }
@@ -3672,106 +3470,14 @@ struct Index {
       }));
       return;
     }
-    if (this.baseUrl.trim().length === 0) {
-      this.bimUiError = '请先填写 Base URL';
-      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-        ok: false,
-        status: 'error',
-        message: '请先填写 Base URL。',
-        requestDebug: this.lastModelRequest,
-        assistantDebug: this.lastModelOutput,
-        error: 'Base URL 为空'
-      }));
-      return;
-    }
-    if (bimTravelQueryNeedsDetails(query)) {
-      this.showBimTravelQueryNeedsDetails();
+    const submitError = bimDetailSubmitError(this.baseUrl);
+    if (submitError.length > 0) {
+      this.bimUiError = submitError;
       return;
     }
     this.bimUiError = '';
-    this.bimWorkingText = query;
     this.bimInputText = '';
-    const secondary: BimRecord[] = [];
-    try {
-      for (let index = 0; index < record.relatedBimIds.length; index++) {
-        const related = this.bimStore().get(record.relatedBimIds[index]);
-        if (related !== undefined) {
-          secondary.push(related);
-        }
-      }
-    } catch (_error) {
-      this.bimWorkingText = '';
-      this.bimUiError = '关联的心上事暂时无法读取';
-      return;
-    }
-    const turnGeneration = this.beginRuntimeTurn('multi_agent');
-    this.activeBimId = record.id;
-    this.bimTurnStartedInDetail = true;
-    this.pendingBimSurfaceJson = record.surfaceJson;
-    this.bimTransientOwnerGeneration = turnGeneration;
-    this.isBusy = true;
-    this.isAwaitingFirstSurface = false;
-    this.markChecking('正在更新心上事...');
-    try {
-      const executionPrompt = buildBimExecutionPrompt(record, secondary, query);
-      const input = buildBimAgentInput(record, query);
-      configureLocalToolDebugConfig({
-        foodProviderDelayEnabled: this.foodProviderDelayEnabled,
-        foodProviderDelayMs: normalizeFoodProviderDelayMs(this.foodProviderDelayMs),
-        foodPartialThrottleMs: normalizeFoodPartialThrottleMs(this.foodPartialThrottleMs)
-      });
-      const outcome = await this.canaryRuntime().submit(executionPrompt, input, turnGeneration);
-      if (!runtimeCallbackIsCurrent(
-        this.activeRuntimeOwner, this.runtimeGeneration, 'multi_agent', turnGeneration
-      )) {
-        return;
-      }
-      const result = outcome as MultiAgentSettledOutcome;
-      if (!result.ok) {
-        throw new Error(result.message.length > 0 ?
-          result.message : 'Multi-agent runtime failed to complete the turn.');
-      }
-      if (!this.saveBimOutcome(record.id, record.relatedBimIds, result)) {
-        throw new Error('BIM_SAVE_FAILED');
-      }
-      const readyMessage = result.message.length > 0 ? result.message : record.title;
-      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-        ok: true,
-        status: 'ready',
-        message: readyMessage,
-        requestDebug: 'multi-agent-runtime',
-        assistantDebug: readyMessage,
-        error: ''
-      }));
-      this.bimUiError = '';
-    } catch (error) {
-      if (this.runtimeGeneration !== turnGeneration) {
-        return;
-      }
-      const message = error instanceof Error ? error.message : JSON.stringify(error);
-      aiLogError('[AIPhone][BimDetailModelException] ' + logSnippet(message));
-      this.bimUiError = message === 'BIM_SAVE_FAILED' ? '心上事保存失败' : '心上事更新失败';
-      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-        ok: false,
-        status: 'error',
-        message: message === 'BIM_SAVE_FAILED' ? '心上事保存失败' : '心上事更新失败',
-        requestDebug: this.lastModelRequest,
-        assistantDebug: this.lastModelOutput,
-        error: message
-      }));
-    } finally {
-      if (this.runtimeGeneration === turnGeneration) {
-        this.isBusy = false;
-        this.bimWorkingText = '';
-      }
-      this.bimTurnGate.clear(turnGeneration);
-      if (bimTurnOwnsTransientState(this.bimTransientOwnerGeneration, turnGeneration)) {
-        this.activeBimId = '';
-        this.bimTurnStartedInDetail = false;
-        this.pendingBimSurfaceJson = '';
-        this.bimTransientOwnerGeneration = 0;
-      }
-    }
+    await this.submitPrompt(query, query, '', null, record.id);
   }
 
   private async sendPrompt(): Promise<void> {
@@ -6271,13 +5977,7 @@ struct Index {
     if (runtimeOwner !== this.activeRuntimeOwner) {
       return false;
     }
-    const activeToolBimId = bimTurnOwnsTransientState(
-      this.bimTransientOwnerGeneration, toolGeneration
-    ) ? this.activeBimId : '';
-    const pageActionPresentation = bimPageActionPresentation(
-      true, activeToolBimId, this.bimTurnStartedInDetail
-    );
-    const directDetailBimAction = pageActionPresentation.destination === 'detail';
+    const directDetailBimAction = false;
     if (!isRegisteredToolId(toolId)) {
       const message = '模型请求了未注册工具：' + toolId;
       aiLogError('[AIPhone][A2uiHomeToolRequestInvalid] toolId=' + toolId);
@@ -6446,26 +6146,6 @@ struct Index {
           return;
         }
         const nextSurface = copyPersonaData(personaSourceSurface, surface);
-        const streamActiveBimId = bimTurnOwnsTransientState(
-          this.bimTransientOwnerGeneration, toolGeneration
-        ) ? this.activeBimId : '';
-        const streamPresentation = bimPageActionPresentation(
-          runtimeCallbackIsCurrent(
-            this.activeRuntimeOwner, this.runtimeGeneration, runtimeOwner, toolGeneration
-          ),
-          streamActiveBimId,
-          this.bimTurnStartedInDetail
-        );
-        if (streamPresentation.destination === 'reject') {
-          return;
-        }
-        if (streamPresentation.destination === 'detail') {
-          this.pendingBimSurfaceJson = JSON.stringify(
-            this.ownedSurface(nextSurface, runtimeOwner, toolGeneration)
-          );
-          this.bimUiError = '';
-          return;
-        }
         if (!this.applyRuntimeSurface(nextSurface, runtimeOwner, toolGeneration)) {
           return;
         }
@@ -6550,29 +6230,6 @@ struct Index {
     const resultSurface = this.ownedSurface(
       copyPersonaData(personaSourceSurface, result.surface), runtimeOwner, toolGeneration
     );
-    const finalActiveBimId = bimTurnOwnsTransientState(
-      this.bimTransientOwnerGeneration, toolGeneration
-    ) ? this.activeBimId : '';
-    const finalPresentation = bimPageActionPresentation(
-      true, finalActiveBimId, this.bimTurnStartedInDetail
-    );
-    if (finalPresentation.destination === 'detail') {
-      this.pendingBimSurfaceJson = JSON.stringify(resultSurface);
-      this.bimUiError = result.ok ? '' :
-        (result.error.length > 0 ? '工具返回异常：' + result.error : '工具返回异常');
-      if (toolId === 'payment.account.setup') {
-        await this.saveStripeReceivingProfile(resultSurface);
-        if (!runtimeCallbackIsCurrent(
-          this.activeRuntimeOwner, this.runtimeGeneration, runtimeOwner, toolGeneration
-        )) {
-          return false;
-        }
-      }
-      if (result.ok && toolId === 'gmail.open.web') {
-        return this.openExternalUrl(GMAIL_WEB_URL);
-      }
-      return result.ok;
-    }
     if (inlineLuckinSwitch) {
       if (result.ok && this.applyLuckinInlineConfirmPatch(resultSurface)) {
         this.finishLuckinOptionSwitch(false);
@@ -6626,8 +6283,7 @@ struct Index {
       this.appendMessage('assistant', '工具返回异常：' + result.error);
       return false;
     }
-    if (finalPresentation.appendAssistantMessage &&
-      !inlineLuckinSwitch && !inlineLuckinPaymentStatus) {
+    if (!inlineLuckinSwitch && !inlineLuckinPaymentStatus) {
       this.appendMessage('assistant', resultSurface.title + ' 已返回 A2UI 结果。');
     }
     if (toolId === 'gmail.open.web') {
@@ -6713,11 +6369,11 @@ struct Index {
       BimDetailPage({
         record: this.selectedBimRecordSnapshot,
         renderTick: this.bimDetailRenderTick,
-        liveSurfaceJson: this.selectedBimLiveSurfaceJson(),
-        isBusy: this.selectedBimIsBusy(),
-        isInputEnabled: !this.isBusy || this.selectedBimIsBusy(),
+        liveSurfaceJson: '',
+        isBusy: false,
+        isInputEnabled: !this.isBusy,
         isLoading: this.bimLoading,
-        workingText: this.bimWorkingText,
+        workingText: '',
         errorMessage: combineBimErrorMessages(this.bimStoreError, this.bimUiError),
         reduceMotion: this.bimReduceMotion,
         inputText: $bimInputText,
@@ -6727,9 +6383,7 @@ struct Index {
         onSubmit: (bimId: string, text: string): void => {
           void this.submitBimPrompt(bimId, text);
         },
-        onStop: (bimId: string): void => {
-          this.stopActiveBimTurn(bimId);
-        },
+        onStop: (_bimId: string): void => {},
         onAction: (action: A2uiAction): void => {
           void this.submitBimPrompt(
             (this.selectedBimRecord() as BimRecord).id,
@@ -6756,8 +6410,13 @@ struct Index {
         isLoading: this.bimLoading,
         errorMessage: combineBimErrorMessages(this.bimStoreError, this.bimUiError),
         reduceMotion: this.bimReduceMotion,
+        isDebugBuild: this.isDebugBuild,
+        sentinelBusy: this.bimSentinelBusy,
         onOpenRecord: (bimId: string): void => {
           this.openBimDetail(bimId);
+        },
+        onTestSentinel: (): void => {
+          void this.scheduleBimSentinelMock();
         }
       })
     }

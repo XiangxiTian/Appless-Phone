@@ -1,6 +1,6 @@
 # 当前工具能力总表
 
-更新时间：2026-08-06
+更新时间：2026-08-10
 
 来源：`agent_core/src/main/ets/aiphone/AiphoneToolDefinitions.ets`、`agent_core/src/main/ets/aiphone/runtime/ToolDefinitionRegistry.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentRuntime.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets`、`agent_core/src/main/ets/aiphone/runtime/AggregateSearchClient.ets`、`agent_core/src/main/ets/aiphone/runtime/ComposioDynamicBackend.ets`、`scripts/aiphone-device-smoke.mjs`、支付/Composio 相关单测。
 
@@ -9,6 +9,10 @@
 授权页统一显示 app 名称。Slack、X 的读取和授权统一走当前用户的 Composio connected account；用户确认发送 Slack 回复时固定执行 `SLACK_CHAT_POST_MESSAGE`，X 回复仍不支持。QQ 邮箱、瑞幸、滴滴继续使用当前默认凭证和原有 provider 逻辑，授权页只新增各自官方授权/开发者页面入口，不会把网页登录结果自动写回 App。
 
 Firecrawl 六个固定工具由 HAP 携带 `FIRECRAWL_API_KEY`，直接连接 Firecrawl Hosted MCP；这是当前产品配置选择，不依赖 Mac gateway，也不会在手机上运行 Chromium。Credit、Monitor 检查和套餐计费均由 Firecrawl 账号/Provider 管理。Monitor 是退出 App 后仍保留的 Firecrawl 云状态；此版本没有 HarmonyOS 原生推送。
+
+## 心上事（BIM）
+
+主 Agent 的普通前台轮次只读取全部未结束 BIM 的 Snapshot；只有明确选中的 BIM 才通过 BIM Skill 加载完整上下文。主 Agent 完成后，Curator 使用同配置模型异步维护 Full Context、只读 Dashboard 和下一版 Snapshot，不阻塞用户回复。Sentinel 由 ReminderAgent 每日触发，读取 active、quiet、tucked BIM 并按 BIM 串行发送合并后的 Attention Event；Debug HAP 在 BIM 首页底部提供“10秒测试 Sentinel”，系统提醒容量不足时明确降级为应用内定时触发，后续仍走真实 Sentinel 与主 Agent。Snapshot 和 Full Context 当前只支持查看；未结束 BIM 最多 10 个，ended 归档不设上限。
 
 UI Lab 的 GitHub 用户看板是 `dynamic.search` 的宿主受信 profile，不是新的模型工具。Leader 只提交一次 `github.user.dashboard` target；宿主依次将它映射到 `GITHUB_GET_A_USER`、`GITHUB_LIST_REPOSITORIES_FOR_A_USER`、`GITHUB_LIST_EVENTS_FOR_USER`，并要求每次 search 都返回精确 slug 和完整可验证的输入 schema 后才执行。看板允许分区部分失败，三个分区全失败时整体失败；近期 events 不是贡献日历，仓库计数/Star/Fork 只统计 Provider 当前返回页。普通首页和旧 `dynamic.search` 入口不会获得该受信 target 权限。
 

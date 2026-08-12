@@ -107,6 +107,7 @@ import uiAgentLabThemeTest from './UiAgentLabTheme.test';
 import movieDemoContractTest from './MovieDemoContract.test';
 import bimStoreTest from './BimStore.test';
 import bimRuntimeTest from './BimRuntime.test';
+import bimDailyReminderTest from './BimDailyReminder.test';
 import bimHomePageTest from './BimHomePage.test';
 import capabilityRuntimeTest from './CapabilityRuntime.test';
 
@@ -214,6 +215,7 @@ export default function testsuite() {
   uiAgentLabThemeTest();
   bimStoreTest();
   bimRuntimeTest();
+  bimDailyReminderTest();
   bimHomePageTest();
   personaStoreTest();
   personaA2uiTest();

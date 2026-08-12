@@ -88,6 +88,10 @@ export function formatBimCount(count: number): string {
   return count > 9 ? '9+' : count.toString();
 }
 
+export function bimSentinelDebugActionVisible(isDebugBuild: boolean): boolean {
+  return isDebugBuild;
+}
+
 export function combineBimErrorMessages(storeError: string, transientError: string): string {
   const storeMessage = storeError.trim();
   const transientMessage = transientError.trim();
@@ -132,10 +136,13 @@ export struct BimHomePage {
   @Prop isLoading: boolean = false;
   @Prop errorMessage: string = '';
   @Prop reduceMotion: boolean = false;
+  @Prop isDebugBuild: boolean = false;
+  @Prop sentinelBusy: boolean = false;
   @State showTucked: boolean = false;
   @State showEnded: boolean = false;
   @State pressedRecordId: string = '';
   onOpenRecord: (bimId: string) => void = (_bimId: string): void => {};
+  onTestSentinel: () => void = (): void => {};
 
   private grouped(): BimRecordGroups {
     return groupVisibleBims(this.records);
@@ -412,6 +419,22 @@ export struct BimHomePage {
             .opacity(0.82)
             .margin({ top: 12 })
           }
+        }
+
+        if (bimSentinelDebugActionVisible(this.isDebugBuild)) {
+          Button('10秒测试 Sentinel')
+            .width('100%')
+            .height(46)
+            .fontSize(14)
+            .fontColor(COLOR_ACCENT)
+            .backgroundColor(COLOR_ACCENT_SOFT)
+            .borderRadius(14)
+            .enabled(!this.sentinelBusy)
+            .opacity(this.sentinelBusy ? 0.55 : 1)
+            .margin({ top: 32 })
+            .onClick(() => {
+              this.onTestSentinel();
+            })
         }
       }
       .width('100%')

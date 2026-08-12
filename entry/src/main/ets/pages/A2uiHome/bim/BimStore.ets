@@ -11,10 +11,13 @@ import {
 
 export const BIM_STORE_NAME: string = 'aiphone_bim_store';
 const RECORDS_KEY: string = 'records.v1';
-const LAST_SWEEP_KEY: string = 'last_lifecycle_sweep_at.v1';
 const DEMO_SEED_STATE_KEY: string = 'demo_seed_state.v1';
-const MAX_RECORDS: number = 100;
+const SENTINEL_SUCCESS_KEY: string = 'sentinel_success_at.v1';
+const MAX_NON_ENDED_RECORDS: number = 10;
+const MAX_RELATED_IDS: number = 99;
+const MAX_COMPONENT_CHILDREN: number = 100;
 const MAX_CONTEXT_CHARS: number = 16000;
+const MAX_SNAPSHOT_CHARS: number = 3000;
 const MAX_SURFACE_CHARS: number = 96000;
 const MAX_DASHBOARD_SURFACES: number = 8;
 const MAX_CONTEXT_ITEMS: number = 32;
@@ -93,9 +96,13 @@ export interface BimContextSnapshot {
   dashboardItems?: LeaderBimDashboardItem[];
 }
 
-export interface BimLifecycleUpdate {
-  id: string;
-  lifecycle: 'active' | 'quiet' | 'tucked';
+export interface BimPublishedState {
+  title: string;
+  fullContextMarkdown: string;
+  snapshotMarkdown: string;
+  context: BimContextSnapshot;
+  retrievalIndex: BimRetrievalIndex;
+  relatedBimIds: string[];
 }
 
 export interface BimRecord {
@@ -112,6 +119,9 @@ export interface BimRecord {
   retrievalIndex: BimRetrievalIndex;
   surfaceJson: string;
   dashboardSurfaceJsons?: string[];
+  snapshotVersion: number;
+  snapshotMarkdown: string;
+  fullContextMarkdown: string;
 }
 
 function text(value: string | number | boolean | preferences.ValueType | undefined): string {
@@ -193,10 +203,6 @@ function validLifecycle(value: string): boolean {
   return value === 'active' || value === 'quiet' || value === 'tucked' || value === 'ended';
 }
 
-function validActiveLifecycle(value: string): boolean {
-  return value === 'active' || value === 'quiet' || value === 'tucked';
-}
-
 function validString(value: string, maximum: number, requireText: boolean = false): boolean {
   return typeof value === 'string' && value.length <= maximum && (!requireText || value.trim().length > 0);
 }
@@ -263,7 +269,8 @@ function validComponent(component: A2uiComponent): boolean {
     !validString(component.id, MAX_SURFACE_CHARS, true) ||
     !validString(component.component, MAX_SURFACE_CHARS, true) ||
     (component.child !== undefined && !validString(component.child, MAX_SURFACE_CHARS)) ||
-    (component.children !== undefined && !validStringList(component.children, MAX_RECORDS, MAX_SURFACE_CHARS)) ||
+    (component.children !== undefined &&
+      !validStringList(component.children, MAX_COMPONENT_CHILDREN, MAX_SURFACE_CHARS)) ||
     (component.title !== undefined && !validString(component.title, MAX_SURFACE_CHARS)) ||
     (component.text !== undefined && !validString(component.text, MAX_SURFACE_CHARS)) ||
     (component.body !== undefined && !validString(component.body, MAX_SURFACE_CHARS)) ||
@@ -318,7 +325,7 @@ function validContextJson(value: string): boolean {
 }
 
 function validRelatedIds(value: string[], id: string, ids: string[]): boolean {
-  if (!validStringList(value, MAX_RECORDS - 1, 256)) return false;
+  if (!validStringList(value, MAX_RELATED_IDS, 256)) return false;
   for (let index = 0; index < value.length; index++) {
     if (value[index].trim() === id || ids.indexOf(value[index].trim()) < 0) return false;
   }
@@ -329,7 +336,7 @@ function validRecordFields(record: BimRecord): boolean {
   return record !== null && record !== undefined &&
     onlyKeys(record, ['id', 'title', 'lifecycle', 'createdAt', 'updatedAt', 'lastInteractionAt',
       'lastLifecycleCheckAt', 'endedAt', 'relatedBimIds', 'contextJson', 'retrievalIndex', 'surfaceJson',
-      'dashboardSurfaceJsons']) &&
+      'dashboardSurfaceJsons', 'snapshotVersion', 'snapshotMarkdown', 'fullContextMarkdown']) &&
     validString(record.id, 256, true) &&
     validString(record.title, 500, true) &&
     validLifecycle(record.lifecycle) &&
@@ -341,10 +348,32 @@ function validRecordFields(record: BimRecord): boolean {
     validIndex(record.retrievalIndex) &&
     isValidBimSurfaceJson(record.surfaceJson) &&
     validDashboardSurfaceJsons(record.dashboardSurfaceJsons) &&
+    validSnapshotFields(record) &&
     Array.isArray(record.relatedBimIds) &&
     !surfaceContainsSensitiveKey(record.surfaceJson) &&
     ((record.lifecycle === 'ended' && record.endedAt !== undefined && validTimestamp(record.endedAt)) ||
       (record.lifecycle !== 'ended' && record.endedAt === undefined));
+}
+
+function validSnapshotFields(record: BimRecord): boolean {
+  const raw = record as Object as
+    Record<string, Object | string | number | boolean | null | undefined>;
+  const version = raw['snapshotVersion'];
+  const snapshot = raw['snapshotMarkdown'];
+  const fullContext = raw['fullContextMarkdown'];
+  if (version === undefined && snapshot === undefined && fullContext === undefined) return true;
+  // ponytail: keep prerelease v2 snapshots readable; Curator rewrites them under the new publish limit.
+  return typeof version === 'number' && isFinite(version) && version >= 1 && Math.floor(version) === version &&
+    typeof snapshot === 'string' && snapshot.trim().length > 0 && snapshot.length <= MAX_CONTEXT_CHARS &&
+    typeof fullContext === 'string' && fullContext.trim().length > 0 && fullContext.length <= MAX_CONTEXT_CHARS;
+}
+
+function validMarkdown(value: string): boolean {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_CONTEXT_CHARS;
+}
+
+function validSnapshotMarkdown(value: string): boolean {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_SNAPSHOT_CHARS;
 }
 
 function validDashboardSurfaceJsons(surfaceJsons: string[] | undefined): boolean {
@@ -358,7 +387,7 @@ function validDashboardSurfaceJsons(surfaceJsons: string[] | undefined): boolean
 }
 
 function validRecords(records: BimRecord[]): boolean {
-  if (!Array.isArray(records) || records.length > MAX_RECORDS) return false;
+  if (!Array.isArray(records)) return false;
   const ids: string[] = [];
   for (let index = 0; index < records.length; index++) {
     const record = records[index];
@@ -369,6 +398,14 @@ function validRecords(records: BimRecord[]): boolean {
     if (!validRelatedIds(records[index].relatedBimIds, records[index].id.trim(), ids)) return false;
   }
   return true;
+}
+
+function nonEndedCount(records: BimRecord[]): number {
+  let count = 0;
+  for (let index = 0; index < records.length; index++) {
+    if (records[index].lifecycle !== 'ended') count++;
+  }
+  return count;
 }
 
 function copyList(values: string[]): string[] {
@@ -410,6 +447,14 @@ function copyIndex(index: BimRetrievalIndex): BimRetrievalIndex {
 function copyRecord(record: BimRecord): BimRecord {
   const dashboard = record.dashboardSurfaceJsons === undefined ?
     [record.surfaceJson] : record.dashboardSurfaceJsons;
+  const raw = record as Object as
+    Record<string, Object | string | number | boolean | null | undefined>;
+  const legacyMarkdown = legacyRecordMarkdown(record);
+  const snapshotVersion = typeof raw['snapshotVersion'] === 'number' ? raw['snapshotVersion'] as number : 1;
+  const snapshotMarkdown = typeof raw['snapshotMarkdown'] === 'string' ?
+    (raw['snapshotMarkdown'] as string).trim() : legacyMarkdown.substring(0, MAX_SNAPSHOT_CHARS);
+  const fullContextMarkdown = typeof raw['fullContextMarkdown'] === 'string' ?
+    (raw['fullContextMarkdown'] as string).trim() : legacyMarkdown;
   return {
     id: record.id.trim(),
     title: record.title.trim(),
@@ -423,8 +468,26 @@ function copyRecord(record: BimRecord): BimRecord {
     contextJson: JSON.stringify(copyContext(JSON.parse(record.contextJson) as BimContextSnapshot)),
     retrievalIndex: copyIndex(record.retrievalIndex),
     surfaceJson: record.surfaceJson,
-    dashboardSurfaceJsons: confirmedDashboardSurfaces(dashboard)
+    dashboardSurfaceJsons: confirmedDashboardSurfaces(dashboard),
+    snapshotVersion,
+    snapshotMarkdown,
+    fullContextMarkdown
   };
+}
+
+function legacyRecordMarkdown(record: BimRecord): string {
+  const context = JSON.parse(record.contextJson) as BimContextSnapshot;
+  return contextMarkdown(record.title, context);
+}
+
+function contextMarkdown(title: string, context: BimContextSnapshot): string {
+  const lines: string[] = ['# ' + title.trim(), '', context.summary.trim()];
+  const details = context.facts.concat(context.constraints, context.decisions);
+  for (let index = 0; index < details.length; index++) {
+    const value = details[index].trim();
+    if (value.length > 0) lines.push('- ' + value);
+  }
+  return lines.join('\n').substring(0, MAX_CONTEXT_CHARS);
 }
 
 function isConfirmedDashboardSurface(surfaceJson: string): boolean {
@@ -516,6 +579,7 @@ export function createBimRecord(
   surfaceJson: string,
   nowIso: string
 ): BimRecord {
+  const fullContextMarkdown = contextMarkdown(title, context);
   return {
     id: id,
     title: title,
@@ -528,7 +592,10 @@ export function createBimRecord(
     contextJson: JSON.stringify(context),
     retrievalIndex: copyIndex(retrievalIndex),
     surfaceJson: surfaceJson,
-    dashboardSurfaceJsons: isConfirmedDashboardSurface(surfaceJson) ? [surfaceJson] : []
+    dashboardSurfaceJsons: isConfirmedDashboardSurface(surfaceJson) ? [surfaceJson] : [],
+    snapshotVersion: 1,
+    snapshotMarkdown: context.summary.trim(),
+    fullContextMarkdown
   };
 }
 
@@ -638,8 +705,8 @@ function demoBimRecords(nowIso: string): BimRecord[] {
 export class BimStore {
   private store: preferences.Preferences;
   private recordsSnapshot: string | undefined = undefined;
-  private sweepSnapshot: string | undefined = undefined;
   private demoSeedStateSnapshot: string | undefined = undefined;
+  private sentinelSuccessSnapshot: string | undefined = undefined;
   private lastPersistenceFailure: string = '';
 
   constructor(store: preferences.Preferences) {
@@ -654,24 +721,23 @@ export class BimStore {
     return this.recordsSnapshot === undefined ? text(this.store.getSync(RECORDS_KEY, '')) : this.recordsSnapshot;
   }
 
-  private sweepRaw(): string {
-    return this.sweepSnapshot === undefined ? text(this.store.getSync(LAST_SWEEP_KEY, '')) : this.sweepSnapshot;
-  }
-
   private demoSeedStateRaw(): string {
     return this.demoSeedStateSnapshot === undefined ?
       text(this.store.getSync(DEMO_SEED_STATE_KEY, '')) : this.demoSeedStateSnapshot;
   }
 
+  private sentinelSuccessRaw(): string {
+    return this.sentinelSuccessSnapshot === undefined ?
+      text(this.store.getSync(SENTINEL_SUCCESS_KEY, '')) : this.sentinelSuccessSnapshot;
+  }
+
   private save(
     records: BimRecord[],
     priorRaw: string,
-    sweepAt?: string,
-    priorSweepRaw?: string,
     demoSeedStateRaw?: string,
     priorDemoSeedStateRaw?: string
   ): boolean {
-    if (!validRecords(records) || (sweepAt !== undefined && !validTimestamp(sweepAt))) {
+    if (!validRecords(records)) {
       this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
       return false;
     }
@@ -679,16 +745,13 @@ export class BimStore {
     const nextDemoState = demoSeedStateRaw === undefined ? priorDemoState : demoSeedStateRaw;
     try {
       if (this.recordsSnapshot !== undefined) this.store.putSync(RECORDS_KEY, this.recordsSnapshot);
-      if (this.sweepSnapshot !== undefined) this.store.putSync(LAST_SWEEP_KEY, this.sweepSnapshot);
       if (this.demoSeedStateSnapshot !== undefined) {
         this.store.putSync(DEMO_SEED_STATE_KEY, this.demoSeedStateSnapshot);
       }
       this.store.putSync(RECORDS_KEY, serializeBimRecords(records));
-      if (sweepAt !== undefined) this.store.putSync(LAST_SWEEP_KEY, sweepAt);
       this.store.putSync(DEMO_SEED_STATE_KEY, nextDemoState);
       this.store.flushSync();
       this.recordsSnapshot = undefined;
-      this.sweepSnapshot = undefined;
       this.demoSeedStateSnapshot = undefined;
       this.lastPersistenceFailure = '';
       return true;
@@ -697,14 +760,12 @@ export class BimStore {
       let restored = true;
       try {
         this.store.putSync(RECORDS_KEY, priorRaw);
-        if (priorSweepRaw !== undefined) this.store.putSync(LAST_SWEEP_KEY, priorSweepRaw);
         this.store.putSync(DEMO_SEED_STATE_KEY, priorDemoState);
       } catch (_restoreError) {
         restored = false;
       }
       if (!restored) {
         this.recordsSnapshot = priorRaw;
-        if (priorSweepRaw !== undefined) this.sweepSnapshot = priorSweepRaw;
         this.demoSeedStateSnapshot = priorDemoState;
       }
       return false;
@@ -729,13 +790,12 @@ export class BimStore {
     const seeds = demoBimRecords(nowIso).filter((record: BimRecord): boolean =>
       existingIds.indexOf(record.id) < 0 && demoState.deletedIds.indexOf(record.id) < 0
     );
-    if (records.length + seeds.length > MAX_RECORDS) {
+    if (nonEndedCount(records) + seeds.length > MAX_NON_ENDED_RECORDS) {
       return false;
     }
     const nextDemoState: DemoSeedState = { initialized: true, deletedIds: demoState.deletedIds };
     return this.save(
-      records.concat(seeds), priorRaw, undefined, undefined,
-      serializeDemoSeedState(nextDemoState), priorDemoStateRaw
+      records.concat(seeds), priorRaw, serializeDemoSeedState(nextDemoState), priorDemoStateRaw
     );
   }
 
@@ -746,6 +806,10 @@ export class BimStore {
     }
     const priorRaw = this.recordsRaw();
     const records = this.records();
+    if (record.lifecycle !== 'ended' && nonEndedCount(records) >= MAX_NON_ENDED_RECORDS) {
+      this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
+      return false;
+    }
     for (let index = 0; index < records.length; index++) {
       if (records[index].id === record.id.trim()) {
         this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
@@ -777,7 +841,7 @@ export class BimStore {
     nowIso: string
   ): boolean {
     if (!validTimestamp(nowIso) || !validContext(context) || !validIndex(index) ||
-      !isValidBimSurfaceJson(surfaceJson) || !validStringList(relatedBimIds, MAX_RECORDS - 1, 256)) {
+      !isValidBimSurfaceJson(surfaceJson) || !validStringList(relatedBimIds, MAX_RELATED_IDS, 256)) {
       this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
       return false;
     }
@@ -812,6 +876,81 @@ export class BimStore {
     return false;
   }
 
+  publishState(
+    id: string,
+    expectedVersion: number,
+    state: BimPublishedState,
+    nowIso: string
+  ): boolean {
+    if (!validTimestamp(nowIso) || !isFinite(expectedVersion) || expectedVersion < 1 ||
+      Math.floor(expectedVersion) !== expectedVersion || !validSnapshotMarkdown(state.snapshotMarkdown) ||
+      !validString(state.title, 500, true) || !validMarkdown(state.fullContextMarkdown) ||
+      !validContext(state.context) ||
+      !validIndex(state.retrievalIndex) ||
+      !validStringList(state.relatedBimIds, MAX_RELATED_IDS, 256)) {
+      this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
+      return false;
+    }
+    const priorRaw = this.recordsRaw();
+    const records = this.records();
+    for (let position = 0; position < records.length; position++) {
+      if (records[position].id !== id) continue;
+      const current = records[position];
+      if (current.lifecycle === 'ended' || current.snapshotVersion !== expectedVersion ||
+        !validRelatedIds(state.relatedBimIds, current.id, records.map(
+          (record: BimRecord): string => record.id
+        ))) {
+        this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
+        return false;
+      }
+      const next = copyRecord(current);
+      next.title = state.title.trim();
+      next.snapshotVersion = expectedVersion + 1;
+      next.snapshotMarkdown = state.snapshotMarkdown.trim();
+      next.fullContextMarkdown = state.fullContextMarkdown.trim();
+      next.contextJson = JSON.stringify(copyContext(state.context));
+      next.retrievalIndex = copyIndex(state.retrievalIndex);
+      next.relatedBimIds = copyList(state.relatedBimIds);
+      next.updatedAt = nowIso;
+      next.lastInteractionAt = nowIso;
+      records[position] = next;
+      return this.save(records, priorRaw);
+    }
+    this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
+    return false;
+  }
+
+  lastSentinelSuccessAt(): string {
+    const value = this.sentinelSuccessRaw();
+    return validTimestamp(value) ? value : '';
+  }
+
+  markSentinelSuccess(nowIso: string): boolean {
+    if (!validTimestamp(nowIso)) {
+      this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
+      return false;
+    }
+    const priorRaw = this.sentinelSuccessRaw();
+    try {
+      if (this.sentinelSuccessSnapshot !== undefined) {
+        this.store.putSync(SENTINEL_SUCCESS_KEY, this.sentinelSuccessSnapshot);
+      }
+      this.store.putSync(SENTINEL_SUCCESS_KEY, nowIso);
+      this.store.flushSync();
+      this.sentinelSuccessSnapshot = undefined;
+      this.lastPersistenceFailure = '';
+      return true;
+    } catch (_error) {
+      this.lastPersistenceFailure = PERSISTENCE_WRITE_ERROR;
+      try {
+        this.store.putSync(SENTINEL_SUCCESS_KEY, priorRaw);
+      } catch (_restoreError) {
+        this.sentinelSuccessSnapshot = priorRaw;
+      }
+      return false;
+    }
+  }
+
   markEnded(id: string, endedAt: string): boolean {
     if (!validTimestamp(endedAt)) return false;
     const priorRaw = this.recordsRaw();
@@ -832,6 +971,10 @@ export class BimStore {
     if (!validTimestamp(nowIso)) return false;
     const priorRaw = this.recordsRaw();
     const records = this.records();
+    if (nonEndedCount(records) >= MAX_NON_ENDED_RECORDS) {
+      this.lastPersistenceFailure = PERSISTENCE_VALIDATION_ERROR;
+      return false;
+    }
     for (let index = 0; index < records.length; index++) {
       if (records[index].id !== id || records[index].lifecycle !== 'ended') continue;
       const next = copyRecord(records[index]);
@@ -875,42 +1018,8 @@ export class BimStore {
     return this.save(
       nextRecords,
       priorRaw,
-      undefined,
-      undefined,
       serializeDemoSeedState({ initialized: demoState.initialized, deletedIds }),
       priorDemoStateRaw
     );
-  }
-
-  lastLifecycleSweepAt(): string {
-    const value = this.sweepRaw();
-    return validTimestamp(value) ? value : '';
-  }
-
-  applyLifecycleSweep(updates: BimLifecycleUpdate[], checkedAt: string): boolean {
-    if (!validTimestamp(checkedAt) || !Array.isArray(updates)) return false;
-    const priorRaw = this.recordsRaw();
-    const priorSweepRaw = this.sweepRaw();
-    const records = this.records();
-    const seen: string[] = [];
-    for (let index = 0; index < updates.length; index++) {
-      const update = updates[index];
-      if (update === null || typeof update.id !== 'string' || !validActiveLifecycle(update.lifecycle) ||
-        seen.indexOf(update.id) >= 0) return false;
-      seen.push(update.id);
-      let found = false;
-      for (let position = 0; position < records.length; position++) {
-        if (records[position].id !== update.id || records[position].lifecycle === 'ended') continue;
-        const next = copyRecord(records[position]);
-        next.lifecycle = update.lifecycle;
-        next.lastLifecycleCheckAt = checkedAt;
-        next.updatedAt = checkedAt;
-        records[position] = next;
-        found = true;
-        break;
-      }
-      if (!found) return false;
-    }
-    return this.save(records, priorRaw, checkedAt, priorSweepRaw);
   }
 }

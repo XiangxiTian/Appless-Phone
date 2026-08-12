@@ -18,6 +18,10 @@ import {
 } from '@loop/agent-core';
 import { configurePersonaStoreFromRaw } from '../model/PersonaStore';
 import {
+  BIM_SENTINEL_MOCK_EVENT,
+  queueBimSentinelMockHandoff
+} from '../pages/A2uiHome/bim/BimDailyReminder';
+import {
   claimDueTrainPresaleTask,
   parseTrainPresaleTaskList,
   serializeTrainPresaleTaskList,
@@ -223,6 +227,15 @@ function trainPresaleTaskIdFromWant(want: Want): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+export function queueBimSentinelMockFromWant(want: Want): boolean {
+  const params = want.parameters;
+  if (params === undefined || params === null || params['bimDailySentinelMock'] !== true) {
+    return false;
+  }
+  queueBimSentinelMockHandoff();
+  return true;
+}
+
 function trainPresaleTasks(store: preferences.Preferences): TrainPresaleTask[] {
   return parseTrainPresaleTaskList(preferenceText(store.getSync(TRAIN_PRESALE_TASKS_KEY, '')));
 }
@@ -346,6 +359,7 @@ export default class EntryAbility extends UIAbility {
     this.loadPersonaPacks();
     this.handleOAuthWant(want);
     this.claimTrainPresaleTask(want);
+    queueBimSentinelMockFromWant(want);
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 
@@ -421,6 +435,7 @@ export default class EntryAbility extends UIAbility {
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onNewWant');
+    const bimSentinelMock = queueBimSentinelMockFromWant(want);
     const uri = oauthUriFromWant(want);
     this.loadLocalProviderConfig();
     if (!isComposioCallbackUri(uri)) {
@@ -431,6 +446,9 @@ export default class EntryAbility extends UIAbility {
     const result = this.claimTrainPresaleTask(want);
     if (result.changed) {
       this.context.getApplicationContext().eventHub.emit(TRAIN_PRESALE_HANDOFF_EVENT);
+    }
+    if (bimSentinelMock) {
+      this.context.getApplicationContext().eventHub.emit(BIM_SENTINEL_MOCK_EVENT);
     }
   }
 

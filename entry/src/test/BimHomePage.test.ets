@@ -4,6 +4,7 @@ import {
   BimRecord
 } from '../main/ets/pages/A2uiHome/bim/BimStore';
 import {
+  bimSentinelDebugActionVisible,
   combineBimErrorMessages,
   formatBimCount,
   groupVisibleBims,
@@ -13,6 +14,7 @@ import {
   BIM_DASHBOARD_CARD_GAP,
   BIM_DASHBOARD_SECTION_GAP
 } from '../main/ets/pages/A2uiHome/components/BimDashboardView';
+import { bimDetailContextSections } from '../main/ets/pages/A2uiHome/components/BimDetailPage';
 import { LeaderBimSuggestion } from '@loop/agent-core';
 
 function suggestion(): LeaderBimSuggestion {
@@ -46,7 +48,10 @@ function viewRecord(
     },
     surfaceJson: '{"surfaceId":"surface-test","rootId":"root","title":"当前安排",' +
       '"intent":"general","status":"ready","components":[{"id":"root","component":"SurfaceRoot"}],' +
-      '"dataModelJson":"{}","error":"","sequence":1}'
+      '"dataModelJson":"{}","error":"","sequence":1}',
+    snapshotVersion: 1,
+    snapshotMarkdown: 'test',
+    fullContextMarkdown: '# test\n\ntest'
   };
 }
 
@@ -61,6 +66,23 @@ export default function bimHomePageTest() {
     it('keeps dashboard cards visually separated', 0, () => {
       expect(BIM_DASHBOARD_CARD_GAP).assertEqual(14);
       expect(BIM_DASHBOARD_SECTION_GAP).assertEqual(20);
+    });
+
+    it('shows the Sentinel test action only in debug builds', 0, () => {
+      expect(bimSentinelDebugActionVisible(true)).assertTrue();
+      expect(bimSentinelDebugActionVisible(false)).assertFalse();
+    });
+
+    it('exposes read-only Snapshot and Full Context sections', 0, () => {
+      const sections = bimDetailContextSections(
+        viewRecord('active', '2026-08-03T10:00:00+08:00', 'bim-detail')
+      );
+
+      expect(sections.length).assertEqual(2);
+      expect(sections[0].title).assertEqual('当前 Snapshot · v1');
+      expect(sections[1].title).assertEqual('完整上下文');
+      expect(sections[0].editable).assertFalse();
+      expect(sections[1].editable).assertFalse();
     });
 
     it('groups lifecycle states so ended can stay behind a secondary entry', 0, () => {

@@ -43,6 +43,27 @@ import { bimDetailRenderKey } from '../bim/BimRuntime';
 import { A2uiNodeView } from './A2uiNodeView';
 import { BimDashboardView, BIM_DASHBOARD_SECTION_GAP } from './BimDashboardView';
 
+export interface BimContextSection {
+  title: string;
+  markdown: string;
+  editable: boolean;
+}
+
+export function bimDetailContextSections(record: BimRecord): BimContextSection[] {
+  return [
+    {
+      title: '当前 Snapshot · v' + record.snapshotVersion.toString(),
+      markdown: record.snapshotMarkdown,
+      editable: false
+    },
+    {
+      title: '完整上下文',
+      markdown: record.fullContextMarkdown,
+      editable: false
+    }
+  ];
+}
+
 @Component
 export struct BimDetailPage {
   @Prop record: BimRecord;
@@ -462,6 +483,34 @@ export struct BimDetailPage {
   }
 
   @Builder
+  private ContextSections() {
+    Column() {
+      ForEach(bimDetailContextSections(this.record), (section: BimContextSection) => {
+        Column() {
+          Text(section.title)
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(COLOR_MUTED)
+          Text(section.markdown.trim().length > 0 ? section.markdown : '暂无内容')
+            .fontSize(13)
+            .fontColor(COLOR_TEXT)
+            .lineHeight(20)
+            .margin({ top: 10 })
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .padding({ left: 16, right: 16, top: 15, bottom: 15 })
+        .backgroundColor(COLOR_CARD)
+        .border({ width: 1, color: COLOR_CARD_EDGE })
+        .borderRadius(16)
+        .margin({ top: BIM_DASHBOARD_SECTION_GAP })
+      }, (section: BimContextSection) => section.title)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
   private Composer() {
     if (this.isEnded()) {
       Row() {
@@ -589,6 +638,7 @@ export struct BimDetailPage {
           this.CurrentStateHeader()
           BimDashboardView({ items: this.dashboardItems(), renderTick: this.renderTick })
           this.SurfaceContent()
+          this.ContextSections()
         }
         .width('100%')
         .constraintSize({ minHeight: '100%' })

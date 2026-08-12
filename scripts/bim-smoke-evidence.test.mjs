@@ -1,22 +1,24 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
-  bimCleanSessionBlocker,
+  bimDeleteConfirmationPoint,
   bimScenarioStatus,
+  bimSentinelEvidence,
+  bimSentinelUsesInAppTimer,
   hasBimDirectory,
-  hasBimExecutionBar,
   hasBimHome,
+  hasBimReadOnlyContext,
   hasConversationTranscript,
   hasMainAgentResult,
-  hasRememberSuggestion,
+  hasSnapshotOnlyMainAgent,
   bimSmokeStatus,
   completeBimScenarios,
-  hasZeroCandidateBimRoute,
   heartCountFromLayout,
+  heartPointFromLayout,
   sanitizeBimFailureReason
 } from './bim-smoke-evidence.mjs';
 
@@ -51,6 +53,27 @@ test('requires an exact directory surface and an exact Home surface', () => {
   assert.equal(hasBimHome(directory), false);
 });
 
+test('finds the real header heart when the device omits accessibilityText', () => {
+  const home = JSON.stringify({
+    children: [{
+      attributes: { type: 'Row' },
+      children: [
+        { attributes: { text: 'Appless', type: 'Text' } },
+        {
+          attributes: { clickable: 'true', bounds: '[554,178][708,332]', type: 'Stack' },
+          children: [
+            { attributes: { type: 'Image' } },
+            { attributes: { text: '3', type: 'Text' } }
+          ]
+        }
+      ]
+    }]
+  });
+  assert.equal(heartCountFromLayout(home), 3);
+  assert.deepEqual(heartPointFromLayout(home), { x: 631, y: 255 });
+  assert.equal(hasBimHome(home), true);
+});
+
 test('detects the real HistoryPanel transcript without mistaking the app header', () => {
   assert.equal(hasConversationTranscript(fixture([{ text: 'Appless' }])), false);
   assert.equal(hasConversationTranscript(fixture([
@@ -67,26 +90,58 @@ test('detects the real HistoryPanel transcript without mistaking the app header'
   ])), true);
 });
 
-test('distinguishes an available remember suggestion from its saved state', () => {
-  assert.equal(hasRememberSuggestion(fixture([{ text: '♡ 记在心上' }])), true);
-  assert.equal(hasRememberSuggestion(fixture([{ text: '♡ 已记在心上' }])), false);
-});
-
-test('requires the detail execution bar rather than only a generic working word', () => {
-  assert.equal(hasBimExecutionBar(fixture([
-    { text: '正在处理' },
-    { text: '正在更新心上事' },
-    { text: '停止' }
+test('requires both read-only Snapshot and Full Context sections in BIM detail', () => {
+  assert.equal(hasBimReadOnlyContext(fixture([
+    { text: '当前 Snapshot · v2' },
+    { text: '完整上下文' },
+    { text: '东京旅行四人同行' }
   ])), true);
-  assert.equal(hasBimExecutionBar(fixture([{ text: '正在处理其他请求' }])), false);
+  assert.equal(hasBimReadOnlyContext(fixture([{ text: '当前状态' }])), false);
+  assert.equal(hasBimReadOnlyContext(fixture([
+    { text: '当前 Snapshot · v2' },
+    { text: '完整上下文' },
+    { text: '编辑完整上下文' }
+  ])), false);
+  assert.equal(hasBimReadOnlyContext(
+    fixture([{ text: '当前 Snapshot · v2' }]),
+    fixture([{ text: '完整上下文' }])
+  ), true);
 });
 
-test('recognizes a zero-candidate BIM bypass and a real main-agent terminal result', () => {
+test('targets only the exact delete action inside the BIM confirmation dialog', () => {
+  const layout = {
+    children: [{
+      attributes: { type: 'Button', text: '删除', bounds: '[974,202][1170,351]' }
+    }, {
+      attributes: { type: 'Text', text: '验证完成后结束并删除该事项', bounds: '[165,1333][1116,1400]' }
+    }, {
+      attributes: { type: 'Dialog', accessibilityText: '删除这件已结束的心上事？' },
+      children: [{
+        attributes: { type: 'Text', text: '删除这件已结束的心上事？' }
+      }, {
+        attributes: { type: 'Button', clickable: 'true', bounds: '[135,1410][1089,1545]' },
+        children: [{ attributes: { type: 'Text', text: '删除', bounds: '[558,1446][666,1509]' } }]
+      }]
+    }]
+  };
+  assert.deepEqual(bimDeleteConfirmationPoint(layout), { x: 612, y: 1478 });
+});
+
+test('accepts exactly one main-agent terminal without legacy BIM routing or gate markers', () => {
   const logs = [
-    '[AIPhone][BimRoute] routeMs=2 candidates=0 semantic=false status=none',
+    '[AIPhone][MultiAgentInput] conversation=c1 turn=t1 task=input-1',
     '[AIPhone][MultiAgentTurnResult] conversation=c1 turn=t1 task=input-1 status=success surface=none roundCount=0 messageChars=12'
   ].join('\n');
-  assert.equal(hasZeroCandidateBimRoute(logs), true);
+  assert.equal(hasSnapshotOnlyMainAgent(logs), true);
+  const dualChannel = [
+    '08-10 17:07:28.668  1  1 I A00000/app/AIPhone: ' + logs.split('\n')[0],
+    '08-10 17:07:28.668  1  1 I A03D00/app/JSAPP: ' + logs.split('\n')[0],
+    '08-10 17:07:41.017  1  1 I A00000/app/AIPhone: ' + logs.split('\n')[1],
+    '08-10 17:07:41.017  1  1 I A03D00/app/JSAPP: ' + logs.split('\n')[1]
+  ].join('\n');
+  assert.equal(hasSnapshotOnlyMainAgent(dualChannel), true);
+  assert.equal(hasSnapshotOnlyMainAgent(logs + '\n[AIPhone][BimRoute] status=none'), false);
+  assert.equal(hasSnapshotOnlyMainAgent(logs + '\n' + logs), false);
   assert.equal(hasMainAgentResult(logs), true);
   assert.equal(hasMainAgentResult(logs.replace('messageChars=12', 'messageChars=0')), false);
 });
@@ -103,24 +158,60 @@ test('lets a same-scenario provider blocker override stale passing UI', () => {
   assert.equal(bimScenarioStatus(false, ''), 'FAIL');
 });
 
-test('requires an explicit successful clean session before BIM smoke', () => {
-  assert.match(bimCleanSessionBlocker(false, false), /explicit --clean-data/);
-  assert.match(bimCleanSessionBlocker(true, false), /could not be cleaned/);
-  assert.equal(bimCleanSessionBlocker(true, true), '');
-});
-
-test('sanitizes an orchestration exception and completes all six scenarios', () => {
+test('sanitizes an orchestration exception and completes all seven scenarios', () => {
   const raw = 'hdc failed https://example.test?a=1&api_key=secret Authorization: Bearer token123';
   const reason = sanitizeBimFailureReason(new Error(raw));
   const scenarios = completeBimScenarios([
-    { id: 'suggestion', status: 'PASS', ok: true }
-  ], reason, 'remember');
+    { id: 'home', status: 'PASS', ok: true }
+  ], reason, 'directory');
   assert.equal(reason.includes('secret'), false);
   assert.equal(reason.includes('token123'), false);
   assert.equal(sanitizeBimFailureReason(''), '');
-  assert.equal(scenarios.length, 6);
-  assert.equal(scenarios.find((scenario) => scenario.id === 'remember')?.status, 'FAIL');
-  assert.equal(scenarios.find((scenario) => scenario.id === 'directory')?.status, 'BLOCKED');
+  assert.equal(scenarios.length, 7);
+  assert.equal(scenarios.find((scenario) => scenario.id === 'directory')?.status, 'FAIL');
+  assert.equal(scenarios.find((scenario) => scenario.id === 'detail')?.status, 'BLOCKED');
+  assert.equal(scenarios.find((scenario) => scenario.id === 'sentinel')?.status, 'BLOCKED');
+});
+
+test('requires scheduled, triggered, and completed Sentinel evidence', () => {
+  assert.deepEqual(bimSentinelEvidence([
+    '[AIPhone][BimSentinelMockScheduled] reminderId=17 delaySeconds=10',
+    '[AIPhone][BimSentinelMockTriggered] ok=true',
+    '[AIPhone][BimSentinel] mode=mock events=2 ok=true'
+  ].join('\n')), {
+    scheduled: true,
+    triggered: true,
+    completed: true,
+    eventCount: 2,
+    transport: 'reminder'
+  });
+  assert.deepEqual(bimSentinelEvidence(
+    '[AIPhone][BimSentinelMockScheduled] reminderId=17 delaySeconds=10'
+  ), {
+    scheduled: true,
+    triggered: false,
+    completed: false,
+    eventCount: null,
+    transport: 'reminder'
+  });
+  assert.deepEqual(bimSentinelEvidence([
+    '[AIPhone][BimSentinelMockScheduled] transport=in_app_timer delaySeconds=10',
+    '[AIPhone][BimSentinelMockTriggered] ok=true',
+    '[AIPhone][BimSentinel] mode=mock events=0 ok=true'
+  ].join('\n')), {
+    scheduled: true,
+    triggered: true,
+    completed: true,
+    eventCount: 0,
+    transport: 'in_app_timer'
+  });
+});
+
+test('keeps the app foreground for the explicit Sentinel timer fallback', () => {
+  assert.equal(bimSentinelUsesInAppTimer([
+    '心上事', '系统提醒已满，10 秒后应用内测试'
+  ]), true);
+  assert.equal(bimSentinelUsesInAppTimer(['检查心上事（测试）']), false);
 });
 
 test('lists the standalone BIM smoke case without requiring a device', () => {
@@ -132,41 +223,17 @@ test('lists the standalone BIM smoke case without requiring a device', () => {
     id: 'BIM',
     mode: 'device-smoke',
     automated: true,
+    preservesAppData: true,
     requires: ['local-model', 'heart-things']
   }]);
 });
 
-test('blocks BIM smoke without explicit clean data and still writes complete evidence', () => {
-  const outDir = mkdtempSync(join(tmpdir(), 'aiphone-bim-smoke-'));
-  try {
-    const result = spawnSync(process.execPath, [
-      'scripts/aiphone-device-smoke.mjs', '--bim'
-    ], {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        AIPHONE_SMOKE_CLEAN_DATA: '0',
-        AIPHONE_SMOKE_OUT_DIR: outDir,
-        AIPHONE_HDC_TARGET: ''
-      }
-    });
-    assert.equal(result.status, 1, result.stderr);
-    const summary = JSON.parse(readFileSync(join(outDir, 'bim-summary.json'), 'utf8'));
-    assert.equal(summary.status, 'BLOCKED');
-    assert.equal(summary.scenarios.length, 6);
-    assert.match(summary.reason, /explicit --clean-data/);
-    assert.match(readFileSync(join(outDir, 'screenshots-index.md'), 'utf8'), /真机场景截图索引/);
-  } finally {
-    rmSync(outDir, { recursive: true, force: true });
-  }
-});
-
-test('captures target-discovery failure inside the six-scenario evidence envelope', () => {
+test('captures target-discovery failure while ignoring sibling evidence directories', () => {
   const outDir = mkdtempSync(join(tmpdir(), 'aiphone-bim-smoke-target-'));
   try {
+    mkdirSync(join(outDir, 'bim-existing-directory'));
     const result = spawnSync(process.execPath, [
-      'scripts/aiphone-device-smoke.mjs', '--bim', '--clean-data'
+      'scripts/aiphone-device-smoke.mjs', '--bim'
     ], {
       cwd: process.cwd(),
       encoding: 'utf8',
@@ -181,7 +248,7 @@ test('captures target-discovery failure inside the six-scenario evidence envelop
     assert.equal(result.status, 1, result.stderr);
     const summary = JSON.parse(readFileSync(join(outDir, 'bim-summary.json'), 'utf8'));
     assert.equal(summary.status, 'FAIL');
-    assert.equal(summary.scenarios.length, 6);
+    assert.equal(summary.scenarios.length, 7);
     assert.match(summary.reason, /hdc list targets failed/);
     assert.match(readFileSync(join(outDir, 'screenshots-index.md'), 'utf8'), /真机场景截图索引/);
   } finally {

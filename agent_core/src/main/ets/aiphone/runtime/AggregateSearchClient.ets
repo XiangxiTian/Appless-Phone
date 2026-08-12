@@ -1,6 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import util from '@ohos.util';
-import { callComposioDynamic } from './ComposioDynamicBackend';
+import { callComposioDynamic, callComposioFixedDynamic } from './ComposioDynamicBackend';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 import { callMediaVideoSearch } from './MediaVideoClient';
 import {
@@ -41,17 +41,58 @@ interface AggregateComposioFixedRequest {
 interface AggregateXSearchArgs {
   query: string;
   pageSize: number;
+  expansions: string;
+  mediaFields: string;
+  tweetFields: string;
+}
+
+interface AggregateRedditCommentsArgs {
+  articleId: string;
+}
+
+interface AggregateHackerNewsItemArgs {
+  itemId: string;
 }
 
 function waterfallPostCoverUrl(post: AggregateSearchPost): string {
   const labels: string[] = ['mediaurl', 'image', 'images', 'thumbnail', 'cover', 'pic', 'picture'];
   for (let index = 0; index < post.rows.length; index++) {
     const label = post.rows[index].label.trim().toLowerCase();
-    if (labels.indexOf(label) >= 0 && post.rows[index].value.trim().toLowerCase().startsWith('http')) {
-      return post.rows[index].value.trim();
+    const value = post.rows[index].value.trim();
+    if (labels.indexOf(label) >= 0 && value.toLowerCase().startsWith('http')) {
+      return value.split(/\s+/)[0];
     }
   }
   return '';
+}
+
+function playableVideoPageUrl(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  return lower.indexOf('youtube.com/watch') >= 0 || lower.indexOf('youtu.be/') >= 0 ||
+    lower.indexOf('bilibili.com/video/') >= 0;
+}
+
+function waterfallPostVideoUrl(post: AggregateSearchPost): string {
+  const labels: string[] = ['video', 'videourl', 'video_url', 'playbackurl', 'playback_url', 'fallback_url'];
+  for (let index = 0; index < post.rows.length; index++) {
+    const label = post.rows[index].label.trim().toLowerCase();
+    const value = post.rows[index].value.trim();
+    if (labels.indexOf(label) >= 0 && value.toLowerCase().startsWith('http')) {
+      return value.split(/\s+/)[0];
+    }
+  }
+  return '';
+}
+
+function waterfallPostSummary(post: AggregateSearchPost): string {
+  const comments: string[] = [];
+  post.rows.forEach((row: AggregateSearchRowData): void => {
+    const label = row.label.trim().toLowerCase();
+    if ((label === 'comment' || label === 'reply') && row.value.trim().length > 0 && comments.length < 2) {
+      comments.push(row.value.trim());
+    }
+  });
+  return comments.length > 0 ? post.text + '\n\n评论摘录\n• ' + comments.join('\n• ') : post.text;
 }
 
 function waterfallTitle(value: string): string {
@@ -79,14 +120,17 @@ export function aggregateMediaCandidates(
   });
   posts.forEach((post: AggregateSearchPost, index: number) => {
     const coverUrl = waterfallPostCoverUrl(post);
+    const mediaUrl = waterfallPostVideoUrl(post);
+    const isVideo = mediaUrl.length > 0 || playableVideoPageUrl(post.url);
     candidates.push({
       id: post.id,
       source: post.source,
-      mediaType: coverUrl.length > 0 ? 'image_text' : 'post',
+      mediaType: isVideo ? 'video' : (coverUrl.length > 0 ? 'image_text' : 'post'),
       title: waterfallTitle(post.title),
-      summary: post.text,
+      summary: waterfallPostSummary(post),
       url: post.url,
       coverUrl: coverUrl,
+      mediaUrl: mediaUrl,
       publishedAt: post.publishedAt,
       originalIndex: batchIndex * 1000 + videos.length + index
     });
@@ -479,6 +523,84 @@ function imageUrlsFromDynamicPost(value: string): string[] {
   return urls;
 }
 
+function dynamicRecord(value: DynamicPostValue): DynamicPostRecord | null {
+  if (value === undefined || value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as DynamicPostRecord;
+  const data = record.data;
+  return data !== undefined && data !== null && typeof data === 'object' && !Array.isArray(data) ?
+    data as DynamicPostRecord : record;
+}
+
+function directVideoUrl(value: DynamicPostValue, depth: number = 0): string {
+  if (depth > 5 || value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    const clean = value.trim();
+    const lower = clean.toLowerCase();
+    return clean.startsWith('http') && (lower.indexOf('.mp4') >= 0 || lower.indexOf('.m3u8') >= 0 ||
+      lower.indexOf('v.redd.it/') >= 0) ? clean : '';
+  }
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      const found = directVideoUrl(value[index], depth + 1);
+      if (found.length > 0) {
+        return found;
+      }
+    }
+    return '';
+  }
+  if (typeof value !== 'object') {
+    return '';
+  }
+  const record = value as DynamicPostRecord;
+  const preferred = ['fallback_url', 'video_url', 'videoUrl', 'playback_url', 'playbackUrl', 'content_url', 'url'];
+  for (let index = 0; index < preferred.length; index++) {
+    const found = directVideoUrl(record[preferred[index]], depth + 1);
+    if (found.length > 0) {
+      return found;
+    }
+  }
+  const nested = ['media', 'secure_media', 'reddit_video', 'video', 'variants', 'attachments', 'includes'];
+  for (let index = 0; index < nested.length; index++) {
+    const found = directVideoUrl(record[nested[index]], depth + 1);
+    if (found.length > 0) {
+      return found;
+    }
+  }
+  return '';
+}
+
+function appendCommentTexts(value: DynamicPostValue, comments: string[], depth: number = 0): void {
+  if (comments.length >= 2 || depth > 5 || value === undefined || value === null) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item: DynamicPostValue): void => appendCommentTexts(item, comments, depth + 1));
+    return;
+  }
+  const record = dynamicRecord(value);
+  if (record === null) {
+    return;
+  }
+  const comment = plainPostText(recordText(record, ['body', 'text', 'messageText', 'comment', 'content']));
+  if (comment.length > 0 && comment !== '[deleted]' && comment !== '[removed]' && comments.indexOf(comment) < 0) {
+    comments.push(comment);
+  }
+  ['data', 'items', 'comments', 'replies', 'children'].forEach((key: string): void => appendCommentTexts(record[key], comments, depth + 1));
+}
+
+function commentsFromDynamicPost(value: string): string[] {
+  const record = dynamicPostRecord(value);
+  const comments: string[] = [];
+  if (record !== null) {
+    ['comments', 'replies', 'top_comments'].forEach((key: string): void => appendCommentTexts(record[key], comments));
+  }
+  return comments;
+}
+
 function dynamicPostPublishedAt(value: string): string {
   const record = dynamicPostRecord(value);
   return record === null ? '' : recordText(record, ['created_at', 'created_utc', 'published_at', 'updated_at', 'time', 'date']);
@@ -491,7 +613,15 @@ function dynamicPostScore(value: string): string {
 
 function dynamicPostCommentCount(value: string): string {
   const record = dynamicPostRecord(value);
-  return record === null ? '' : recordText(record, ['num_comments', 'commentCount', 'comments_count', 'answer_count']);
+  if (record === null) {
+    return '';
+  }
+  const direct = recordText(record, ['num_comments', 'commentCount', 'comments_count', 'answer_count']);
+  if (direct.length > 0) {
+    return direct;
+  }
+  const metrics = dynamicRecord(record.public_metrics);
+  return metrics === null ? '' : recordText(metrics, ['reply_count']);
 }
 
 function postFromDynamicRow(
@@ -507,6 +637,13 @@ function postFromDynamicRow(
   if (images.length > 0) {
     rows.push({ label: 'images', value: images.join(' ') });
   }
+  const videoUrl = directVideoUrl(dynamicPostRecord(row.value));
+  if (videoUrl.length > 0) {
+    rows.push({ label: 'video', value: videoUrl });
+  }
+  commentsFromDynamicPost(row.value).forEach((comment: string): void => {
+    rows.push({ label: 'comment', value: comment });
+  });
   const text = dynamicPostText(row.value);
   return {
     id: source + '-' + rowIndex.toString(),
@@ -686,7 +823,79 @@ export function redditPostsFromComposioResult(result: DynamicGenericToolResult):
 }
 
 export function xPostsFromComposioResult(result: DynamicGenericToolResult): AggregateSearchPost[] {
-  return postsFromDynamicResult('x', 'X', result);
+  const posts = postsFromDynamicResult('x', 'X', result);
+  appendXMediaRows(posts, xMediaRecords(result.rawPreview));
+  return posts;
+}
+
+function xMediaRecords(value: DynamicPostValue): Object[] {
+  if (typeof value === 'string') {
+    try {
+      return xMediaRecords(JSON.parse(value) as DynamicPostValue);
+    } catch (_error) {
+      return [];
+    }
+  }
+  if (value === undefined || value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return [];
+  }
+  const record = value as DynamicPostRecord;
+  const includes = dynamicRecord(record.includes);
+  if (includes !== null && Array.isArray(includes.media)) {
+    return objectArrayFrom(includes.media);
+  }
+  const preview = record.preview;
+  if (preview !== undefined) {
+    const nested = xMediaRecords(preview);
+    if (nested.length > 0) {
+      return nested;
+    }
+  }
+  const keys = Object.keys(record);
+  for (let index = 0; index < keys.length; index++) {
+    const nested = xMediaRecords(record[keys[index]]);
+    if (nested.length > 0) {
+      return nested;
+    }
+  }
+  return [];
+}
+
+function stringValues(value: DynamicPostValue): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const values: string[] = [];
+  value.forEach((item: DynamicPostValue): void => {
+    const text = textOf(item).trim();
+    if (text.length > 0) {
+      values.push(text);
+    }
+  });
+  return values;
+}
+
+function appendXMediaRows(posts: AggregateSearchPost[], media: Object[]): void {
+  posts.forEach((post: AggregateSearchPost): void => {
+    const record = post.rows.length > 0 ? dynamicPostRecord(post.rows[0].value) : null;
+    const attachments = record === null ? null : dynamicRecord(record.attachments);
+    const keys = attachments === null ? [] : stringValues(attachments.media_keys);
+    for (let mediaIndex = 0; mediaIndex < media.length; mediaIndex++) {
+      const mediaRecord = dynamicRecord(media[mediaIndex]);
+      if (mediaRecord === null || keys.indexOf(recordText(mediaRecord, ['media_key', 'key'])) < 0) {
+        continue;
+      }
+      const preview = recordText(mediaRecord, ['preview_image_url', 'url']);
+      const video = directVideoUrl(mediaRecord);
+      if (preview.length > 0) {
+        post.rows.push({ label: 'images', value: preview });
+      }
+      if (video.length > 0) {
+        post.rows.push({ label: 'video', value: video });
+      }
+      break;
+    }
+  });
 }
 
 function mediaMessage(source: AggregateSearchSource, count: number, results: DynamicGenericToolResult[]): string {
@@ -834,7 +1043,7 @@ function zhihuPostFromItem(item: Object, index: number): AggregateSearchPost {
   ];
   const avatar = recordText(record, ['AuthorAvatar', 'authorAvatar', 'AuthorBadge', 'authorBadge']);
   if (avatar.length > 0) {
-    rows.push({ label: 'images', value: avatar });
+    rows.push({ label: 'authorAvatar', value: avatar });
   }
   return {
     id: 'zhihu-' + (recordText(record, ['ContentID', 'contentID', 'id']) || index.toString()),
@@ -1078,6 +1287,7 @@ async function aggregateComposioSourceBatch(
   const posts: AggregateSearchPost[] = [];
   const statuses: AggregateSearchSourceStatus[] = [];
   await appendComposioPosts(source, provider, prompt, posts, statuses, fixedToolId, fixedArgs);
+  await enrichPostComments(source, posts);
   return {
     source: source,
     videos: [],
@@ -1085,6 +1295,123 @@ async function aggregateComposioSourceBatch(
     status: statuses.length > 0 ? statuses[0] : statusFor(source, 'empty', provider + ' returned 0 rows.', 0),
     continuation: null
   };
+}
+
+function postRecord(post: AggregateSearchPost): DynamicPostRecord | null {
+  return post.rows.length > 0 ? dynamicPostRecord(post.rows[0].value) : null;
+}
+
+function postProviderId(post: AggregateSearchPost): string {
+  const record = postRecord(post);
+  if (record !== null) {
+    const id = recordText(record, ['id', 'objectID', 'object_id', 'story_id']);
+    if (id.length > 0) {
+      return id;
+    }
+  }
+  const reddit = post.url.match(/\/comments\/([^/]+)/);
+  if (reddit !== null) {
+    return reddit[1];
+  }
+  const queryId = post.url.match(/[?&]id=([^&#]+)/);
+  return queryId === null ? '' : queryId[1];
+}
+
+function commentTextsFromResult(result: DynamicGenericToolResult): string[] {
+  const comments: string[] = [];
+  try {
+    appendCommentTexts(JSON.parse(result.rawPreview) as DynamicPostValue, comments);
+  } catch (_error) {}
+  if (comments.length < 2) {
+    result.rows.forEach((row: AggregateSearchRowData): void => {
+      appendCommentTexts(parsedDynamicPostRecord(row.value), comments);
+    });
+  }
+  return comments.slice(0, 2);
+}
+
+function appendComments(post: AggregateSearchPost, comments: string[]): void {
+  comments.forEach((comment: string): void => {
+    if (comment !== post.text && post.rows.every((row: AggregateSearchRowData): boolean => row.value !== comment)) {
+      post.rows.push({ label: 'comment', value: comment });
+    }
+  });
+}
+
+function childIdsFromResult(result: DynamicGenericToolResult): string[] {
+  try {
+    const value = JSON.parse(result.rawPreview) as DynamicPostValue;
+    const record = dynamicRecord(value);
+    const data = record === null ? null : dynamicRecord(record.data);
+    let kids: DynamicPostValue[] = [];
+    if (data !== null && Array.isArray(data.kids)) {
+      kids = data.kids as DynamicPostValue[];
+    } else if (record !== null && Array.isArray(record.kids)) {
+      kids = record.kids as DynamicPostValue[];
+    }
+    return kids.slice(0, 2).map((item: DynamicPostValue): string => textOf(item).trim()).filter((id: string): boolean => id.length > 0);
+  } catch (_error) {
+    return [];
+  }
+}
+
+async function enrichPostComments(source: AggregateSearchSource, posts: AggregateSearchPost[]): Promise<void> {
+  // ponytail: 串行富集前 5 条（与最终展示条数一致）；量小无需并发。
+  const visible = posts.slice(0, 5);
+  for (let index = 0; index < visible.length; index++) {
+    await enrichOnePostComments(source, visible[index]);
+  }
+}
+
+async function enrichOnePostComments(source: AggregateSearchSource, post: AggregateSearchPost): Promise<void> {
+  // commentCount 为空表示"未知"而非"没有评论"：未知时也尝试拉取，只有明确 0 才跳过。
+  const knownCount = Number(post.commentCount);
+  const knownZero = post.commentCount.trim().length > 0 && !Number.isNaN(knownCount) && knownCount <= 0;
+  if (knownZero || post.rows.some((row: AggregateSearchRowData): boolean => row.label === 'comment')) {
+    return;
+  }
+  const id = postProviderId(post);
+  if (id.length === 0) {
+    return;
+  }
+  try {
+    if (source === 'reddit') {
+      const args: AggregateRedditCommentsArgs = { articleId: id };
+      const result = await callComposioFixedDynamic('帮我用 Composio Reddit 读取帖子评论', 'social.reddit.comments', args as Object);
+      if (result !== null && result.status === 'success') {
+        appendComments(post, commentTextsFromResult(result));
+      }
+      return;
+    }
+    if (source === 'x') {
+      const args: AggregateXSearchArgs = {
+        query: 'conversation_id:' + id + ' -is:retweet', pageSize: 10,
+        expansions: 'author_id', mediaFields: '', tweetFields: 'id,text,author_id,created_at,conversation_id'
+      };
+      const result = await callComposioFixedDynamic('帮我用 Composio X 读取公开回复', 'x.post.search', args as Object);
+      if (result !== null && result.status === 'success') {
+        appendComments(post, xPostsFromComposioResult(result).map((reply: AggregateSearchPost): string => reply.text).slice(0, 2));
+      }
+      return;
+    }
+    if (source === 'hackernews') {
+      const parentArgs: AggregateHackerNewsItemArgs = { itemId: id };
+      const parent = await callComposioFixedDynamic('帮我用 Composio Hacker News 读取帖子', 'social.hackernews.item.read', parentArgs as Object);
+      if (parent === null || parent.status !== 'success') {
+        return;
+      }
+      const childIds = childIdsFromResult(parent);
+      for (let index = 0; index < childIds.length; index++) {
+        const childArgs: AggregateHackerNewsItemArgs = { itemId: childIds[index] };
+        const child = await callComposioFixedDynamic('帮我用 Composio Hacker News 读取评论', 'social.hackernews.item.read', childArgs as Object);
+        if (child !== null && child.status === 'success') {
+          appendComments(post, commentTextsFromResult(child));
+        }
+      }
+    }
+  } catch (_error) {
+    // 评论是补充信息；失败时保留已成功的主帖和真实评论数量。
+  }
 }
 
 async function aggregateZhihuSourceBatch(config: AggregateZhihuConfig, query: string): Promise<AggregateSearchSourceBatch> {
@@ -1115,7 +1442,13 @@ export async function callAggregateSearch(
     if (source === 'youtube' || source === 'bilibili') {
       tasks.push(aggregateMediaSourceBatch(source, query, youtubeApiKey));
     } else if (source === 'x') {
-      const xArgs: AggregateXSearchArgs = { query: query, pageSize: 5 };
+      const xArgs: AggregateXSearchArgs = {
+        query: query,
+        pageSize: 10,
+        expansions: 'attachments.media_keys,author_id',
+        mediaFields: 'media_key,type,url,preview_image_url,variants,width,height',
+        tweetFields: 'id,text,author_id,created_at,public_metrics,attachments,conversation_id'
+      };
       tasks.push(aggregateComposioSourceBatch(source, 'X', '帮我用 Composio X 搜索 ' + query + ' 的公开 post', 'x.post.search', xArgs as Object));
     } else if (source === 'hackernews') {
       tasks.push(aggregateComposioSourceBatch(source, 'Hacker News', '帮我用 Composio Hacker News 查 ' + query));

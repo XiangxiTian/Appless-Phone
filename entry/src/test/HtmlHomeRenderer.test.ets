@@ -2582,6 +2582,23 @@ export default function htmlHomeRendererTest() {
 
     it('renders the Waterfall discovery stream inside aggregate search', 0, () => {
       const doc = waterfallRendererFixture();
+      const state = doc.waterfall as WaterfallFeedState;
+      const current = state.current as WaterfallRankedCandidate;
+      const previous: WaterfallRankedCandidate = {
+        id: 'shown-0',
+        source: current.source,
+        mediaType: current.mediaType,
+        title: 'shown-0 title',
+        summary: current.summary,
+        url: 'https://example.com/shown-0',
+        coverUrl: current.coverUrl,
+        publishedAt: current.publishedAt,
+        originalIndex: current.originalIndex,
+        normalizedUrl: 'https://example.com/shown-0',
+        signals: current.signals,
+        reason: current.reason
+      };
+      state.shown = [previous];
       doc.blocks.push({
         id: 'video-bilibili',
         kind: 'aggregate-video',
@@ -2602,27 +2619,32 @@ export default function htmlHomeRendererTest() {
       const payload = buildWaterfallHomePayload(doc, false);
 
       expect(payload === null).assertFalse();
-      expect(payload?.candidates[0].id).assertEqual('video-1');
-      expect(payload?.candidates[1].id).assertEqual('image-2');
-      expect(payload?.candidates[2].id).assertEqual('post-3');
+      expect(payload?.currentId).assertEqual('video-1');
+      expect(payload?.candidates[0].id).assertEqual('shown-0');
+      expect(payload?.candidates[1].id).assertEqual('video-1');
+      expect(payload?.candidates[2].id).assertEqual('image-2');
+      expect(payload?.candidates[3].id).assertEqual('post-3');
       expect(payload?.exhausted).assertFalse();
       expect(html.indexOf('"enabledSources":["youtube","hackernews"]')).assertLarger(-1);
       expect(html.indexOf('进入发现流')).assertLarger(-1);
       expect(html.indexOf('waterfall-entry-floating')).assertLarger(-1);
       expect(html.indexOf('waterfall-cinema-card')).assertLarger(-1);
+      expect(html.indexOf('waterfall-card--video')).assertLarger(-1);
+      expect(html.indexOf('waterfall-card--image-text')).assertLarger(-1);
+      expect(html.indexOf('waterfall-card--text')).assertLarger(-1);
       expect(html.indexOf('来源偏好')).assertLarger(-1);
-      expect(html.indexOf('waterfall-media-frame')).assertLarger(-1);
-      expect(html.indexOf('autoplay=1')).assertLarger(-1);
-      expect(html.indexOf('mute=1')).assertLarger(-1);
-      expect(html.indexOf('waterfall-recommendation')).assertEqual(-1);
-      expect(payload?.mediaEmbeds['https://www.youtube.com/watch?v=abc123'].indexOf('autoplay=1')).assertLarger(-1);
-      expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('autoplay=1')).assertLarger(-1);
-      expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('muted=1')).assertLarger(-1);
-      expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('poster=false')).assertLarger(-1);
+      expect(html.indexOf('data-waterfall-play')).assertEqual(-1);
+      expect(html.indexOf('data-waterfall-read')).assertLarger(-1);
+      expect(html.indexOf('waterfall-reader')).assertLarger(-1);
+      expect(html.indexOf('waterfall-recommendation')).assertLarger(-1);
+      expect(payload?.mediaEmbeds['https://www.youtube.com/watch?v=abc123'].indexOf('autoplay=1')).assertEqual(-1);
+      expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('autoplay=1')).assertEqual(-1);
+      expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('autoplay=0')).assertLarger(-1);
+      expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('poster=true')).assertLarger(-1);
       expect(html.indexOf('waterfall-toolbar-primary')).assertLarger(-1);
       expect(html.indexOf('waterfall-toolbar-secondary')).assertLarger(-1);
       expect(html.indexOf('aria-label="来源偏好"')).assertLarger(-1);
-      expect(html.indexOf('aria-label="推荐理由"')).assertEqual(-1);
+      expect(html.indexOf('aria-label="推荐理由"')).assertLarger(-1);
       expect(html.indexOf('window.__aiphoneApplyWaterfallUpdate')).assertLarger(-1);
       expect(html.indexOf('scroll-snap-type: y mandatory')).assertLarger(-1);
       expect(html.indexOf('min-height: 44px')).assertLarger(-1);
@@ -2632,7 +2654,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('data-waterfall-preferences')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-empty-sources')).assertLarger(-1);
       expect(html.indexOf('打开来源偏好')).assertLarger(-1);
-      expect(html.indexOf('data-waterfall-reason')).assertEqual(-1);
+      expect(html.indexOf('data-waterfall-reason')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-media-fallback')).assertLarger(-1);
       expect(shouldShowHomeChrome(false)).assertTrue();
       expect(shouldShowHomeChrome(true)).assertFalse();

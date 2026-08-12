@@ -492,6 +492,34 @@ export default function composioDynamicBackendTest() {
         .assertEqual('REDDIT_GET_REDDIT_USER_ABOUT');
       expect(composioExactToolSlugForFixedTool('social.reddit.search'))
         .assertEqual('REDDIT_SEARCH_ACROSS_SUBREDDITS');
+      expect(composioExactToolSlugForFixedTool('social.reddit.comments'))
+        .assertEqual('REDDIT_RETRIEVE_POST_COMMENTS');
+      expect(composioExactToolSlugForFixedTool('social.hackernews.item.read'))
+        .assertEqual('HACKERNEWS_GET_ITEM');
+    });
+
+    it('passes exact social media and comment fields to provider tools', 0, () => {
+      const redditArgs = composioArgumentsForTool({
+        toolSlug: 'REDDIT_RETRIEVE_POST_COMMENTS',
+        inputSchema: '{"type":"object","properties":{"article_id":{"type":"string"}},"required":["article_id"]}'
+      }, '读取 Reddit 评论', 'social.reddit.comments', looseObject('{"articleId":"abc123"}')) as Record<string, Object | string | number | boolean | null | undefined>;
+      const currentRedditArgs = composioArgumentsForTool({
+        toolSlug: 'REDDIT_RETRIEVE_POST_COMMENTS',
+        inputSchema: '{"type":"object","properties":{"article":{"type":"string"}},"required":["article"]}'
+      }, '读取 Reddit 评论', 'social.reddit.comments', looseObject('{"articleId":"abc123"}')) as Record<string, Object | string | number | boolean | null | undefined>;
+      const xArgs = composioArgumentsForTool({
+        toolSlug: 'TWITTER_RECENT_SEARCH',
+        inputSchema: '{"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"number"},' +
+          '"expansions":{"type":"string"},"media_fields":{"type":"string"},"tweet_fields":{"type":"string"}}}'
+      }, '搜索 X', 'x.post.search', looseObject('{"query":"codex","pageSize":10,' +
+        '"expansions":"attachments.media_keys","mediaFields":"url,variants","tweetFields":"attachments"}')) as Record<string, Object | string | number | boolean | null | undefined>;
+
+      expect(redditArgs['article_id']).assertEqual('abc123');
+      expect(currentRedditArgs['article']).assertEqual('abc123');
+      expect(xArgs['max_results']).assertEqual(10);
+      expect(xArgs['expansions']).assertEqual('attachments.media_keys');
+      expect(xArgs['media_fields']).assertEqual('url,variants');
+      expect(xArgs['tweet_fields']).assertEqual('attachments');
     });
 
     it('recognizes unsupported high-frequency app queries', 0, () => {
@@ -534,6 +562,7 @@ export default function composioDynamicBackendTest() {
       expect(isUnsafeComposioExecute('GMAIL_REPLY_TO_THREAD', '{}')).assertTrue();
       expect(isUnsafeComposioExecute('NOTION_CREATE_PAGE', '{"title":"AIPhoneDemo"}')).assertTrue();
       expect(isUnsafeComposioExecute('GITHUB_FIND_PULL_REQUESTS', '{"sort":"updated"}')).assertFalse();
+      expect(isUnsafeComposioExecute('REDDIT_RETRIEVE_POST_COMMENTS', '{}')).assertFalse();
     });
 
     it('executes the selected qualifiedName instead of a prompt-ranked candidate', 0, async () => {
@@ -1758,6 +1787,15 @@ export default function composioDynamicBackendTest() {
       expect(result.status).assertEqual('success');
       expect(result.summary.indexOf('返回 1 条')).assertLarger(-1);
       expect(JSON.stringify(result.rows).indexOf('OpenAI Codex discussion')).assertLarger(-1);
+
+      const itemResult = composioDynamicResultFromObservation(
+        'execute',
+        '{"data":{"id":123,"kids":[456],"text":"First real HN reply"}}',
+        'HACKERNEWS_GET_ITEM',
+        '读取 Hacker News 评论'
+      );
+      expect(itemResult.rawPreview.indexOf('"kids":[456]')).assertLarger(-1);
+      expect(itemResult.rawPreview.indexOf('First real HN reply')).assertLarger(-1);
     });
 
     it('recognizes Reddit search prompts and maps execute rows', 0, () => {
@@ -1776,6 +1814,18 @@ export default function composioDynamicBackendTest() {
       expect(result.status).assertEqual('success');
       expect(result.summary.indexOf('返回 1 条')).assertLarger(-1);
       expect(JSON.stringify(result.rows).indexOf('OpenAI Codex on Reddit')).assertLarger(-1);
+    });
+
+    it('keeps Reddit comment text nested in listing children', 0, () => {
+      const result: DynamicGenericToolResult = composioDynamicResultFromObservation(
+        'execute',
+        '{"data":{"comments_listing":{"data":{"children":[{"kind":"t1","data":{"body":"First real Reddit reply"}}]}}}}',
+        'REDDIT_RETRIEVE_POST_COMMENTS',
+        '读取 Reddit 评论'
+      );
+
+      expect(result.status).assertEqual('success');
+      expect(result.rawPreview.indexOf('First real Reddit reply')).assertLarger(-1);
     });
 
     it('keeps john on the GitHub path instead of Hacker News', 0, () => {

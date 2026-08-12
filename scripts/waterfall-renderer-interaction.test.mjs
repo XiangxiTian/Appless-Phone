@@ -24,6 +24,7 @@ function template(name) {
 const aggregateCss = template('AGGREGATE_CSS');
 const aggregateJs = template('AGGREGATE_JS');
 const waterfallCss = template('WATERFALL_CSS');
+const reducedMotionCss = waterfallCss.slice(waterfallCss.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
 assert.match(aggregateCss, /\.aggregate-status-sheet-summary/);
 assert.match(aggregateCss, /\.aggregate-status-sheet/);
 assert.match(aggregateCss, /\.aggregate-status-card > summary\s*\{[^}]*border:\s*0/s);
@@ -35,8 +36,35 @@ assert.match(waterfallCss, /\.waterfall-toolbar-tools/);
 assert.match(waterfallCss, /\.waterfall-source-logo/);
 assert.match(waterfallCss, /\.waterfall-media-cover/);
 assert.match(waterfallCss, /\.waterfall-media-frame/);
-assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*background:\s*#f4f6f8/s);
+assert.match(waterfallCss, /\.waterfall-card--video/);
+assert.match(waterfallCss, /\.waterfall-card--portrait/);
+assert.match(waterfallCss, /\.waterfall-card--image-text/);
+assert.match(waterfallCss, /\.waterfall-card--text/);
+assert.match(waterfallCss, /\.waterfall-card--video-fullscreen/);
+assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*scroll-snap-stop:\s*normal/s);
+assert.match(waterfallCss, /\.waterfall-overlay\s*\{[^}]*background:\s*var\(--paper\)/s);
+assert.match(waterfallCss, /\.waterfall-track\s*\{[^}]*background:\s*var\(--paper\)/s);
+assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*background:\s*var\(--paper\)/s);
+assert.match(waterfallCss, /\.waterfall-card--text\s*\{[^}]*background:\s*var\(--panel-strong\)/s);
+assert.match(waterfallCss, /\.waterfall-cinema-copy\s*\{[^}]*overflow:\s*hidden/s);
+assert.match(waterfallCss, /\n\.waterfall-cinema-copy\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/s);
+assert.match(waterfallCss, /\n\.waterfall-copy-actions\s*\{[^}]*margin-top:\s*auto/s);
+assert.match(waterfallCss, /\.waterfall-reader-body\s*\{[^}]*overflow-y:\s*auto/s);
 assert.match(waterfallCss, /\.waterfall-media-frame\s*\{[^}]*pointer-events:\s*auto/s);
+assert.match(aggregateCss, /--ease-out:\s*cubic-bezier\(0\.23, 1, 0\.32, 1\)/);
+assert.match(aggregateCss, /--ease-drawer:\s*cubic-bezier\(0\.32, 0\.72, 0, 1\)/);
+assert.match(waterfallCss, /\.waterfall-reader\s*\{[^}]*visibility:\s*hidden[^}]*opacity:\s*0[^}]*visibility 0s linear 220ms/s);
+assert.match(waterfallCss, /\.waterfall-reader\.active\s*\{[^}]*transition-delay:\s*0s/s);
+assert.match(waterfallCss, /\.waterfall-preferences\s*\{[^}]*opacity:\s*0[^}]*visibility 0s linear 220ms/s);
+assert.match(waterfallCss, /\.waterfall-preferences\.active\s*\{[^}]*transition-delay:\s*0s/s);
+assert.match(waterfallCss, /\.waterfall-video-fullscreen-toggle\s*\{[^}]*min-height:\s*44px[^}]*cursor:\s*pointer[^}]*transform 140ms var\(--ease-out\)/s);
+assert.match(waterfallCss, /\.waterfall-cinema-card a, \.waterfall-read-button\s*\{[^}]*transform 140ms var\(--ease-out\)/s);
+assert.match(waterfallCss, /\.waterfall-reader-head button\s*\{[^}]*transform 140ms var\(--ease-out\)/s);
+assert.match(waterfallCss, /\.waterfall-video-fullscreen-toggle:active,[^}]*\.waterfall-reader-head button:active\s*\{[^}]*transform:\s*scale\(0\.97\)/s);
+assert.match(waterfallCss, /\.waterfall-video-fullscreen-toggle:focus-visible,[^}]*outline:\s*2px solid var\(--accent\)/s);
+assert.match(reducedMotionCss, /\.waterfall-reader,[^}]*\.waterfall-preferences\s*\{[^}]*transform:\s*none[^}]*opacity 140ms var\(--ease-out\)[^}]*visibility 0s linear 140ms !important/s);
+assert.match(reducedMotionCss, /\.waterfall-video-fullscreen-toggle,[^}]*\.waterfall-reader-head button\s*\{[^}]*opacity 140ms var\(--ease-out\)[^}]*background-color 140ms ease !important/s);
+assert.match(reducedMotionCss, /\.waterfall-video-fullscreen-toggle:active,[^}]*\.waterfall-reader-head button:active\s*\{[^}]*transform:\s*none[^}]*opacity:\s*0\.82/s);
 assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-card h2\s*\{[^}]*-webkit-line-clamp/s);
 assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-card p\s*\{[^}]*-webkit-line-clamp/s);
 assert.match(waterfallCss, /\.waterfall-preferences label\s*\{[^}]*border:\s*0/s);
@@ -47,10 +75,14 @@ assert.match(surfaceView, /\.mediaPlayGestureAccess\(false\)/);
 function element() {
   const classes = new Set();
   const listeners = {};
+  let html = '';
+  let htmlWrites = 0;
   return {
     scrollTop: 0,
     clientHeight: 1000,
-    innerHTML: '',
+    get innerHTML() { return html; },
+    set innerHTML(value) { html = value; htmlWrites += 1; },
+    get innerHTMLWrites() { return htmlWrites; },
     classList: {
       add: (name) => classes.add(name),
       remove: (name) => classes.delete(name),
@@ -70,6 +102,7 @@ function element() {
 const overlay = element();
 const track = element();
 const preferences = element();
+const reader = element();
 const backButton = element();
 const preferencesButton = element();
 const documentListeners = {};
@@ -79,7 +112,8 @@ const document = {
   getElementById: (id) => ({
     'waterfall-discovery': overlay,
     'waterfall-track': track,
-    'waterfall-preferences': preferences
+    'waterfall-preferences': preferences,
+    'waterfall-reader': reader
   })[id] ?? null,
   querySelector: () => null,
   querySelectorAll: (selector) => ({
@@ -101,14 +135,28 @@ const candidate = (id) => ({
   publishedAt: '',
   reason: '标题命中查询'
 });
+const imageCandidate = {
+  ...candidate('image-current'),
+  mediaType: 'image_text',
+  coverUrl: 'https://example.test/image.jpg',
+  reason: '摘要命中查询'
+};
+const textCandidate = {
+  ...candidate('text-current'),
+  mediaType: 'post',
+  coverUrl: '',
+  summary: 'A long text summary for the dedicated reader',
+  reason: '补充 HN 来源'
+};
 const window = {
   __aiphoneWaterfallInitial: {
     surfaceId: 'surface-1',
+    currentId: 'current',
     enabledSources: ['youtube'],
     aggregateHtml: '',
-    candidates: [candidate('current'), candidate('next')],
+    candidates: [candidate('current'), imageCandidate, textCandidate],
     mediaEmbeds: {
-      'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1&autoplay=1&mute=1'
+      'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1'
     },
     sources: [{ source: 'youtube', phase: 'success' }]
   },
@@ -131,27 +179,147 @@ documentListeners.click({
   }
 });
 assert.deepEqual(fullscreenStates, ['true']);
-assert.match(track.innerHTML, /class="waterfall-media-frame"/);
-assert.match(track.innerHTML, /autoplay=1/);
-assert.match(track.innerHTML, /mute=1/);
-assert.equal((track.innerHTML.match(/<iframe/g) ?? []).length, 1);
+assert.match(track.innerHTML, /waterfall-card--video waterfall-card--landscape/);
+assert.match(track.innerHTML, /waterfall-card--image-text/);
+assert.match(track.innerHTML, /waterfall-card--text/);
+assert.doesNotMatch(track.innerHTML, /data-waterfall-play/);
+assert.match(track.innerHTML, /data-waterfall-read/);
+assert.match(track.innerHTML, /data-waterfall-read="image-current"/);
+assert.match(track.innerHTML, /<iframe class="waterfall-media-frame"/);
+assert.match(track.innerHTML, /src="https:\/\/www\.youtube\.com\/embed\/abc123\?playsinline=1"/);
 assert.match(track.innerHTML, /current summary/);
 assert.match(track.innerHTML, /current summary tail/);
 assert.doesNotMatch(track.innerHTML, /B 站视频搜索结果：/);
-assert.doesNotMatch(track.innerHTML, /waterfall-recommendation/);
-assert.doesNotMatch(track.innerHTML, /标题命中查询/);
-assert.doesNotMatch(track.innerHTML, /data-waterfall-reason/);
+assert.match(track.innerHTML, /waterfall-recommendation/);
+assert.match(track.innerHTML, /标题命中查询/);
+assert.match(track.innerHTML, /data-waterfall-reason/);
 assert.match(track.innerHTML, /data-waterfall-media-fallback/);
+assert.match(track.innerHTML, /data-waterfall-video-fullscreen/);
+
+const videoCard = element();
+const videoFullscreenButton = {
+  textContent: '全屏',
+  closest: (selector) => selector === '.waterfall-card--video' ? videoCard : null
+};
+track.emit('click', {
+  target: {
+    closest: (selector) => selector === '[data-waterfall-video-fullscreen]' ? videoFullscreenButton : null
+  }
+});
+assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), true);
+assert.equal(videoFullscreenButton.textContent, '退出全屏');
+track.emit('click', {
+  target: {
+    closest: (selector) => selector === '[data-waterfall-video-fullscreen]' ? videoFullscreenButton : null
+  }
+});
+assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), false);
+assert.equal(videoFullscreenButton.textContent, '全屏');
+
+const portraitCard = element();
+portraitCard.classList.add('waterfall-card--landscape');
+track.emit('load', {
+  target: {
+    naturalWidth: 900,
+    naturalHeight: 1600,
+    classList: { contains: (name) => name === 'waterfall-media-cover' },
+    closest: (selector) => selector === '[data-waterfall-media-type="video"]' ? portraitCard : null
+  }
+});
+assert.equal(portraitCard.classList.contains('waterfall-card--portrait'), true);
+assert.equal(portraitCard.classList.contains('waterfall-card--landscape'), false);
+
+const readButton = { getAttribute: (name) => name === 'data-waterfall-read' ? 'text-current' : '' };
+track.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-read]' ? readButton : null }
+});
+assert.equal(reader.classList.contains('active'), true);
+assert.equal(track.classList.contains('reader-open'), true);
+assert.match(reader.innerHTML, /A long text summary for the dedicated reader/);
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-reader-close]' ? {} : null }
+});
+assert.equal(reader.classList.contains('active'), false);
+assert.equal(track.classList.contains('reader-open'), false);
 
 track.scrollTop = 600;
 window.__aiphoneApplyWaterfallUpdate({
   ...window.__aiphoneWaterfallInitial,
-  candidates: [candidate('current'), candidate('next'), candidate('late')]
+  candidates: [candidate('current'), imageCandidate, textCandidate, candidate('late')]
 });
 assert.equal(track.scrollTop, 600);
+const writesAfterChangedUpdate = track.innerHTMLWrites;
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  candidates: [candidate('current'), imageCandidate, textCandidate, candidate('late')]
+});
+assert.equal(track.innerHTMLWrites, writesAfterChangedUpdate, 'unchanged media cards must not be rebuilt');
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  candidates: [candidate('current'), imageCandidate, textCandidate, candidate('late')],
+  replenishing: true
+});
+assert.equal(track.innerHTMLWrites, writesAfterChangedUpdate, 'replenishing toggles must not rebuild cards');
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  candidates: [candidate('current'), imageCandidate, textCandidate, candidate('late')],
+  replenishing: false
+});
+assert.equal(track.innerHTMLWrites, writesAfterChangedUpdate, 'replenishing settling must not rebuild cards');
+const actionCountBeforeHalfScroll = actions.length;
 track.emit('scroll');
-await new Promise((resolve) => setTimeout(resolve, 220));
+assert.equal(actions.length, actionCountBeforeHalfScroll);
+track.scrollTop = 1960;
+track.emit('scroll');
 assert.equal(actions.at(-1)?.id, 'waterfall.feed.advance');
+assert.equal(actions.at(-1)?.args?.currentId, 'current');
+
+const actionCountBeforeCatchUp = actions.length;
+const writesBeforeCurrentAdvance = track.innerHTMLWrites;
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  currentId: 'image-current',
+  candidates: [candidate('current'), imageCandidate, textCandidate, candidate('late')]
+});
+assert.equal(track.scrollTop, 1960, 'server updates must not snap the user back to the first card');
+assert.equal(track.innerHTMLWrites, writesBeforeCurrentAdvance, 'advancing must keep loaded media nodes alive');
+assert.equal(actions.length, actionCountBeforeCatchUp + 1, 'a rapid multi-card swipe should continue advancing');
+assert.equal(actions.at(-1)?.args?.currentId, 'image-current');
+
+track.scrollTop = 0;
+const actionCountBeforeBackScroll = actions.length;
+track.emit('scroll');
+assert.equal(actions.length, actionCountBeforeBackScroll, 'scrolling back into shown history must stay local');
+
+const xCurrent = { ...candidate('x-current'), source: 'x', mediaType: 'post' };
+const xNext = { ...candidate('x-next'), source: 'x', mediaType: 'post' };
+track.scrollTop = 2960;
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  currentId: 'x-current',
+  enabledSources: ['x'],
+  candidates: [candidate('disabled-one'), candidate('disabled-two'), xCurrent, xNext]
+});
+assert.equal(track.scrollTop, 0, 'source filtering must align to the enabled current card instead of an empty tail');
+const actionCountBeforeFilteredAdvance = actions.length;
+track.scrollTop = 960;
+track.emit('scroll');
+assert.equal(actions.length, actionCountBeforeFilteredAdvance + 1, 'advance indices must use the filtered card list');
+assert.equal(actions.at(-1)?.args?.currentId, 'x-current');
+
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  currentId: 'last',
+  candidates: [candidate('last')],
+  replenishing: false,
+  exhausted: false
+});
+assert.match(track.innerHTML, /waterfall-tail-status/);
+const actionCountBeforeLastCard = actions.length;
+track.scrollTop = 960;
+track.emit('scroll');
+assert.equal(actions.length, actionCountBeforeLastCard + 1);
+assert.equal(actions.at(-1)?.args?.currentId, 'last');
 preferencesButton.emit('click');
 assert.equal(preferences.classList.contains('active'), true);
 backButton.emit('click');

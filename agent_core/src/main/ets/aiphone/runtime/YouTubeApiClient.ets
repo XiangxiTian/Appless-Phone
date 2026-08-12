@@ -185,12 +185,18 @@ export async function callYouTubeVideoSearch(query: string, apiKey: string, opti
     }
     return youtubeVideoResultsFromSearchPayload(text, query);
   } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : JSON.stringify(error);
+    const lowerMessage = rawMessage.toLowerCase();
+    const networkIssue = lowerMessage.includes('timeout') || lowerMessage.includes('timed out')
+      || lowerMessage.includes('connect') || rawMessage.includes('2300');
     return [{
       sourceTag: 'YouTube Data API',
       toolName: 'youtube.video.search',
       title: 'YouTube API 调用失败',
       status: 'error',
-      summary: error instanceof Error ? error.message : JSON.stringify(error),
+      summary: networkIssue
+        ? '设备无法连接 googleapis.com（超时/不可达）。YouTube 需要可访问 Google 的网络环境。原始错误：' + rawMessage
+        : rawMessage,
       rows: [{ label: 'Query', value: query }],
       rawPreview: 'error'
     }];

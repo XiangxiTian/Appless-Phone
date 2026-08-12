@@ -654,6 +654,12 @@ function fixedArgumentAliases(toolId: string): FixedArgumentAlias[] {
       { source: 'limit', targets: ['limit'] }
     ];
   }
+  if (toolId === 'social.reddit.comments') {
+    return [{ source: 'articleId', targets: ['article', 'article_id', 'articleId', 'id'] }];
+  }
+  if (toolId === 'social.hackernews.item.read') {
+    return [{ source: 'itemId', targets: ['item_id', 'itemId', 'id'] }];
+  }
   if (toolId === 'gmail.thread.read') {
     return [{ source: 'threadId', targets: ['threadId', 'thread_id', 'id'] }];
   }
@@ -765,7 +771,10 @@ function fixedArgumentAliases(toolId: string): FixedArgumentAlias[] {
   if (toolId === 'x.post.search') {
     return [
       { source: 'query', targets: ['query', 'q', 'search', 'keyword'] },
-      { source: 'pageSize', targets: ['pageSize', 'page_size', 'limit', 'count', 'maxResults'] }
+      { source: 'pageSize', targets: ['pageSize', 'page_size', 'limit', 'count', 'maxResults', 'max_results'] },
+      { source: 'expansions', targets: ['expansions'] },
+      { source: 'mediaFields', targets: ['media_fields', 'mediaFields'] },
+      { source: 'tweetFields', targets: ['tweet_fields', 'tweetFields'] }
     ];
   }
   return [];
@@ -901,6 +910,8 @@ export function composioExactToolSlugForFixedTool(fixedToolId: string): string {
   if (fixedToolId === 'social.instagram.media.list') return 'INSTAGRAM_GET_IG_USER_MEDIA';
   if (fixedToolId === 'social.reddit.profile') return 'REDDIT_GET_REDDIT_USER_ABOUT';
   if (fixedToolId === 'social.reddit.search') return 'REDDIT_SEARCH_ACROSS_SUBREDDITS';
+  if (fixedToolId === 'social.reddit.comments') return 'REDDIT_RETRIEVE_POST_COMMENTS';
+  if (fixedToolId === 'social.hackernews.item.read') return 'HACKERNEWS_GET_ITEM';
   if (fixedToolId === 'whatsapp.phone_numbers.list') return 'WHATSAPP_GET_PHONE_NUMBERS';
   if (fixedToolId === 'whatsapp.message.send') return 'WHATSAPP_SEND_MESSAGE';
   if (fixedToolId === 'calendar.events.search') return 'GOOGLECALENDAR_EVENTS_LIST';
@@ -1527,14 +1538,15 @@ function objectItems(value: Object | string | number | boolean | null | undefine
 
 function arrayHit(label: string, value: Object | string | number | boolean | null | undefined): ComposioArrayHit {
   if (Array.isArray(value)) {
-    return { found: true, label: label, items: objectItems(value) };
+    const items = objectItems(value);
+    return items.length > 0 ? { found: true, label: label, items: items } : { found: false, label: '', items: [] };
   }
   return { found: false, label: '', items: [] };
 }
 
 function firstArrayHit(value: Object | string | number | boolean | null | undefined): ComposioArrayHit {
   if (Array.isArray(value)) {
-    return { found: true, label: 'items', items: objectItems(value) };
+    return arrayHit('items', value);
   }
   if (value === undefined || value === null || typeof value !== 'object') {
     return { found: false, label: '', items: [] };
@@ -1765,7 +1777,8 @@ function compactComposioItem(item: Object): Object {
   if (preview.length > 0) {
     compact.preview = preview.substring(0, 1000);
   }
-  const messageText = stringField(record, ['messageText', 'text', 'description']);
+  const directMessageText = stringField(record, ['messageText', 'text', 'description']);
+  const messageText = directMessageText.length > 0 ? directMessageText : compactNestedText(record, 'data');
   if (messageText.length > 0) {
     compact.messageText = messageText.substring(0, 1000);
   }
@@ -2083,6 +2096,9 @@ export function proxyToolkitAccountsPreview(payload: Object, toolkitAllowlist: s
 }
 
 export function isUnsafeComposioExecute(toolSlug: string, _argsJson: string): boolean {
+  if (toolSlug.trim().toUpperCase() === 'REDDIT_RETRIEVE_POST_COMMENTS') {
+    return false;
+  }
   return isUnsafeMcpTool(toolSlug, '');
 }
 

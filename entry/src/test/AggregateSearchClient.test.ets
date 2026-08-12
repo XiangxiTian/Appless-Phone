@@ -210,6 +210,7 @@ export default function aggregateSearchClientTest() {
       expect(posts[0].score).assertEqual('12');
       expect(posts[0].commentCount).assertEqual('3');
       expect(JSON.stringify(posts[0].rows).indexOf('avatar.jpg')).assertLarger(-1);
+      expect(aggregateMediaCandidates([], posts, 0)[0].mediaType).assertEqual('post');
     });
 
     it('turns dynamic text rows into readable post cards with images', 0, () => {
@@ -257,6 +258,28 @@ export default function aggregateSearchClientTest() {
       expect(JSON.stringify(posts[0].rows).indexOf('reddit.png')).assertLarger(-1);
     });
 
+    it('keeps real comment excerpts and direct video media from social results', 0, () => {
+      const posts = redditPostsFromComposioResult({
+        sourceTag: 'Composio',
+        toolName: 'REDDIT_SEARCH_POSTS',
+        title: 'Composio Reddit 结果',
+        status: 'success',
+        summary: '返回 1 条',
+        rows: [],
+        rawPreview: '{"data":{"children":[{"data":{"title":"Video discussion","selftext":"Main post",' +
+          '"permalink":"/r/OpenAI/comments/3/codex","media":{"reddit_video":{"fallback_url":' +
+          '"https://v.redd.it/demo/DASH_720.mp4"}},"comments":{"items":[{"data":{"messageText":' +
+          '"First useful reply"}},{"text":"Second useful reply"}]}}}]}}'
+      });
+      const candidates = aggregateMediaCandidates([], posts, 0);
+
+      expect(JSON.stringify(posts[0].rows).indexOf('First useful reply')).assertLarger(-1);
+      expect(JSON.stringify(posts[0].rows).indexOf('Second useful reply')).assertLarger(-1);
+      expect(candidates[0].mediaType).assertEqual('video');
+      expect(candidates[0].mediaUrl).assertEqual('https://v.redd.it/demo/DASH_720.mp4');
+      expect(candidates[0].summary.indexOf('First useful reply')).assertLarger(-1);
+    });
+
     it('maps Reddit Composio preview wrappers into post cards', 0, () => {
       const posts = redditPostsFromComposioResult({
         sourceTag: 'Composio',
@@ -298,6 +321,25 @@ export default function aggregateSearchClientTest() {
       expect(posts[0].publishedAt).assertEqual('2026-07-20T01:00:00.000Z');
     });
 
+    it('joins X media expansions to playable and image cards', 0, () => {
+      const posts = xPostsFromComposioResult({
+        sourceTag: 'Composio', toolName: 'TWITTER_RECENT_SEARCH', title: 'Composio X 结果',
+        status: 'success', summary: '返回 2 条', rows: [],
+        rawPreview: '{"data":[{"id":"x-video","text":"Video post","attachments":{"media_keys":["m1"]}},' +
+          '{"id":"x-image","text":"Image post","attachments":{"media_keys":["m2"]}}],"includes":{"media":[' +
+          '{"media_key":"m1","type":"video","preview_image_url":"https://img.test/video.jpg","variants":[' +
+          '{"content_type":"video/mp4","bit_rate":832000,"url":"https://video.test/demo.mp4"}]},' +
+          '{"media_key":"m2","type":"photo","url":"https://img.test/photo.jpg"}]}}'
+      });
+      const candidates = aggregateMediaCandidates([], posts, 0);
+
+      expect(candidates[0].mediaType).assertEqual('video');
+      expect(candidates[0].mediaUrl).assertEqual('https://video.test/demo.mp4');
+      expect(candidates[0].coverUrl).assertEqual('https://img.test/video.jpg');
+      expect(candidates[1].mediaType).assertEqual('image_text');
+      expect(candidates[1].coverUrl).assertEqual('https://img.test/photo.jpg');
+    });
+
     it('maps compact X Composio messageText into the card body', 0, () => {
       const posts = xPostsFromComposioResult({
         sourceTag: 'Composio',
@@ -312,6 +354,22 @@ export default function aggregateSearchClientTest() {
       expect(posts.length).assertEqual(1);
       expect(posts[0].text).assertEqual('real post');
       expect(posts[0].url).assertEqual('https://x.com/user/status/tweet-current-1');
+    });
+
+    it('uses the first real social image as the Waterfall cover', 0, () => {
+      const posts = xPostsFromComposioResult({
+        sourceTag: 'Composio',
+        toolName: 'x.post.search',
+        title: 'Composio X 结果',
+        status: 'success',
+        summary: '返回 1 条',
+        rows: [],
+        rawPreview: '{"posts":[{"id":"x-media-1","text":"带图片的帖子","url":"https://x.com/user/status/x-media-1","pics":[{"url":"https://img.example.com/one.jpg"},{"url":"https://img.example.com/two.jpg"}]}]}'
+      });
+      const candidate = aggregateMediaCandidates([], posts, 0)[0];
+
+      expect(candidate.mediaType).assertEqual('image_text');
+      expect(candidate.coverUrl).assertEqual('https://img.example.com/one.jpg');
     });
 
     it('skips non-success Hacker News rows', 0, () => {

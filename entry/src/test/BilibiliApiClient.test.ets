@@ -21,13 +21,14 @@ export default function bilibiliApiClientTest() {
     });
 
     it('maps Bilibili API JSON into playable generic tool rows', 0, () => {
-      const payload: string = '{"code":0,"message":"OK","data":{"result":[{"result_type":"video","data":[{"bvid":"BV1h57y6pE5o","title":"Qwen <em class=\\"keyword\\">Max</em> 官方介绍","pic":"//i1.hdslb.com/bfs/archive/cover.jpg"}]}]}}';
+      const payload: string = '{"code":0,"message":"OK","data":{"result":[{"result_type":"video","data":[{"bvid":"BV1h57y6pE5o","title":"Qwen <em class=\\"keyword\\">Max</em> 官方介绍","description":"真实视频简介","pic":"//i1.hdslb.com/bfs/archive/cover.jpg"}]}]}}';
       const results: DynamicGenericToolResult[] = bilibiliVideoResultsFromSearchPayload(payload, 'qwen max');
 
       expect(results.length).assertEqual(1);
       expect(results[0].sourceTag).assertEqual('哔哩哔哩');
       expect(results[0].toolName).assertEqual('media.video.search');
       expect(results[0].title).assertEqual('Qwen Max 官方介绍');
+      expect(results[0].summary).assertEqual('真实视频简介');
       expect(results[0].rows[1].value).assertEqual('BV1h57y6pE5o');
       expect(results[0].rows[2].value).assertEqual('https://www.bilibili.com/video/BV1h57y6pE5o');
       expect(results[0].rows[3].value).assertEqual('https://i1.hdslb.com/bfs/archive/cover.jpg');

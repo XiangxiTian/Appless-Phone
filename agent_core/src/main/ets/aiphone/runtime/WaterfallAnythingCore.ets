@@ -8,6 +8,7 @@ export interface WaterfallCandidate {
   summary: string;
   url: string;
   coverUrl: string;
+  mediaUrl?: string;
   publishedAt: string;
   originalIndex: number;
 }
@@ -327,6 +328,7 @@ export function rankWaterfallCandidates(
       summary: best.candidate.summary,
       url: best.candidate.url,
       coverUrl: best.candidate.coverUrl,
+      mediaUrl: best.candidate.mediaUrl,
       publishedAt: best.candidate.publishedAt,
       originalIndex: best.candidate.originalIndex,
       normalizedUrl: best.normalizedUrl,
@@ -542,6 +544,7 @@ function rankedToCandidates(items: WaterfallRankedCandidate[]): WaterfallCandida
     summary: item.summary,
     url: item.url,
     coverUrl: item.coverUrl,
+    mediaUrl: item.mediaUrl,
     publishedAt: item.publishedAt,
     originalIndex: item.originalIndex
   }));

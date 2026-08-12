@@ -10,6 +10,7 @@ const BILIBILI_SEARCH_MARKER: string = 'http:\\u002F\\u002Fwww.bilibili.com\\u00
 interface BilibiliVideoItem {
   bvid: string;
   title: string;
+  description: string;
   cover: string;
 }
 
@@ -41,6 +42,7 @@ interface BilibiliSearchApiEntry extends BilibiliSearchApiItem {
 interface BilibiliSearchApiItem {
   bvid?: string;
   title?: string;
+  description?: string;
   pic?: string;
 }
 
@@ -54,6 +56,7 @@ interface BilibiliViewData {
   bvid?: string;
   aid?: number;
   cid?: number;
+  desc?: string;
 }
 
 function textOf(value: Object | string | number | boolean | null | undefined): string {
@@ -309,6 +312,7 @@ function itemFromPiniaScript(script: string, aliases: StringAlias[], bvidIndex: 
   return {
     bvid: bvid,
     title: cleanTitle,
+    description: stripHtmlTags(resolveAliasValue(propertyExpression(script, 'description', bvidIndex), aliases)).trim(),
     cover: normalizeImageUrl(cover)
   };
 }
@@ -334,6 +338,7 @@ function itemFromSearchHtml(text: string, markerIndex: number): BilibiliVideoIte
   return {
     bvid: bvid.value,
     title: stripHtmlTags(title.value).trim(),
+    description: stripHtmlTags(description.value).trim(),
     cover: cover === null ? '' : normalizeImageUrl(cover.value)
   };
 }
@@ -347,12 +352,15 @@ function resultFromItem(item: BilibiliVideoItem, query: string): DynamicGenericT
   if (item.cover.length > 0) {
     rows.push({ label: 'Thumbnail', value: item.cover });
   }
+  if (item.description.length > 0) {
+    rows.push({ label: 'Description', value: item.description });
+  }
   return {
     sourceTag: '哔哩哔哩',
     toolName: 'media.video.search',
     title: item.title.length > 0 ? item.title : item.bvid,
     status: 'success',
-    summary: 'B 站视频搜索结果：' + query,
+    summary: item.description.length > 0 ? item.description : 'B 站视频搜索结果：' + query,
     rows: rows,
     rawPreview: 'bvid=' + item.bvid
   };
@@ -412,6 +420,11 @@ async function hydrateBilibiliViewRows(results: DynamicGenericToolResult[]): Pro
       }
       appendRowIfMissing(result.rows, 'AID', textOf(payload.data.aid));
       appendRowIfMissing(result.rows, 'CID', textOf(payload.data.cid));
+      const description = textOf(payload.data.desc).trim();
+      if (description.length > 0) {
+        appendRowIfMissing(result.rows, 'Description', description);
+        result.summary = description;
+      }
     } catch (_) {
     } finally {
       request.destroy();
@@ -484,6 +497,7 @@ export function bilibiliVideoResultsFromSearchPayload(rawJson: string, query: st
     results.push(resultFromItem({
       bvid: bvid,
       title: title,
+      description: stripHtmlTags(textOf(item.description)).trim(),
       cover: normalizeImageUrl(textOf(item.pic))
     }, query));
   }

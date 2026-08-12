@@ -17,7 +17,7 @@ Appless 的默认原则很简单：缺少本地模型、provider key、设备权
 默认模型设置：
 
 ```text
-Base URL: http://113.46.219.251:8080/v1/chat/completions
+Base URL: https://39.96.220.235/v1/chat/completions
 Model: Deepseek-V4-Flash-0731
 ```
 

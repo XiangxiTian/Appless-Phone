@@ -107,7 +107,7 @@ export struct ConfigPage {
 
   private isDeepSeekPresetSelected(): boolean {
     return this.selectedModel === 'Deepseek-V4-Flash-0731' &&
-      this.baseUrl === 'http://113.46.219.251:8080/v1/chat/completions';
+      this.baseUrl === 'https://39.96.220.235/v1/chat/completions';
   }
 
   private isDashScopePresetSelected(): boolean {

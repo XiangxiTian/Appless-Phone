@@ -32,7 +32,7 @@ export default function localModelClientTest() {
       configureLocalModelSettingsFromRawJson('{"DASHSCOPE_API_KEY":"old-key","DEEPSEEK_API_KEY":"new-key"}');
       const settings = defaultLocalModelSettings();
       expect(settings.provider).assertEqual('CSI.AI');
-      expect(settings.baseUrl).assertEqual('http://113.46.219.251:8080/v1/chat/completions');
+      expect(settings.baseUrl).assertEqual('https://39.96.220.235/v1/chat/completions');
       expect(settings.model).assertEqual('Deepseek-V4-Flash-0731');
       expect(settings.apiKey).assertEqual('new-key');
       expect(settings.customParametersJson).assertEqual('{"enable_thinking":false}');

@@ -297,7 +297,7 @@ class RecordingPageToolInvoker implements RegisteredPageToolInvoker {
     if (pageActionId === this.failingPageActionId) {
       return { ok: false, result: null, error: this.failure };
     }
-    if (toolId === 'worldcup.open') {
+    if (toolId === 'worldcup.open' || toolId === 'daily.brief.open') {
       return { ok: true, result: null, error: '' };
     }
     return { ok: true, result: successfulToolResult(toolId), error: '' };
@@ -2040,6 +2040,53 @@ export default function registeredPageActionMigrationTest() {
         '{"route":"pages/A2uiHome/MovieDemo"}'
       );
       expect(resolveVirtualRegisteredPageAction('movie.open', '')).assertNull();
+    });
+
+    it('resolves only finite personal daily brief virtual actions', 0, () => {
+      const open = resolveVirtualRegisteredPageAction(
+        'daily.brief.open', '我想查看今日日报'
+      );
+      const regenerate = resolveVirtualRegisteredPageAction(
+        'daily.brief.open', '重新生成今日日报'
+      );
+
+      expect(isRegisteredPageActionCandidate('daily.brief.open')).assertTrue();
+      expect(JSON.stringify(open?.args)).assertEqual('{"regenerate":false}');
+      expect(JSON.stringify(regenerate?.args)).assertEqual('{"regenerate":true}');
+      expect(resolveVirtualRegisteredPageAction('daily.brief.open', '')).assertNull();
+    });
+
+    it('handles daily brief only for its exact page action identity and no provider result', 0, async () => {
+      const invoker = new RecordingPageToolInvoker();
+      const handler = new RegisteredPageActionHandler(invoker);
+      const context: RegisteredPageActionContext = {
+        conversationId: 'daily-brief',
+        turnId: 'turn-1',
+        surfaceId: 'virtual:daily-brief',
+        sourceToolId: 'virtual.action-intent',
+        planId: 'direct:daily-brief',
+        runId: 'daily-brief',
+        stepId: 'step-1',
+        pageActionId: 'daily.brief.open',
+        virtualAction: true
+      };
+      const opened = await handler.execute(
+        'daily.brief.open', JSON.parse('{"regenerate":false}') as Object, context
+      );
+      const forged = JSON.parse(JSON.stringify(context)) as RegisteredPageActionContext;
+      forged.pageActionId = 'movie.open';
+      forged.runId = 'daily-brief-forged';
+      const rejected = await handler.execute(
+        'daily.brief.open', JSON.parse('{"regenerate":false}') as Object, forged
+      );
+
+      expect(opened.status).assertEqual('success');
+      expect(JSON.stringify(opened)).assertEqual(
+        '{"status":"success","output":{"actionId":"daily.brief.open","status":"opened"}}'
+      );
+      expect(rejected.status).assertEqual('error');
+      expect(invoker.calls.length).assertEqual(1);
+      expect(invoker.calls[0].pageActionId).assertEqual('daily.brief.open');
     });
 
     it('resolves and invokes only bounded safe initial Action requests without write authority', 0, async () => {

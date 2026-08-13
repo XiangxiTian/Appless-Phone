@@ -2,6 +2,7 @@ import { describe, it, expect } from '@ohos/hypium';
 import {
   directPaymentToolIdForActionId,
   directRideToolIdForActionId,
+  resolveA2uiHomeSubmitToolRequest,
   resolveA2uiHomeToolRequest,
   surfaceHasSatisfiedToolResult,
   surfaceHasVisibleToolResult
@@ -1310,6 +1311,64 @@ export default function a2uiHomeToolRequestTest() {
       expect(openWeb.toolId).assertEqual('gmail.open.web');
       expect(draftMail.toolId).assertEqual('gmail.draft.create');
       expect(directSend.toolId).assertEqual('gmail.draft.create');
+    });
+
+    it('routes explicit personal daily brief phrases before weather and mail inference', 0, () => {
+      const daily = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('dynamic.search', '查询今天的天气', 'model_tool_request'),
+        '打开今日日报，看看天气和邮件',
+        ''
+      );
+      const generic = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '查看日报',
+        ''
+      );
+      const noVerb = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '今日日报',
+        ''
+      );
+
+      expect(daily.toolId).assertEqual('daily.brief.open');
+      expect(daily.actionId).assertEqual('client_daily_brief_reroute');
+      expect(generic.toolId).assertEqual('');
+      expect(noVerb.toolId).assertEqual('');
+    });
+
+    it('routes explicit daily phrases at the live submit seam with only finite regenerate args', 0, () => {
+      const open = resolveA2uiHomeSubmitToolRequest('打开今日日报，看看天气和邮件');
+      const regenerate = resolveA2uiHomeSubmitToolRequest('重新生成个人日报');
+      const generic = resolveA2uiHomeSubmitToolRequest('查看日报');
+      const noVerb = resolveA2uiHomeSubmitToolRequest('今日日报');
+
+      expect(open === null).assertFalse();
+      expect(regenerate === null).assertFalse();
+      if (open !== null && regenerate !== null) {
+        expect(open.toolId).assertEqual('daily.brief.open');
+        expect(open.actionId).assertEqual('client_daily_brief_submit');
+        expect(JSON.stringify(open.args)).assertEqual('{"regenerate":false}');
+        expect(JSON.stringify(regenerate.args)).assertEqual('{"regenerate":true}');
+      }
+      expect(generic).assertNull();
+      expect(noVerb).assertNull();
+    });
+
+    it('drops foreign model and fallback args when an explicit daily phrase forces the tool', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest(
+          'dynamic.search',
+          '查询今天的天气',
+          'model_tool_request',
+          JSON.parse('{"query":"weather","url":"https://example.com/private"}') as Object
+        ),
+        '重新生成今日日报，看看天气和邮件',
+        '',
+        JSON.parse('{"route":"private-page"}') as Object
+      );
+
+      expect(resolved.toolId).assertEqual('daily.brief.open');
+      expect(JSON.stringify(resolved.args)).assertEqual('{"regenerate":true}');
     });
   });
 }

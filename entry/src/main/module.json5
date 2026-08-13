@@ -139,6 +139,12 @@
     ],
     "extensionAbilities": [
       {
+        "name": "DailyBriefWorkScheduler",
+        "srcEntry": "./ets/extensionability/DailyBriefWorkScheduler.ets",
+        "type": "workScheduler",
+        "exported": false
+      },
+      {
         "name": "NavigationCardFormExtensionAbility",
         "srcEntry": "./ets/extensionability/NavigationCardFormExtensionAbility.ets",
         "type": "form",

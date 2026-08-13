@@ -11,6 +11,7 @@ const WORKFLOW_ENTRY_ACTION_ID = 'workflow.run';
 const ACTION_INTENT_IDS: string[] = [
   'worldcup.open',
   'movie.open',
+  'daily.brief.open',
   'maps.route.open',
   'calendar.event.create',
   'gmail.draft.create',

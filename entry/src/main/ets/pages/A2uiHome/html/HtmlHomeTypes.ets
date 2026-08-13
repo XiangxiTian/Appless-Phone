@@ -1,7 +1,8 @@
 import { A2uiComponent, WaterfallFeedState, WaterfallRankedCandidate, WaterfallSourceState } from '@loop/agent-core';
+import { DailyBriefPreference, DailyBriefSnapshot } from '../dailybrief/DailyBriefTypes';
 
 export type HtmlHomeSource = 'welcome' | 'pending' | 'model' | 'tool';
-export type HtmlHomeKind = 'welcome' | 'thinking' | 'travel' | 'hotel' | 'food' | 'social' | 'dynamic-tools' | 'gmail' | 'media' | 'payment' | 'aggregate-search' | 'luckin' | 'multi-task' | 'generic';
+export type HtmlHomeKind = 'welcome' | 'thinking' | 'travel' | 'hotel' | 'food' | 'social' | 'dynamic-tools' | 'gmail' | 'media' | 'payment' | 'aggregate-search' | 'luckin' | 'multi-task' | 'daily-brief' | 'generic';
 
 export interface HtmlHomeChip {
   label: string;
@@ -63,6 +64,8 @@ export interface HtmlHomeBlock {
   rows: HtmlHomeMetric[];
   actions: HtmlHomeAction[];
   rawPreview?: string;
+  mailTerminalBody?: string;
+  mailTerminalError?: string;
   mediaEmbed?: HtmlHomeMediaEmbed;
   stripeReceiving?: HtmlHomeStripeReceiving;
   embeddedDocument?: HtmlHomeDocument;
@@ -117,6 +120,8 @@ export interface HtmlHomeDocument {
   personaMemory: HtmlHomePersonaMemory;
   rawSurfaceRoot: A2uiComponent | null;
   waterfall?: WaterfallFeedState;
+  dailyBrief?: DailyBriefSnapshot;
+  dailyBriefPreference?: DailyBriefPreference;
   activeSectionId?: string;
   executionMode?: 'parallel' | 'serial';
   generatedAt: string;

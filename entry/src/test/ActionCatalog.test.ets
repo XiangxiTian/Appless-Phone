@@ -53,6 +53,7 @@ class FakeToolDefinitionLookup implements ToolDefinitionLookup {
     }
     if (toolId === 'hotel.detail' || toolId === 'hotel.navigate' ||
       toolId === 'hotel.booking.open' || toolId === 'worldcup.open' || toolId === 'movie.open' ||
+      toolId === 'daily.brief.open' ||
       toolId === 'maps.route.open' || toolId === 'calendar.event.create' ||
       toolId === 'luckin.order.preview' || toolId === 'payment.send' ||
       toolId === 'payment.account.setup' || toolId === 'whatsapp.message.send' ||
@@ -320,6 +321,9 @@ export default function actionCatalogTest() {
         actionCatalog.validateActionIntentExecution('worldcup.open', new Object());
       const movieIntent: ActionCatalogResult =
         actionCatalog.validateActionIntentExecution('movie.open', new Object());
+      const dailyIntent: ActionCatalogResult = actionCatalog.validateActionIntentExecution(
+        'daily.brief.open', args('{"regenerate":false}')
+      );
       const mapsIntent: ActionCatalogResult = actionCatalog.validateActionIntentExecution(
         'maps.route.open',
         args('{"origin":"深圳北","destination":"香港西九龙"}')
@@ -340,6 +344,7 @@ export default function actionCatalogTest() {
       expect(surface.calls).assertEqual(0);
       expect(worldCupIntent.ok).assertTrue();
       expect(movieIntent.ok).assertTrue();
+      expect(dailyIntent.ok).assertTrue();
       expect(mapsIntent.ok).assertTrue();
       expect(calendarIntent.ok).assertTrue();
       expect(hotelIntent.code).assertEqual('ACTION_INTENT_DENIED');
@@ -356,6 +361,7 @@ export default function actionCatalogTest() {
       const allowed: string[] = [
         'worldcup.open',
         'movie.open',
+        'daily.brief.open',
         'maps.route.open',
         'calendar.event.create',
         'luckin.order.preview',
@@ -375,7 +381,8 @@ export default function actionCatalogTest() {
 
       for (let index = 0; index < allowed.length; index++) {
         const intentArgs = allowed[index] === 'payment.send' ?
-          args('{"originalQuery":"用 PayPal 给罗一格转 1 美元"}') : new Object();
+          args('{"originalQuery":"用 PayPal 给罗一格转 1 美元"}') :
+          allowed[index] === 'daily.brief.open' ? args('{"regenerate":false}') : new Object();
         expect(actionCatalog.validateActionIntentExecution(
           allowed[index], intentArgs
         ).ok).assertTrue();

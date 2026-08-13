@@ -42,6 +42,10 @@ interface PaymentFallbackArgs {
   originalQuery: string;
 }
 
+interface DailyBriefOpenArgs {
+  regenerate: boolean;
+}
+
 interface FirecrawlFallbackArgs {
   query?: string;
   url?: string;
@@ -258,6 +262,29 @@ function hasAggregateSearchIntent(prompt: string): boolean {
     return false;
   }
   return asksMixedView || mentionsVideoSource && mentionsTextSource || !mentionsVideoSource && !mentionsTextSource;
+}
+
+function inferredDailyBriefToolIdForPrompt(prompt: string): string {
+  const hasDailyBrief = containsAny(prompt, ['今日日报', '今日简报', '个人日报']);
+  const hasOpenVerb = containsAny(prompt, ['看', '查看', '打开', '生成', '重新生成', '重做', '刷新']);
+  return hasDailyBrief && hasOpenVerb ? 'daily.brief.open' : '';
+}
+
+export function resolveA2uiHomeSubmitToolRequest(prompt: string): A2uiHomeResolvedToolRequest | null {
+  if (inferredDailyBriefToolIdForPrompt(prompt).length === 0) {
+    return null;
+  }
+  const args: DailyBriefOpenArgs = {
+    regenerate: containsAny(prompt, ['重新生成', '重做日报', '刷新日报'])
+  };
+  return {
+    hasTool: true,
+    toolId: 'daily.brief.open',
+    prompt: prompt,
+    actionId: 'client_daily_brief_submit',
+    args: args,
+    modelPromptChars: 0
+  };
 }
 
 function hasComposioDynamicIntent(prompt: string): boolean {
@@ -679,6 +706,10 @@ function inferredYouTubeToolIdForPrompt(prompt: string): string {
 }
 
 function inferredToolIdForPrompt(prompt: string): string {
+  const dailyBriefToolId = inferredDailyBriefToolIdForPrompt(prompt);
+  if (dailyBriefToolId.length > 0) {
+    return dailyBriefToolId;
+  }
   const whatsappToolId = inferredWhatsAppToolIdForPrompt(prompt);
   if (whatsappToolId.length > 0) {
     return whatsappToolId;
@@ -995,6 +1026,8 @@ export function resolveA2uiHomeToolRequest(
   let prompt = request.prompt.length > 0 ? request.prompt : fallbackPrompt;
   let actionId = request.actionId.length > 0 ? request.actionId : fallbackActionId;
   const originalPrompt = fallbackPrompt.length > 0 ? fallbackPrompt : prompt;
+  const forcedDailyBriefRequest = resolveA2uiHomeSubmitToolRequest(originalPrompt);
+  const forcedDailyBriefToolId = forcedDailyBriefRequest === null ? '' : forcedDailyBriefRequest.toolId;
   const forcedDynamicToolId = forcedDynamicToolIdForPrompt(prompt);
   const forcedWhatsAppToolId = inferredWhatsAppToolIdForPrompt(originalPrompt);
   const forcedGmailToolId = forcedGmailToolIdForPrompt(fallbackPrompt.length > 0 ? fallbackPrompt : prompt);
@@ -1009,7 +1042,13 @@ export function resolveA2uiHomeToolRequest(
   const forcedAggregateToolId = inferredAggregateSearchToolIdForPrompt(originalPrompt);
   const forcedMediaToolId = inferredMediaToolIdForPrompt(prompt);
   const actionToolId = toolIdForActionId(fallbackActionId);
-  if (forcedWhatsAppToolId.length > 0) {
+  if (forcedDailyBriefToolId.length > 0) {
+    toolId = forcedDailyBriefToolId;
+    if (request.toolId !== forcedDailyBriefToolId) {
+      actionId = request.toolId.length > 0 ? 'client_daily_brief_reroute' : 'client_intent_fallback';
+    }
+    prompt = originalPrompt;
+  } else if (forcedWhatsAppToolId.length > 0) {
     toolId = forcedWhatsAppToolId;
     if (request.toolId !== forcedWhatsAppToolId && actionId.length === 0) {
       actionId = request.toolId.length > 0 ? 'client_whatsapp_send_reroute' : 'client_intent_fallback';
@@ -1074,7 +1113,9 @@ export function resolveA2uiHomeToolRequest(
     }
   }
   let args = mergeArgs(fallbackArgs, request.args === undefined || request.args === null ? null : request.args);
-  if (forcedFirecrawlToolId.length > 0 && forcedFirecrawlRequest !== null) {
+  if (forcedDailyBriefRequest !== null) {
+    args = forcedDailyBriefRequest.args;
+  } else if (forcedFirecrawlToolId.length > 0 && forcedFirecrawlRequest !== null) {
     args = mergeArgs(args, forcedFirecrawlRequest.args);
   }
   if (toolId === 'media.video.search') {

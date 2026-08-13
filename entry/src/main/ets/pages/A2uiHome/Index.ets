@@ -30,6 +30,7 @@ import { preferences } from '@kit.ArkData';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { formBindingData, formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
+import { mapCommon, petalMaps } from '@kit.MapKit';
 import promptAction from '@ohos.promptAction';
 import fs from '@ohos.file.fs';
 import { geoLocationManager } from '@kit.LocationKit';
@@ -72,6 +73,7 @@ import {
   SocialHubPlatform
 } from '@loop/agent-core';
 import { aiLogError, aiLogInfo } from '@loop/agent-core';
+import { sha256Digest } from '@loop/agent-core';
 import {
   appendMultiTaskSlot,
   callToolGateway,
@@ -98,6 +100,7 @@ import {
   prepareGoogleOAuthAuthorizationUrl,
   recheck12306TrainAvailability,
   resolveMultiTaskSlotId,
+  rideDidiMcpSandboxEnabledForRuntime,
   select12306DebugTrain,
   sendLocalSocialHubReply,
   shortComposioUserId,
@@ -235,7 +238,10 @@ import {
   queueBimSentinelMockHandoff,
   shouldScheduleBimDailyReminder
 } from './bim/BimDailyReminder';
-import { SystemUriOpener } from './agent/AiphoneRegisteredActionExecutor';
+import {
+  SystemUriOpener,
+  validateRegisteredPageActionArgs
+} from './agent/AiphoneRegisteredActionExecutor';
 import {
   RegisteredPageSnapshot,
   RegisteredPageSnapshotStore,
@@ -303,8 +309,39 @@ import {
   A2uiHomeResolvedToolRequest,
   directPaymentToolIdForActionId,
   directRideToolIdForActionId,
+  resolveA2uiHomeSubmitToolRequest,
   resolveA2uiHomeToolRequest
 } from './render/A2uiHomeToolRequest';
+import {
+  createDailyBriefErrorSurface,
+  createDailyBriefLoadingSurface,
+  createDailyBriefSurface,
+  createDailyBriefWaterfallSurface,
+  DailyBriefMailReadRequest,
+  dailyBriefDate,
+  dailyBriefDemoScenario,
+  dailyBriefHistoryDirection,
+  dailyBriefMailReadRequest,
+  dailyBriefScenarioToolRequest,
+  decideDailyBriefOpen,
+  selectDailyBriefStoredWinnerBeforeSave,
+  selectDailyBriefSnapshotAfterSave,
+  shouldApplyDailyBriefGeneration
+} from './dailybrief/DailyBriefCore';
+import { generateDailyBrief } from './dailybrief/DailyBriefGenerator';
+import {
+  scheduleNextDailyBrief,
+  shouldStartDailyBriefCatchUp,
+  transitionDailyBriefCatchUp
+} from './dailybrief/DailyBriefScheduler';
+import {
+  DailyBriefStore,
+  isValidDailyBriefAction
+} from './dailybrief/DailyBriefStore';
+import {
+  DailyBriefPreference,
+  DailyBriefSnapshot
+} from './dailybrief/DailyBriefTypes';
 import {
   A2UI_MOTION_MOVE_CURVE,
   A2UI_MOTION_NORMAL_MS
@@ -725,7 +762,7 @@ struct Index {
   @State ignoreToolSurfaceUpdates: boolean = false;
   @State htmlHomeDebugExportEnabled: boolean = false;
   @State htmlHomeDebugExportPath: string = '';
-  @State didiMcpSandboxEnabled: boolean = true;
+  @State didiMcpSandboxEnabled: boolean = rideDidiMcpSandboxEnabledForRuntime();
   @State isBusy: boolean = false;
   @State connectionStatus: string = initialConnectionState.connectionStatus;
   @State connectionMessage: string = initialConnectionState.connectionMessage;
@@ -810,6 +847,9 @@ struct Index {
   private waterfallShellSurfaceId: string = '';
   private waterfallFeedState: WaterfallFeedState | null = null;
   private waterfallFeedSurfaceId: string = '';
+  private dailyBriefSnapshot: DailyBriefSnapshot | null = null;
+  private dailyBriefGeneration: number = 0;
+  private dailyBriefCatchUpPending: boolean = false;
   private multiTaskActiveSectionId: string = '';
   private multiTaskUserPinnedSection: boolean = false;
   private multiTaskLastMergedRawBySlot: Record<string, string> = {};
@@ -1462,7 +1502,6 @@ struct Index {
     this.loadModelPreset();
     this.loadBimMotionPreference();
     this.readDebugBuildState();
-    this.configureDidiMcpSandboxRuntime(true);
     this.configureComposioRuntimeForCurrentUser();
     this.loadPersonaOverrides();
     this.loadPublicPersona();
@@ -1477,6 +1516,7 @@ struct Index {
     } catch (_error) {
     }
     this.refreshBimRecords();
+    void this.catchUpDailyBriefIfNeeded();
   }
 
   onPageShow(): void {
@@ -1485,6 +1525,7 @@ struct Index {
     this.requestPendingTrainPresaleResume();
     this.requestPendingBimSentinelMock();
     this.requestDailyBimSentinel();
+    void this.catchUpDailyBriefIfNeeded();
   }
 
   onPageHide(): void {
@@ -2908,6 +2949,7 @@ struct Index {
       ' kind=' + document.kind +
       ' chars=' + html.length.toString() +
       ' blocks=' + document.blocks.length.toString() +
+      ' contentDigest=' + sha256Digest(html) +
       (document.kind === 'multi-task' ?
         ' activeSectionId=' + (document.activeSectionId ?? 'none') +
         ' multiTaskBlocks=' + document.blocks.filter((block: HtmlHomeBlock) => block.kind === 'multi-task-section').length.toString() :
@@ -3490,6 +3532,277 @@ struct Index {
     return model.dynamicToolConnect;
   }
 
+  private dailyBriefStore(): DailyBriefStore | null {
+    const context = this.getUIContext().getHostContext() as common.Context;
+    return context === null ? null : new DailyBriefStore(context);
+  }
+
+  private async openDailyBrief(regenerate: boolean): Promise<boolean> {
+    const store = this.dailyBriefStore();
+    const now = new Date();
+    const date = dailyBriefDate(now);
+    if (store === null) {
+      this.forceApplySurface(createDailyBriefErrorSurface(date, '日报存储不可用'), 'daily_brief_store_missing');
+      return false;
+    }
+    const existing = store.snapshotForDate(date);
+    const preference = store.loadPreference();
+    const decision = decideDailyBriefOpen(existing, regenerate);
+    this.dailyBriefGeneration += 1;
+    const generation = this.dailyBriefGeneration;
+    if (decision === 'open_existing') {
+      this.dailyBriefSnapshot = existing;
+      this.finishForegroundTurn();
+      this.forceApplySurface(
+        createDailyBriefSurface(existing as DailyBriefSnapshot, preference),
+        'daily_brief_open_existing'
+      );
+      return true;
+    }
+
+    this.dailyBriefSnapshot = existing;
+    this.isBusy = true;
+    if (existing === null) {
+      this.forceApplySurface(createDailyBriefLoadingSurface(date), 'daily_brief_generate_first');
+    } else {
+      this.forceApplySurface(createDailyBriefSurface(existing, preference), 'daily_brief_regenerate');
+    }
+    try {
+      const generated = await generateDailyBrief({ now, preference, budgetMs: 120000 });
+      if (!shouldApplyDailyBriefGeneration(generation, this.dailyBriefGeneration)) {
+        return false;
+      }
+      const storedWinner = selectDailyBriefStoredWinnerBeforeSave(
+        store.snapshotForDate(date), regenerate
+      );
+      if (storedWinner !== null) {
+        this.finishForegroundTurn();
+        this.dailyBriefSnapshot = storedWinner;
+        this.forceApplySurface(
+          createDailyBriefSurface(storedWinner, preference),
+          'daily_brief_stored_winner'
+        );
+        return true;
+      }
+      const saved = store.saveSnapshot(generated);
+      const selected = selectDailyBriefSnapshotAfterSave(existing, generated, saved);
+      this.finishForegroundTurn();
+      if (!saved || selected === null) {
+        const message = '日报快照保存失败';
+        if (existing === null) {
+          this.forceApplySurface(createDailyBriefErrorSurface(date, message), 'daily_brief_save_failed');
+        }
+        this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+          ok: false,
+          status: 'error',
+          message,
+          requestDebug: this.lastModelRequest,
+          assistantDebug: this.lastModelOutput,
+          error: message
+        }));
+        return false;
+      }
+      this.dailyBriefSnapshot = selected;
+      this.forceApplySurface(createDailyBriefSurface(selected, preference), 'daily_brief_generated');
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: true,
+        status: 'ready',
+        message: '个人日报已更新。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: ''
+      }));
+      return true;
+    } catch (error) {
+      if (!shouldApplyDailyBriefGeneration(generation, this.dailyBriefGeneration)) {
+        return false;
+      }
+      this.finishForegroundTurn();
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      if (existing === null) {
+        this.forceApplySurface(createDailyBriefErrorSurface(date, message), 'daily_brief_generate_failed');
+      }
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: false,
+        status: 'error',
+        message: message.length > 0 ? message : '个人日报生成失败',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: message
+      }));
+      return false;
+    }
+  }
+
+  private async handleDailyBriefClientAction(action: A2uiAction): Promise<boolean> {
+    const allowed = action.id === 'daily.brief.regenerate' ||
+      action.id === 'daily.brief.preference.save' ||
+      action.id === 'daily.brief.history.open' ||
+      action.id === 'daily.brief.mail.read' ||
+      action.id === 'daily.brief.route.open' ||
+      action.id === 'daily.brief.ride.estimate' ||
+      action.id === 'daily.brief.discovery.open';
+    if (!allowed) {
+      return false;
+    }
+    if (!isValidDailyBriefAction(action)) {
+      this.logHtmlHomeActionError(action, 'invalid_daily_brief_action');
+      return true;
+    }
+    if (action.id === 'daily.brief.regenerate') {
+      await this.openDailyBrief(true);
+      return true;
+    }
+    const store = this.dailyBriefStore();
+    if (store === null) {
+      this.logHtmlHomeActionError(action, 'daily_brief_store_missing');
+      return true;
+    }
+    if (action.id === 'daily.brief.preference.save') {
+      const preference = action.args as DailyBriefPreference;
+      if (!store.savePreference(preference)) {
+        this.logHtmlHomeActionError(action, 'daily_brief_preference_save_failed');
+        return true;
+      }
+      const context = this.getUIContext().getHostContext() as common.Context;
+      scheduleNextDailyBrief(context.applicationInfo.name, new Date(), preference.targetTime);
+      if (this.dailyBriefSnapshot !== null) {
+        this.forceApplySurface(
+          createDailyBriefSurface(this.dailyBriefSnapshot, store.loadPreference()),
+          'daily_brief_preference_saved'
+        );
+      }
+      return true;
+    }
+    if (action.id === 'daily.brief.history.open') {
+      const direction = dailyBriefHistoryDirection(action.args);
+      if (direction === null) {
+        this.logHtmlHomeActionError(action, 'daily_brief_history_invalid');
+        return true;
+      }
+      let selected: DailyBriefSnapshot | null = null;
+      if (direction === 'today') {
+        selected = store.snapshotForDate(dailyBriefDate(new Date()));
+      } else {
+        const snapshots = store.loadSnapshots();
+        const current = this.dailyBriefSnapshot === null ?
+          store.snapshotForDate(dailyBriefDate(new Date())) : this.dailyBriefSnapshot;
+        if (current !== null) {
+          for (let index = 0; index < snapshots.length; index++) {
+            if (snapshots[index].date !== current.date) {
+              continue;
+            }
+            const target = direction === 'previous' ? index - 1 : index + 1;
+            if (target >= 0 && target < snapshots.length) {
+              selected = snapshots[target];
+            }
+            break;
+          }
+        }
+      }
+      if (selected !== null) {
+        this.dailyBriefSnapshot = selected;
+        this.forceApplySurface(
+          createDailyBriefSurface(selected, store.loadPreference()),
+          'daily_brief_history_' + direction
+        );
+      }
+      return true;
+    }
+    if (action.id === 'daily.brief.mail.read') {
+      const request: DailyBriefMailReadRequest | null = dailyBriefMailReadRequest(action.args);
+      if (request === null) {
+        this.logHtmlHomeActionError(action, 'daily_brief_mail_invalid');
+        return true;
+      }
+      await this.callToolById(
+        request.toolId,
+        action.prompt.length > 0 ? action.prompt : action.label,
+        action.id,
+        request.args
+      );
+      return true;
+    }
+    if (action.id === 'daily.brief.route.open' || action.id === 'daily.brief.ride.estimate') {
+      const date = this.dailyBriefSnapshot === null ? dailyBriefDate(new Date()) : this.dailyBriefSnapshot.date;
+      const request = dailyBriefScenarioToolRequest(action.id, date);
+      if (request === null) {
+        this.logHtmlHomeActionError(action, 'daily_brief_scenario_invalid');
+        return true;
+      }
+      if (request.toolId === 'maps.route.open') {
+        const scenario = dailyBriefDemoScenario(date);
+        try {
+          const context = this.getUIContext().getHostContext() as common.Context;
+          await petalMaps.openMapRoutePlan(context, {
+            originPosition: { longitude: scenario.originLongitude, latitude: scenario.originLatitude },
+            originName: scenario.origin,
+            destinationPosition: {
+              longitude: scenario.destinationLongitude,
+              latitude: scenario.destinationLatitude
+            },
+            destinationName: scenario.destination,
+            vehicleType: petalMaps.VehicleType.DRIVING,
+            coordinateType: mapCommon.CoordinateType.GCJ02
+          });
+          aiLogInfo('[AIPhone][DailyBriefRouteOpen] ok=true');
+        } catch (error) {
+          const businessError = error as BusinessError;
+          aiLogError('[AIPhone][DailyBriefRouteOpen] ok=false code=' + businessError.code.toString());
+        }
+      } else {
+        await this.callToolById(request.toolId, action.label, action.id, request.args);
+      }
+      return true;
+    }
+    if (this.dailyBriefSnapshot !== null) {
+      const surface = createDailyBriefWaterfallSurface(this.dailyBriefSnapshot);
+      if (surface !== null) {
+        this.forceApplySurface(surface, 'daily_brief_discovery');
+      }
+    }
+    return true;
+  }
+
+  private async catchUpDailyBriefIfNeeded(): Promise<void> {
+    const store = this.dailyBriefStore();
+    const context = this.getUIContext().getHostContext() as common.Context;
+    if (store === null || context === null) {
+      return;
+    }
+    const now = new Date();
+    const preference = store.loadPreference();
+    scheduleNextDailyBrief(context.applicationInfo.name, now, preference.targetTime);
+    const existing = store.snapshotForDate(dailyBriefDate(now));
+    const eligible = shouldStartDailyBriefCatchUp(
+      now, preference.targetTime, existing !== null, false
+    );
+    const transition = transitionDailyBriefCatchUp(
+      this.dailyBriefCatchUpPending, 'lifecycle', eligible, this.isBusy
+    );
+    this.dailyBriefCatchUpPending = transition.pending;
+    if (!transition.run) {
+      return;
+    }
+    await this.openDailyBrief(false);
+  }
+
+  private async resumeDailyBriefCatchUpAfterIdle(): Promise<void> {
+    await Promise.resolve();
+    await this.catchUpDailyBriefIfNeeded();
+  }
+
+  private finishForegroundTurn(): void {
+    this.isBusy = false;
+    const transition = transitionDailyBriefCatchUp(
+      this.dailyBriefCatchUpPending, 'idle', false, this.isBusy
+    );
+    this.dailyBriefCatchUpPending = transition.pending;
+    if (transition.run) {
+      void this.resumeDailyBriefCatchUpAfterIdle();
+    }
+  }
+
   private async openExternalUrl(
     url: string,
     allowedSchemes: string[] = ['https']
@@ -3622,6 +3935,19 @@ struct Index {
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
+    const directDailyBriefRequest = resolveA2uiHomeSubmitToolRequest(trimmed);
+    if (directDailyBriefRequest !== null) {
+      this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
+      this.appendMessage('user', visibleText);
+      this.inputText = inputTextAfterPromptSubmit(this.inputText);
+      await this.callToolById(
+        directDailyBriefRequest.toolId,
+        directDailyBriefRequest.prompt,
+        directDailyBriefRequest.actionId,
+        directDailyBriefRequest.args
+      );
+      return;
+    }
     const modelPrompt = modelPromptWithActionContext(trimmed, actionId, actionArgs);
     const request: BimForegroundRequest = buildBimForegroundRequest(
       modelPrompt, this.bimStore().list(), sourceBimId
@@ -3742,7 +4068,7 @@ struct Index {
     } finally {
       if (this.runtimeGeneration === turnGeneration) {
         this.isAwaitingFirstSurface = false;
-        this.isBusy = false;
+        this.finishForegroundTurn();
         if (isMultiTaskSurface(this.currentSurface)) {
           this.syncMultiTaskPayloadUpdate(this.withMultiTaskActiveSection(this.currentHtmlHomeDocument()));
           this.scheduleMultiTaskPayloadRefresh();
@@ -5514,6 +5840,9 @@ struct Index {
 
   private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
+    if (await this.handleDailyBriefClientAction(action)) {
+      return;
+    }
     if (action.id === 'html_mail_calendar_add') {
       await this.addSuggestedMailCalendarEvent(action);
       return;
@@ -6000,7 +6329,7 @@ struct Index {
       if (usesPageBusy && runtimeCallbackIsCurrent(
         this.activeRuntimeOwner, this.runtimeGeneration, 'multi_agent', actionGeneration
       )) {
-        this.isBusy = false;
+        this.finishForegroundTurn();
       }
     }
   }
@@ -6050,7 +6379,7 @@ struct Index {
         if (runtimeCallbackIsCurrent(
           this.activeRuntimeOwner, this.runtimeGeneration, 'multi_agent', actionGeneration
         )) {
-          this.isBusy = false;
+          this.finishForegroundTurn();
         }
       }
       return;
@@ -6078,7 +6407,7 @@ struct Index {
           action.args === undefined ? null : action.args
         );
       } finally {
-        this.isBusy = false;
+        this.finishForegroundTurn();
       }
       return;
     }
@@ -6311,6 +6640,20 @@ struct Index {
       ' promptChars=' + prompt.length.toString() +
       ' actionId=' + actionId +
       ' gateway=' + TOOL_GATEWAY_URL);
+    if (toolId === 'daily.brief.open') {
+      let regenerate = prompt.indexOf('重新生成') >= 0 ||
+        prompt.indexOf('重做日报') >= 0 || prompt.indexOf('刷新日报') >= 0;
+      if (args !== null) {
+        const validation = validateRegisteredPageActionArgs(toolId, args);
+        if (!validation.ok) {
+          aiLogError('[AIPhone][DailyBriefOpenRejected] code=' + validation.code);
+          return false;
+        }
+        const values = args as Record<string, Object | string | number | boolean | null | undefined>;
+        regenerate = regenerate || values['regenerate'] === true;
+      }
+      return this.openDailyBrief(regenerate);
+    }
     if (toolId === 'worldcup.open') {
       aiLogInfo('[AIPhone][AnythingDemoRouteByTool] actionId=' + actionId +
         ' promptChars=' + prompt.length.toString());
@@ -6655,7 +6998,7 @@ struct Index {
         error: message
       }));
     } finally {
-      this.isBusy = false;
+      this.finishForegroundTurn();
     }
   }
 
@@ -6911,6 +7254,19 @@ struct Index {
         },
         onRememberBim: () => {
           this.rememberSuggestedBim();
+        },
+        onReturnDailyBrief: () => {
+          aiLogInfo('[AIPhone][DailyBriefReturn] source=native_child');
+          const snapshot = this.dailyBriefSnapshot;
+          const store = this.dailyBriefStore();
+          if (snapshot !== null && store !== null) {
+            this.forceApplySurface(
+              createDailyBriefSurface(snapshot, store.loadPreference()),
+              'daily_brief_return'
+            );
+            return;
+          }
+          void this.openDailyBrief(false);
         },
         onToggleHistory: () => {
           this.showHistory = !this.showHistory;

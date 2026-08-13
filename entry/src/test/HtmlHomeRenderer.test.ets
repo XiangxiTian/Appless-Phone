@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   A2uiAction,
+  A2uiSurfaceState,
   A2uiSurfaceStore,
   HotelSearchResult,
   hotelSearchA2ui,
@@ -17,6 +18,25 @@ import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlM
 import { createFirecrawlPendingDocument } from '../main/ets/pages/A2uiHome/html/HtmlFirecrawlHomeRenderer';
 import { createHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeSnapshot';
 import {
+  buildDailyBriefFixtureDiscovery,
+  buildDailyBriefFixtureSections,
+  createDailyBriefLoadingSurface,
+  createDailyBriefSurface,
+  createDailyBriefWaterfallSurface,
+  defaultDailyBriefPreference,
+  projectDailyBriefDiscovery,
+  selectDailyBriefTopThree
+} from '../main/ets/pages/A2uiHome/dailybrief/DailyBriefCore';
+import {
+  DailyBriefDiscoveryItem,
+  DailyBriefItem,
+  DailyBriefPreference,
+  DailyBriefSection,
+  DailyBriefSnapshot,
+  DailyBriefSourceState,
+  DailyBriefSourceSummary
+} from '../main/ets/pages/A2uiHome/dailybrief/DailyBriefTypes';
+import {
   HtmlHomeAction,
   HtmlHomeBlock,
   HtmlHomeDocument,
@@ -27,7 +47,10 @@ import {
   popupSubtitleFromTitle,
   popupTitleFromUrl
 } from '../main/ets/pages/A2uiHome/components/HtmlHomeSurfaceView';
-import { shouldShowHomeChrome } from '../main/ets/pages/A2uiHome/components/HomePage';
+import {
+  shouldShowDailyBriefReturn,
+  shouldShowHomeChrome
+} from '../main/ets/pages/A2uiHome/components/HomePage';
 import { renderRideDriverMapHtml } from '../main/ets/pages/A2uiHome/html/RideDriverMapHtmlRenderer';
 import {
   advanceWaterfallFeed,
@@ -58,6 +81,173 @@ interface MapsOpenArgsFixture {
 
 interface RenderedHomeDataFixture {
   blocks: HtmlHomeBlock[];
+}
+
+function dailyBriefItem(
+  id: string,
+  sourceId: 'calendar' | 'todo' | 'yesterday' | 'mail' | 'weather' | 'commute' | 'health' | 'spending',
+  title: string,
+  summary: string,
+  timeLabel: string,
+  stateAction: A2uiAction | undefined = undefined
+): DailyBriefItem {
+  const item: DailyBriefItem = {
+    id: id,
+    sourceId: sourceId,
+    sourceRecordId: id,
+    title: title,
+    summary: summary,
+    timeLabel: timeLabel,
+    startsAt: sourceId === 'calendar' ? '2026-08-10T09:30:00+08:00' : '',
+    dueAt: sourceId === 'yesterday' ? '2026-08-10T11:00:00+08:00' : '',
+    leaveBy: sourceId === 'commute' ? '2026-08-10T08:33:00+08:00' : '',
+    completed: false,
+    needsAction: sourceId === 'mail' || sourceId === 'yesterday',
+    severity: sourceId === 'weather' || sourceId === 'commute' ? 'warn' :
+      (sourceId === 'health' || sourceId === 'spending' ? 'notice' : 'none')
+  };
+  if (stateAction !== undefined) {
+    item.action = stateAction;
+  }
+  return item;
+}
+
+function dailyBriefSection(
+  id: 'today' | 'yesterday' | 'mail' | 'weather_commute' | 'health' | 'spending',
+  title: string,
+  state: 'success' | 'fixture' | 'empty' | 'needs_auth' | 'error' | 'timeout',
+  message: string,
+  items: DailyBriefItem[]
+): DailyBriefSection {
+  return { id: id, title: title, state: state, message: message, items: items };
+}
+
+function dailyBriefAction(id: string, label: string, args: Object | undefined = undefined): A2uiAction {
+  const action: A2uiAction = {
+    id: id,
+    label: label,
+    prompt: label,
+    variant: id === 'daily.brief.regenerate' ? 'primary' : 'secondary',
+    kind: 'client'
+  };
+  if (args !== undefined) {
+    action.args = args;
+  }
+  return action;
+}
+
+function dailyBriefDocumentFixture(editableBudget: number = 5): HtmlHomeDocument {
+  const mailAction = dailyBriefAction('daily.brief.mail.read', '查看邮件', JSON.parse(
+    '{"provider":"gmail","threadId":"thread-1","messageId":"message-1","requestKey":"gmail:thread-1"}'
+  ) as Object);
+  const sections: DailyBriefSection[] = [
+    dailyBriefSection('today', '今日日程', 'empty', '今天没有日程', []),
+    dailyBriefSection('yesterday', '昨日延续', 'fixture', '昨日未完成事项', [
+      dailyBriefItem('yesterday-1', 'yesterday', 'Waterfall follow-up', '跟进昨天的反馈', '11:00')
+    ]),
+    dailyBriefSection('mail', '重要消息', 'needs_auth', '请连接邮箱后查看重要消息', [
+      dailyBriefItem('mail-1', 'mail', '林然：评审确认', '请在会前确认结论', '未读', mailAction)
+    ]),
+    dailyBriefSection('weather_commute', '天气与通勤', 'error', '实时通勤服务暂不可用', [
+      dailyBriefItem('weather-1', 'weather', '今天有雨', '出门记得带伞', '有雨'),
+      dailyBriefItem('commute-1', 'commute', '通勤约 45 分钟', '建议提前 12 分钟出发', '提前 12 分钟')
+    ]),
+    dailyBriefSection('health', '健康', 'error', '健康数据暂不可用', []),
+    dailyBriefSection('spending', '消费建议', 'empty', '昨日暂无消费记录', [])
+  ];
+  const frozen: DailyBriefPreference = defaultDailyBriefPreference();
+  const editable: DailyBriefPreference = defaultDailyBriefPreference();
+  editable.timeBudgetMinutes = editableBudget;
+  const snapshot: DailyBriefSnapshot = {
+    schemaVersion: 1,
+    date: '2026-08-10',
+    generatedAt: '2026-08-10T08:31:00+08:00',
+    status: 'partial',
+    profile: frozen,
+    topThree: selectDailyBriefTopThree(sections),
+    sections: sections,
+    discovery: [{
+      id: 'discovery-1',
+      source: 'Hacker News',
+      mediaType: 'post',
+      title: 'Agent runtime discussion',
+      summary: '一条与偏好相关的公开讨论',
+      url: 'https://news.ycombinator.com/item?id=123',
+      reason: '匹配 Agent 主题',
+      timeBudgetLabel: '3 分钟'
+    }],
+    sources: [],
+    waterfall: null,
+    actions: [
+      dailyBriefAction('daily.brief.regenerate', '重新生成'),
+      dailyBriefAction('daily.brief.preference.save', '保存偏好', frozen),
+      dailyBriefAction('daily.brief.history.open', '前一天', JSON.parse('{"direction":"previous"}') as Object),
+      dailyBriefAction('daily.brief.history.open', '今天', JSON.parse('{"direction":"today"}') as Object),
+      dailyBriefAction('daily.brief.history.open', '后一天', JSON.parse('{"direction":"next"}') as Object),
+      dailyBriefAction('daily.brief.route.open', '查看路线'),
+      dailyBriefAction('daily.brief.ride.estimate', '预估车型'),
+      mailAction,
+      dailyBriefAction('daily.brief.discovery.open', '查看完整发现流')
+    ]
+  };
+  return createHtmlHomeDocument({
+    surface: createDailyBriefSurface(snapshot, editable),
+    messages: [],
+    isBusy: false,
+    isAwaitingFirstSurface: false
+  });
+}
+
+function dailyBriefRankedCandidate(
+  id: string,
+  mediaType: 'video' | 'image_text' | 'post',
+  url: string,
+  source: string,
+  duration: string = ''
+): WaterfallRankedCandidate {
+  return {
+    id: id,
+    source: source,
+    mediaType: mediaType,
+    title: id + ' title',
+    summary: id + ' summary',
+    url: url,
+    coverUrl: '',
+    publishedAt: '2026-08-10T00:00:00Z',
+    duration: duration,
+    originalIndex: 0,
+    normalizedUrl: url,
+    signals: { relevanceTier: 3, titleHits: 1, summaryHits: 0, freshnessTier: 4 },
+    reason: '匹配长期偏好'
+  };
+}
+
+function dailyBriefWaterfall(
+  current: WaterfallRankedCandidate,
+  stable: WaterfallRankedCandidate[]
+): WaterfallFeedState {
+  return {
+    query: 'AI 产品',
+    enabledSources: ['youtube', 'zhihu'],
+    preferenceDescription: '中文优先',
+    shown: [],
+    current: current,
+    stable: stable,
+    tail: [],
+    sources: []
+  };
+}
+
+function datedMail(
+  id: string,
+  title: string,
+  startsAt: string,
+  action: A2uiAction
+): DailyBriefItem {
+  const value = dailyBriefItem(id, 'mail', title, title + '摘要', '未读', action);
+  value.sourceRecordId = 'gmail:' + id;
+  value.startsAt = startsAt;
+  return value;
 }
 
 function renderedActionByLabel(html: string, label: string): A2uiAction | null {
@@ -1464,6 +1654,469 @@ function expectCalmUtilityPalette(document: HtmlHomeDocument): void {
 
 export default function htmlHomeRendererTest() {
   describe('htmlHomeRenderer', () => {
+    it('renders the complete personal daily brief from the frozen snapshot', 0, () => {
+      const html = renderHtmlHomeDocument(dailyBriefDocumentFixture());
+      const required = [
+        '个人日报', '2026-08-10T08:31:00+08:00', '时间约束', '需要处理', '状态提醒',
+        '天气', '通勤', '健康', '消费', '今日日程', '昨日延续', '重要消息', '天气与通勤',
+        '消费建议', '为你发现', '基于你的偏好'
+      ];
+
+      required.forEach((value: string): void => {
+        expect(html.indexOf(value)).assertLarger(-1);
+      });
+      expect(html.indexOf('value="5"')).assertLarger(-1);
+      expect(html.indexOf('生成时偏好 · 15 分钟')).assertLarger(-1);
+      expect(html.indexOf('今天没有日程')).assertLarger(-1);
+      expect(html.indexOf('连接邮箱后查看今日邮件')).assertLarger(-1);
+      expect(html.indexOf('实时通勤服务暂不可用')).assertLarger(-1);
+      expect(html.indexOf('健康数据暂不可用')).assertLarger(-1);
+      expect(html.indexOf('昨日暂无消费记录')).assertLarger(-1);
+    });
+
+    it('renders daily brief body sections in fixed semantic order', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      const sections = snapshot.sections;
+      snapshot.sections = [sections[5], sections[4], sections[3], sections[2], sections[1], sections[0]];
+      const html = renderHtmlHomeDocument(doc);
+      const today = html.indexOf('<h2>今日日程</h2>');
+      const yesterday = html.indexOf('<h2>昨日延续</h2>');
+      const mail = html.indexOf('<h2>重要消息</h2>');
+      const weather = html.indexOf('<h2>天气与通勤</h2>');
+      const health = html.indexOf('<h2>健康</h2>');
+      const spending = html.indexOf('<h2>消费建议</h2>');
+
+      expect(today).assertLarger(-1);
+      expect(yesterday).assertLarger(today);
+      expect(mail).assertLarger(yesterday);
+      expect(weather).assertLarger(mail);
+      expect(health).assertLarger(weather);
+      expect(spending).assertLarger(health);
+      expect(html.indexOf('今天没有日程')).assertLarger(-1);
+      expect(html.indexOf('昨日暂无消费记录')).assertLarger(-1);
+    });
+
+    it('keeps unavailable Waterfall diagnostics out while showing fallback discovery', 0, () => {
+      const summaries: DailyBriefSourceSummary[] = [
+        { sourceId: 'waterfall', state: 'empty', message: '聚合搜索没有返回可见结果' },
+        { sourceId: 'waterfall', state: 'needs_auth', message: '聚合搜索需要连接账号' },
+        { sourceId: 'waterfall', state: 'error', message: '聚合搜索服务暂不可用' },
+        { sourceId: 'waterfall', state: 'timeout', message: '聚合搜索超过本次等待时间' }
+      ];
+      summaries.forEach((summary: DailyBriefSourceSummary): void => {
+        const doc = dailyBriefDocumentFixture();
+        const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+        snapshot.discovery = [];
+        snapshot.sources = [
+          { sourceId: 'calendar', state: 'success', message: '日历内部状态不应出现在发现区' },
+          summary,
+          { sourceId: 'mail', state: 'success', message: '邮件内部状态不应出现在发现区' }
+        ];
+        const normalized = createHtmlHomeDocument({
+          surface: createDailyBriefSurface(snapshot),
+          messages: [],
+          isBusy: false,
+          isAwaitingFirstSurface: false
+        });
+        const html = renderHtmlHomeDocument(normalized);
+        const start = html.indexOf('<h2>为你发现</h2>');
+        const end = html.indexOf('<section class="daily-preference">', start);
+        const discovery = html.substring(start, end);
+
+        expect(start).assertLarger(-1);
+        expect(end).assertLarger(start);
+        expect(discovery.indexOf('Agent 产品设计的三个关键取舍')).assertLarger(-1);
+        expect(discovery.indexOf(summary.message)).assertEqual(-1);
+        expect(discovery.indexOf('<span class="daily-state">' + summary.state + '</span>')).assertEqual(-1);
+        expect(discovery.indexOf('日历内部状态不应出现在发现区')).assertEqual(-1);
+        expect(discovery.indexOf('邮件内部状态不应出现在发现区')).assertEqual(-1);
+      });
+    });
+
+    it('reprojects historical mail into a compact current-day summary without actions or diagnostics', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      const mail = snapshot.sections[2];
+      const action = snapshot.actions[7];
+      mail.state = 'error';
+      mail.message = 'OUTLOOK_SEARCH_MESSAGES personal account unsupported';
+      mail.items = [
+        datedMail('mail-1', '第一封', '2026-08-10T14:00:00+08:00', action),
+        datedMail('mail-2', '第二封', '2026-08-10T13:00:00+08:00', action),
+        datedMail('mail-3', '第三封', '2026-08-10T12:00:00+08:00', action),
+        datedMail('mail-4', '第四封', '2026-08-10T11:00:00+08:00', action),
+        datedMail('mail-5', '第五封', '2026-08-10T10:00:00+08:00', action),
+        datedMail('mail-6', '第六封', '2026-08-10T09:00:00+08:00', action),
+        datedMail('mail-7', '第七封', '2026-08-10T08:00:00+08:00', action),
+        datedMail('mail-old', '前一天邮件', '2026-08-09T23:59:00+08:00', action)
+      ];
+
+      const html = renderHtmlHomeDocument(doc);
+      const start = html.indexOf('<h2>重要消息</h2>');
+      const end = html.indexOf('<h2>天气与通勤</h2>', start);
+      const mailHtml = html.substring(start, end);
+
+      expect(mailHtml.indexOf('今天共 6 封邮件')).assertLarger(-1);
+      expect(mailHtml.indexOf('第六封')).assertLarger(-1);
+      expect(mailHtml.indexOf('第七封')).assertEqual(-1);
+      expect(mailHtml.indexOf('前一天邮件')).assertEqual(-1);
+      expect(mailHtml.indexOf('OUTLOOK_SEARCH_MESSAGES')).assertEqual(-1);
+      expect(mailHtml.indexOf('获取失败')).assertEqual(-1);
+      expect(mailHtml.indexOf('查看邮件')).assertLarger(-1);
+      expect(mailHtml.indexOf('data-daily-action')).assertLarger(-1);
+      expect(mailHtml.indexOf('未读')).assertEqual(-1);
+      expect(mailHtml.indexOf('daily-mail-title')).assertLarger(-1);
+      expect(mailHtml.indexOf('daily-mail-summary')).assertLarger(-1);
+    });
+
+    it('keeps real unsupported mail as title and summary without a fake action', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      const fallback = dailyBriefItem(
+        'mail-fallback', 'mail', '产品周报已更新', '包含本周关键进展和待确认事项', '09:10'
+      );
+      fallback.startsAt = '2026-08-10T09:10:00+08:00';
+      snapshot.sections[2].items = [fallback];
+
+      const html = renderHtmlHomeDocument(doc);
+      const start = html.indexOf('<h2>重要消息</h2>');
+      const end = html.indexOf('<h2>天气与通勤</h2>', start);
+      const mailHtml = html.substring(start, end);
+
+      expect(mailHtml.indexOf('产品周报已更新')).assertLarger(-1);
+      expect(mailHtml.indexOf('包含本周关键进展和待确认事项')).assertLarger(-1);
+      expect(mailHtml.indexOf('查看摘要')).assertEqual(-1);
+      expect(mailHtml.indexOf('daily.brief.mail.read')).assertEqual(-1);
+      expect(mailHtml.indexOf('data-daily-action')).assertEqual(-1);
+    });
+
+    it('renders at most three discovery summaries in one column without raw provider errors', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      const discoveries: DailyBriefDiscoveryItem[] = [];
+      for (let index = 1; index <= 4; index += 1) {
+        discoveries.push({
+          id: 'discovery-' + index.toString(),
+          source: 'Hacker News',
+          mediaType: 'post',
+          title: '发现标题 ' + index.toString(),
+          summary: '这是一段很长的发现摘要 ' + index.toString(),
+          url: 'https://news.ycombinator.com/item?id=' + index.toString(),
+          reason: '因为匹配你的长期偏好',
+          timeBudgetLabel: '3 分钟'
+        });
+      }
+      snapshot.discovery = discoveries;
+      snapshot.sources = [{
+        sourceId: 'waterfall',
+        state: 'error',
+        message: '{"code":2300028,"message":"Operation timeout"}'
+      }];
+
+      const html = renderHtmlHomeDocument(doc);
+      const start = html.indexOf('<h2>为你发现</h2>');
+      const end = html.indexOf('<section class="daily-preference">', start);
+      const discoveryHtml = html.substring(start, end);
+
+      expect(discoveryHtml.indexOf('daily-discovery-list')).assertLarger(-1);
+      expect(discoveryHtml.indexOf('daily-discovery-grid')).assertEqual(-1);
+      expect(discoveryHtml.indexOf('已精选 3 条')).assertLarger(-1);
+      expect(discoveryHtml.indexOf('部分来源稍后补全')).assertLarger(-1);
+      expect(discoveryHtml.indexOf('发现标题 3')).assertLarger(-1);
+      expect(discoveryHtml.indexOf('发现标题 4')).assertEqual(-1);
+      expect(discoveryHtml.indexOf('2300028')).assertEqual(-1);
+      expect(discoveryHtml.indexOf('Operation timeout')).assertEqual(-1);
+      expect(discoveryHtml.indexOf('daily-discovery-title')).assertLarger(-1);
+      expect(discoveryHtml.indexOf('daily-discovery-summary')).assertLarger(-1);
+      expect(discoveryHtml.indexOf('daily-discovery-reason')).assertLarger(-1);
+    });
+
+    it('adds visual media weather and commute affordances without leaving the App', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      const video = dailyBriefRankedCandidate(
+        'video-demo', 'video', 'https://www.youtube.com/watch?v=demo', 'youtube', '12:24'
+      );
+      video.coverUrl = 'https://i.ytimg.com/vi/demo/hqdefault.jpg';
+      const post = dailyBriefRankedCandidate(
+        'post-demo', 'post', 'https://www.zhihu.com/question/demo', 'zhihu'
+      );
+      snapshot.waterfall = dailyBriefWaterfall(post, []);
+      snapshot.waterfall.shown = [video];
+      snapshot.discovery = projectDailyBriefDiscovery(dailyBriefWaterfall(post, []));
+
+      const html = renderHtmlHomeDocument(doc);
+
+      expect(html.indexOf('☔')).assertLarger(-1);
+      expect(html.indexOf('🚕')).assertLarger(-1);
+      expect(html.indexOf('查看路线')).assertLarger(-1);
+      expect(html.indexOf('预估车型')).assertLarger(-1);
+      expect(html.indexOf('daily.brief.route.open')).assertLarger(-1);
+      expect(html.indexOf('daily.brief.ride.estimate')).assertLarger(-1);
+      expect(html.indexOf('data-route-toggle')).assertEqual(-1);
+      expect(html.indexOf('data-ride-toggle')).assertEqual(-1);
+      expect(html.indexOf('daily-discovery-cover')).assertLarger(-1);
+      expect(html.indexOf('视频精华预览')).assertLarger(-1);
+      expect(html.indexOf('视频')).assertLarger(-1);
+      expect(html.indexOf('讨论')).assertLarger(-1);
+      expect(html.indexOf('进入发现流')).assertLarger(-1);
+      expect(html.indexOf('在 App 内查看')).assertLarger(-1);
+      expect(html.indexOf('02:18')).assertEqual(-1);
+      expect(html.indexOf("window.open(url, '_blank')")).assertEqual(-1);
+      expect(html.indexOf('data-source-url')).assertEqual(-1);
+      expect(html.indexOf('.daily-source-row .daily-button{flex:0 0 auto;white-space:nowrap}')).assertLarger(-1);
+      expect(html.indexOf('.daily-section-head>*:first-child{min-width:0}')).assertLarger(-1);
+      expect(html.indexOf('.daily-discovery-card>div:last-child{min-width:0}')).assertLarger(-1);
+      expect(html.indexOf('.daily-source-row{flex-wrap:nowrap;min-width:0}')).assertLarger(-1);
+    });
+
+    it('keeps full discovery source tags visually separated from titles', 0, () => {
+      const daily = dailyBriefDocumentFixture();
+      const surface = createDailyBriefWaterfallSurface(daily.dailyBrief as DailyBriefSnapshot);
+      const discovery = createHtmlHomeDocument({
+        surface: surface as A2uiSurfaceState,
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      const html = renderHtmlHomeDocument(discovery);
+
+      expect(html.indexOf('.waterfall-cinema-meta')).assertLarger(-1);
+      expect(html.indexOf('margin-bottom: 18px;')).assertLarger(-1);
+      expect(html.indexOf('.waterfall-cinema-card h2')).assertLarger(-1);
+    });
+
+    it('keeps important messages concise without raw provider failure copy', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      snapshot.topThree[0].item.summary = '天气获取失败，请稍后查看';
+
+      const html = renderHtmlHomeDocument(doc);
+
+      expect(html.indexOf('.daily-highlight p{display:-webkit-box')).assertLarger(-1);
+      expect(html.indexOf('-webkit-line-clamp:2')).assertLarger(-1);
+      expect(html.indexOf('天气获取失败')).assertEqual(-1);
+      expect(html.indexOf('天气暂不可用')).assertLarger(-1);
+    });
+
+    it('shows deterministic office and airport outfits with packaged photos', 0, () => {
+      const office = dailyBriefDocumentFixture();
+      (office.dailyBrief as DailyBriefSnapshot).date = '2026-08-11';
+      const airport = dailyBriefDocumentFixture();
+      (airport.dailyBrief as DailyBriefSnapshot).date = '2026-08-12';
+
+      const officeHtml = renderHtmlHomeDocument(office);
+      const airportHtml = renderHtmlHomeDocument(airport);
+
+      expect(officeHtml.indexOf('穿衣推荐')).assertLarger(-1);
+      expect(officeHtml.indexOf('秋港花园 → 坂田华为基地 D 区')).assertLarger(-1);
+      expect(officeHtml.indexOf('resource://rawfile/daily/outfit-office-real.png')).assertLarger(-1);
+      expect(airportHtml.indexOf('穿衣推荐')).assertLarger(-1);
+      expect(airportHtml.indexOf('秋港花园 → 深圳宝安机场')).assertLarger(-1);
+      expect(airportHtml.indexOf('resource://rawfile/daily/outfit-airport-real.png')).assertLarger(-1);
+      expect(airportHtml.indexOf('Demo 衣橱素材')).assertEqual(-1);
+
+      const clear = dailyBriefDocumentFixture();
+      (clear.dailyBrief as DailyBriefSnapshot).date = '2026-08-13';
+      expect(renderHtmlHomeDocument(clear).indexOf('resource://rawfile/daily/outfit-clear-real.png')).assertLarger(-1);
+    });
+
+    it('keeps daily controls compact and spending actions preview-only', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      snapshot.date = '2026-08-12';
+      snapshot.sections = buildDailyBriefFixtureSections(new Date('2026-08-12T08:31:00+08:00'));
+
+      const html = renderHtmlHomeDocument(doc);
+      const heroEnd = html.indexOf('</header>');
+      const hero = html.substring(0, heroEnd);
+
+      expect(hero.indexOf('aria-label="重新生成"')).assertLarger(-1);
+      expect(hero.indexOf('>↻</button>')).assertLarger(-1);
+      expect(hero.indexOf('>前一天</button>')).assertLarger(-1);
+      expect(hero.indexOf('>回今天</button>')).assertLarger(-1);
+      expect(html.indexOf('>next</button>')).assertEqual(-1);
+      expect(html.indexOf('Demo')).assertEqual(-1);
+      expect(html.indexOf('.daily-route-card{border:1px solid var(--line);background:#fff')).assertLarger(-1);
+      expect(html.indexOf('conic-gradient')).assertLarger(-1);
+      expect(html.indexOf('房租')).assertLarger(-1);
+      expect(html.indexOf('水电')).assertLarger(-1);
+      expect(html.indexOf('话费')).assertLarger(-1);
+      expect(html.indexOf('data-bill-toggle')).assertLarger(-1);
+      expect(html.indexOf('尚未支付')).assertLarger(-1);
+      expect(html.indexOf('支付成功')).assertEqual(-1);
+    });
+
+    it('uses packaged media cover and keeps fallback discovery interactive', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      snapshot.discovery = buildDailyBriefFixtureDiscovery(snapshot.date);
+      snapshot.waterfall = null;
+
+      const html = renderHtmlHomeDocument(doc);
+
+      expect(html.indexOf('resource://rawfile/daily/discovery-video-fallback.png')).assertLarger(-1);
+      expect(html.indexOf('onerror=')).assertLarger(-1);
+      expect(html.indexOf('进入发现流')).assertLarger(-1);
+    });
+
+    it('maps live section states to user labels without exposing fixture or internal enums', 0, () => {
+      const doc = dailyBriefDocumentFixture();
+      const snapshot = doc.dailyBrief as DailyBriefSnapshot;
+      const states: DailyBriefSourceState[] = [
+        'fixture', 'success', 'empty', 'needs_auth', 'error', 'timeout'
+      ];
+      const messages: string[] = [
+        '固定内容仍然如实展示', '实时日程已更新', '邮箱没有重要消息',
+        '通勤服务需要连接账号', '健康服务暂不可用', '消费服务超过等待时间'
+      ];
+      const labels: string[] = ['已更新', '需要授权', '暂不可用', '稍后补全'];
+      snapshot.sections.forEach((section: DailyBriefSection, index: number): void => {
+        section.state = states[index];
+        section.message = messages[index];
+      });
+
+      const html = renderHtmlHomeDocument(doc);
+      const start = html.indexOf('<h2>今日日程</h2>');
+      const end = html.indexOf('<h2>为你发现</h2>', start);
+      const bodySections = html.substring(start, end);
+      expect(start).assertLarger(-1);
+      expect(end).assertLarger(start);
+      labels.forEach((label: string): void => expect(bodySections.indexOf(label)).assertLarger(-1));
+      messages.forEach((message: string, index: number): void => {
+        if (index !== 2) expect(bodySections.indexOf(message)).assertLarger(-1);
+      });
+      expect(bodySections.indexOf('今天没有邮件')).assertLarger(-1);
+      states.forEach((state: DailyBriefSourceState): void => {
+        expect(bodySections.indexOf('<span class="daily-state">' + state + '</span>')).assertEqual(-1);
+      });
+    });
+
+    it('renders malformed parseable daily brief models without attaching or crashing', 0, () => {
+      const malformedModels: string[] = [
+        '{"dailyBrief":{}}',
+        '{"dailyBrief":null}',
+        '{"dailyBrief":{"schemaVersion":1,"date":"2026-08-10","generatedAt":"2026-08-10T08:31:00+08:00",' +
+          '"status":"complete","profile":{},"topThree":[],"sections":[],"discovery":[],"sources":[]}}'
+      ];
+
+      malformedModels.forEach((dataModelJson: string): void => {
+        const malformedSurface = createDailyBriefLoadingSurface('2026-08-10');
+        malformedSurface.title = '个人日报生成失败';
+        malformedSurface.status = 'error';
+        malformedSurface.error = '日报快照格式无效';
+        malformedSurface.dataModelJson = dataModelJson;
+        let doc: HtmlHomeDocument | null = null;
+        let html = '';
+        let threw = false;
+        try {
+          doc = createHtmlHomeDocument({
+            surface: malformedSurface,
+            messages: [],
+            isBusy: false,
+            isAwaitingFirstSurface: false
+          });
+          html = renderHtmlHomeDocument(doc);
+        } catch (_error) {
+          threw = true;
+        }
+
+        expect(threw).assertFalse();
+        expect(doc?.kind ?? '').assertEqual('daily-brief');
+        expect(doc?.dailyBrief === undefined).assertTrue();
+        expect(html.indexOf('个人日报生成失败')).assertLarger(-1);
+        expect(html.indexOf('日报快照格式无效')).assertLarger(-1);
+      });
+    });
+
+    it('renders a parseable daily brief item with a null action safely', 0, () => {
+      const fixture = dailyBriefDocumentFixture();
+      const snapshot = fixture.dailyBrief as DailyBriefSnapshot;
+      const malformedSurface = createDailyBriefSurface(snapshot);
+      snapshot.sections[2].items[0] = JSON.parse('{"id":"mail-1","sourceId":"mail",' +
+        '"sourceRecordId":"mail-1","title":"Message","summary":"Summary","timeLabel":"Unread",' +
+        '"startsAt":"","dueAt":"","leaveBy":"","completed":false,"needsAction":true,' +
+        '"severity":"none","action":null}') as DailyBriefItem;
+      malformedSurface.dataModelJson = JSON.stringify({ dailyBrief: snapshot });
+      malformedSurface.title = '个人日报生成失败';
+      malformedSurface.status = 'error';
+      malformedSurface.error = '日报快照格式无效';
+      let doc: HtmlHomeDocument | null = null;
+      let html = '';
+      let threw = false;
+      try {
+        doc = createHtmlHomeDocument({
+          surface: malformedSurface,
+          messages: [],
+          isBusy: false,
+          isAwaitingFirstSurface: false
+        });
+        html = renderHtmlHomeDocument(doc);
+      } catch (_error) {
+        threw = true;
+      }
+
+      expect(threw).assertFalse();
+      expect(doc?.kind ?? '').assertEqual('daily-brief');
+      expect(doc?.dailyBrief === undefined).assertTrue();
+      expect(html.indexOf('个人日报生成失败')).assertLarger(-1);
+      expect(html.indexOf('日报快照格式无效')).assertLarger(-1);
+    });
+
+    it('shows the parsed http hostname and suppresses malformed source links', 0, () => {
+      const authorityDoc = dailyBriefDocumentFixture();
+      (authorityDoc.dailyBrief as DailyBriefSnapshot).discovery[0].url =
+        'https://trusted.example@evil.example/x';
+      const authorityHtml = renderHtmlHomeDocument(authorityDoc);
+      const invalidDoc = dailyBriefDocumentFixture();
+      (invalidDoc.dailyBrief as DailyBriefSnapshot).discovery[0].url = 'https://[invalid';
+      const invalidHtml = renderHtmlHomeDocument(invalidDoc);
+      const invalidPortDoc = dailyBriefDocumentFixture();
+      (invalidPortDoc.dailyBrief as DailyBriefSnapshot).discovery[0].url = 'https://evil.example:notaport/x';
+      const invalidPortHtml = renderHtmlHomeDocument(invalidPortDoc);
+
+      expect(authorityHtml.indexOf('Hacker News · evil.example')).assertLarger(-1);
+      expect(authorityHtml.indexOf('Hacker News · trusted.example')).assertEqual(-1);
+      expect(invalidHtml.indexOf('data-source-url="https://[invalid"')).assertEqual(-1);
+      expect(invalidHtml.indexOf('>查看来源</button>')).assertEqual(-1);
+      expect(invalidPortHtml.indexOf('data-source-url="https://evil.example:notaport/x"')).assertEqual(-1);
+      expect(invalidPortHtml.indexOf('>查看来源</button>')).assertEqual(-1);
+    });
+
+    it('keeps daily brief actions in App and source identity before its in-App link', 0, () => {
+      const html = renderHtmlHomeDocument(dailyBriefDocumentFixture());
+      const source = html.indexOf('Hacker News');
+      const host = html.indexOf('news.ycombinator.com');
+      const open = html.indexOf("window.open(url, '_blank')");
+
+      expect(source).assertLarger(-1);
+      expect(host).assertLarger(source);
+      expect(open).assertEqual(-1);
+      expect(html.indexOf('window.AIPhoneHome.postAction(JSON.stringify(action));')).assertLarger(-1);
+      expect(html.indexOf('window.location=')).assertEqual(-1);
+      expect(html.indexOf('location.href=')).assertEqual(-1);
+      expect(html.indexOf('openExternalUrl')).assertEqual(-1);
+      expect(html.indexOf('mail.send')).assertEqual(-1);
+      expect(html.indexOf('calendar.delete')).assertEqual(-1);
+      expect(html.indexOf('payment.send')).assertEqual(-1);
+      expect(html.indexOf('order.create')).assertEqual(-1);
+    });
+
+    it('shows daily brief busy and loading truth without discarding an existing snapshot', 0, () => {
+      const busy = renderHtmlHomeDocument(dailyBriefDocumentFixture(), true);
+      const loadingDoc = createHtmlHomeDocument({
+        surface: createDailyBriefLoadingSurface('2026-08-10'),
+        messages: [],
+        isBusy: true,
+        isAwaitingFirstSurface: false
+      });
+      const loading = renderHtmlHomeDocument(loadingDoc, true);
+
+      expect(busy.indexOf('重新生成中')).assertLarger(-1);
+      expect(busy.indexOf('今日日程')).assertLarger(-1);
+      expect(loading.indexOf('日报生成中')).assertLarger(-1);
+    });
     it('keeps the existing auth card beside a successful result without object or raw JSON UI', 0, () => {
       const doc = dynamicCredentialDocumentFixture();
       const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=Shenzhen';
@@ -1809,6 +2462,43 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('状态摘要')).assertLarger(-1);
       expect(html.indexOf('ZHIHU_API_KEY')).assertLarger(-1);
       expect(html.indexOf('异常或提示')).assertEqual(-1);
+      expect(html.indexOf('返回日报')).assertEqual(-1);
+      expect(html.indexOf('data-aggregate-action="')).assertEqual(-1);
+      expect(html.indexOf('target="_blank"')).assertEqual(-1);
+      expect(html.indexOf('target="_self"')).assertLarger(-1);
+    });
+
+    it('leaves daily brief child return navigation to the native shell', 0, () => {
+      const daily = dailyBriefDocumentFixture();
+      const snapshot = daily.dailyBrief as DailyBriefSnapshot;
+      snapshot.waterfall = waterfallRendererFixture().waterfall as WaterfallFeedState;
+      const surface = createDailyBriefWaterfallSurface(snapshot) as A2uiSurfaceState;
+      const document = createHtmlHomeDocument({
+        surface: surface,
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+
+      const html = renderHtmlHomeDocument(document, false);
+
+      expect(shouldShowDailyBriefReturn(surface)).assertTrue();
+      surface.intent = 'mail';
+      surface.surfaceId = 'daily-brief-2026-08-12';
+      expect(shouldShowDailyBriefReturn(surface)).assertTrue();
+      surface.intent = 'general';
+      expect(shouldShowDailyBriefReturn(surface)).assertTrue();
+      surface.intent = 'daily-brief';
+      expect(shouldShowDailyBriefReturn(surface)).assertFalse();
+      surface.intent = 'mail';
+      surface.surfaceId = 'mail-thread-regular';
+      expect(shouldShowDailyBriefReturn(surface)).assertFalse();
+      surface.intent = 'aggregate_search';
+      surface.surfaceId = 'aggregate-search-regular';
+      expect(shouldShowDailyBriefReturn(surface)).assertFalse();
+      expect(html.indexOf('href="aiphone://daily-brief"')).assertEqual(-1);
+      expect(html.indexOf('返回日报')).assertEqual(-1);
+      expect(html.indexOf('data-aggregate-action="')).assertEqual(-1);
     });
 
     it('does not expose generated result labels as aggregate post titles', 0, () => {
@@ -2629,6 +3319,8 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('进入发现流')).assertLarger(-1);
       expect(html.indexOf('waterfall-entry-floating')).assertLarger(-1);
       expect(html.indexOf('waterfall-cinema-card')).assertLarger(-1);
+      expect(html.indexOf('.waterfall-cinema-meta {')).assertLarger(-1);
+      expect(html.indexOf('margin-bottom: 18px;')).assertLarger(-1);
       expect(html.indexOf('waterfall-card--video')).assertLarger(-1);
       expect(html.indexOf('waterfall-card--image-text')).assertLarger(-1);
       expect(html.indexOf('waterfall-card--text')).assertLarger(-1);

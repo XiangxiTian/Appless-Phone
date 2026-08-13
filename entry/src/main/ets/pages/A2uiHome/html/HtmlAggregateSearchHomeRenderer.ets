@@ -4,7 +4,7 @@ import {
   WaterfallRankedCandidate,
   WaterfallSourceState
 } from '@loop/agent-core';
-import { HtmlHomeBlock, HtmlHomeDocument, HtmlHomeMetric, WaterfallHomePayload } from './HtmlHomeTypes';
+import { HtmlHomeAction, HtmlHomeBlock, HtmlHomeDocument, HtmlHomeMetric, WaterfallHomePayload } from './HtmlHomeTypes';
 import {
   APP_LOGO_BILIBILI,
   APP_LOGO_HACKERNEWS,
@@ -867,6 +867,7 @@ const WATERFALL_CSS: string = `
 .waterfall-media-fallback .waterfall-source-logo { width: 54px; height: 54px; border-radius: 16px; }
 .waterfall-cinema-meta {
   display: inline-flex; min-height: 32px; align-items: center; gap: 8px;
+  margin-bottom: 18px;
   color: #303841; font-size: 12px; font-weight: 740;
 }
 .waterfall-cinema-copy {
@@ -885,7 +886,7 @@ const WATERFALL_CSS: string = `
   display: flex; flex-direction: column; justify-content: flex-start;
 }
 .waterfall-cinema-card h2 {
-  display: block; max-width: none; margin-top: 12px; overflow: visible;
+  display: block; max-width: none; margin-top: 0; overflow: visible;
   color: var(--ink); font-size: clamp(26px, 7vw, 36px); line-height: 1.08; letter-spacing: -0.028em;
   font-weight: 800; overflow-wrap: anywhere; text-wrap: balance;
 }
@@ -1196,7 +1197,7 @@ const WATERFALL_JS: string = `
     var cover = item.coverUrl ? '<img class="waterfall-media-cover" src="' + escapeHtml(item.coverUrl) + '" alt="' + escapeHtml(item.title) +
       '" loading="lazy" decoding="async" onerror="this.hidden=true" />' : '';
     var summary = cleanSummary(item.summary);
-    var link = item.url ? '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener noreferrer">查看来源</a>' : '';
+    var link = item.url ? '<a href="' + escapeHtml(item.url) + '" target="_self" rel="noopener noreferrer">查看来源</a>' : '';
     var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
     var cardClass = item.mediaType === 'video' ?
       'waterfall-card waterfall-cinema-card waterfall-card--video waterfall-card--landscape' :
@@ -1739,7 +1740,7 @@ function renderPostLink(block: HtmlHomeBlock): string {
     return '';
   }
   return '<a class="aggregate-link-preview" href="' + escapeAttribute(url) +
-    '" target="_blank" rel="noopener noreferrer"><span class="aggregate-link-host">' +
+    '" target="_self" rel="noopener noreferrer"><span class="aggregate-link-host">' +
     escapeHtml(hostLabel(url)) + '</span><b>打开原文</b></a>';
 }
 

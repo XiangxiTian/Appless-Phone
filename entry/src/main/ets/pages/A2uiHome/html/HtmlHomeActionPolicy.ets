@@ -64,6 +64,9 @@ interface LuckinPaymentArgs {
   payOrderQrCodeUrl?: HtmlHomePolicyValue;
 }
 
+type DailyBriefPreferenceValue = Object | string | number | boolean | null | undefined;
+type DailyBriefPreferenceRecord = Record<string, DailyBriefPreferenceValue>;
+
 export function isHtmlHomeActionAllowed(document: HtmlHomeDocument, action: A2uiAction): boolean {
   if (action.id === 'hotel.book') {
     return false;
@@ -94,6 +97,9 @@ function isHtmlHomeActionAllowedInDocument(document: HtmlHomeDocument, action: A
     return hasBlockKind(document, 'flight-option');
   }
   if (action.id === 'payment.account.save' && paymentAccountSaveAllowed(document, action)) {
+    return true;
+  }
+  if (action.id === 'daily.brief.preference.save' && dailyBriefPreferenceSaveAllowed(document, action)) {
     return true;
   }
   for (let index = 0; index < document.actions.length; index++) {
@@ -135,6 +141,55 @@ function isHtmlHomeActionAllowedInDocument(document: HtmlHomeDocument, action: A
     return true;
   }
   return false;
+}
+
+function dailyBriefPreferenceSaveAllowed(document: HtmlHomeDocument, action: A2uiAction): boolean {
+  const baseAction = dailyBriefPreferenceSaveAction(document);
+  if (document.kind !== 'daily-brief' || action.kind !== 'client' || action.args === undefined ||
+    baseAction === null || action.prompt !== baseAction.prompt) {
+    return false;
+  }
+  const args = action.args as DailyBriefPreferenceRecord;
+  if (args === null || Array.isArray(args) || Object.keys(args).sort().join(',') !==
+    'formats,language,negativePreference,targetTime,timeBudgetMinutes,topics') {
+    return false;
+  }
+  const topics = dailyBriefStringArray(args['topics'], 40);
+  const formats = dailyBriefStringArray(args['formats']);
+  const language = args['language'];
+  const timeBudgetMinutes = args['timeBudgetMinutes'];
+  const negativePreference = args['negativePreference'];
+  const targetTime = args['targetTime'];
+  return topics !== null && topics.length <= 8 && formats !== null &&
+    (language === '中文优先' || language === '中英混合') &&
+    typeof timeBudgetMinutes === 'number' && Number.isFinite(timeBudgetMinutes) && timeBudgetMinutes >= 0 &&
+    typeof negativePreference === 'string' && negativePreference.length <= 4096 &&
+    typeof targetTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(targetTime);
+}
+
+function dailyBriefPreferenceSaveAction(document: HtmlHomeDocument): HtmlHomeAction | null {
+  for (let index = 0; index < document.actions.length; index += 1) {
+    if (document.actions[index].id === 'daily.brief.preference.save' &&
+      document.actions[index].kind === 'client') {
+      return document.actions[index];
+    }
+  }
+  return null;
+}
+
+function dailyBriefStringArray(value: DailyBriefPreferenceValue, limit: number = 4096): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const values = value as DailyBriefPreferenceValue[];
+  const result: string[] = [];
+  for (let index = 0; index < values.length; index += 1) {
+    if (typeof values[index] !== 'string' || (values[index] as string).length > limit) {
+      return null;
+    }
+    result.push(values[index] as string);
+  }
+  return result;
 }
 
 function mailCalendarAddAllowed(block: HtmlHomeBlock, action: A2uiAction): boolean {

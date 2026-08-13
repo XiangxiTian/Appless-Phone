@@ -111,6 +111,10 @@ import bimDailyReminderTest from './BimDailyReminder.test';
 import bimHomePageTest from './BimHomePage.test';
 import capabilityRuntimeTest from './CapabilityRuntime.test';
 import publicPersonaTest from './PublicPersona.test';
+import dailyBriefCoreTest from './DailyBriefCore.test';
+import dailyBriefStoreTest from './DailyBriefStore.test';
+import dailyBriefGeneratorTest from './DailyBriefGenerator.test';
+import dailyBriefSchedulerTest from './DailyBriefScheduler.test';
 
 export default function testsuite() {
   movieDemoContractTest();
@@ -226,4 +230,8 @@ export default function testsuite() {
   htmlHomeActionPolicyTest();
   capabilityRuntimeTest();
   publicPersonaTest();
+  dailyBriefCoreTest();
+  dailyBriefStoreTest();
+  dailyBriefGeneratorTest();
+  dailyBriefSchedulerTest();
 }

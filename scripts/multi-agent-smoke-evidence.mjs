@@ -629,6 +629,132 @@ export function captureCompletionSettled({ done, doneAt, lifecycleOptions, custo
   return done && now - doneAt >= waitMs;
 }
 
+export const DAILY_BRIEF_VISIBLE_MARKERS = [
+  '个人日报', '实际生成', 'Top 3', '今日状态', '穿衣与出行', '为你发现', '基于你的偏好', '前一天'
+];
+
+const FINAL_VISIBLE_DATE_BLOCKING_PATTERNS = [
+  { name: 'iso-date', pattern: /\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/ },
+  { name: 'zh-date', pattern: /\d{4}年\d{1,2}月\d{1,2}日/ }
+];
+
+export function finalVisibleDateBlockingHits(visibleText, expectedToolId = '', expectedLocalDate = '') {
+  if (expectedToolId === 'daily.brief.open') {
+    const expected = String(expectedLocalDate || '').trim();
+    const visibleLines = String(visibleText || '').split(/\r?\n/).map((line) => line.trim());
+    return /^20\d{2}-\d{2}-\d{2}$/.test(expected) && visibleLines.includes(expected) ? [] :
+      ['daily-brief-date'];
+  }
+  return FINAL_VISIBLE_DATE_BLOCKING_PATTERNS
+    .filter(({ pattern }) => pattern.test(String(visibleText || '')))
+    .map(({ name }) => name);
+}
+
+export function shouldDismissKeyboardBeforeScrolledEvidence(expectedToolId = '') {
+  return expectedToolId === 'daily.brief.open';
+}
+
+export function scrolledEvidenceAttemptLimit(expectedToolId = '') {
+  return expectedToolId === 'daily.brief.open' ? 20 : 5;
+}
+
+const DAILY_BRIEF_DERIVED_ACTION_IDS = [
+  'daily.brief.regenerate',
+  'daily.brief.preference.save',
+  'daily.brief.history.open',
+  'daily.brief.mail.read',
+  'daily.brief.discovery.open'
+];
+
+export function dailyBriefDirectEvidence(logText, visibleText = '') {
+  const lines = String(logText || '').split('\n');
+  const requestIndex = lines.findLastIndex((line) =>
+    /\[AIPhone\]\[A2uiHomeToolRequest\](?:\s|$)/.test(line));
+  const currentLines = requestIndex < 0 ? [] : lines.slice(requestIndex);
+  const requestObserved = /\[AIPhone\]\[A2uiHomeToolRequest\] toolId=daily\.brief\.open\b/.test(currentLines[0] || '');
+  const surfaceIndex = currentLines.findIndex((line, index) => index > 0 &&
+    /\[AIPhone\]\[A2uiHomeSurfaceForceUpdate\] reason=daily_brief_(?:open_existing|generated|stored_winner) surfaceId=daily-brief-\S+ status=ready components=[1-9]\d* dataChars=[1-9]\d*\b/.test(line));
+  const surfaceMatch = surfaceIndex < 0 ? null : /\brenderTick=(\d+)\b/.exec(currentLines[surfaceIndex]);
+  const documentIndex = currentLines.findIndex((line, index) => index > surfaceIndex &&
+    /\[AIPhone\]\[HtmlHomeDocument\] source=tool kind=daily-brief chars=[1-9]\d* blocks=\d+\b/.test(line));
+  const documentMatch = documentIndex < 0 ? null : /\brenderTick=(\d+)\b/.exec(currentLines[documentIndex]);
+  const documentCharsMatch = documentIndex < 0 ? null : /\bchars=(\d+)\b/.exec(currentLines[documentIndex]);
+  const documentDigestMatch = documentIndex < 0 ? null :
+    /\bcontentDigest=([0-9a-f]{64})\b/.exec(currentLines[documentIndex]);
+  const loadIndex = currentLines.findIndex((line, index) => index > documentIndex &&
+    /\[AIPhone\]\[HtmlHomeSurfaceLoad\] chars=[1-9]\d*\b/.test(line));
+  const loadMatch = loadIndex < 0 ? null : /\brenderTick=(\d+)\b/.exec(currentLines[loadIndex]);
+  const loadCharsMatch = loadIndex < 0 ? null : /\bchars=(\d+)\b/.exec(currentLines[loadIndex]);
+  const loadDigestMatch = loadIndex < 0 ? null :
+    /\bcontentDigest=([0-9a-f]{64})\b/.exec(currentLines[loadIndex]);
+  const renderTick = surfaceMatch?.[1] || '';
+  const renderTickNumber = Number.parseInt(renderTick, 10);
+  const loadTickNumber = Number.parseInt(loadMatch?.[1] || '', 10);
+  const loadTickCorrelated = Number.isInteger(renderTickNumber) && Number.isInteger(loadTickNumber) &&
+    (loadTickNumber === renderTickNumber || loadTickNumber === renderTickNumber - 1);
+  const charsCorrelated = documentCharsMatch?.[1] !== undefined &&
+    documentCharsMatch[1] === loadCharsMatch?.[1];
+  const digestCorrelated = documentDigestMatch?.[1] !== undefined &&
+    documentDigestMatch[1] === loadDigestMatch?.[1];
+  const executionObserved = renderTick.length > 0 &&
+    documentMatch?.[1] === renderTick && loadTickCorrelated && charsCorrelated && digestCorrelated;
+  const derivedActionIds = DAILY_BRIEF_DERIVED_ACTION_IDS.filter((actionId) =>
+    currentLines.some((line) => line.includes(`[AIPhone][A2uiHomeClientAction] id=${actionId}`)));
+  const markerHits = DAILY_BRIEF_VISIBLE_MARKERS.filter((marker) =>
+    String(visibleText || '').includes(marker));
+  const failures = [];
+  if (!requestObserved) failures.push('missing_direct_tool_request');
+  if (surfaceIndex < 0) failures.push('missing_stable_daily_surface');
+  if (documentIndex < 0) failures.push('missing_daily_html_document');
+  if (loadIndex < 0) failures.push('missing_daily_html_load');
+  if (surfaceIndex >= 0 && surfaceMatch === null) failures.push('missing_surface_render_tick');
+  if (documentIndex >= 0 && documentMatch === null) failures.push('missing_document_render_tick');
+  if (loadIndex >= 0 && loadMatch === null) failures.push('missing_load_render_tick');
+  if (documentCharsMatch !== null && loadCharsMatch !== null && !charsCorrelated) {
+    failures.push('mismatched_html_chars');
+  }
+  if (documentIndex >= 0 && documentDigestMatch === null) failures.push('missing_document_content_digest');
+  if (loadIndex >= 0 && loadDigestMatch === null) failures.push('missing_load_content_digest');
+  if (documentDigestMatch !== null && loadDigestMatch !== null && !digestCorrelated) {
+    failures.push('mismatched_content_digest');
+  }
+  if (surfaceMatch !== null && documentMatch !== null && loadMatch !== null &&
+    (documentMatch[1] !== renderTick || !loadTickCorrelated)) {
+    failures.push('mismatched_render_tick');
+  }
+  if (derivedActionIds.length > 0) failures.push('unexpected_derived_action');
+  const complete = failures.length === 0;
+  const uiOk = markerHits.length === DAILY_BRIEF_VISIBLE_MARKERS.length;
+  return {
+    complete,
+    uiOk,
+    ok: complete && uiOk,
+    requestObserved,
+    executionObserved,
+    renderTick: executionObserved ? Number.parseInt(renderTick, 10) : null,
+    markerHits,
+    markerMisses: DAILY_BRIEF_VISIBLE_MARKERS.filter((marker) => !markerHits.includes(marker)),
+    derivedActionIds,
+    failures
+  };
+}
+
+export function dailyBriefDirectAnalysis(analysis, evidence) {
+  const dailyBriefRequestObserved = evidence?.requestObserved === true;
+  const dailyBriefExecutionObserved = evidence?.executionObserved === true;
+  const basePassedWithoutTransport = evidence?.complete === true &&
+    !analysis.htmlLoadError && !analysis.syntheticFallback;
+  return {
+    ...analysis,
+    modelApplicable: false,
+    modelSelectedExpectedToolId: false,
+    dailyBriefRequestObserved,
+    dailyBriefExecutionObserved,
+    basePassedWithoutTransport,
+    ok: dailyBriefRequestObserved && dailyBriefExecutionObserved && basePassedWithoutTransport
+  };
+}
+
 export async function collectExternalAuthJumps(apps, collectApp) {
   const jumps = [];
   for (const [index, app] of apps.entries()) {

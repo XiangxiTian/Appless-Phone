@@ -9,7 +9,8 @@ export {
   CapabilityRegistry,
   CapabilityRuntime,
   ExecutionEventBus,
-  HotelCapabilityModule
+  HotelCapabilityModule,
+  sha256Digest
 } from './src/main/ets/capability/Index';
 export {
   ApprovalGrant,

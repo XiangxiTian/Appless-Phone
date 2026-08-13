@@ -395,6 +395,9 @@ function fixedActionArgs(actionId: string): Object {
   if (actionId === 'movie.open') {
     return object('{"route":"pages/A2uiHome/MovieDemo"}');
   }
+  if (actionId === 'daily.brief.open') {
+    return object('{"regenerate":false}');
+  }
   if (actionId === 'payment.send') {
     return object('{"provider":"stripe","recipient":"acct-real-1","amountText":"5.00","currency":"USD"}');
   }
@@ -822,6 +825,7 @@ export default function aiphoneRegisteredActionExecutorTest() {
         'gmail.open.web',
         'worldcup.open',
         'movie.open',
+        'daily.brief.open',
         'payment.account.setup'
       ];
       for (let index = 0; index < actionIds.length; index++) {
@@ -838,19 +842,20 @@ export default function aiphoneRegisteredActionExecutorTest() {
       }
     });
 
-    it('validates invalid and minimal args for all 22 fixed Action definitions', 0, () => {
+    it('validates invalid and minimal args for every fixed Action definition', 0, () => {
       const expected: string[] = [
         'hotel.navigate', 'hotel.booking.open', 'luckin.order.preview', 'luckin.order.create',
         'social.post.preview', 'social.reply.draft', 'mail.draft.create',
         'gmail.draft.create', 'gmail.draft.apply',
-        'gmail.open.web', 'gmail.message.send', 'worldcup.open', 'movie.open', 'calendar.event.create',
+        'gmail.open.web', 'gmail.message.send', 'worldcup.open', 'movie.open', 'daily.brief.open',
+        'calendar.event.create',
         'calendar.event.update', 'calendar.event.delete', 'payment.send', 'payment.account.setup',
         'maps.route.open', 'whatsapp.message.send', 'ride.order.create', 'ride.order.cancel',
         'web.monitor.create'
       ];
       const definitions = actionAgentToolDefinitions();
 
-      expect(definitions.length).assertEqual(23);
+      expect(definitions.length).assertEqual(24);
       expect(definitions.map((current: ToolDefinition): string => current.toolId).sort().join(','))
         .assertEqual(expected.slice().sort().join(','));
       for (let index = 0; index < expected.length; index++) {
@@ -859,6 +864,24 @@ export default function aiphoneRegisteredActionExecutorTest() {
         expect(invalid.ok).assertFalse();
         expect(valid.ok).assertTrue();
       }
+    });
+
+    it('accepts only one boolean daily brief virtual argument and no route or URL extras', 0, () => {
+      expect(validateRegisteredPageActionArgs(
+        'daily.brief.open', object('{"regenerate":false}')
+      ).ok).assertTrue();
+      expect(validateRegisteredPageActionArgs(
+        'daily.brief.open', object('{"regenerate":true}')
+      ).ok).assertTrue();
+      expect(validateRegisteredPageActionArgs(
+        'daily.brief.open', object('{"regenerate":"true"}')
+      ).ok).assertFalse();
+      expect(validateRegisteredPageActionArgs(
+        'daily.brief.open', object('{"regenerate":false,"route":"pages/forged"}')
+      ).ok).assertFalse();
+      expect(validateRegisteredPageActionArgs(
+        'daily.brief.open', object('{"regenerate":false,"url":"https://example.com"}')
+      ).ok).assertFalse();
     });
 
     it('rejects invalid args for every fixed Action when it appears as a later plan step', 0, async () => {

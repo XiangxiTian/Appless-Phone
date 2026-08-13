@@ -1,10 +1,24 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { createHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeSnapshot';
+import {
+  createHtmlHomeDocument,
+  MailTerminalPresentation,
+  mailTerminalPresentation
+} from '../main/ets/pages/A2uiHome/html/HtmlHomeSnapshot';
 import { isHtmlHomeActionAllowed } from '../main/ets/pages/A2uiHome/html/HtmlHomeActionPolicy';
-import { HtmlHomeBlock } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
+import { HtmlHomeBlock, HtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
+import {
+  createDailyBriefSurface,
+  defaultDailyBriefPreference
+} from '../main/ets/pages/A2uiHome/dailybrief/DailyBriefCore';
+import {
+  DailyBriefSection,
+  DailyBriefPreference,
+  DailyBriefSnapshot
+} from '../main/ets/pages/A2uiHome/dailybrief/DailyBriefTypes';
 import {
   A2uiAction,
   A2uiComponent,
+  A2uiGenericToolResultData,
   A2uiMessage,
   A2uiSurfaceState,
   AggregateSearchPost,
@@ -47,6 +61,33 @@ interface AggregateSearchFixtureDataModel {
   aggregateSearch: AggregateSearchResult;
 }
 
+interface DailyBriefHtmlHomeDocumentFixture extends HtmlHomeDocument {
+  dailyBrief?: DailyBriefSnapshot;
+  dailyBriefPreference?: DailyBriefPreference;
+}
+
+function dailyBriefSnapshot(profile: DailyBriefPreference): DailyBriefSnapshot {
+  return {
+    schemaVersion: 1,
+    date: '2026-08-10',
+    generatedAt: '2026-08-10T08:31:00+08:00',
+    status: 'complete',
+    profile: profile,
+    topThree: [],
+    sections: [],
+    discovery: [],
+    sources: [],
+    waterfall: null,
+    actions: [{
+      id: 'daily.brief.regenerate',
+      label: '重新生成',
+      prompt: '重新生成个人日报',
+      variant: 'primary',
+      kind: 'client'
+    }]
+  };
+}
+
 function aggregateSearchDataModelJson(result: AggregateSearchResult): string {
   const model: AggregateSearchFixtureDataModel = {
     aggregateSearch: result
@@ -56,6 +97,49 @@ function aggregateSearchDataModelJson(result: AggregateSearchResult): string {
 
 export default function htmlHomeSnapshotTest() {
   describe('htmlHomeSnapshot', () => {
+    it('presents terminal mail reads without requesting the body again', 0, () => {
+      const successResult: A2uiGenericToolResultData = {
+        sourceTag: 'QQ Mail',
+        toolName: 'mail.thread.read',
+        title: '真实邮件',
+        status: 'success',
+        summary: '来自 Provider 的真实邮件正文',
+        rows: [{ label: 'Message ID', value: 'message-1' }],
+        rawPreview: ''
+      };
+      const failureResult: A2uiGenericToolResultData = {
+        sourceTag: 'Gmail API',
+        toolName: 'users.threads.get',
+        title: '邮件读取失败',
+        status: 'error',
+        summary: 'Provider: message no longer exists',
+        rows: [{ label: 'Error', value: 'Provider: message no longer exists' }],
+        rawPreview: ''
+      };
+      const searchResult: A2uiGenericToolResultData = {
+        sourceTag: 'QQ Mail',
+        toolName: 'mail.thread',
+        title: '搜索结果',
+        status: 'success',
+        summary: '摘要，不是邮件正文',
+        rows: [{ label: 'Message ID', value: 'message-1' }],
+        rawPreview: ''
+      };
+      const success: MailTerminalPresentation = mailTerminalPresentation('mail.thread.read', successResult);
+      const failure: MailTerminalPresentation = mailTerminalPresentation('gmail.thread.read', failureResult);
+      const search: MailTerminalPresentation = mailTerminalPresentation('mail.search', searchResult);
+
+      expect(success.bodyText).assertEqual('来自 Provider 的真实邮件正文');
+      expect(success.errorText).assertEqual('');
+      expect(success.shouldRequestDetail).assertFalse();
+      expect(failure.bodyText).assertEqual('');
+      expect(failure.errorText).assertEqual('Provider: message no longer exists');
+      expect(failure.shouldRequestDetail).assertFalse();
+      expect(search.bodyText).assertEqual('');
+      expect(search.errorText).assertEqual('');
+      expect(search.shouldRequestDetail).assertTrue();
+    });
+
     it('creates a welcome document without a surface', 0, () => {
       const doc = createHtmlHomeDocument({
         messages: [],
@@ -88,6 +172,109 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.timeline[0].subtitle).assertEqual('find lunch near office');
       expect(doc.history.length).assertEqual(1);
       expect(JSON.stringify(doc).indexOf('"isBusy":true')).assertLarger(-1);
+    });
+
+    it('extracts the frozen daily brief snapshot and separate editable preference', 0, () => {
+      const frozen = defaultDailyBriefPreference();
+      const editable = defaultDailyBriefPreference();
+      editable.timeBudgetMinutes = 5;
+      const snapshot = dailyBriefSnapshot(frozen);
+      const doc = createHtmlHomeDocument({
+        surface: createDailyBriefSurface(snapshot, editable),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      }) as DailyBriefHtmlHomeDocumentFixture;
+
+      expect(doc.kind).assertEqual('daily-brief');
+      expect(doc.source).assertEqual('tool');
+      expect(doc.generatedAt).assertEqual('2026-08-10T08:31:00+08:00');
+      expect(doc.dailyBrief?.profile.timeBudgetMinutes ?? -1).assertEqual(15);
+      expect(doc.dailyBriefPreference?.timeBudgetMinutes ?? -1).assertEqual(5);
+      expect(doc.actions.length).assertEqual(1);
+      expect(doc.actions[0].id).assertEqual('daily.brief.regenerate');
+    });
+
+    it('falls back to the frozen profile when the editable daily preference is absent', 0, () => {
+      const snapshot = dailyBriefSnapshot(defaultDailyBriefPreference());
+      snapshot.profile.targetTime = '07:45';
+      const dailySurface = createDailyBriefSurface(snapshot);
+      dailySurface.dataModelJson = JSON.stringify({ dailyBrief: snapshot });
+      const doc = createHtmlHomeDocument({
+        surface: dailySurface,
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      }) as DailyBriefHtmlHomeDocumentFixture;
+
+      expect(doc.kind).assertEqual('daily-brief');
+      expect(doc.dailyBriefPreference?.targetTime ?? '').assertEqual('07:45');
+    });
+
+    it('does not attach parseable malformed daily brief snapshots', 0, () => {
+      const malformedModels: string[] = [
+        '{"dailyBrief":{}}',
+        '{"dailyBrief":null}',
+        '{"dailyBrief":{"schemaVersion":1,"date":"2026-08-10","generatedAt":"2026-08-10T08:31:00+08:00",' +
+          '"status":"complete","profile":{},"topThree":[],"sections":[],"discovery":[],"sources":[]}}'
+      ];
+
+      malformedModels.forEach((dataModelJson: string): void => {
+        const doc = createHtmlHomeDocument({
+          surface: surface('daily-brief', 'error', [root('root')], dataModelJson),
+          messages: [],
+          isBusy: false,
+          isAwaitingFirstSurface: false
+        }) as DailyBriefHtmlHomeDocumentFixture;
+
+        expect(doc.kind).assertEqual('daily-brief');
+        expect(doc.dailyBrief === undefined).assertTrue();
+        expect(doc.actions.length).assertEqual(0);
+      });
+    });
+
+    it('does not attach a daily brief item with a null action', 0, () => {
+      const snapshot = dailyBriefSnapshot(defaultDailyBriefPreference());
+      const dailySurface = createDailyBriefSurface(snapshot);
+      snapshot.sections = JSON.parse('[{"id":"today","title":"Today","state":"success","message":"",' +
+        '"items":[{"id":"item-1","sourceId":"todo","sourceRecordId":"item-1","title":"Task",' +
+        '"summary":"Summary","timeLabel":"Now","startsAt":"","dueAt":"","leaveBy":"",' +
+        '"completed":false,"needsAction":false,"severity":"none","action":null}]}]') as DailyBriefSection[];
+      dailySurface.dataModelJson = JSON.stringify({ dailyBrief: snapshot });
+      const doc = createHtmlHomeDocument({
+        surface: dailySurface,
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      }) as DailyBriefHtmlHomeDocumentFixture;
+
+      expect(doc.kind).assertEqual('daily-brief');
+      expect(doc.dailyBrief === undefined).assertTrue();
+      expect(doc.actions.length).assertEqual(0);
+    });
+
+    it('does not attach a daily brief with a null snapshot action', 0, () => {
+      const snapshot = dailyBriefSnapshot(defaultDailyBriefPreference());
+      const dailySurface = createDailyBriefSurface(snapshot);
+      snapshot.actions = JSON.parse('[null]') as A2uiAction[];
+      dailySurface.dataModelJson = JSON.stringify({ dailyBrief: snapshot });
+      let doc: DailyBriefHtmlHomeDocumentFixture | null = null;
+      let threw = false;
+      try {
+        doc = createHtmlHomeDocument({
+          surface: dailySurface,
+          messages: [],
+          isBusy: false,
+          isAwaitingFirstSurface: false
+        }) as DailyBriefHtmlHomeDocumentFixture;
+      } catch (_error) {
+        threw = true;
+      }
+
+      expect(threw).assertFalse();
+      expect(doc?.kind ?? '').assertEqual('daily-brief');
+      expect(doc?.dailyBrief === undefined).assertTrue();
+      expect(doc?.actions.length ?? -1).assertEqual(0);
     });
 
     it('does not expose assistant A2UI protocol in history', 0, () => {

@@ -66,6 +66,10 @@ export function shouldShowHomeChrome(waterfallFullscreen: boolean): boolean {
   return !waterfallFullscreen;
 }
 
+export function shouldShowDailyBriefReturn(surface: A2uiSurfaceState): boolean {
+  return surface.intent !== 'daily-brief' && surface.surfaceId.startsWith('daily-brief-');
+}
+
 export type BimRememberState = 'ready' | 'saving' | 'saved' | 'error';
 
 @Component
@@ -129,6 +133,7 @@ export struct HomePage {
   onCancelTrainPresaleTask: () => void = () => {};
   onOpenBim: () => void = () => {};
   onRememberBim: () => void = () => {};
+  onReturnDailyBrief: () => void = () => {};
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
 
   aboutToAppear(): void {
@@ -505,24 +510,46 @@ export struct HomePage {
         .layoutWeight(1)
         .margin({ top: this.surfaceTopGap() })
       } else {
-        HtmlHomeSurfaceView({
-          html: this.htmlHomeHtml,
-          multiTaskPayloadJson: this.multiTaskPayloadJson,
-          multiTaskPayloadTick: this.multiTaskPayloadTick,
-          waterfallPayloadJson: this.waterfallPayloadJson,
-          waterfallPayloadTick: this.waterfallPayloadTick,
-          mailDetailEventJson: this.mailDetailEventJson,
-          mailReplyEventJson: this.mailReplyEventJson,
-          mailCalendarEventJson: this.mailCalendarEventJson,
-          isBusy: this.isBusy,
-          renderTick: this.surfaceRenderTick,
-          luckinInlinePatchJson: this.luckinInlinePatchJson,
-          luckinInlinePatchTick: this.luckinInlinePatchTick,
-          onAction: this.onAction,
-          onWaterfallFullscreenChange: (active: boolean): void => {
-            this.waterfallFullscreen = active;
+        Column() {
+          if (shouldShowDailyBriefReturn(this.currentSurface)) {
+            Row() {
+              A2uiButtonView({
+                label: '‹ 返回日报',
+                tone: 'secondary',
+                isEnabled: !this.isBusy
+              })
+                .enabled(!this.isBusy)
+                .onClick(() => {
+                  if (!this.isBusy) {
+                    this.onReturnDailyBrief();
+                  }
+                })
+            }
+            .width('100%')
+            .height(50)
+            .alignItems(VerticalAlign.Center)
           }
-        })
+
+          HtmlHomeSurfaceView({
+            html: this.htmlHomeHtml,
+            multiTaskPayloadJson: this.multiTaskPayloadJson,
+            multiTaskPayloadTick: this.multiTaskPayloadTick,
+            waterfallPayloadJson: this.waterfallPayloadJson,
+            waterfallPayloadTick: this.waterfallPayloadTick,
+            mailDetailEventJson: this.mailDetailEventJson,
+            mailReplyEventJson: this.mailReplyEventJson,
+            mailCalendarEventJson: this.mailCalendarEventJson,
+            isBusy: this.isBusy,
+            renderTick: this.surfaceRenderTick,
+            luckinInlinePatchJson: this.luckinInlinePatchJson,
+            luckinInlinePatchTick: this.luckinInlinePatchTick,
+            onAction: this.onAction,
+            onWaterfallFullscreenChange: (active: boolean): void => {
+              this.waterfallFullscreen = active;
+            }
+          })
+          .layoutWeight(1)
+        }
         .layoutWeight(1)
         .margin({ top: this.waterfallFullscreen ? 0 : this.surfaceTopGap() })
       }

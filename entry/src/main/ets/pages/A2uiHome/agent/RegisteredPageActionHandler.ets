@@ -30,6 +30,11 @@ interface ExperiencePageActionOutput {
   status: string;
 }
 
+interface DailyBriefPageActionOutput {
+  actionId: string;
+  status: string;
+}
+
 interface RegisteredToolPageActionOutput {
   actionId: string;
   pageActionId: string;
@@ -346,7 +351,8 @@ export class RegisteredPageActionHandler {
         message: 'Registered page operation identity is missing.'
       };
     }
-    if (actionId !== 'worldcup.open' && actionId !== 'movie.open' && !pageRoute(actionId)) {
+    if (actionId !== 'worldcup.open' && actionId !== 'movie.open' &&
+      actionId !== 'daily.brief.open' && !pageRoute(actionId)) {
       return {
         status: 'error',
         errorCode: 'ACTION_PAGE_ROUTE_UNSUPPORTED',
@@ -375,6 +381,13 @@ export class RegisteredPageActionHandler {
         };
       }
     }
+    if (actionId === 'daily.brief.open' && context.pageActionId !== 'daily.brief.open') {
+      return {
+        status: 'error',
+        errorCode: 'ACTION_PAGE_ARGS_INVALID',
+        message: 'Daily brief page action identity is invalid.'
+      };
+    }
     const invocation = await this.invoker.invoke(
       actionId,
       promptFor(actionId, context.pageActionId, args),
@@ -401,6 +414,13 @@ export class RegisteredPageActionHandler {
       const output: ExperiencePageActionOutput = {
         actionId,
         route: 'pages/A2uiHome/MovieDemo',
+        status: 'opened'
+      };
+      return { status: 'success', output };
+    }
+    if (actionId === 'daily.brief.open') {
+      const output: DailyBriefPageActionOutput = {
+        actionId,
         status: 'opened'
       };
       return { status: 'success', output };

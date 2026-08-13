@@ -380,6 +380,18 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     actions: []
   },
   {
+    toolId: 'daily.brief.open',
+    domain: 'productivity',
+    intent: 'daily.brief.open',
+    riskLevel: 'read',
+    backendPriority: ['system_intent'],
+    authModes: ['system'],
+    inputSchema: 'dailyBriefOpenRequest',
+    outputSchema: 'dailyBriefSnapshot',
+    a2uiComponent: 'DailyBrief',
+    actions: []
+  },
+  {
     toolId: 'youtube.mine.playlists',
     domain: 'youtube',
     intent: 'youtube.mine.playlists',
@@ -671,7 +683,8 @@ const DYNAMIC_SEARCH_PLANNING_PREFIX: string =
   'those fixed tool IDs instead of dynamic.search. Use dynamic.search for Outlook only when the user explicitly ' +
   'names Outlook or Composio Outlook; ordinary mailbox aggregation uses mail.search. World Cup page, schedule, ' +
   'next-match, preview, team, or player-card requests are covered by worldcup.open. First-party movie discovery, ' +
-  'now-showing, box-office, trailer, or star-update page requests are covered by movie.open, not dynamic.search. ';
+  'now-showing, box-office, trailer, or star-update page requests are covered by movie.open, not dynamic.search. ' +
+  'A personal daily brief request is covered by daily.brief.open, never dynamic.search. ';
 
 const DYNAMIC_SEARCH_PLANNING_SUFFIX: string =
   'Do not use Composio for payment, Gmail, Calendar, SocialHub, Maps, Food, Travel, World Cup page/schedule requests, or ' +
@@ -776,6 +789,8 @@ export function toolPlanningDescriptionForToolId(
     description += '. Use when the user wants to open the World Cup experience, view World Cup schedules, next match time, previews, highlights, teams, players, or matchup cards. Use media tools instead for explicit YouTube-only, Bilibili-only, or mixed-content search requests.';
   } else if (definition.toolId === 'movie.open') {
     description += '. Use when the user wants the first-party movie experience with current theatrical movies, box-office snapshot, trailers, or movie-star updates. Use media tools instead for explicit YouTube-only, Bilibili-only, or mixed-content search requests.';
+  } else if (definition.toolId === 'daily.brief.open') {
+    description += '. Use for the App-internal personal daily brief. Pass exactly one boolean regenerate field. It updates Home in place and never opens a URL or another route.';
   } else if (definition.toolId === 'youtube.video.search') {
     description += '. Use only for explicit YouTube-only public video search; use media.video.search for Bilibili or multi-source video requests.';
   } else if (definition.toolId === 'calendar.events.search') {

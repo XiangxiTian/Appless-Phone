@@ -8,15 +8,11 @@ import {
   aiLogError,
   aiLogInfo,
   AssetCredentialStore,
-  configureComposioConfigFromRawJson,
-  configureLocalModelSettingsFromRawJson,
-  configureLocalProviderConfigFromRawJson,
   gmailOAuthConfigFromProvider,
-  handleGmailOAuthRedirect,
-  localModelSettingsDebugSummary,
-  localProviderConfigDebugSummary
+  handleGmailOAuthRedirect
 } from '@loop/agent-core';
 import { configurePersonaStoreFromRaw } from '../model/PersonaStore';
+import { loadProviderRuntimeConfig } from './ProviderRuntimeBootstrap';
 import {
   BIM_SENTINEL_MOCK_EVENT,
   queueBimSentinelMockHandoff
@@ -32,8 +28,6 @@ import {
 } from '../pages/A2uiHome/train/TrainPresaleTaskStore';
 
 const DOMAIN = 0x0000;
-const LOCAL_PROVIDER_CONFIG_RAWFILE = 'aiphone_provider_config.json';
-const COMPOSIO_CONFIG_RAWFILE = 'composio_config.json';
 const PERSONA_MANIFEST_RAWFILE = 'personas/personas.json';
 const PERSONA_IDS: string[] = [
   'default_companion',
@@ -354,8 +348,7 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
-    this.loadLocalProviderConfig();
-    this.loadComposioConfig();
+    loadProviderRuntimeConfig(this.context, true);
     this.loadPersonaPacks();
     this.handleOAuthWant(want);
     this.claimTrainPresaleTask(want);
@@ -374,28 +367,6 @@ export default class EntryAbility extends UIAbility {
       return this.rawfileText(path);
     } catch (_err) {
       return '';
-    }
-  }
-
-  private loadLocalProviderConfig(): void {
-    try {
-      const rawJson = this.rawfileText(LOCAL_PROVIDER_CONFIG_RAWFILE);
-      configureLocalProviderConfigFromRawJson(rawJson);
-      configureLocalModelSettingsFromRawJson(rawJson);
-      hilog.info(DOMAIN, 'testTag', 'Loaded local provider config. agentCore=%{public}s %{public}s',
-        localProviderConfigDebugSummary(),
-        localModelSettingsDebugSummary());
-    } catch (err) {
-      hilog.info(DOMAIN, 'testTag', 'Local provider config not loaded from %{public}s. Cause: %{public}s', LOCAL_PROVIDER_CONFIG_RAWFILE, JSON.stringify(err));
-    }
-  }
-
-  private loadComposioConfig(): void {
-    try {
-      configureComposioConfigFromRawJson(this.rawfileText(COMPOSIO_CONFIG_RAWFILE));
-      hilog.info(DOMAIN, 'testTag', 'Loaded Composio config.');
-    } catch (err) {
-      hilog.info(DOMAIN, 'testTag', 'Composio config not loaded from %{public}s. Cause: %{public}s', COMPOSIO_CONFIG_RAWFILE, JSON.stringify(err));
     }
   }
 
@@ -437,10 +408,7 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onNewWant');
     const bimSentinelMock = queueBimSentinelMockFromWant(want);
     const uri = oauthUriFromWant(want);
-    this.loadLocalProviderConfig();
-    if (!isComposioCallbackUri(uri)) {
-      this.loadComposioConfig();
-    }
+    loadProviderRuntimeConfig(this.context, !isComposioCallbackUri(uri));
     this.loadPersonaPacks();
     this.handleOAuthWant(want);
     const result = this.claimTrainPresaleTask(want);

@@ -403,6 +403,68 @@ test('invalidates in-flight MBTI reinference on local markdown and visibility ch
   assert.match(source, /if \(jobId !== this\.publicPersonaJobId \|\| this\.publicPersonaSnapshot === null\)/);
 });
 
+test('dismisses the keyboard only before direct daily-brief scrolled evidence', () => {
+  assert.equal(typeof smokeLifecycle.shouldDismissKeyboardBeforeScrolledEvidence, 'function');
+  assert.equal(smokeLifecycle.shouldDismissKeyboardBeforeScrolledEvidence('daily.brief.open'), true);
+  [
+    '',
+    'calendar.event.list',
+    'mail.search',
+    'media.aggregate.search',
+    'movie.open'
+  ].forEach((expectedToolId) => {
+    assert.equal(smokeLifecycle.shouldDismissKeyboardBeforeScrolledEvidence(expectedToolId), false);
+  });
+
+  const source = readFileSync('scripts/aiphone-device-smoke.mjs', 'utf8');
+  const callSite = source.slice(
+    source.indexOf('const expectedMarkers = layoutExpectationsForQuery(query);'),
+    source.indexOf('const evidenceText = scrollEvidence.text;')
+  );
+  const dismiss = callSite.indexOf('shouldDismissKeyboardBeforeScrolledEvidence(expectedToolId)');
+  const back = callSite.indexOf("keyEvent', 'Back'");
+  const collect = callSite.indexOf('collectScrolledLayoutEvidence(');
+  assert.ok(dismiss >= 0 && back > dismiss && collect > back);
+});
+
+test('gives only direct daily-brief evidence a bounded twenty-scroll window', () => {
+  assert.equal(typeof smokeLifecycle.scrolledEvidenceAttemptLimit, 'function');
+  assert.equal(smokeLifecycle.scrolledEvidenceAttemptLimit('daily.brief.open'), 20);
+  ['', 'calendar.event.list', 'mail.search', 'media.aggregate.search', 'movie.open']
+    .forEach((expectedToolId) => {
+      assert.equal(smokeLifecycle.scrolledEvidenceAttemptLimit(expectedToolId), 5);
+    });
+
+  const source = readFileSync('scripts/aiphone-device-smoke.mjs', 'utf8');
+  const collectSource = source.slice(
+    source.indexOf('async function collectScrolledLayoutEvidence'),
+    source.indexOf('function expandMatchesForTarget')
+  );
+  assert.match(collectSource, /attemptLimit/);
+  assert.match(collectSource, /attempt < attemptLimit/);
+  const callSite = source.slice(
+    source.indexOf('const expectedMarkers = layoutExpectationsForQuery(query);'),
+    source.indexOf('const evidenceText = scrollEvidence.text;')
+  );
+  assert.match(callSite, /scrolledEvidenceAttemptLimit\(expectedToolId\)/);
+});
+
+test('keeps direct daily-brief routing independent from removed BIM suggestion state', () => {
+  const source = readFileSync('entry/src/main/ets/pages/A2uiHome/Index.ets', 'utf8');
+  const start = source.indexOf('const directDailyBriefRequest = resolveA2uiHomeSubmitToolRequest(trimmed);');
+  const end = source.indexOf('const modelPrompt = modelPromptWithActionContext', start);
+  assert.ok(start >= 0 && end > start, 'direct daily-brief submit branch is present');
+  assert.doesNotMatch(source.slice(start, end), /clearBimSuggestion/);
+});
+
+test('keeps packaged Didi production mode on app startup', () => {
+  const source = readFileSync('entry/src/main/ets/pages/A2uiHome/Index.ets', 'utf8');
+  const start = source.indexOf('aboutToAppear(): void {');
+  const end = source.indexOf('onPageShow(): void {', start);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(source.slice(start, end), /configureDidiMcpSandboxRuntime\(true\)/);
+});
+
 test('holds ordinary C20 multi-agent capture until its bounded settlement window', () => {
   assert.equal(typeof smokeLifecycle.multiAgentPostCompletionWaitMs, 'function');
   assert.equal(typeof smokeLifecycle.captureCompletionSettled, 'function');
@@ -2196,10 +2258,191 @@ test('requires a virtual action request before its exact result', () => {
   }).complete, false);
 });
 
-test('lists exactly C01-C23 and F01-F16 without excluded sends', () => {
+test('requires exact direct daily-brief system-intent, HTML, visible, and no-click evidence', () => {
+  assert.equal(typeof smokeLifecycle.dailyBriefDirectEvidence, 'function');
+  if (typeof smokeLifecycle.dailyBriefDirectEvidence !== 'function') {
+    return;
+  }
+  const contentDigest = 'a'.repeat(64);
+  const logs = [
+    '[AIPhone][A2uiHomeToolRequest] toolId=daily.brief.open promptChars=7 actionId=daily.brief.open gateway=local://aiphone-tools',
+    '[AIPhone][A2uiHomeSurfaceForceUpdate] reason=daily_brief_open_existing surfaceId=daily-brief-2026-08-11 status=ready components=1 dataChars=2048 sequence=1 renderTick=3',
+    `[AIPhone][HtmlHomeDocument] source=tool kind=daily-brief chars=16384 blocks=0 contentDigest=${contentDigest} renderTick=3`,
+    `[AIPhone][HtmlHomeSurfaceLoad] chars=16384 contentDigest=${contentDigest} renderTick=3 busy=false`
+  ].join('\n');
+  const visible = [
+    '个人日报', '实际生成', 'Top 3', '今日状态', '穿衣与出行', '为你发现', '基于你的偏好',
+    '前一天', 'Calendar needs_auth', 'Mail timeout', 'Waterfall error'
+  ].join('\n');
+  const evidence = smokeLifecycle.dailyBriefDirectEvidence(logs, visible);
+  assert.equal(evidence.complete, true);
+  assert.equal(evidence.uiOk, true);
+  assert.equal(evidence.ok, true);
+  assert.deepEqual(evidence.derivedActionIds, []);
+
+  const oneBehindLoad = logs.replace(
+    `contentDigest=${contentDigest} renderTick=3 busy=false`,
+    `contentDigest=${contentDigest} renderTick=2 busy=false`
+  );
+  const oneBehindEvidence = smokeLifecycle.dailyBriefDirectEvidence(oneBehindLoad, visible);
+  assert.equal(oneBehindEvidence.complete, true);
+  assert.equal(oneBehindEvidence.executionObserved, true);
+  assert.equal(oneBehindEvidence.ok, true);
+
+  const mismatchedChars = logs.replace(
+    '[AIPhone][HtmlHomeSurfaceLoad] chars=16384',
+    '[AIPhone][HtmlHomeSurfaceLoad] chars=16383'
+  );
+  assert.equal(smokeLifecycle.dailyBriefDirectEvidence(mismatchedChars, visible).ok, false);
+
+  const mismatchedDigest = logs.replace(
+    `[AIPhone][HtmlHomeSurfaceLoad] chars=16384 contentDigest=${contentDigest}`,
+    `[AIPhone][HtmlHomeSurfaceLoad] chars=16384 contentDigest=${'b'.repeat(64)}`
+  );
+  assert.equal(smokeLifecycle.dailyBriefDirectEvidence(mismatchedDigest, visible).ok, false);
+
+  const missingDocumentDigest = logs.replace(` contentDigest=${contentDigest} renderTick=3`, ' renderTick=3');
+  assert.equal(smokeLifecycle.dailyBriefDirectEvidence(missingDocumentDigest, visible).ok, false);
+
+  const missingLoadDigest = logs.replace(` contentDigest=${contentDigest} renderTick=3 busy=false`,
+    ' renderTick=3 busy=false');
+  assert.equal(smokeLifecycle.dailyBriefDirectEvidence(missingLoadDigest, visible).ok, false);
+
+  const loadTooFarBehind = logs.replace(
+    `contentDigest=${contentDigest} renderTick=3 busy=false`,
+    `contentDigest=${contentDigest} renderTick=1 busy=false`
+  );
+  assert.equal(smokeLifecycle.dailyBriefDirectEvidence(loadTooFarBehind, visible).ok, false);
+
+  const staleDailyThenCurrentMovie = [
+    logs,
+    '[AIPhone][A2uiHomeToolRequest] toolId=movie.open promptChars=4 actionId=movie.open gateway=local://aiphone-tools'
+  ].join('\n');
+  assert.equal(smokeLifecycle.dailyBriefDirectEvidence(staleDailyThenCurrentMovie, visible).ok, false);
+
+  const staleDailyThenCurrentDaily = [
+    logs,
+    '[AIPhone][A2uiHomeToolRequest] toolId=daily.brief.open promptChars=7 actionId=daily.brief.open gateway=local://aiphone-tools'
+  ].join('\n');
+  assert.equal(smokeLifecycle.dailyBriefDirectEvidence(staleDailyThenCurrentDaily, visible).ok, false);
+
+  const mixedRenderTicks = logs
+    .replace(`contentDigest=${contentDigest} renderTick=3`, `contentDigest=${contentDigest} renderTick=4`)
+    .replace(`contentDigest=${contentDigest} renderTick=3 busy=false`,
+      `contentDigest=${contentDigest} renderTick=5 busy=false`);
+  const mixedEvidence = smokeLifecycle.dailyBriefDirectEvidence(mixedRenderTicks, visible);
+  assert.equal(mixedEvidence.complete, false);
+  assert.equal(mixedEvidence.ok, false);
+  assert.equal(mixedEvidence.executionObserved, false);
+
+  const missingSurfaceTick = smokeLifecycle.dailyBriefDirectEvidence(
+    logs.replace(' sequence=1 renderTick=3', ' sequence=1'), visible);
+  assert.equal(missingSurfaceTick.complete, false);
+  assert.equal(missingSurfaceTick.ok, false);
+  assert.equal(missingSurfaceTick.executionObserved, false);
+
+  const missingDocumentTick = smokeLifecycle.dailyBriefDirectEvidence(
+    logs.replace(` contentDigest=${contentDigest} renderTick=3`, ` contentDigest=${contentDigest}`), visible);
+  assert.equal(missingDocumentTick.complete, false);
+  assert.equal(missingDocumentTick.ok, false);
+  assert.equal(missingDocumentTick.executionObserved, false);
+
+  const missingLoadTick = smokeLifecycle.dailyBriefDirectEvidence(
+    logs.replace(` contentDigest=${contentDigest} renderTick=3 busy=false`,
+      ` contentDigest=${contentDigest} busy=false`), visible);
+  assert.equal(missingLoadTick.complete, false);
+  assert.equal(missingLoadTick.ok, false);
+  assert.equal(missingLoadTick.executionObserved, false);
+
+  const invalidLogs = [
+    logs.replace('[A2uiHomeToolRequest]', '[A2uiHomeToolRequestFromModel]'),
+    logs.replace('toolId=daily.brief.open', 'toolId=movie.open'),
+    logs.replace('reason=daily_brief_open_existing', 'reason=daily_brief_generate_first'),
+    logs.replace('kind=daily-brief', 'kind=generic'),
+    logs.replace('chars=16384', 'chars=0'),
+    logs.replace('[AIPhone][HtmlHomeSurfaceLoad]', '[AIPhone][HtmlHomeSurfaceLoadError]'),
+    logs + '\n[AIPhone][A2uiHomeClientAction] id=daily.brief.regenerate'
+  ];
+  invalidLogs.forEach((candidate) => {
+    assert.equal(smokeLifecycle.dailyBriefDirectEvidence(candidate, visible).ok, false);
+  });
+  assert.equal(smokeLifecycle.dailyBriefDirectEvidence(
+    logs,
+    visible.replace('前一天', '')
+  ).ok, false);
+});
+
+test('allows visible daily-brief dates without weakening ordinary date leak checks', () => {
+  assert.equal(typeof smokeLifecycle.finalVisibleDateBlockingHits, 'function');
+  if (typeof smokeLifecycle.finalVisibleDateBlockingHits !== 'function') {
+    return;
+  }
+  const visible = '个人日报\n2026-08-11\n实际生成 · 2026-08-11T01:14:47.957Z\n2026年8月11日';
+  assert.deepEqual(smokeLifecycle.finalVisibleDateBlockingHits(
+    visible, 'daily.brief.open', '2026-08-11'), []);
+  assert.deepEqual(smokeLifecycle.finalVisibleDateBlockingHits(
+    visible.replace('\n2026-08-11\n', '\n2026-08-10\n'), 'daily.brief.open', '2026-08-11'), [
+    'daily-brief-date'
+  ]);
+  assert.deepEqual(smokeLifecycle.finalVisibleDateBlockingHits(
+    visible, 'daily.brief.open'), ['daily-brief-date']);
+  assert.deepEqual(smokeLifecycle.finalVisibleDateBlockingHits(
+    '个人日报\n截至 2026-08-11 的摘要', 'daily.brief.open', '2026-08-11'), [
+    'daily-brief-date'
+  ]);
+  assert.deepEqual(smokeLifecycle.finalVisibleDateBlockingHits(visible, 'movie.open'), [
+    'iso-date',
+    'zh-date'
+  ]);
+});
+
+test('keeps direct daily-brief analysis independent from model tool and provider evidence', () => {
+  assert.equal(typeof smokeLifecycle.dailyBriefDirectAnalysis, 'function');
+  if (typeof smokeLifecycle.dailyBriefDirectAnalysis !== 'function') {
+    return;
+  }
+  const multiAgentLifecycle = { complete: false, ok: false, toolIds: [] };
+  const analyzed = smokeLifecycle.dailyBriefDirectAnalysis({
+    multiAgentLifecycle,
+    modelPassed: false,
+    modelFailed: true,
+    modelSelectedExpectedToolId: true,
+    hasExpectedToolId: false,
+    toolRequested: false,
+    toolOk: false,
+    toolExecutionObserved: false,
+    providerFailed: true,
+    transportPassed: false,
+    htmlLoadError: false,
+    syntheticFallback: false,
+    basePassedWithoutTransport: false,
+    ok: false
+  }, {
+    complete: true,
+    requestObserved: true,
+    executionObserved: true
+  });
+  assert.equal(analyzed.modelApplicable, false);
+  assert.equal(analyzed.multiAgentLifecycle, multiAgentLifecycle);
+  assert.equal(analyzed.modelPassed, false);
+  assert.equal(analyzed.modelFailed, true);
+  assert.equal(analyzed.modelSelectedExpectedToolId, false);
+  assert.equal(analyzed.hasExpectedToolId, false);
+  assert.equal(analyzed.toolRequested, false);
+  assert.equal(analyzed.toolOk, false);
+  assert.equal(analyzed.toolExecutionObserved, false);
+  assert.equal(analyzed.providerFailed, true);
+  assert.equal(analyzed.transportPassed, false);
+  assert.equal(analyzed.dailyBriefRequestObserved, true);
+  assert.equal(analyzed.dailyBriefExecutionObserved, true);
+  assert.equal(analyzed.basePassedWithoutTransport, true);
+  assert.equal(analyzed.ok, true);
+});
+
+test('lists exactly C01-C24 and F01-F16 without excluded sends', () => {
   const core = listedCases();
   assert.deepEqual(core.map((item) => item.id),
-    Array.from({ length: 23 }, (_value, index) => `C${String(index + 1).padStart(2, '0')}`));
+    Array.from({ length: 24 }, (_value, index) => `C${String(index + 1).padStart(2, '0')}`));
   const full = listedCases(['--full-regression']);
   assert.deepEqual(full.map((item) => item.id), [
     ...core.map((item) => item.id),
@@ -2222,7 +2465,29 @@ test('lists exactly C01-C23 and F01-F16 without excluded sends', () => {
     ['time', 'ride.estimate']);
   assert.deepEqual(full.find((item) => item.id === 'C22')?.expectedToolIds,
     ['ride.estimate', 'luckin.order.preview', 'payment.send']);
+  assert.deepEqual(full.find((item) => item.id === 'C24'), {
+    id: 'C24',
+    expectedToolIds: ['daily.brief.open'],
+    requiredVisibleMarkers: [
+      '个人日报', '实际生成', 'Top 3', '今日状态', '穿衣与出行', '为你发现', '基于你的偏好', '前一天'
+    ],
+    automatedDerivedActionIds: [],
+    manualDerivedActionIds: [
+      'daily.brief.regenerate',
+      'daily.brief.preference.save',
+      'daily.brief.history.open',
+      'daily.brief.mail.read',
+      'daily.brief.discovery.open'
+    ]
+  });
   assert.doesNotMatch(serialized, /不确认直接发送|gmail\.message\.send/);
+});
+
+test('infers positional daily-brief queries without routing generic reports', () => {
+  const [daily] = listedCases(['打开个人日报']);
+  assert.deepEqual(daily.expectedToolIds, ['daily.brief.open']);
+  const [generic] = listedCases(['帮我整理一份行业日报']);
+  assert.deepEqual(generic.expectedToolIds, []);
 });
 
 test('maps the positional Gmail confirmation query to the retained F08 apply action', () => {

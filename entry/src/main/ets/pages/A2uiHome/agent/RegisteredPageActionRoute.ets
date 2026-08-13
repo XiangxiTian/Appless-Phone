@@ -27,6 +27,7 @@ const PAGE_ACTION_CANDIDATE_IDS: string[] = [
   'gmail.open.web',
   'worldcup.open',
   'movie.open',
+  'daily.brief.open',
   'payment.confirm',
   'payment.send',
   'stripe.account.create',
@@ -75,6 +76,10 @@ export type LegacyPageActionRunner = (action: A2uiAction) => Promise<void>;
 
 interface ExperiencePageVirtualArgs {
   route: string;
+}
+
+interface DailyBriefVirtualArgs {
+  regenerate: boolean;
 }
 
 interface OriginalQueryVirtualArgs {
@@ -507,6 +512,12 @@ export function resolveVirtualRegisteredPageAction(
   }
   if (actionId === 'movie.open' && inputText.trim().length > 0) {
     const args: ExperiencePageVirtualArgs = { route: 'pages/A2uiHome/MovieDemo' };
+    return virtualAction(actionId, inputText.trim(), args as Object);
+  }
+  if (actionId === 'daily.brief.open' && inputText.trim().length > 0) {
+    const regenerate = inputText.indexOf('重新生成') >= 0 ||
+      inputText.indexOf('重做日报') >= 0 || inputText.indexOf('刷新日报') >= 0;
+    const args: DailyBriefVirtualArgs = { regenerate };
     return virtualAction(actionId, inputText.trim(), args as Object);
   }
   if (actionId === 'maps.route.open') {

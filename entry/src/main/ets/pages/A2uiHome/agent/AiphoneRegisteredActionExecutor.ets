@@ -239,6 +239,13 @@ export function validateRegisteredPageActionArgs(
       'MOVIE_ARGS_INVALID', 'Movie requires the exact registered page route.'
     );
   }
+  if (actionId === 'daily.brief.open') {
+    const keys = Object.keys(values);
+    return validation(
+      keys.length === 1 && keys[0] === 'regenerate' && typeof values['regenerate'] === 'boolean',
+      'DAILY_BRIEF_ARGS_INVALID', 'Daily brief requires one exact boolean regenerate argument.'
+    );
+  }
   if (actionId === 'calendar.event.create' || actionId === 'calendar.event.update') {
     return validation(
       calendarEventRequiredFields(actionId, args as CalendarEventArgs).length === 0,

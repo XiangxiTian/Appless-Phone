@@ -1,6 +1,7 @@
 import { webview } from '@kit.ArkWeb';
 import { A2uiAction } from '@loop/agent-core';
 import { aiLogError, aiLogInfo } from '@loop/agent-core';
+import { sha256Digest } from '@loop/agent-core';
 import { COLOR_PAGE } from '../style/A2uiHomeTheme';
 
 type HtmlHomeActionValue = Object | string | number | boolean | null | undefined;
@@ -108,6 +109,7 @@ export struct HtmlHomeSurfaceView {
       this.lastWaterfallPayloadTick = -1;
       this.appliedLuckinPatchTick = this.luckinInlinePatchTick;
       aiLogInfo('[AIPhone][HtmlHomeSurfaceLoad] chars=' + this.html.length.toString() +
+        ' contentDigest=' + sha256Digest(this.html) +
         ' renderTick=' + this.renderTick.toString() +
         ' busy=' + (this.isBusy ? 'true' : 'false'));
     } catch (error) {

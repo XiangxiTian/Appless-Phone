@@ -91,6 +91,8 @@ import {
   HtmlHomeStripeReceiving,
   HtmlHomeTimelineItem
 } from './HtmlHomeTypes';
+import { DailyBriefItem, DailyBriefPreference, DailyBriefSnapshot } from '../dailybrief/DailyBriefTypes';
+import { isValidDailyBriefAction } from '../dailybrief/DailyBriefStore';
 
 const HTML_HOME_VERSION: number = 1;
 const HISTORY_LIMIT: number = 6;
@@ -126,6 +128,17 @@ interface MailDetailActionArgs {
   threadId: string;
   messageId: string;
   subject: string;
+}
+
+export interface MailTerminalPresentation {
+  bodyText: string;
+  errorText: string;
+  shouldRequestDetail: boolean;
+}
+
+interface DailyBriefHomeDataModel {
+  dailyBrief?: DailyBriefSnapshot;
+  dailyBriefPreference?: DailyBriefPreference;
 }
 
 export interface CreateHtmlHomeDocumentParams {
@@ -207,6 +220,20 @@ export function createHtmlHomeDocument(params: CreateHtmlHomeDocumentParams): Ht
     generatedAt: new Date().toISOString()
   };
   const document: HtmlHomeDocument = withBusy(baseDocument, params.isBusy);
+  if (kind === 'daily-brief') {
+    const model = dailyBriefHomeDataModel(surface);
+    const snapshot = model === null ? undefined : model.dailyBrief;
+    const visiblePreference = model === null ? undefined : model.dailyBriefPreference;
+    if (snapshot !== undefined && isDailyBriefSnapshot(snapshot)) {
+      document.dailyBrief = snapshot;
+      document.dailyBriefPreference = !isDailyBriefPreference(visiblePreference)
+        ? snapshot.profile
+        : visiblePreference;
+      document.generatedAt = snapshot.generatedAt;
+      document.actions = htmlActions(snapshot.actions, root === null ? 'root' : root.id);
+    }
+    return document;
+  }
   if (aggregate !== null && aggregate.waterfall !== undefined) {
     document.waterfall = aggregate.waterfall;
   }
@@ -227,6 +254,87 @@ export function createHtmlHomeDocument(params: CreateHtmlHomeDocumentParams): Ht
 
   dropCompletedThinkingBlocks(document, params.isBusy);
   return document;
+}
+
+function dailyBriefHomeDataModel(surface: A2uiSurfaceState): DailyBriefHomeDataModel | null {
+  try {
+    return JSON.parse(surface.dataModelJson) as DailyBriefHomeDataModel;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function isDailyBriefSnapshot(value: DailyBriefSnapshot | null | undefined): boolean {
+  if (value === undefined || value === null || typeof value !== 'object' || Array.isArray(value) ||
+    value.schemaVersion !== 1 || typeof value.date !== 'string' || value.date.length === 0 ||
+    typeof value.generatedAt !== 'string' || value.generatedAt.length === 0 ||
+    value.status !== 'complete' && value.status !== 'partial' || !isDailyBriefPreference(value.profile) ||
+    !Array.isArray(value.topThree) || !Array.isArray(value.sections) || !Array.isArray(value.discovery) ||
+    !Array.isArray(value.sources) || !Array.isArray(value.actions)) {
+    return false;
+  }
+  for (let index = 0; index < value.topThree.length; index += 1) {
+    const highlight = value.topThree[index];
+    if (highlight === null || typeof highlight !== 'object' || typeof highlight.slot !== 'string' ||
+      !isDailyBriefItem(highlight.item)) {
+      return false;
+    }
+  }
+  for (let index = 0; index < value.sections.length; index += 1) {
+    const section = value.sections[index];
+    if (section === null || typeof section !== 'object' || typeof section.id !== 'string' ||
+      typeof section.title !== 'string' || typeof section.state !== 'string' ||
+      typeof section.message !== 'string' || !Array.isArray(section.items)) {
+      return false;
+    }
+    for (let itemIndex = 0; itemIndex < section.items.length; itemIndex += 1) {
+      if (!isDailyBriefItem(section.items[itemIndex])) {
+        return false;
+      }
+    }
+  }
+  for (let index = 0; index < value.discovery.length; index += 1) {
+    const item = value.discovery[index];
+    if (item === null || typeof item !== 'object' || typeof item.source !== 'string' ||
+      typeof item.title !== 'string' || typeof item.summary !== 'string' || typeof item.url !== 'string' ||
+      typeof item.reason !== 'string' || typeof item.timeBudgetLabel !== 'string') {
+      return false;
+    }
+  }
+  for (let index = 0; index < value.actions.length; index += 1) {
+    if (!isValidDailyBriefAction(value.actions[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isDailyBriefPreference(value: DailyBriefPreference | null | undefined): boolean {
+  return value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value) &&
+    isStringArray(value.topics) && typeof value.language === 'string' &&
+    typeof value.timeBudgetMinutes === 'number' && Number.isFinite(value.timeBudgetMinutes) &&
+    isStringArray(value.formats) && typeof value.negativePreference === 'string' &&
+    typeof value.targetTime === 'string';
+}
+
+function isDailyBriefItem(value: DailyBriefItem | null | undefined): boolean {
+  return value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value) &&
+    typeof value.id === 'string' && typeof value.sourceId === 'string' &&
+    typeof value.title === 'string' && typeof value.summary === 'string' &&
+    typeof value.timeLabel === 'string' &&
+    (value.action === undefined || isValidDailyBriefAction(value.action));
+}
+
+function isStringArray(value: string[]): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    if (typeof value[index] !== 'string') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function welcomeDocument(params: CreateHtmlHomeDocumentParams): HtmlHomeDocument {
@@ -740,7 +848,9 @@ function appendGenericToolResultBlocks(document: HtmlHomeDocument, surface: A2ui
     appendRideToolPanelBlock(document, results, component);
     return;
   }
+  const sourceToolId = summaryToolName(surface);
   results.forEach((item: A2uiGenericToolResultData, index: number) => {
+    const mailTerminal = mailTerminalPresentation(sourceToolId, item);
     const block = newBlock(component.id + '-' + index.toString(), 'generic-tool-result', firstText(item.title, item.toolName, component.id));
     block.subtitle = item.summary;
     block.status = item.status;
@@ -752,6 +862,12 @@ function appendGenericToolResultBlocks(document: HtmlHomeDocument, surface: A2ui
     });
     if (item.rawPreview.length > 0) {
       block.rawPreview = item.rawPreview;
+    }
+    if (mailTerminal.bodyText.length > 0) {
+      block.mailTerminalBody = mailTerminal.bodyText;
+    }
+    if (mailTerminal.errorText.length > 0) {
+      block.mailTerminalError = mailTerminal.errorText;
     }
     const mediaEmbed = mediaEmbedForResult(item);
     if (mediaEmbed !== null) {
@@ -773,7 +889,7 @@ function appendGenericToolResultBlocks(document: HtmlHomeDocument, surface: A2ui
     if (gmailOpenDraft !== null) {
       block.actions = block.actions.concat(htmlActions([gmailOpenDraft], component.id));
     }
-    const mailDetailRead = mailDetailReadAction(item);
+    const mailDetailRead = mailTerminal.shouldRequestDetail ? mailDetailReadAction(item) : null;
     if (mailDetailRead !== null) {
       block.actions = block.actions.concat(htmlActions([mailDetailRead], component.id));
     }
@@ -1207,6 +1323,32 @@ function genericResultRowValue(result: A2uiGenericToolResultData, label: string)
   return '';
 }
 
+export function mailTerminalPresentation(
+  sourceToolId: string,
+  result: A2uiGenericToolResultData
+): MailTerminalPresentation {
+  const terminal = sourceToolId === 'mail.thread.read' || sourceToolId === 'gmail.thread.read';
+  if (!terminal) {
+    return {
+      bodyText: '',
+      errorText: '',
+      shouldRequestDetail: true
+    };
+  }
+  if (result.status === 'success') {
+    return {
+      bodyText: result.summary,
+      errorText: '',
+      shouldRequestDetail: false
+    };
+  }
+  return {
+    bodyText: '',
+    errorText: firstText(result.summary, genericResultRowValue(result, 'Error'), ''),
+    shouldRequestDetail: false
+  };
+}
+
 function mailDetailReadAction(result: A2uiGenericToolResultData): A2uiAction | null {
   const source = result.sourceTag.toLowerCase();
   const rowProvider = genericResultRowValue(result, 'Provider').toLowerCase();
@@ -1352,6 +1494,9 @@ function isThinkingBlock(block: HtmlHomeBlock): boolean {
 }
 
 function kindOf(surface: A2uiSurfaceState): HtmlHomeKind {
+  if (surface.intent === 'daily-brief') {
+    return 'daily-brief';
+  }
   if (surface.intent === 'multi-task' || hasComponent(surface, A2UI_COMPONENT_MULTI_TASK_BOARD)) {
     return 'multi-task';
   }
@@ -1403,7 +1548,7 @@ function sourceOf(kind: HtmlHomeKind, surface: A2uiSurfaceState, isBusy: boolean
   if (kind === 'thinking' || isBusy && surface.status !== 'ready') {
     return 'pending';
   }
-  if (kind === 'travel' || kind === 'hotel' || kind === 'food' || kind === 'social' || kind === 'dynamic-tools' || kind === 'gmail' || kind === 'media' || kind === 'payment' || kind === 'aggregate-search' || kind === 'luckin' || kind === 'multi-task') {
+  if (kind === 'travel' || kind === 'hotel' || kind === 'food' || kind === 'social' || kind === 'dynamic-tools' || kind === 'gmail' || kind === 'media' || kind === 'payment' || kind === 'aggregate-search' || kind === 'luckin' || kind === 'multi-task' || kind === 'daily-brief') {
     return 'tool';
   }
   return 'model';
@@ -1707,6 +1852,11 @@ function firstDateText(...values: HtmlHomeTextValue[]): string {
 function summaryText(surface: A2uiSurfaceState): string {
   const summary = resolveData(surface, '/summary') as A2uiSummaryData;
   return summary === undefined || summary === null ? '' : textOf(summary.text);
+}
+
+function summaryToolName(surface: A2uiSurfaceState): string {
+  const summary = resolveData(surface, '/summary') as A2uiSummaryData;
+  return summary === undefined || summary === null ? '' : textOf(summary.toolName);
 }
 
 function aggregateVideoResult(item: AggregateSearchVideo): A2uiGenericToolResultData {

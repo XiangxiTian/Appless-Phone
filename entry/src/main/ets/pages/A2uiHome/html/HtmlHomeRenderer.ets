@@ -1,6 +1,7 @@
 import { HtmlHomeDocument } from './HtmlHomeTypes';
 import { renderMultiTaskHomeDocument, shouldRenderMultiTaskHomeDocument } from './HtmlMultiTaskHomeRenderer';
 import { renderAggregateSearchHomeDocument, shouldRenderAggregateSearchHomeDocument } from './HtmlAggregateSearchHomeRenderer';
+import { renderDailyBriefHomeDocument, shouldRenderDailyBriefHomeDocument } from './HtmlDailyBriefHomeRenderer';
 import { renderCalendarHomeDocument, shouldRenderCalendarHomeDocument } from './HtmlCalendarHomeRenderer';
 import { renderFoodHomeDocument, shouldRenderFoodHomeDocument } from './HtmlFoodHomeRenderer';
 import { renderFirecrawlHomeDocument, shouldRenderFirecrawlHomeDocument } from './HtmlFirecrawlHomeRenderer';
@@ -5095,6 +5096,13 @@ const HTML_HOME_JS: string = `
     });
   }
   function addMailExpandedDetails(parent, block, card) {
+    var terminalBody = text(block && block.mailTerminalBody);
+    var terminalError = text(block && block.mailTerminalError);
+    if (terminalBody.length > 0) {
+      add(parent, 'pre', 'mail-detail-body', terminalBody);
+    } else if (terminalError.length > 0) {
+      add(parent, 'div', 'mail-detail-error', terminalError);
+    }
     var detailAction = mailDetailAction(block);
     if (detailAction) {
       var requestKey = text(detailAction.prompt);
@@ -5562,6 +5570,9 @@ export function renderHtmlHomeDocument(document: HtmlHomeDocument, isBusy: boole
   }
   if (shouldRenderCalendarHomeDocument(document)) {
     return renderCalendarHomeDocument(document, isBusy);
+  }
+  if (shouldRenderDailyBriefHomeDocument(document)) {
+    return renderDailyBriefHomeDocument(document, isBusy);
   }
   if (shouldRenderAggregateSearchHomeDocument(document)) {
     return renderAggregateSearchHomeDocument(document, isBusy);

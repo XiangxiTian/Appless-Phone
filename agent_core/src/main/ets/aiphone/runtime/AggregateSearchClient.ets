@@ -115,6 +115,7 @@ export function aggregateMediaCandidates(
       url: video.url,
       coverUrl: video.thumbnail,
       publishedAt: video.publishedAt,
+      duration: video.duration,
       originalIndex: batchIndex * 1000 + index
     });
   });
@@ -1139,7 +1140,11 @@ function sourceStateFor(batch: AggregateSearchSourceBatch): WaterfallSourceState
   };
 }
 
-function loadingWaterfallState(query: string, sources: AggregateSearchSource[]): WaterfallFeedState {
+function loadingWaterfallState(
+  query: string,
+  sources: AggregateSearchSource[],
+  preferenceDescription: string
+): WaterfallFeedState {
   const sourceStates: WaterfallSourceState[] = sources.map((source: AggregateSearchSource): WaterfallSourceState => ({
     source: source,
     phase: 'loading',
@@ -1151,7 +1156,7 @@ function loadingWaterfallState(query: string, sources: AggregateSearchSource[]):
   return {
     query: query,
     enabledSources: sources.slice(),
-    preferenceDescription: '',
+    preferenceDescription: preferenceDescription,
     shown: [],
     current: null,
     stable: [],
@@ -1197,12 +1202,13 @@ export async function streamAggregateSearchSourceBatches(
   requestedSources: AggregateSearchSource[],
   tasks: Promise<AggregateSearchSourceBatch>[],
   onPartial: AggregateSearchPartialObserver,
-  nowMs: number
+  nowMs: number,
+  preferenceDescription: string = ''
 ): Promise<AggregateSearchResult> {
   const videos: AggregateSearchVideo[] = [];
   const posts: AggregateSearchPost[] = [];
   const statuses: AggregateSearchSourceStatus[] = [];
-  let waterfall = loadingWaterfallState(query, requestedSources);
+  let waterfall = loadingWaterfallState(query, requestedSources, preferenceDescription);
   let batchIndex = 0;
   let partialChain: Promise<void> = Promise.resolve();
   const wrappedTasks: Promise<void>[] = [];
@@ -1437,6 +1443,7 @@ export async function callAggregateSearch(
 ): Promise<AggregateSearchResult> {
   const query = aggregateSearchQueryFromArgs(prompt, args);
   const sources = aggregateSearchSourcesFromArgs(args);
+  const preferenceDescription = args === null ? '' : textOf((args as AggregateArgRecord).preferenceDescription).trim();
   const tasks: Promise<AggregateSearchSourceBatch>[] = [];
   sources.forEach((source: AggregateSearchSource): void => {
     if (source === 'youtube' || source === 'bilibili') {
@@ -1459,5 +1466,5 @@ export async function callAggregateSearch(
     }
   });
   const observer: AggregateSearchPartialObserver = onPartial === null ? (() => {}) : onPartial;
-  return streamAggregateSearchSourceBatches(query, sources, tasks, observer, nowMs);
+  return streamAggregateSearchSourceBatches(query, sources, tasks, observer, nowMs, preferenceDescription);
 }

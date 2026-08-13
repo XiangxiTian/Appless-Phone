@@ -1330,7 +1330,7 @@ function currentGmailReplySurface(sequence: number): A2uiSurfaceState {
     rawPreview: ''
   };
   const parsed = parseA2uiJsonl(
-    gmailThreadResultsA2ui('gmail-reply-surface', 'gmail.thread.read', [result])
+    gmailThreadResultsA2ui('gmail-reply-surface', 'gmail.mail.search', [result])
   );
   const store = new A2uiSurfaceStore();
   parsed.envelopes.forEach((envelope) => store.apply(envelope));
@@ -4413,7 +4413,7 @@ export default function multiAgentCanaryRuntimeTest() {
       runtime.dispose();
     });
 
-    it('does not block Gmail send from the exact current reply surface', 0, async () => {
+    it('does not block Gmail send from the exact current search result reply surface', 0, async () => {
       const calls: RecordedPageAction[] = [];
       const bus = new TrackingBus();
       const surface = currentGmailReplySurface(29);

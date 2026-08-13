@@ -28,20 +28,26 @@ import {
   captureCompletionSettled,
   collectExternalAuthJumps,
   composioAuthEvidence,
+  DAILY_BRIEF_VISIBLE_MARKERS,
   calendarConfirmationButtonCenter,
   calendarProviderActionEvidence,
   calendarProviderAbsenceEvidence,
+  dailyBriefDirectAnalysis,
+  dailyBriefDirectEvidence,
   normalizeCalendarQaDate,
   runC19CleanupFinalizer,
   directTextVisibleEvidence,
   dynamicAuthOutcomeAssessment,
   dynamicToolDiscoveryEvidence,
   expandedMailBodyRegionText,
+  finalVisibleDateBlockingHits,
   mailThreadReadEvidence,
   modelTransportEvidence,
   multiAgentActionEvidence,
   multiAgentPostCompletionWaitMs,
   multiAgentTurnEvidence,
+  scrolledEvidenceAttemptLimit,
+  shouldDismissKeyboardBeforeScrolledEvidence,
   shouldPreserveSmokeAppSession,
   socialDraftUiEvidence,
   socialReplyButtonCenter,
@@ -331,7 +337,8 @@ const coreRegressionCases = [
       { toolId: 'ride.estimate', round: 1 }
     ]
   },
-  { id: 'C23', query: '我想看看现在热映电影、票房和明星动态', expectsTool: true, expectedToolId: 'movie.open' }
+  { id: 'C23', query: '我想看看现在热映电影、票房和明星动态', expectsTool: true, expectedToolId: 'movie.open' },
+  { id: 'C24', query: '我想查看今日日报', expectsTool: true, expectedToolId: 'daily.brief.open' }
 ];
 
 const retainedFullCases = [
@@ -414,8 +421,19 @@ const coreScenarioManifest = [
   ['C20', ['hotel.search']],
   ['C21', ['time', 'ride.estimate']],
   ['C22', ['ride.estimate', 'luckin.order.preview', 'payment.send']],
-  ['C23', ['movie.open']]
-].map(([id, expectedToolIds]) => ({ id, expectedToolIds }));
+  ['C23', ['movie.open']],
+  ['C24', ['daily.brief.open'], {
+    requiredVisibleMarkers: DAILY_BRIEF_VISIBLE_MARKERS,
+    automatedDerivedActionIds: [],
+    manualDerivedActionIds: [
+      'daily.brief.regenerate',
+      'daily.brief.preference.save',
+      'daily.brief.history.open',
+      'daily.brief.mail.read',
+      'daily.brief.discovery.open'
+    ]
+  }]
+].map(([id, expectedToolIds, evidence = {}]) => ({ id, expectedToolIds, ...evidence }));
 
 const fullScenarioManifest = retainedFullCases.map((testCase) => ({
   id: testCase.id,
@@ -528,7 +546,8 @@ const visibleDomainMarkers = [
   'x.post.search',
   '生成草稿',
   'Slack',
-  '企业微信'
+  '企业微信',
+  ...DAILY_BRIEF_VISIBLE_MARKERS
 ];
 
 const forbiddenLayoutActionMarkers = [
@@ -571,11 +590,6 @@ const finalLayoutBlockingMarkers = [
 const finalLayoutRouteMarkers = [
   '北京',
   '上海'
-];
-
-const finalLayoutBlockingPatterns = [
-  { name: 'iso-date', pattern: /\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/ },
-  { name: 'zh-date', pattern: /\b\d{4}年\d{1,2}月\d{1,2}日\b/ }
 ];
 
 const forbiddenGmailSendSuccessPatterns = [
@@ -625,6 +639,20 @@ const aggregateMediaTruthfulBlockingMarkers = [
   'Internal error',
   '2300999',
   'Bad Request'
+];
+
+const dailyBriefTruthfulStateMarkers = [
+  ...aggregateMediaTruthfulBlockingMarkers,
+  'Google Places API 调用失败',
+  'Gmail 调用失败',
+  'Gmail API 调用失败',
+  'Gmail MCP 调用失败',
+  'QQ 邮箱调用失败',
+  'QQ IMAP timeout',
+  'Composio 调用失败',
+  'Failed to resolve the host name',
+  '同步失败',
+  '暂无可展示数据'
 ];
 
 const argv = process.argv.slice(2);
@@ -792,6 +820,11 @@ function isHotelQuery(query) {
   return /酒店|hotel/i.test(query);
 }
 
+function isDailyBriefQuery(query) {
+  return /今日日报|今日简报|个人日报/.test(query) &&
+    /看|查看|打开|生成|重新生成|重做|刷新/.test(query);
+}
+
 function expectedCaseForQuery(query) {
   const configuredCase = fullRegressionCases.find((testCase) => testCase.query === query);
   if (configuredCase !== undefined) {
@@ -807,6 +840,12 @@ function expectedCaseForQuery(query) {
     return {
       expectsTool: false,
       expectedToolId: ''
+    };
+  }
+  if (isDailyBriefQuery(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'daily.brief.open'
     };
   }
   if (/船票|轮渡|客船|渡轮|码头/.test(query)) {
@@ -1062,6 +1101,16 @@ function hdc(args, options = {}) {
   }
   return result.stdout;
 }
+
+function deviceLocalIsoDate() {
+  const value = hdc(['shell', 'date', '+%Y-%m-%d']).trim();
+  if (!/^20\d{2}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(`Could not read ISO local date from target ${target}: ${value}`);
+  }
+  return value;
+}
+
+const expectedDeviceLocalDate = queries.some((query) => isDailyBriefQuery(query)) ? deviceLocalIsoDate() : '';
 
 function appWindowRect() {
   const output = hdc(['shell', 'hidumper', '-s', 'WindowManagerService', '-a', '-a']);
@@ -1980,6 +2029,8 @@ function analyze(
   expectedParallelDataToolIds = []
 ) {
   const text = logs.join('\n');
+  const dailyBriefDirect = expectedToolId === 'daily.brief.open' ?
+    dailyBriefDirectEvidence(text) : null;
   const multiAgentLifecycle = multiAgentTurnEvidence(text, {
     expectedToolIds,
     minimumDataRounds,
@@ -2023,6 +2074,7 @@ function analyze(
     expectedToolIds,
     expectedDiscoveredToolId,
     expectedDynamicQualifiedName,
+    dailyBriefDirect,
     dynamicDiscovery,
     multiAgentLifecycle,
     hasExpectedToolId,
@@ -2088,7 +2140,9 @@ function analyze(
   result.transportPassed = !result.failedConnect && !result.providerFailed;
   result.basePassedWithoutTransport = baseWithoutTransport;
   const basePassed = result.transportPassed && baseWithoutTransport;
-  if (isPersonaMemoryUpdateQuery(query)) {
+  if (dailyBriefDirect !== null) {
+    Object.assign(result, dailyBriefDirectAnalysis(result, dailyBriefDirect));
+  } else if (isPersonaMemoryUpdateQuery(query)) {
     result.modelPassed = result.personaMemoryUpdateProof === true;
     result.transportPassed = true;
     result.basePassedWithoutTransport = true;
@@ -2270,6 +2324,9 @@ function layoutExpectationsForQuery(query) {
   if (/^你好$|问候|打招呼/.test(query)) {
     return ['你好'];
   }
+  if (isDailyBriefQuery(query)) {
+    return DAILY_BRIEF_VISIBLE_MARKERS;
+  }
   if (/船票|轮渡|客船|渡轮|码头/.test(query)) {
     return ['接入工具', 'dynamic.search', '没有找到'];
   }
@@ -2398,16 +2455,19 @@ function requiredScrolledMarkersForQuery(query, expectedToolId) {
   if (expectedToolId === 'movie.open') {
     return ['电影 Anything OS', '明星正在发生'];
   }
+  if (expectedToolId === 'daily.brief.open') {
+    return DAILY_BRIEF_VISIBLE_MARKERS;
+  }
   return [];
 }
 
-async function collectScrolledLayoutEvidence(initialLayout, initialText, index, requiredMarkers) {
+async function collectScrolledLayoutEvidence(initialLayout, initialText, index, requiredMarkers, attemptLimit = 5) {
   const texts = [initialText];
   const layoutPaths = [join(outDir, `query-${index + 1}-final-layout.json`)];
   const textPaths = [join(outDir, `query-${index + 1}-final-layout-text.txt`)];
   const screenPaths = [];
   let currentLayout = initialLayout;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
     const combinedText = texts.join('\n');
     if (requiredMarkers.every((marker) => combinedText.includes(marker))) {
       break;
@@ -3482,7 +3542,9 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
       }
     }
     hdc(['shell', 'uitest', 'uiInput', 'click', String(submitControls.generate.x), String(submitControls.generate.y)]);
-  }, {
+  }, expectedToolId === 'daily.brief.open' ? {
+    completionEvidence: (text) => dailyBriefDirectEvidence(text)
+  } : {
     expectedToolIds,
     minimumDataRounds,
     expectedDependencies,
@@ -3547,11 +3609,16 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
     skipped: directTextEvidence.skipped === true
   };
   const expectedMarkers = layoutExpectationsForQuery(query);
+  if (shouldDismissKeyboardBeforeScrolledEvidence(expectedToolId)) {
+    hdc(['shell', 'uitest', 'uiInput', 'keyEvent', 'Back']);
+    await sleep(500);
+  }
   const scrollEvidence = await collectScrolledLayoutEvidence(
     layout,
     layoutText,
     index,
-    requiredScrolledMarkersForQuery(query, expectedToolId)
+    requiredScrolledMarkersForQuery(query, expectedToolId),
+    scrolledEvidenceAttemptLimit(expectedToolId)
   );
   const evidenceText = scrollEvidence.text;
   const evidenceLayout = scrollEvidence.currentLayout;
@@ -3590,6 +3657,13 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
   const aggregateMediaVisibleOutput = expectedToolId === 'media.aggregate.search' && hasVisibleAggregateMediaOutput(evidenceText);
   const worldCupVisibleOutput = expectedToolId === 'worldcup.open' && evidenceText.includes('世界杯 Anything OS');
   const movieVisibleOutput = expectedToolId === 'movie.open' && evidenceText.includes('电影 Anything OS');
+  const dailyBriefEvidence = expectedToolId === 'daily.brief.open' ?
+    dailyBriefDirectEvidence(safeLogText, evidenceText) : null;
+  const dailyBriefDateBlockingHits = expectedToolId === 'daily.brief.open' ?
+    finalVisibleDateBlockingHits(evidenceText, expectedToolId, expectedDeviceLocalDate) : [];
+  const dailyBriefVisibleOutput = dailyBriefEvidence?.ok === true && dailyBriefDateBlockingHits.length === 0;
+  summary.dailyBriefDirectEvidence = dailyBriefEvidence;
+  summary.dailyBriefDateBlockingHits = dailyBriefDateBlockingHits;
   const allowsExternalGmailWeb = isGmailWebQuery(query) && summary.gmailWebOpened === true;
   const allowsAggregateMailProviderFailure = expectedToolId === 'mail.search' &&
     !isQqMailQuery(query) &&
@@ -3610,6 +3684,9 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
     if (aggregateMediaVisibleOutput && aggregateMediaTruthfulBlockingMarkers.includes(marker)) {
       return false;
     }
+    if (dailyBriefVisibleOutput && dailyBriefTruthfulStateMarkers.includes(marker)) {
+      return false;
+    }
     if (allowsAggregateMailProviderFailure && (/^(Gmail|QQ)/.test(marker) || marker === 'Operation timeout' || marker === '2300028')) {
       return false;
     }
@@ -3618,6 +3695,7 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
   if (expectedToolId === 'gmail.mail.search' && hasTechnicalGmailArgsCard(evidenceText)) {
     layoutBlockingHits.push('gmail-technical-args-card');
   }
+  layoutBlockingHits.push(...dailyBriefDateBlockingHits);
   if (expectedToolId === 'gmail.draft.create') {
     for (const blockingPattern of forbiddenGmailSendSuccessPatterns) {
       if (blockingPattern.pattern.test(evidenceText)) {
@@ -3626,7 +3704,8 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
     }
   }
   const providerLayoutFailed = retryableProviderLayoutMarkers.some((marker) => evidenceText.includes(marker));
-  summary.providerFailed = summary.providerFailed || (providerLayoutFailed && !allowsSocialHubTruthfulState && !aggregateMediaVisibleOutput && !allowsAggregateMailProviderFailure);
+  summary.providerFailed = summary.providerFailed || (providerLayoutFailed && !allowsSocialHubTruthfulState &&
+    !aggregateMediaVisibleOutput && !dailyBriefVisibleOutput && !allowsAggregateMailProviderFailure);
   summary.layoutPath = join(outDir, `query-${index + 1}-final-layout.json`);
   summary.layoutTextPath = layoutTextPath;
   summary.layoutScrolledTextPath = scrollEvidence.combinedTextPath;
@@ -3648,7 +3727,8 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
     (summary.allowsCorrelatedDynamicAuth ||
       (isSocialHubCase ?
         socialHubVisibleOutput :
-        (worldCupVisibleOutput || movieVisibleOutput || expectedMarkers.length === 0 || expectedHits.length > 0) &&
+        (worldCupVisibleOutput || movieVisibleOutput || dailyBriefVisibleOutput ||
+          expectedMarkers.length === 0 || expectedHits.length > 0) &&
         calendarMarkersOk &&
         composioCardMarkersOk &&
         aggregateMediaMarkersOk &&
@@ -3794,6 +3874,12 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
       summary.hasExpectedToolId &&
       summary.movieOpened === true &&
       movieVisibleOutput &&
+      summary.layoutOk;
+  } else if (expectedToolId === 'daily.brief.open') {
+    summary.ok = dailyBriefVisibleOutput &&
+      summary.basePassedWithoutTransport === true &&
+      summary.dailyBriefRequestObserved === true &&
+      summary.dailyBriefExecutionObserved === true &&
       summary.layoutOk;
   } else if (layoutEvidenceRecovered) {
     summary.basePassedWithoutTransport = true;
@@ -5212,6 +5298,10 @@ const finalAggregateMediaVisibleOutput =
   finalSummary !== null &&
   finalSummary.expectedToolId === 'media.aggregate.search' &&
   hasVisibleAggregateMediaOutput(finalLayoutText);
+const finalDailyBriefVisibleOutput =
+  finalSummary !== null &&
+  finalSummary.expectedToolId === 'daily.brief.open' &&
+  finalSummary.dailyBriefDirectEvidence?.ok === true;
 const finalAllowsSourceFailure =
   finalAllowsPartialTravel &&
   finalSummary !== null &&
@@ -5236,6 +5326,9 @@ const finalLayoutBlockingHits = finalLayoutBlockingMarkers.filter((marker) => {
   if (finalAggregateMediaVisibleOutput && aggregateMediaTruthfulBlockingMarkers.includes(marker)) {
     return false;
   }
+  if (finalDailyBriefVisibleOutput && dailyBriefTruthfulStateMarkers.includes(marker)) {
+    return false;
+  }
   if (finalAllowsAggregateMailProviderFailure && /^(Gmail|QQ)/.test(marker)) {
     return false;
   }
@@ -5244,20 +5337,17 @@ const finalLayoutBlockingHits = finalLayoutBlockingMarkers.filter((marker) => {
 if (finalSummary !== null && finalSummary.expectedToolId === 'gmail.mail.search' && hasTechnicalGmailArgsCard(finalLayoutText)) {
   finalLayoutBlockingHits.push('gmail-technical-args-card');
 }
-for (const blockingPattern of finalLayoutBlockingPatterns) {
-  if (finalSummary !== null &&
-    (finalSummary.expectedToolId.startsWith('calendar.') || finalSummary.expectedToolId.startsWith('hotel.'))) {
-    continue;
-  }
-  if (finalSummary !== null &&
-    finalSummary.expectedToolId === 'dynamic.search' &&
-    finalSummary.expectedDiscoveredToolId === 'weather.query' &&
-    finalLayoutText.includes('高德天气')) {
-    continue;
-  }
-  if (blockingPattern.pattern.test(finalLayoutText)) {
-    finalLayoutBlockingHits.push(blockingPattern.name);
-  }
+const allowsVisibleDate = finalSummary !== null &&
+  (finalSummary.expectedToolId.startsWith('calendar.') || finalSummary.expectedToolId.startsWith('hotel.') ||
+    (finalSummary.expectedToolId === 'dynamic.search' &&
+      finalSummary.expectedDiscoveredToolId === 'weather.query' && finalLayoutText.includes('高德天气')));
+if (finalSummary !== null && finalSummary.expectedToolId === 'daily.brief.open') {
+  finalLayoutBlockingHits.push(...(finalSummary.dailyBriefDateBlockingHits || ['daily-brief-date']));
+} else if (!allowsVisibleDate) {
+  finalLayoutBlockingHits.push(...finalVisibleDateBlockingHits(
+    finalLayoutText,
+    finalSummary?.expectedToolId || ''
+  ));
 }
 if (finalSummary !== null && finalSummary.expectedToolId === 'gmail.draft.create') {
   for (const blockingPattern of forbiddenGmailSendSuccessPatterns) {
@@ -5305,7 +5395,7 @@ if (finalExpectsDirectText && typeof finalSummary.logPath === 'string' &&
 }
 const finalOutputPresent = finalExpectsDirectText ? finalDirectTextVisible.ok :
   (finalAllowsCorrelatedDynamicAuth || finalAllowsSocialHubTruthfulState ||
-    finalAllowsExternalGmailWeb || finalAllowsPersonaMemoryUpdate ||
+    finalAllowsExternalGmailWeb || finalAllowsPersonaMemoryUpdate || finalDailyBriefVisibleOutput ||
     finalLayoutDomainHits.length > 0 ||
     (finalSummary !== null &&
       !isSocialHubExpectedToolId(finalSummary.expectedToolId) &&
@@ -5335,6 +5425,7 @@ const summaryPath = join(outDir, 'summary.json');
 const screenshotIndexPath = writeScreenshotIndex();
 writeFileSync(summaryPath, JSON.stringify({
   target,
+  expectedDeviceLocalDate,
   timeoutMs,
   cleanData,
   modelHealth,

@@ -37,6 +37,7 @@ interface QueryArgsFixture {
   query: string;
   sources?: string[];
   limit?: number;
+  preferenceDescription?: string;
 }
 
 function video(id: string, url: string): AggregateSearchVideo {
@@ -514,10 +515,14 @@ export default function aggregateSearchClientTest() {
         url: 'https://x.test/post-2', publishedAt: '', score: '', commentCount: '', status: 'success', rows: []
       }];
       const candidates = aggregateMediaCandidates(videos, posts, 0);
+      const ranked = rankWaterfallCandidates({
+        query: 'Video title', candidates: candidates, enabledSources: ['youtube', 'x'], shownIds: [], stableIds: [], preferenceDescription: ''
+      }, WATERFALL_NOW_MS);
 
       expect(candidates.length).assertEqual(3);
       expect(candidates[0].mediaType).assertEqual('video');
       expect(candidates[0].coverUrl).assertEqual('https://img.test/video.jpg');
+      expect(ranked[0].duration).assertEqual('1:00');
       expect(candidates[1].mediaType).assertEqual('image_text');
       expect(candidates[1].summary).assertEqual('Post body');
       expect(candidates[2].mediaType).assertEqual('post');
@@ -738,6 +743,47 @@ export default function aggregateSearchClientTest() {
       );
       expect(result.sourceStatuses[2].status).assertEqual('needs_auth');
       expect(result.waterfall?.sources.every((item) => item.continuation === null)).assertTrue();
+    });
+
+    it('preserves preference metadata across partial and final snapshots without changing ranking', 0, async () => {
+      const preferenceDescription = '中文优先；15 分钟内；图文 > 短视频 > 长视频';
+      const args: QueryArgsFixture = {
+        query: 'HarmonyOS Agent 推荐系统',
+        sources: ['youtube'],
+        preferenceDescription: preferenceDescription
+      };
+      const snapshots: AggregateSearchResult[] = [];
+      const result = await streamAggregateSearchSourceBatches(
+        args.query,
+        args.sources as AggregateSearchSource[],
+        [Promise.resolve(aggregateBatch('youtube', 'harmonyos-agent'))],
+        (snapshot: AggregateSearchResult): void => {
+          snapshots.push(snapshot);
+        },
+        WATERFALL_NOW_MS,
+        args.preferenceDescription as string
+      );
+      const withoutPreference = rankWaterfallCandidates({
+        query: args.query,
+        candidates: aggregateMediaCandidates(result.videos, result.posts, 0),
+        enabledSources: args.sources as AggregateSearchSource[],
+        shownIds: [],
+        stableIds: [],
+        preferenceDescription: ''
+      }, WATERFALL_NOW_MS);
+      const withPreference = rankWaterfallCandidates({
+        query: args.query,
+        candidates: aggregateMediaCandidates(result.videos, result.posts, 0),
+        enabledSources: args.sources as AggregateSearchSource[],
+        shownIds: [],
+        stableIds: [],
+        preferenceDescription: args.preferenceDescription as string
+      }, WATERFALL_NOW_MS);
+
+      expect(snapshots.length).assertEqual(1);
+      expect(snapshots[0].waterfall?.preferenceDescription).assertEqual(preferenceDescription);
+      expect(result.waterfall?.preferenceDescription).assertEqual(preferenceDescription);
+      expect(withPreference.map((item) => item.id).join(',')).assertEqual(withoutPreference.map((item) => item.id).join(','));
     });
   });
 }

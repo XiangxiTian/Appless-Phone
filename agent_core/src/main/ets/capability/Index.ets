@@ -19,6 +19,7 @@ export { ToolInvocationOutcome, ToolInvocationOutcomeKind } from './runtime/Tool
 export { CapabilityPolicyEngine } from './policy/CapabilityPolicyEngine';
 export { ApprovalBroker } from './policy/ApprovalBroker';
 export { approvalArgsDigest } from './policy/ApprovalBroker';
+export { sha256Digest } from './policy/ApprovalDigest';
 export { ExecutionEventBus } from './observability/ExecutionEventBus';
 export { ApplessCapabilityEnvironment } from './bootstrap/ApplessCapabilityEnvironment';
 export { ApplessCapabilityRuntimeFactory } from './bootstrap/ApplessCapabilityRuntimeFactory';

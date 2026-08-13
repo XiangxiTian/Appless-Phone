@@ -10,6 +10,7 @@ export interface WaterfallCandidate {
   coverUrl: string;
   mediaUrl?: string;
   publishedAt: string;
+  duration?: string;
   originalIndex: number;
 }
 
@@ -330,6 +331,7 @@ export function rankWaterfallCandidates(
       coverUrl: best.candidate.coverUrl,
       mediaUrl: best.candidate.mediaUrl,
       publishedAt: best.candidate.publishedAt,
+      duration: best.candidate.duration,
       originalIndex: best.candidate.originalIndex,
       normalizedUrl: best.normalizedUrl,
       signals: best.signals,
@@ -546,6 +548,7 @@ function rankedToCandidates(items: WaterfallRankedCandidate[]): WaterfallCandida
     coverUrl: item.coverUrl,
     mediaUrl: item.mediaUrl,
     publishedAt: item.publishedAt,
+    duration: item.duration,
     originalIndex: item.originalIndex
   }));
 }

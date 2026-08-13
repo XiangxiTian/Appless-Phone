@@ -11,16 +11,25 @@
 | 阶段 | 已实现代码切片 | 状态 | 尚未完成的关键项 |
 | --- | --- | --- | --- |
 | PR-V4-0 | 四组 Node 回归测试通过 | 部分完成 | Hypium、真机、FMP/confirm precision、基线 tag |
-| PR-V4-1 | Canonical IR、Binding、Mutation、Revision；Legacy Surface Adapter 首版 | 部分完成 | canonical 稳定性、20 个 golden、完整旧测试/生产接线 |
-| PR-V4-1A | 三层 Catalog 首版组件、Prompt、Food/Hotel/Product Option Adapter | 部分完成 | 其余 View Model/Adapter、迁移表、golden、schema 冻结 |
-| PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab 接入骨架 | 部分完成 | 真实 MultiAgent 事件流、乱序/重放、完整 UI Lab 选择与验收 |
-| PR-V4-2 | 四 Store、SurfaceController、Reconciler、Tool Result shadow DataModel | 部分完成 | legacy double-write、snapshot compare、mismatch 分类、Hypium |
-| PR-V4-3 | Revision Gate、mutationId ring、baseRevision、Snapshot | 部分完成 | generation/lease 对接、legacy sequence 共存、完整交错与可重放验收 |
-| PR-V4-4 | A2UI JSON Compiler、Legacy Adapter、Reconciler/Projection Bridge 接口 | 部分完成 | 页面 callback、binding schema、现有 golden、完整迁移和 feature flag 回退 |
+| PR-V4-1 | Canonical IR、稳定 fingerprint、Binding、Mutation、Revision；Legacy Surface Adapter 首版 | 部分完成 | 20 个 golden、完整旧测试/生产接线 |
+| PR-V4-1A | 三层 Catalog、稳定 Prompt、全首批 View Model 类型、Food/Hotel/Product/旅程/消息/Generic Adapter | 部分完成 | Extension 评审、Renderer golden、生产接线 |
+| PR-V4-1B | Host Ports、幂等 UiRunCoordinator、UI Lab 接入骨架、依赖边界检查 | 部分完成 | 真实 MultiAgent 事件流、页面级选择与端到端验收 |
+| PR-V4-2 | 四 Store、SurfaceController、Reconciler、Tool Result shadow、UI Lab ShadowMirror | 部分完成 | legacy double-write、真实 snapshot compare、Hypium |
+| PR-V4-3 | Revision Gate、mutationId ring、baseRevision、Snapshot、tool-before-node/重放专项 | 部分完成 | generation/lease 对接、legacy sequence 共存、设备交错验收 |
+| PR-V4-4 | A2UI JSON Compiler、binding schema gate、metadata、Legacy Adapter、Reconciler/Projection Bridge 接口 | 部分完成 | 页面 callback、现有 golden、完整迁移和 feature flag 回退 |
 
 这里的“部分完成”只表示对应代码切片已经提交并通过静态/结构检查；只有该阶段所有条目和“退出门槛”全部勾选，才能称为 PR 完成。
 
 清单约定：`[x]` 是单项完成；PR 阶段状态以本表和该阶段退出门槛为准，不能由某几个 `[x]` 推断整段完成。
+
+### 本轮查漏补缺记录（2026-08-13）
+
+- 已补齐可在当前工作区验证的 Presentation View Model：Timeline、MetricGrid、Form、Approval、ResultCollection，并登记 schema version/path registry。
+- 已补齐 Train/Flight/Travel、Mail/Social、Generic structured result 的 Presentation Adapter；输入 provenance 保留，缺失必填字段不伪造。
+- 已补齐 UiRunCoordinator 同请求重放幂等、Tool Result `resultId` 去重、Compiler metadata、binding schema gate、cycle/orphan/unknown-root 测试。
+- 已补齐 UI Lab `UiLabV4ShadowMirror`：legacy data/runtime/user 字段迁移到四 Store，并输出 canonical/data/phase/user-overlay/revision 分类；可见投影仍由显式 mode 控制。
+- 已增加 `scripts/ui-v4-dependency-check.mjs`，当前通过；它只检查 `agent_core/.../ui` 的宿主反向依赖，不替代 ArkTS/设备构建。
+- 仍未完成：真实 UI Lab 页面回调与 `A2uiSurfaceStore.apply()` double-write、20 个 golden、完整旧 Hypium/真机验收、generation/lease 对接、Extension 评审和主 UI 接入。
 
 ---
 
@@ -108,11 +117,12 @@ agent_core/src/main/ets/aiphone/ui/
 │   ├── UiPresentationTypes.ets
 │   ├── UiPresentationAdapter.ets
 │   ├── UiPresentationAdapterRegistry.ets
+│   ├── UiPresentationSchemaRegistry.ets
 │   └── adapters/
 │       ├── ChoicePresentationAdapters.ets
 │       ├── JourneyPresentationAdapters.ets
 │       ├── MessagingPresentationAdapters.ets
-│       └── StatusPresentationAdapters.ets
+│       └── GenericPresentationAdapters.ets
 ├── compiler/
 │   ├── UiModelOutputAdapter.ets
 │   ├── A2uiJsonOutputAdapter.ets
@@ -133,6 +143,7 @@ agent_core/src/main/ets/aiphone/ui/
 │   ├── UiRuntimeOverlayStore.ets
 │   ├── UiUserOverlayStore.ets
 │   ├── UiReconciler.ets
+│   ├── UiRevisionGate.ets
 │   └── LegacyA2uiSurfaceAdapter.ets
 ├── events/
 │   ├── AgentUiEventTypes.ets
@@ -151,6 +162,7 @@ entry/src/main/ets/pages/A2uiHome/lab/v4/
 ├── UiLabV4HostAdapter.ets
 ├── UiLabV4RuntimeFactory.ets
 ├── UiLabV4ProjectionBridge.ets
+├── UiLabV4ShadowMirror.ets
 └── UiLabV4FeatureFlags.ets
 ```
 
@@ -159,12 +171,12 @@ entry/src/main/ets/pages/A2uiHome/lab/v4/
 ```text
 entry/src/test/UiCanonicalIr.test.ets
 entry/src/test/UiCatalog.test.ets
-entry/src/test/UiPresentationAdapters.test.ets
-entry/src/test/UiCompiler.test.ets
+entry/src/test/UiV4Core.test.ets
+entry/src/test/UiV4Presentation.test.ets
+entry/src/test/UiV4Compiler.test.ets
 entry/src/test/ApplessUiLangParser.test.ets
 entry/src/test/UiReconcilerV4.test.ets
-entry/src/test/UiRevisionGate.test.ets
-entry/src/test/UiOverlay.test.ets
+entry/src/test/UiV4Runtime.test.ets
 entry/src/test/UiLayoutCacheV4.test.ets
 entry/src/test/UiActionRouter.test.ets
 entry/src/test/UiRenderProjection.test.ets
@@ -222,14 +234,14 @@ entry/src/test/UiLabV4Integration.test.ets
 - [x] Canonical Node 不得包含 runtimeOwner/runtimeGeneration。
 - [x] `nodeKey` 与 `surfaceId` 解耦。
 - [x] 内部 `schemaVersion` 与 `A2UI_VERSION` 解耦。
-- [ ] 自定义 `patchComponents` 在注释和文档中标记为 internal/legacy extension。
+- [x] 自定义 `patchComponents` 在注释和文档中标记为 internal/legacy extension。
 
 ### 测试
 
 - [x] 现有典型 `A2uiSurfaceState` 可转成 v4 canonical surface，再 materialize 为等价 legacy view（round-trip 专项测试已建立）。
-- [ ] Canonical serialization 稳定。
-- [ ] Canonicalization 两次执行结果相同。
-- [ ] runtime/user 字段不会进入 canonical fingerprint。
+- [x] Canonical serialization 稳定（fingerprint 对 node arrival order 做稳定排序）。
+- [x] Canonicalization 两次执行结果相同（Compiler 专项测试）。
+- [x] runtime/user 字段不会进入 canonical fingerprint。
 
 ### 退出门槛
 
@@ -276,26 +288,26 @@ entry/src/test/UiLabV4Integration.test.ets
 - [x] 定义 `UiKeyValueItem/UiKeyValueGroup`。
 - [x] 定义 `UiMessageItem/UiMessageFeed`。
 - [x] 定义 `UiJourneyOption/UiJourneyOptionCollection`。
-- [ ] 定义 `UiTimelineItem/UiMetricItem/UiStatusValue/UiMediaRef`。
-- [ ] 定义 `UiFormModel/UiApprovalModel`。
-- [ ] 所有 View Model 都有稳定 schema version。
+- [x] 定义 `UiTimelineItem/UiMetricItem/UiStatusValue/UiMediaRef`。
+- [x] 定义 `UiFormModel/UiApprovalModel`。
+- [x] 所有 View Model 都有稳定 schema version（`UiPresentationSchemaRegistry` 当前冻结为 v1）。
 
 ### Adapter 接口
 
 - [x] 新增 `UiPresentationAdapter.ets`。
 - [x] 新增 `UiPresentationAdapterRegistry.ets`。
-- [ ] Adapter 输入保持原 Tool Result 和 provenance；输出只包含验证过的 View Model。
-- [ ] Adapter 不调用 LLM、不执行 Tool、不生成布局、不生成 Action Offer。
-- [ ] Action 只引用已签发 offerId。
+- [x] Adapter 输入保持原 Tool Result 和 provenance；输出只包含已注册 View Model。
+- [x] Adapter 不调用 LLM、不执行 Tool、不生成布局、不生成 Action Offer。
+- [x] Action 只引用 host 提供的 offerId 映射，Adapter 不改写 identity。
 
 ### 首批映射
 
 - [x] Food Provider results → `UiOptionCollection`。
 - [x] Hotel results → `UiOptionCollection`。
 - [x] Product/shopping results → `UiOptionCollection`。
-- [ ] Train/Flight/Travel results → `UiJourneyOption[]`。
-- [ ] Mail/Social results → `UiMessageItem[]`。
-- [ ] Generic structured result → 已知 View Model；无法映射时才进入 `ResultCollection` fallback。
+- [x] Train/Flight/Travel results → `UiJourneyOption[]`。
+- [x] Mail/Social results → `UiMessageItem[]`。
+- [x] Generic structured result → 已知 `ui.result-collection` fallback；未知 shape 不进入任意组件 JSON。
 
 ### Extension 准入
 
@@ -316,32 +328,32 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### Legacy 迁移表
 
-- [ ] `FoodChoices` → `ChoiceList`。
-- [ ] `TrainOptions/FlightBoard/TravelOptions` → `JourneyOptionList` 或 `ChoiceList`。
-- [ ] `InfoRows` → `KeyValueList`。
-- [ ] `SocialHub` → `MessageFeed` + 通用 `AccountStatus/StatusNotice`。
-- [ ] `ConfirmPanel` → `ApprovalPanel`。
-- [ ] `ThinkingStream` → `ActivityFeed`。
-- [ ] `ErrorNotice` → `StatusNotice`。
-- [ ] `ScheduleStack` → `Schedule/Timeline`。
-- [ ] `StripeReceivingAccountCard` → `AccountStatus` + 必要 `PaymentSummary` Extension。
+- [x] `FoodChoices` → `ChoiceList`。
+- [x] `TrainOptions/FlightBoard/TravelOptions` → `JourneyOptionList` 或 `ChoiceList`。
+- [x] `InfoRows` → `KeyValueList`。
+- [x] `SocialHub` → `MessageFeed` + 通用 `AccountStatus/StatusNotice`。
+- [x] `ConfirmPanel` → `ApprovalPanel`。
+- [x] `ThinkingStream` → `ActivityFeed`。
+- [x] `ErrorNotice` → `StatusNotice`。
+- [x] `ScheduleStack` → `Schedule/Timeline`。
+- [x] `StripeReceivingAccountCard` → `AccountStatus` + 必要 `PaymentSummary` Extension（Extension 仍需单独准入）。
 
 ### 测试
 
-- [ ] Catalog schema 与 Prompt signature 来自同一 `UiCatalogItem`。
-- [ ] Foundation/Semantic/Extension group 选择稳定。
-- [ ] Food/Hotel/Product 映射为同一 `UiOptionCollection` schema。
-- [ ] Train/Flight 映射为同一 `UiJourneyOption` schema。
-- [ ] Mail/Social 映射为同一 `UiMessageItem` schema。
-- [ ] Adapter 保留 provenance，不伪造缺失字段。
-- [ ] Action Offer identity 不被 Adapter 改写。
+- [x] Catalog schema 与 Prompt signature 来自同一 `UiCatalogItem`。
+- [x] Foundation/Semantic/Extension group 选择稳定。
+- [x] Food/Hotel/Product 映射为同一 `UiOptionCollection` schema。
+- [x] Train/Flight 映射为同一 `UiJourneyOption` schema。
+- [x] Mail/Social 映射为同一 `UiMessageItem` schema。
+- [x] Adapter 保留 provenance，不伪造缺失字段。
+- [x] Action Offer identity 不被 Adapter 改写。
 - [ ] legacy 和 semantic Renderer 输出完成 golden 对照。
 
 ### 退出门槛
 
-- [ ] 首批五类 View Model schema 冻结。
-- [ ] 新增 Tool 的默认接入说明改为“先写 Presentation Adapter”。
-- [ ] 新 Prompt 可只暴露 Foundation + Semantic groups。
+- [x] 首批五类 View Model schema 冻结（当前 registry 统一登记 v1，包含更多通用类型）。
+- [x] 新增 Tool 的默认接入说明改为“先写 Presentation Adapter”（迁移契约已写入 `docs/ui-gen-v4-legacy-semantic-migration.md`）。
+- [x] 新 Prompt 可只暴露 Foundation + Semantic groups。
 - [ ] legacy 场景组件仍可回退，但不再作为新功能默认选择。
 
 ---
@@ -362,11 +374,11 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 新增 `UiRunCoordinator.ets`。
 - [x] 负责 `runId/surfaceId/epoch` 和一次 UI session 生命周期。
-- [ ] 协调 Presentation Adapter、模型输出 Adapter、Speculation、Reconciler、Store 和 SurfaceController。
+- [x] 协调 Presentation Adapter、模型输出 Adapter、Reconciler、Store 和 SurfaceController；Speculation 仍是后续独立阶段。
 - [x] 接收 Agent Event，但不规划任务或选择 Tool。
 - [x] 接收 Tool Result，但不执行 Tool。
 - [x] 接收 Action Offer 和 UiEvent，但真实 Action 通过 host action sink 交还现有 Runtime。
-- [ ] 不新增 Leader、DataAgent、Tool Executor、ApprovalBroker 或第二套 Conversation Runtime。
+- [x] 不新增 Leader、DataAgent、Tool Executor、ApprovalBroker 或第二套 Conversation Runtime。
 
 ### UI Lab Adapter
 
@@ -383,21 +395,21 @@ entry/src/test/UiLabV4Integration.test.ets
 - [x] 现有主 UI `A2uiSurfaceStore` 不写入 v4 shadow Store。
 - [x] 主 UI 不读取 v4 Catalog、Store、Cache 或 Projection。
 - [x] 本 PR 不新增主流程 feature flag。
-- [ ] 用依赖检查阻止 `entry/.../lab` 被 `agent_core/.../ui` 反向引用。
+- [x] 用 `scripts/ui-v4-dependency-check.mjs` 阻止 `entry/.../lab` 被 `agent_core/.../ui` 反向引用（当前检查通过）。
 
 ### 测试
 
 - [x] 使用 fake host 验证 UiRunCoordinator，不启动 MultiAgent Runtime。
-- [ ] 同一 Host Event 重放不会重复创建 Surface。
-- [ ] Tool Result、模型 delta 和 Agent Event 乱序时结果确定。
-- [ ] UiEvent 只经 host action sink 返回，不在 UiRunCoordinator 内执行 Tool。
+- [x] 同一 Host Event 重放不会重复创建 Surface。
+- [x] Tool Result 先到节点时结果保持确定；带 `resultId` 的 Tool Result 重放去重，Agent Event 重放按 `eventId` 去重。
+- [x] UiEvent 只经 host action sink 返回，不在 UiRunCoordinator 内执行 Tool。
 - [x] UI Lab `legacy` 模式默认保持不变，v4 只由显式 mode 选择。
 - [x] UI Lab `v4_shadow` 当前只建立接入骨架，不改变可见 Surface。
 - [ ] 主 UI golden、工具调用次数和 Action 执行次数保持不变（待 UI Lab 真实接线验收）。
 
 ### 退出门槛
 
-- [ ] v4 Core 通过无 UI Lab/无页面依赖构建检查。
+- [x] v4 Core 通过无 UI Lab/无页面依赖静态依赖检查；完整 ArkTS 构建仍待 IDE/设备环境。
 - [ ] UI Lab 能独立选择 legacy 或 v4 shadow。
 - [ ] 主 UI 无 v4 新调用点，行为和指标无变化。
 - [ ] 设计评审确认 UiRunCoordinator 没有复制 MultiAgent Runtime 职责。
@@ -422,19 +434,19 @@ entry/src/test/UiLabV4Integration.test.ets
 - [ ] UI Lab legacy `A2uiSurfaceStore.apply()` 成功后，通过 Host Adapter shadow 写入新 SurfaceController（真实 legacy double-write 待下一步）。
 - [ ] 新 Controller materialize legacy view，与当前 UI Lab Surface 做 snapshot compare。
 - [ ] mismatch 仅记录，不影响用户界面。
-- [ ] 对 mismatch 分类：canonical、data、phase、user overlay、revision。
+- [x] `UiLabV4ShadowMirror` 对 mismatch 分类：canonical、data、phase、user overlay、revision（页面级 compare 尚未接线）。
 - [x] 不修改主 UI `A2uiSurfaceStore.apply()` 调用点。
 - [x] UI Lab v4 runtime 的 Tool Result 已经过 Presentation Adapter 写入 DataModelStore；原始 Tool payload 不保存在 v4 Surface 状态中。
 
 ### 迁移规则
 
-- [ ] `renderState` → Runtime Overlay phase。
-- [ ] `pinned/hidden/orderHint` → User Overlay。
+- [x] `renderState` → Runtime Overlay phase。
+- [x] `pinned/hidden/orderHint` → User Overlay。
 - [ ] `dataModelJson` 中供 UI 绑定的数据 → 经验证的 Presentation View Model → DataModel Store。
-- [ ] Tool/Provider 原始结果继续留在 Tool/Agent 域，不作为 Semantic Component 的直接 binding schema。
-- [x] DataModel Store 记录 `viewModelType/schemaVersion/provenance`；标准类型的完整 path schema 校验待 Compiler 阶段补齐。
-- [ ] `components/rootId/title/intent` → Layout Store；title/intent 是否属于 layout 必须以 ADR 固定。
-- [ ] 兼容 view 在 Renderer 迁移前继续填回旧字段。
+- [x] Tool/Provider 原始结果继续留在 Tool/Agent 域，不作为 Semantic Component 的直接 binding schema。
+- [x] DataModel Store 记录 `viewModelType/schemaVersion/provenance`；Compiler 已通过 `UiPresentationSchemaRegistry` 完成标准类型 path gate。
+- [x] `components/rootId/title/intent` → Layout Store；title/intent 当前作为 canonical surface 元数据。
+- [x] 兼容 view 在 Renderer 迁移前继续填回旧字段。
 
 ### 测试
 
@@ -486,7 +498,7 @@ entry/src/test/UiLabV4Integration.test.ets
 - [x] baseRevision mismatch。
 - [x] user edit between speculative and authoritative layout。
 - [x] snapshot restore 后重复接收最后一个 mutation。
-- [ ] tool data 先于节点到达。
+- [x] tool data 先于节点到达。
 
 ### 当前验收状态
 
@@ -516,10 +528,10 @@ entry/src/test/UiLabV4Integration.test.ets
 ### Catalog 与数据契约
 
 - [x] Validator 只接受当前请求选中的 Foundation/Semantic/Extension Catalog groups。
-- [ ] Canonical binding 的目标 path 必须属于已注册的 Presentation View Model schema。
-- [ ] Candidate 不得引用 Tool/Provider 原始字段路径。
+- [x] Canonical binding 的目标 path 必须属于已注册的 Presentation View Model schema。
+- [x] Candidate 不得引用 Tool/Provider 原始字段路径；业务 binding 只能通过已注册 schema path gate。
 - [x] legacy 场景组件只允许通过兼容 Adapter 进入，不接受新模型输出；当前 runtime path 尚未接通。
-- [ ] Compiler 输出记录 `catalogVersion`、`viewModelSchemaVersion` 和 Adapter provenance。
+- [x] Compiler 输出记录 `catalogVersion`、`viewModelSchemaVersion` 和 Adapter provenance。
 
 ### 从现有文件迁移职责
 
@@ -549,7 +561,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] A2UI scanner 分块边界首版。
 - [x] UTF-8 中文跨 chunk。
-- [ ] 重复 id、环、孤儿节点、未知 root。
+- [x] 重复 id、环、孤儿节点、未知 root。
 - [x] 未知组件、重复 id、非法 binding 首版。
 - [x] 部分输入和尾部断流返回 compile error，不产生 surface。
 - [ ] 当前 UI Lab JSON golden cases canonical fingerprint 不变。

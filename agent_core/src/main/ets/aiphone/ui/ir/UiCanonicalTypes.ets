@@ -41,7 +41,9 @@ export function canonicalNodeIndex(surface: UiCanonicalSurface): Map<string, UiC
 }
 
 export function canonicalSurfaceFingerprint(surface: UiCanonicalSurface): string {
-  const nodes = surface.nodes.map((node: UiCanonicalNode): Object => ({
+  const nodes = surface.nodes.slice().sort((left: UiCanonicalNode, right: UiCanonicalNode): number => {
+    return left.nodeKey < right.nodeKey ? -1 : (left.nodeKey > right.nodeKey ? 1 : 0);
+  }).map((node: UiCanonicalNode): Object => ({
     nodeKey: node.nodeKey,
     component: node.component,
     catalogRef: node.catalogRef,

@@ -19,6 +19,8 @@ import {
   UiLabV4ProjectionBridge,
   UiLabV4ProjectionCallbacks
 } from '../main/ets/pages/A2uiHome/lab/v4/UiLabV4ProjectionBridge';
+import { UiLabV4ShadowMirror } from '../main/ets/pages/A2uiHome/lab/v4/UiLabV4ShadowMirror';
+import { UiSurfaceController } from '@loop/agent-core';
 
 export default function uiLabV4IntegrationTest(): void {
   describe('UiLabV4Integration', (): void => {
@@ -96,6 +98,30 @@ export default function uiLabV4IntegrationTest(): void {
       expect(pushed.length).assertEqual(2);
       expect(revisions[1]).assertEqual(2);
       expect(diagnostics.length).assertEqual(1);
+    });
+
+    it('migrates legacy data and overlays while classifying shadow differences', 0, (): void => {
+      const pushed: string[] = [];
+      const bridge = new UiLabV4ProjectionBridge({
+        pushSurfaceJson: (json: string): void => pushed.push(json),
+        pushDiagnostic: (): void => undefined
+      });
+      const controller = new UiSurfaceController();
+      const mirror = new UiLabV4ShadowMirror(controller, bridge);
+      const result = mirror.apply({
+        surfaceId: 'mirror-surface', rootId: 'root', title: 'Mirror', intent: 'test', status: 'ok',
+        sequence: 2, dataModelJson: '{"items":[{"id":"item-1"}]}', error: '',
+        components: [
+          { id: 'root', component: 'SurfaceRoot', children: ['card'], renderState: 'ready' },
+          { id: 'card', component: 'Text', text: 'Card', pinned: true }
+        ]
+      }, 'mirror-run', 1, true);
+      expect(result.categories).assertContain('phase');
+      expect(result.categories).assertContain('user-overlay');
+      expect(controller.snapshot('mirror-surface').data?.viewModelType).assertEqual('legacy-a2ui-data');
+      expect(controller.snapshot('mirror-surface').runtime?.nodePhases['root']).assertEqual('confirmed');
+      expect(controller.snapshot('mirror-surface').user?.pinnedNodeKeys).assertContain('card');
+      expect(pushed.length).assertEqual(1);
     });
   });
 }

@@ -57,6 +57,8 @@ export default function uiV4CoreTest(): void {
       expect(prompt.includes('ChoiceList')).assertTrue();
       expect(prompt.includes('RouteMap')).assertFalse();
       expect(registry.snapshot(['foundation', 'semantic']).capabilityHash.length > 0).assertTrue();
+      expect(prompt).assertEqual(buildUiCatalogPrompt(registry, ['semantic', 'foundation']));
+      expect(registry.list(['foundation']).some((item): boolean => item.name === 'ChoiceList')).assertFalse();
     });
 
     it('maps different option schemas into one view model', 0, (): void => {
@@ -96,6 +98,7 @@ export default function uiV4CoreTest(): void {
         renderer: 'test'
       };
       coordinator.startSurface(request);
+      coordinator.startSurface(request);
       const delta: UiModelDelta = {
         runId: 'run-1', surfaceId: 'surface-1', format: 'a2ui-json', text: '{}'
       };
@@ -111,9 +114,29 @@ export default function uiV4CoreTest(): void {
         nodeKey: 'button-1', eventType: 'activate', offerId: 'offer-1'
       });
       expect(host.requested.length).assertEqual(1);
+      expect(host.sessions.length).assertEqual(2);
       expect(host.actions.length).assertEqual(1);
       expect(host.surfaces.length).assertEqual(1);
       expect(coordinator.session('run-1')?.status).assertEqual('completed');
+    });
+
+    it('deduplicates replayed tool results by host result identity', 0, (): void => {
+      const host = new RecordingHost();
+      const presentation = new UiPresentationAdapterRegistry();
+      createChoicePresentationAdapters().forEach((adapter): void => presentation.register(adapter));
+      const coordinator = new UiRunCoordinator(host, presentation);
+      coordinator.startSurface({
+        runId: 'run-tool', surfaceId: 'surface-tool', epoch: 1, userInput: '', taskShape: 'search',
+        catalogGroups: ['foundation', 'semantic'], renderer: 'test'
+      });
+      const result: UiHostToolResult = {
+        resultId: 'tool-result-1', runId: 'run-tool', surfaceId: 'surface-tool', epoch: 1,
+        toolId: 'restaurant.search', outputSchemaRef: 'restaurant-search-result.v1', provider: 'test', status: 'ok',
+        data: { items: [{ shop_id: 'r-1', shop_name: 'Kitchen' }] }
+      };
+      coordinator.onToolResult(result);
+      coordinator.onToolResult(result);
+      expect(coordinator.surfaceController.snapshot('surface-tool').data?.revision).assertEqual(1);
     });
 
     it('rejects stale events and keeps revision shape runtime-neutral', 0, (): void => {

@@ -1,6 +1,7 @@
 import { UiCanonicalSurface } from '../ir/UiCanonicalTypes';
 import { UiBindingSet } from '../ir/UiBindingTypes';
 import { UiCatalogRegistry } from '../catalog/UiCatalogRegistry';
+import { UiPresentationSchemaRegistry } from '../presentation/UiPresentationSchemaRegistry';
 
 export type UiModelOutputFormat = 'a2ui-json' | 'ui-lang';
 
@@ -10,6 +11,7 @@ export interface UiCompileContext {
   epoch: number;
   catalogGroups: string[];
   catalogRegistry: UiCatalogRegistry;
+  presentationSchemas?: UiPresentationSchemaRegistry;
   title?: string;
   intent?: string;
 }
@@ -39,11 +41,19 @@ export interface UiCompileError {
   source?: string;
 }
 
+export interface UiCompileMetadata {
+  catalogVersion: string;
+  viewModelSchemaVersion: number;
+  adapterId: string;
+  adapterVersion: number;
+}
+
 export interface UiCompileResult {
   ok: boolean;
   candidate: UiModelCandidate | null;
   surface: UiCanonicalSurface | null;
   errors: UiCompileError[];
+  metadata?: UiCompileMetadata;
 }
 
 export interface UiModelOutputAdapter {

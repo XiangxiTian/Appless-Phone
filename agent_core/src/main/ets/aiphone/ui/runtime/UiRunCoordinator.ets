@@ -23,6 +23,7 @@ interface UiRunState {
   request: UiSurfaceRequest;
   modelDeltaCount: number;
   toolResultCount: number;
+  toolResultIds: string[];
   lastEventId: string;
   jsonAdapter: A2uiJsonOutputAdapter;
 }
@@ -51,6 +52,13 @@ export class UiRunCoordinator {
     if (request.runId.length === 0 || request.surfaceId.length === 0) {
       throw new Error('INVALID_UI_SURFACE_REQUEST');
     }
+    const existing = this.runs.get(request.runId);
+    if (existing !== undefined) {
+      if (existing.session.surfaceId !== request.surfaceId || existing.session.epoch !== request.epoch) {
+        throw new Error('UI_SURFACE_REPLAY_MISMATCH');
+      }
+      return { ...existing.session };
+    }
     const session: UiSurfaceSession = {
       runId: request.runId,
       surfaceId: request.surfaceId,
@@ -63,6 +71,7 @@ export class UiRunCoordinator {
       request,
       modelDeltaCount: 0,
       toolResultCount: 0,
+      toolResultIds: [],
       lastEventId: '',
       jsonAdapter: new A2uiJsonOutputAdapter()
     });
@@ -83,6 +92,11 @@ export class UiRunCoordinator {
   onToolResult(result: UiHostToolResult): void {
     const state = this.stateFor(result.runId, result.surfaceId, result.epoch);
     if (state === null) return;
+    if (result.resultId !== undefined && result.resultId.length > 0) {
+      if (state.toolResultIds.indexOf(result.resultId) >= 0) return;
+      state.toolResultIds.push(result.resultId);
+      if (state.toolResultIds.length > 128) state.toolResultIds.shift();
+    }
     state.toolResultCount++;
     const context: UiPresentationContext = { actionRefsByItemId: new Map<string, string[]>() };
     const source: UiPresentationSource = {

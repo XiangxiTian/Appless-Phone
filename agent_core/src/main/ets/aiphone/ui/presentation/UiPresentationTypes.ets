@@ -9,10 +9,12 @@ export interface UiFactValue {
   value: string;
 }
 
+export type UiStatusTone = 'neutral' | 'positive' | 'warning' | 'negative';
+
 export interface UiStatusValue {
   code: string;
   label: string;
-  tone: 'neutral' | 'positive' | 'warning' | 'negative';
+  tone: UiStatusTone;
 }
 
 export interface UiMediaRef {
@@ -89,6 +91,75 @@ export interface UiJourneyOptionCollection {
   schemaId: 'ui.journey-option-collection';
   schemaVersion: number;
   items: UiJourneyOption[];
+}
+
+export interface UiResultItem {
+  id: string;
+  title: string;
+  summary?: string;
+  fields?: UiFactValue[];
+  status?: UiStatusValue;
+  actionRefs?: string[];
+}
+
+export interface UiResultCollection {
+  schemaId: 'ui.result-collection';
+  schemaVersion: number;
+  items: UiResultItem[];
+}
+
+export interface UiTimelineItem {
+  id: string;
+  title: string;
+  timestamp?: string;
+  description?: string;
+  status?: UiStatusValue;
+}
+
+export interface UiTimeline {
+  schemaId: 'ui.timeline';
+  schemaVersion: number;
+  items: UiTimelineItem[];
+}
+
+export interface UiMetricItem {
+  id: string;
+  label: string;
+  value: string;
+  unit?: string;
+  trend?: 'up' | 'down' | 'flat';
+  tone?: UiStatusTone;
+}
+
+export interface UiMetricGrid {
+  schemaId: 'ui.metric-grid';
+  schemaVersion: number;
+  items: UiMetricItem[];
+}
+
+export interface UiFormFieldModel {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select' | 'checkbox';
+  value?: string | number | boolean | null;
+  required?: boolean;
+  options?: string[];
+}
+
+export interface UiFormModel {
+  schemaId: 'ui.form-model';
+  schemaVersion: number;
+  fields: UiFormFieldModel[];
+  actionRefs?: string[];
+}
+
+export interface UiApprovalModel {
+  schemaId: 'ui.approval-model';
+  schemaVersion: number;
+  title: string;
+  summary: string;
+  consequences?: string[];
+  actionRefs: string[];
 }
 
 export interface UiPresentationSource {

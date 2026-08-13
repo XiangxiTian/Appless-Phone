@@ -1351,7 +1351,9 @@ userOverlayRetention = retained compatible edits / compatible edits
 - 新增 Canonical IR、Overlay、Revision、Mutation 类型。
 - 建立 Foundation/Semantic/Extension Catalog 与组件准入规则。
 - 定义首版标准 Presentation View Model。
-- 为 Food/Hotel/Product、Train/Flight、Mail/Social 建立 Adapter golden cases。
+- 用 `UiPresentationSchemaRegistry` 冻结 v1 schema/path；覆盖 Option、Journey、Message、Timeline、Metric、Form、Approval 和 Generic Result。
+- 为 Food/Hotel/Product、Train/Flight/Travel、Mail/Social 和 Generic structured result 建立 Adapter 专项测试；golden 对照仍作为后续 Renderer 退出门槛。
+- Adapter 只保留原始 Tool provenance 和 host-issued actionRefs，不执行 LLM/Tool/布局，也不伪造缺失字段。
 - 由 `UiCatalogRegistry` 生成 UI Lab 模型 Prompt 和兼容 A2UI Catalog JSON，停止维护第二份 Lab Catalog 真相。
 - 新增 `LegacyA2uiSurfaceAdapter`，可以从新 Store materialize 现有 `A2uiSurfaceState`。
 - UI Lab 现有 WebView Renderer 暂时消费 materialized legacy view；主 UI 不变。
@@ -1360,6 +1362,7 @@ userOverlayRetention = retained compatible edits / compatible edits
 
 - 只在 UI Lab 内双写、比对 snapshot；主 UI 不参与本阶段。
 - 从 Component 中迁移 runtime/user 字段。
+- UI Lab `UiLabV4ShadowMirror` 将 legacy `renderState/pinned/hidden/orderHint` 迁移到 Runtime/User Overlay，并输出可分类 shadow mismatch；页面级 double-write/compare 仍需显式接线。
 - 拆分 layout/data/runtime/user revisions。
 - shadow mismatch 只进入 UI Lab 诊断，不改变用户可见结果。
 
@@ -1430,6 +1433,7 @@ userOverlayRetention = retained compatible edits / compatible edits
 - mutationId 幂等和 baseRevision 冲突。
 - 用户 Overlay 保留与 orphan TTL。
 - Data 先到/后到/乱序。
+- Compiler 通过 Presentation schema path gate 拒绝 provider 原始字段绑定，并输出 catalog/schema/adapter metadata；cycle/orphan/unknown-root 直接拒绝 Candidate。
 - Action offer identity、过期、重放和 payload schema。
 
 ### 18.2 集成

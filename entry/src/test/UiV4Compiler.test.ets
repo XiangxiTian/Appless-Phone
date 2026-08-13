@@ -72,6 +72,67 @@ export default function uiV4CompilerTest(): void {
       expect(result.errors.map((value): string => value.code)).assertContain('INVALID_BINDING');
     });
 
+    it('accepts only paths declared by the Presentation View Model schema', 0, (): void => {
+      const raw = JSON.stringify({
+        updateComponents: {
+          surfaceId: 'compiler-surface',
+          components: [
+            { id: 'root', component: 'Surface', children: ['choices'] },
+            { id: 'choices', component: 'ChoiceList', bindings: {
+              items: { store: 'business', path: '/items', expectedType: 'array' }
+            } }
+          ]
+        }
+      });
+      const accepted = new A2uiJsonOutputAdapter().compile(raw, context());
+      expect(accepted.ok).assertTrue();
+      expect(accepted.metadata?.adapterId).assertEqual('a2ui-json');
+      const rejected = new A2uiJsonOutputAdapter().compile(raw.replace('/items', '/private'), context());
+      expect(rejected.ok).assertFalse();
+      expect(rejected.errors.map((value): string => value.code)).assertContain('INVALID_BINDING_SCHEMA');
+
+      const rawBusiness = JSON.stringify({ updateComponents: { surfaceId: 'compiler-surface', components: [
+        { id: 'root', component: 'Surface', children: ['text'] },
+        { id: 'text', component: 'Text', bindings: { value: { store: 'business', path: '/rawProviderPayload', expectedType: 'string' } } }
+      ] } });
+      const rawBusinessResult = new A2uiJsonOutputAdapter().compile(rawBusiness, context());
+      expect(rawBusinessResult.errors.map((value): string => value.code)).assertContain('INVALID_BINDING_SCHEMA');
+    });
+
+    it('produces a stable canonical fingerprint across node arrival order', 0, (): void => {
+      const first = JSON.stringify({ updateComponents: { surfaceId: 'compiler-surface', components: [
+        { id: 'root', component: 'Surface', children: ['b', 'a'] },
+        { id: 'b', component: 'Text', text: 'B' }, { id: 'a', component: 'Text', text: 'A' }
+      ] } });
+      const second = JSON.stringify({ updateComponents: { surfaceId: 'compiler-surface', components: [
+        { id: 'a', component: 'Text', text: 'A' }, { id: 'b', component: 'Text', text: 'B' },
+        { id: 'root', component: 'Surface', children: ['b', 'a'] }
+      ] } });
+      const firstResult = new A2uiJsonOutputAdapter().compile(first, context());
+      const secondResult = new A2uiJsonOutputAdapter().compile(second, context());
+      const repeatedResult = new A2uiJsonOutputAdapter().compile(first, context());
+      expect(firstResult.ok && secondResult.ok).assertTrue();
+      const firstFingerprint = firstResult.surface === null ? '' : canonicalSurfaceFingerprint(firstResult.surface);
+      const secondFingerprint = secondResult.surface === null ? '' : canonicalSurfaceFingerprint(secondResult.surface);
+      const repeatedFingerprint = repeatedResult.surface === null ? '' : canonicalSurfaceFingerprint(repeatedResult.surface);
+      expect(firstFingerprint.length > 0).assertTrue();
+      expect(firstFingerprint).assertEqual(secondFingerprint);
+      expect(firstFingerprint).assertEqual(repeatedFingerprint);
+    });
+
+    it('rejects cycles, orphan children and an unknown root', 0, (): void => {
+      const raw = JSON.stringify({ updateComponents: { surfaceId: 'compiler-surface', components: [
+        { id: 'a', component: 'Stack', children: ['b', 'missing'] },
+        { id: 'b', component: 'Stack', children: ['a'] }
+      ] } });
+      const result = new A2uiJsonOutputAdapter().compile(raw, context());
+      expect(result.ok).assertFalse();
+      const codes = result.errors.map((value): string => value.code);
+      expect(codes).assertContain('UNKNOWN_ROOT');
+      expect(codes).assertContain('ORPHAN_CHILD');
+      expect(codes).assertContain('COMPONENT_CYCLE');
+    });
+
     it('reuses the A2UI scanner across chunk boundaries', 0, (): void => {
       const adapter = new A2uiJsonOutputAdapter();
       const input = JSON.stringify({

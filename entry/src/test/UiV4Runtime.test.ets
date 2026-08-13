@@ -2,6 +2,7 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   UiCanonicalNode,
   UiCanonicalSurface,
+  canonicalSurfaceFingerprint,
   UiMutation,
   UiReconciler,
   UiRevisionGate,
@@ -70,6 +71,14 @@ export default function uiV4RuntimeTest(): void {
       expect(store.fingerprint('s-1')).assertEqual(fingerprint);
     });
 
+    it('excludes runtime and user revisions from canonical fingerprint', 0, (): void => {
+      const base = surface('s-fingerprint', [node('root', 'stable')]);
+      const changed = JSON.parse(JSON.stringify(base)) as UiCanonicalSurface;
+      changed.revision.runtime = 4;
+      changed.revision.user = 7;
+      expect(canonicalSurfaceFingerprint(base)).assertEqual(canonicalSurfaceFingerprint(changed));
+    });
+
     it('updates data paths without changing layout', 0, (): void => {
       const data = new UiDataModelStore();
       data.setRoot('s-2', { result: { count: 1 } }, 1, 'ui.option-collection', 1);
@@ -78,6 +87,14 @@ export default function uiV4RuntimeTest(): void {
       expect(data.setPath('s-2', '/missing/count', 3, 3)).assertFalse();
       expect(data.get('s-2')?.revision).assertEqual(2);
       expect(data.get('s-2')?.viewModelType).assertEqual('ui.option-collection');
+    });
+
+    it('accepts tool data before the model node arrives', 0, (): void => {
+      const controller = new UiSurfaceController();
+      controller.setDataModel('s-data-first', { items: [{ id: 'x' }] }, 1, 'ui.option-collection', 1);
+      controller.commitLayout(surface('s-data-first', [node('root', 'late')], 1));
+      expect(controller.snapshot('s-data-first').data?.revision).assertEqual(1);
+      expect(controller.snapshot('s-data-first').data?.viewModelType).assertEqual('ui.option-collection');
     });
 
     it('keeps runtime and user overlays separate', 0, (): void => {

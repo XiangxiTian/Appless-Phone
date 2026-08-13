@@ -2,6 +2,10 @@ import { isValidUiBindingPath, UiBinding } from '../ir/UiBindingTypes';
 import { UiCatalogItem } from '../catalog/UiCatalogItem';
 import { UiCatalogRegistry } from '../catalog/UiCatalogRegistry';
 import {
+  createDefaultUiPresentationSchemaRegistry,
+  UiPresentationSchemaRegistry
+} from '../presentation/UiPresentationSchemaRegistry';
+import {
   UiCompileContext,
   UiCompileError,
   UiComponentCandidate,
@@ -26,12 +30,22 @@ function catalogItem(
   return null;
 }
 
-function validateBindings(candidate: UiComponentCandidate, errors: UiCompileError[]): void {
+function validateBindings(
+  candidate: UiComponentCandidate,
+  item: UiCatalogItem,
+  schemas: UiPresentationSchemaRegistry,
+  errors: UiCompileError[]
+): void {
   Object.keys(candidate.bindings).forEach((property: string): void => {
     const binding: UiBinding = candidate.bindings[property];
     if (binding === undefined || (binding.store !== 'business' && binding.store !== 'local' && binding.store !== 'agent') ||
       !isValidUiBindingPath(binding.path) || binding.expectedType.length === 0) {
       errors.push(error('INVALID_BINDING', 'Invalid binding for ' + candidate.id + '.' + property, property));
+      return;
+    }
+    if (binding.store === 'business' && (item.acceptedViewModels.length === 0 ||
+      !item.acceptedViewModels.some((schemaId: string): boolean => schemas.allows(schemaId, binding.path)))) {
+      errors.push(error('INVALID_BINDING_SCHEMA', 'Business binding requires a registered Presentation View Model schema path', property));
     }
   });
 }
@@ -69,6 +83,7 @@ function validateCycles(components: UiComponentCandidate[], errors: UiCompileErr
 export class UiCandidateValidator {
   validate(candidate: UiModelCandidate, context: UiCompileContext): UiCompileError[] {
     const errors: UiCompileError[] = [];
+    const schemas = context.presentationSchemas ?? createDefaultUiPresentationSchemaRegistry();
     if (candidate.surfaceId.length === 0 || candidate.surfaceId !== context.surfaceId) {
       errors.push(error('SURFACE_MISMATCH', 'Candidate surface does not match the active surface'));
     }
@@ -93,7 +108,7 @@ export class UiCandidateValidator {
         errors.push(error('CHILD_POLICY_VIOLATION', component.component + ' accepts only one child', component.id));
       }
       validateProps(component, item, errors);
-      validateBindings(component, errors);
+      validateBindings(component, item, schemas, errors);
       component.actionRefs.forEach((actionRef: string): void => {
         if (actionRef.length === 0) errors.push(error('INVALID_ACTION_REF', 'Empty actionRef', component.id));
       });

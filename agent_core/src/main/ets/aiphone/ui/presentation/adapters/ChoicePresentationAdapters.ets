@@ -59,7 +59,8 @@ class MappedOptionAdapter implements UiPresentationAdapter {
       if (this.mapping.subtitlePath !== undefined) item.subtitle = stringAt(record, this.mapping.subtitlePath) ?? undefined;
       if (this.mapping.descriptionPath !== undefined) item.description = stringAt(record, this.mapping.descriptionPath) ?? undefined;
       const amount = numberAt(record, '/price');
-      if (amount !== null) item.price = { amount, currency: 'CNY' };
+      const currency = stringAt(record, '/currency');
+      if (amount !== null && currency !== null && currency.length > 0) item.price = { amount, currency };
       items.push(item);
     });
     const model: UiOptionCollection = {

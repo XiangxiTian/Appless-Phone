@@ -7,6 +7,7 @@ import {
   compileFailure,
   UiCompileContext,
   UiCompileError,
+  UiCompileMetadata,
   UiCompileResult,
   UiComponentCandidate,
   UiModelCandidate,
@@ -199,11 +200,21 @@ export class A2uiJsonOutputAdapter implements UiModelOutputAdapter {
         ok: true,
         candidate,
         surface: this.canonicalizer.canonicalize(candidate, context),
-        errors: []
+        errors: [],
+        metadata: this.metadata(context)
       };
     } catch (error) {
       return failure('CANONICALIZE_FAILED', String(error));
     }
+  }
+
+  private metadata(context: UiCompileContext): UiCompileMetadata {
+    return {
+      catalogVersion: context.catalogRegistry.snapshot(context.catalogGroups).version,
+      viewModelSchemaVersion: 1,
+      adapterId: 'a2ui-json',
+      adapterVersion: 1
+    };
   }
 
   private candidateFromEnvelopes(lines: string[], context: UiCompileContext): UiModelCandidate | null {
@@ -246,6 +257,8 @@ export class A2uiJsonOutputAdapter implements UiModelOutputAdapter {
         }
         upsertComponents(components, next);
       }
+      // patchComponents is an internal/legacy extension; v4 model output must
+      // enter Candidate → Validator → Reconciler instead of bypassing IR.
       if (parsed['patchComponents'] !== undefined) return null;
     }
     if (components.length === 0) return null;

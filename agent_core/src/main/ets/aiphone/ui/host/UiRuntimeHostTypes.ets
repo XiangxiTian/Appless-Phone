@@ -19,6 +19,8 @@ export interface UiSurfaceSession {
 }
 
 export interface UiHostToolResult {
+  /** Stable host correlation id; optional for legacy producers. */
+  resultId?: string;
   runId: string;
   surfaceId: string;
   epoch: number;

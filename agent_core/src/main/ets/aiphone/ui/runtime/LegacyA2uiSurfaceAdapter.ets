@@ -75,9 +75,10 @@ function canonicalNode(component: A2uiComponent): UiCanonicalNode {
 
 function legacyComponent(node: UiCanonicalNode): A2uiComponent {
   const props = node.props as Record<string, Object | string | number | boolean | null | undefined>;
+  const legacyNames: string[] = ['SurfaceRoot', 'Column', 'Row', 'Text', 'ActionBar', 'MetricGrid'];
   const component: A2uiComponent = {
     id: node.nodeKey,
-    component: node.component,
+    component: legacyNames.indexOf(node.catalogRef.name) >= 0 ? node.catalogRef.name : node.component,
     children: node.children.slice(),
     actions: node.actionRefs.map((actionId: string): A2uiAction => ({
       id: actionId,

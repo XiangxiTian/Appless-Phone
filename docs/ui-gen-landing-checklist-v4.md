@@ -11,12 +11,12 @@
 | 阶段 | 已完成内容 | 提交 | 当前边界 |
 | --- | --- | --- | --- |
 | PR-V4-0 | 四组 Node 回归测试通过 | 基线验收 | 真机/Hypium/完整 ArkTS 构建待执行 |
-| PR-V4-1 | Canonical IR、Binding、Mutation、Revision 基础类型 | `ad5ea84` | Legacy Surface 兼容转换尚未实现 |
+| PR-V4-1 | Canonical IR、Binding、Mutation、Revision 基础类型；Legacy Surface 双向兼容 Adapter 首版 | `ad5ea84`, `9a4b483` | Golden/生产 shadow 接线尚未完成 |
 | PR-V4-1A | 三层 Catalog 骨架、Foundation/Semantic 首版组件、Catalog Prompt、Option Presentation Adapter（Food/Hotel/Product） | `ad5ea84` | PR 未整体完成：其余 View Model、完整 Adapter 覆盖、测试和迁移表尚未收口 |
 | PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab host/factory/projection bridge/feature flags | `e083e52` | 目前是接入骨架，尚未接入现有 MultiAgent Runtime 的真实事件流 |
 | PR-V4-2 | 四 Store、SurfaceController、首版 Reconciler；Tool Result → Presentation Adapter → DataModelStore shadow 链路 | `b1aadb2`, `a74d196` | 尚未从 legacy `A2uiSurfaceStore.apply()` 自动 double-write，也未完成 snapshot compare/设备验收 |
 | PR-V4-3 | Revision Gate、mutationId ring、baseRevision/epoch admission、Surface Snapshot 导入导出 | `f7a5606`, `7ae92fc` | 尚未接入 UI Lab 现有 generation/lease；layout mutation 仍等待 Compiler/Reconciler 正式入口 |
-| PR-V4-4 | A2UI JSON → Candidate → Validator → Canonical IR 首版；复用 A2UI stream scanner | `11ed243` | 尚未接 UI Lab v4 Reconciler/Legacy Adapter；binding schema、golden 和完整错误覆盖待补 |
+| PR-V4-4 | A2UI JSON → Candidate → Validator → Canonical IR 首版；复用 A2UI stream scanner；Legacy Adapter 已补齐 | `11ed243`, `9a4b483` | 尚未接 UI Lab v4 Reconciler/Legacy Adapter runtime path；binding schema、golden 和完整错误覆盖待补 |
 
 上述“已完成”表示代码已提交并通过静态/结构检查；不代表已经通过设备验收，也不代表已经切换任何可见生产路径。
 
@@ -212,7 +212,7 @@ entry/src/test/UiLabV4Integration.test.ets
 - [x] `UiBindingTypes.ets`：business/local/agent binding。
 - [x] `UiRevisionTypes.ets`：epoch + layout/data/runtime/user revisions。
 - [x] `UiMutationTypes.ets`：Layout/Runtime/Data/User mutation。
-- [ ] `LegacyA2uiSurfaceAdapter.ets`：旧 Surface ↔ 新 snapshot 的兼容映射。
+- [x] `LegacyA2uiSurfaceAdapter.ets`：旧 Surface ↔ canonical surface 的双向兼容映射。
 
 ### 约束
 
@@ -224,7 +224,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 测试
 
-- [ ] 现有典型 `A2uiSurfaceState` 可无损转成 v4 snapshot，再 materialize 为等价 legacy view。
+- [x] 现有典型 `A2uiSurfaceState` 可转成 v4 canonical surface，再 materialize 为等价 legacy view（round-trip 专项测试已建立）。
 - [ ] Canonical serialization 稳定。
 - [ ] Canonicalization 两次执行结果相同。
 - [ ] runtime/user 字段不会进入 canonical fingerprint。
@@ -516,7 +516,7 @@ entry/src/test/UiLabV4Integration.test.ets
 - [x] Validator 只接受当前请求选中的 Foundation/Semantic/Extension Catalog groups。
 - [ ] Canonical binding 的目标 path 必须属于已注册的 Presentation View Model schema。
 - [ ] Candidate 不得引用 Tool/Provider 原始字段路径。
-- [ ] legacy 场景组件只允许通过兼容 Adapter 进入，不接受新模型输出。
+- [x] legacy 场景组件只允许通过兼容 Adapter 进入，不接受新模型输出；当前 runtime path 尚未接通。
 - [ ] Compiler 输出记录 `catalogVersion`、`viewModelSchemaVersion` 和 Adapter provenance。
 
 ### 从现有文件迁移职责

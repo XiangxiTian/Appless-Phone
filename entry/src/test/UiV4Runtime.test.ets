@@ -162,6 +162,11 @@ export default function uiV4RuntimeTest(): void {
       expect(gate.evaluate(first.meta, first.kind).accepted).assertTrue();
       expect(gate.evaluate(first.meta, first.kind).reason).assertEqual('DUPLICATE_MUTATION');
       expect(gate.evaluate({
+        mutationId: 'm-base', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
+        baseRevision: revision(1, 0, 0, 0, 0),
+        nextRevision: revision(1, 0, 2, 0, 0)
+      }, 'data').reason).assertEqual('BASE_REVISION_MISMATCH');
+      expect(gate.evaluate({
         mutationId: 'm-gap', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
         baseRevision: revision(1, 0, 1, 0, 0),
         nextRevision: revision(1, 0, 3, 0, 0)

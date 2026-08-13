@@ -15,6 +15,7 @@
 | PR-V4-1A | 三层 Catalog 骨架、Foundation/Semantic 首版组件、Catalog Prompt、Option Presentation Adapter（Food/Hotel/Product） | `ad5ea84` | PR 未整体完成：其余 View Model、完整 Adapter 覆盖、测试和迁移表尚未收口 |
 | PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab host/factory/projection bridge/feature flags | `e083e52` | 目前是接入骨架，尚未接入现有 MultiAgent Runtime 的真实事件流 |
 | PR-V4-2 | 四 Store、SurfaceController、首版 Reconciler；Tool Result → Presentation Adapter → DataModelStore shadow 链路 | `b1aadb2`, `a74d196` | 尚未从 legacy `A2uiSurfaceStore.apply()` 自动 double-write，也未完成 snapshot compare/设备验收 |
+| PR-V4-3 | Revision Gate、mutationId ring、baseRevision/epoch admission、Surface Snapshot 导入导出 | `f7a5606`, `7ae92fc` | 尚未接入 UI Lab 现有 generation/lease；layout mutation 仍等待 Compiler/Reconciler 正式入口 |
 
 上述“已完成”表示代码已提交并通过静态/结构检查；不代表已经通过设备验收，也不代表已经切换任何可见生产路径。
 
@@ -460,30 +461,35 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 新增
 
-- [ ] `UiSurfaceRevision`。
-- [ ] `UiMutationMeta`。
-- [ ] mutationId dedupe ring/LRU。
-- [ ] baseRevision gate。
-- [ ] Surface snapshot export/import。
-- [ ] rejection reason codes。
+- [x] `UiRevisionVector`（epoch + layout/data/runtime/user revision）和 `UiMutationMeta`。
+- [x] mutationId dedupe ring（有界 accepted id ring，默认 128）。
+- [x] baseRevision gate。
+- [x] Surface snapshot export/import（JSON + Store/Gate 状态恢复）。
+- [x] rejection reason codes：`STALE_EPOCH`、`DUPLICATE_MUTATION`、`BASE_REVISION_MISMATCH`、`REVISION_GAP` 等。
 
 ### 与现有 gate 对接
 
 - [ ] UI Lab Host Adapter 将现有 `runtimeGeneration` 映射为 epoch，兼容期不删除。
 - [ ] UI Lab host generation/lease 校验后再进入 revision gate。
 - [ ] UI Lab legacy `applySurface()` sequence gate 保留到 `ui_lab_v4_visible` 稳定。
-- [ ] 主 UI 的 generation/lease/sequence gate 在本阶段保持不变。
-- [ ] layout/data/runtime/user mutations 分别比较对应 revision。
+- [x] 主 UI 的 generation/lease/sequence gate 在本阶段保持不变。
+- [x] layout/data/runtime/user mutations 分别比较对应 revision；当前 `UiSurfaceController.applyMutation()` 先接 data/runtime/user，layout mutation 等 Compiler/Reconciler 入口。
 
 ### 必测交错
 
-- [ ] old epoch layout after new epoch skeleton。
-- [ ] data revision 3 before data revision 2。
-- [ ] duplicate mutationId。
-- [ ] layout baseRevision mismatch。
-- [ ] user edit between speculative and authoritative layout。
-- [ ] snapshot restore 后重复接收最后一个 mutation。
+- [x] old epoch layout after new epoch skeleton。
+- [x] data revision 3 before data revision 2。
+- [x] duplicate mutationId。
+- [x] baseRevision mismatch。
+- [x] user edit between speculative and authoritative layout。
+- [x] snapshot restore 后重复接收最后一个 mutation。
 - [ ] tool data 先于节点到达。
+
+### 当前验收状态
+
+- [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
+- [x] `git diff --check` 通过；revision gate/snapshot 代码仍位于 `agent_core`，无宿主反向依赖。
+- [ ] 专项 Hypium 测试已建立但尚未在设备/IDE 环境执行。
 
 ### 退出门槛
 

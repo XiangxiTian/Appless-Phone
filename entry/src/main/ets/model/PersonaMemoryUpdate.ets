@@ -4,7 +4,8 @@ import {
   A2uiLabelValueData,
   A2uiPersonaData,
   A2uiPersonaMemoryData,
-  A2uiSurfaceState
+  A2uiSurfaceState,
+  WaterfallExplicitPreference
 } from '@loop/agent-core';
 import { markdownSectionValue, parsePersonaMarkdown } from './PersonaMarkdown';
 import { personaManifestIds, personaPackForId } from './PersonaStore';
@@ -137,6 +138,96 @@ function markdownSummary(text: string, sectionTitle: string): string {
 
 function durableStatement(text: string): string {
   return text.replace(/\s+/g, ' ').replace(/^[-*]\s*/, '').trim();
+}
+
+const WATERFALL_SOURCE_ALIASES: string[][] = [
+  ['youtube', 'youtube'],
+  ['b站', 'bilibili'],
+  ['bilibili', 'bilibili'],
+  ['twitter', 'x'],
+  [' x ', 'x'],
+  ['reddit', 'reddit'],
+  ['红迪', 'reddit'],
+  ['hacker news', 'hackernews'],
+  [' hn ', 'hackernews'],
+  ['知乎', 'zhihu']
+];
+
+function waterfallPreferenceEffect(statement: string): 'block' | 'downweight' | 'boost' | '' {
+  const text = statement.toLowerCase();
+  if (/不要|不看|别推荐|不喜欢/.test(text)) return 'block';
+  if (/少看|少推荐|少给我看/.test(text)) return 'downweight';
+  if (/喜欢|多看|多推荐|优先推荐/.test(text)) return 'boost';
+  return '';
+}
+
+export function isStableWaterfallContentPreference(statement: string): boolean {
+  const text = statement.trim();
+  if (text.length === 0 || /搜索|帮我搜|查询|帮我查|今天聊聊|这次|现在/.test(text)) return false;
+  const contentCue = /推荐|给我看|少看|多看|不看|视频|电影|影视|综艺|娱乐|八卦|体育|足球|篮球|新闻|讨论|文章|图文|图片|动漫|动画|游戏|科幻|youtube|b站|bilibili|twitter|reddit|红迪|hacker news|知乎/i;
+  return contentCue.test(text) && waterfallPreferenceEffect(' ' + text + ' ') !== '';
+}
+
+function removeWaterfallSourceAlias(text: string, alias: string): string {
+  const value = alias.trim();
+  if (value === 'x' || value === 'hn') {
+    return text.replace(new RegExp('(^|\\s)' + value + '(?=\\s|的|内容|$)', 'ig'), ' ');
+  }
+  return text.replace(new RegExp(value, 'ig'), ' ');
+}
+
+function pushWaterfallRule(
+  rules: WaterfallExplicitPreference[],
+  dimension: 'topic' | 'source' | 'format',
+  key: string,
+  effect: 'block' | 'downweight' | 'boost'
+): void {
+  for (let index = 0; index < rules.length; index += 1) {
+    if (rules[index].dimension === dimension && rules[index].key === key) return;
+  }
+  rules.push({ dimension, key, effect });
+}
+
+export function waterfallExplicitPreferencesFromStatement(statement: string): WaterfallExplicitPreference[] {
+  if (!isStableWaterfallContentPreference(statement)) return [];
+  const effect = waterfallPreferenceEffect(' ' + statement + ' ') as 'block' | 'downweight' | 'boost';
+  const rules: WaterfallExplicitPreference[] = [];
+  let topic = statement.trim();
+  const lower = ' ' + statement.toLowerCase() + ' ';
+  WATERFALL_SOURCE_ALIASES.forEach((alias: string[]): void => {
+    if (lower.indexOf(alias[0]) < 0) return;
+    pushWaterfallRule(rules, 'source', alias[1], effect);
+    topic = removeWaterfallSourceAlias(topic, alias[0]);
+  });
+  if (/视频/.test(topic)) {
+    pushWaterfallRule(rules, 'format', 'landscape_video', effect);
+    pushWaterfallRule(rules, 'format', 'portrait_video', effect);
+    topic = topic.replace(/视频/g, ' ');
+  }
+  if (/图文|图片/.test(topic)) {
+    pushWaterfallRule(rules, 'format', 'image_text', effect);
+    topic = topic.replace(/图文|图片/g, ' ');
+  }
+  if (/文章|文字/.test(topic)) {
+    pushWaterfallRule(rules, 'format', 'text', effect);
+    topic = topic.replace(/文章|文字/g, ' ');
+  }
+  topic = topic.replace(/以后|我|不要|不看|别推荐|不喜欢|少看|少推荐|少给我看|喜欢|多看|多推荐|优先推荐|给|的内容|内容/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  if (topic.length > 0) pushWaterfallRule(rules, 'topic', topic, effect);
+  return rules;
+}
+
+export function waterfallExplicitPreferencesFromMemory(memory: string): WaterfallExplicitPreference[] {
+  const section = markdownSectionValue(parsePersonaMarkdown(memory).sections, 'Stable Preferences');
+  const rules: WaterfallExplicitPreference[] = [];
+  section.split('\n').forEach((line: string): void => {
+    const statement = line.replace(/^\s*[-*]\s*/, '').trim();
+    waterfallExplicitPreferencesFromStatement(statement).forEach(
+      (rule: WaterfallExplicitPreference): void => pushWaterfallRule(
+        rules, rule.dimension, rule.key, rule.effect));
+  });
+  return rules;
 }
 
 export function mergePersonaStablePreference(memory: string, statement: string): string {

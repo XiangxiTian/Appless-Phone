@@ -117,7 +117,12 @@ import {
   parseHotelSearchRequest
 } from './HotelToolTypes';
 import { callGmailApiTool, gmailMailDetailFromComposioObservation, gmailMailDetailFromPayload, readGmailMailDetail } from './GmailApiClient';
-import { callYouTubeVideoSearch, defaultYouTubeSearchOptions, YouTubeSearchOptions } from './YouTubeApiClient';
+import {
+  callYouTubeMostPopularVideos,
+  callYouTubeVideoSearch,
+  defaultYouTubeSearchOptions,
+  YouTubeSearchOptions
+} from './YouTubeApiClient';
 import { callMediaVideoSearch, mediaVideoQueryFromArgs } from './MediaVideoClient';
 import { mediaVideoPlaybackUrl, mediaVideoStructuredDataA2ui } from './MediaVideoToolA2ui';
 import {
@@ -177,8 +182,25 @@ import {
   refreshComposioConnections
 } from './ComposioDynamicBackend';
 import { aggregateSearchA2ui, aggregateSearchA2uiRenderState } from './AggregateSearchA2ui';
-import { AggregateSearchPartialObserver, callAggregateSearch } from './AggregateSearchClient';
-import { AggregateSearchResult, AggregateSearchSourceStatus } from './AggregateSearchTypes';
+import {
+  AggregateSearchBatchObserver,
+  AggregateSearchPartialObserver,
+  aggregateMediaCandidates,
+  aggregateVideoSourceBatchFromDynamicResults,
+  callAggregateSearch,
+  callAggregateSearchContinuation
+} from './AggregateSearchClient';
+import {
+  AggregateSearchResult,
+  AggregateSearchSource,
+  AggregateSearchSourceBatch,
+  AggregateSearchSourceStatus
+} from './AggregateSearchTypes';
+import {
+  WaterfallCandidate,
+  WaterfallInterestRecallRequest,
+  WaterfallLoadRequest
+} from './WaterfallAnythingCore';
 import { discoverDynamicToolForPrompt, DynamicToolDiscoveryResult } from './DynamicToolDiscovery';
 import { DynamicToolRegistry, isBuiltInToolId, isUnsafeMcpTool, selectBestRemoteTransport } from './DynamicToolRegistry';
 import { sampleManifestForToolId, sampleRecordsForDiscovery } from './DynamicToolSamples';
@@ -12869,7 +12891,8 @@ function youtubeSearchOptionsFromArgs(args: Object | null): YouTubeSearchOptions
   const rawMaxResults = record.maxResults;
   return {
     order: order.length > 0 ? order : 'relevance',
-    maxResults: typeof rawMaxResults === 'number' ? rawMaxResults : 10
+    maxResults: typeof rawMaxResults === 'number' ? rawMaxResults : 10,
+    pageToken: textOf(record.pageToken).trim()
   };
 }
 
@@ -13647,6 +13670,69 @@ async function callStructuredMediaTool(
     ));
   }
   return errorDataResult(toolId, '', 'MEDIA_TOOL_UNSUPPORTED', 'Unsupported media tool: ' + toolId + '.');
+}
+
+export async function callConfiguredAggregateSearchContinuation(
+  query: string,
+  requests: WaterfallLoadRequest[],
+  onBatch: AggregateSearchBatchObserver
+): Promise<void> {
+  return callAggregateSearchContinuation(
+    query,
+    requests,
+    localProviderConfig.youtubeApiKey,
+    { apiKey: localProviderConfig.zhihuApiKey },
+    onBatch
+  );
+}
+
+export interface WaterfallInterestRecallBatch {
+  request: WaterfallInterestRecallRequest;
+  batch: AggregateSearchSourceBatch;
+  candidates: WaterfallCandidate[];
+}
+
+export type WaterfallInterestRecallObserver = (result: WaterfallInterestRecallBatch) => void;
+
+export async function callConfiguredWaterfallInterestRecall(
+  requests: WaterfallInterestRecallRequest[],
+  onBatch: WaterfallInterestRecallObserver
+): Promise<void> {
+  let batchIndex = 0;
+  for (let requestIndex = 0; requestIndex < requests.length; requestIndex += 1) {
+    const recall = requests[requestIndex];
+    if (recall.route === 'popular' && recall.sources.indexOf('youtube') >= 0) {
+      const dynamic = await callYouTubeMostPopularVideos(localProviderConfig.youtubeApiKey, 10);
+      const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic);
+      onBatch({
+        request: recall,
+        batch,
+        candidates: aggregateMediaCandidates(
+          batch.videos, batch.posts, batchIndex++, '', 'done', 'popular', recall.weight)
+      });
+      continue;
+    }
+    const loads: WaterfallLoadRequest[] = recall.sources.map((source: string): WaterfallLoadRequest => ({
+      source,
+      continuation: null,
+      limit: 10,
+      phase: 'loading',
+      message: '',
+      mode: 'search'
+    }));
+    await callConfiguredAggregateSearchContinuation(
+      recall.query,
+      loads,
+      (batch: AggregateSearchSourceBatch): void => {
+        onBatch({
+          request: recall,
+          batch,
+          candidates: aggregateMediaCandidates(
+            batch.videos, batch.posts, batchIndex++, recall.query, 'done', recall.route, recall.weight)
+        });
+      }
+    );
+  }
 }
 
 async function callLocalMediaTool(

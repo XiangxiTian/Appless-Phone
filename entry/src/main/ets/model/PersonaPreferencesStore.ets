@@ -8,10 +8,6 @@ const PERSONA_STORE_KEY: string = 'editable_personas';
 const PERSONA_STORE_VERSION_KEY: string = 'editable_personas_version';
 const PERSONA_STORE_VERSION: string = 'persona_skill_memory_v2';
 
-function flushPreferences(store: preferences.Preferences): void {
-  store.flush().catch((_error: Error) => {});
-}
-
 function textFromValue(value: preferences.ValueType | string | number | boolean | undefined): string {
   if (value === undefined || value === null) {
     return '';
@@ -35,12 +31,15 @@ function snapshotsFromJson(raw: string): PersonaEditableSnapshot[] {
 
 export class PreferencesPersonaPackStore {
   private context: common.Context;
+  private injected: preferences.Preferences | null;
 
-  constructor(context: common.Context) {
+  constructor(context: common.Context, injected: preferences.Preferences | null = null) {
     this.context = context;
+    this.injected = injected;
   }
 
   private preferences(): preferences.Preferences | null {
+    if (this.injected !== null) return this.injected;
     try {
       return preferences.getPreferencesSync(this.context, { name: PERSONA_STORE_NAME });
     } catch (_error) {
@@ -62,16 +61,18 @@ export class PreferencesPersonaPackStore {
     }
   }
 
-  saveSync(): void {
+  saveSync(): boolean {
     const store = this.preferences();
     if (store === null) {
-      return;
+      return false;
     }
     try {
       store.putSync(PERSONA_STORE_KEY, JSON.stringify(personaEditableSnapshots()));
       store.putSync(PERSONA_STORE_VERSION_KEY, PERSONA_STORE_VERSION);
-      flushPreferences(store);
+      store.flushSync();
+      return true;
     } catch (_error) {
+      return false;
     }
   }
 }

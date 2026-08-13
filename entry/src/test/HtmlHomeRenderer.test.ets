@@ -11,7 +11,9 @@ import {
 import { renderHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeRenderer';
 import {
   buildWaterfallHomePayload,
+  renderAggregateSearchHomeDocument,
   waterfallAdvanceCurrentFromAction,
+  waterfallBehaviorFromAction,
   waterfallEnabledSourcesFromAction
 } from '../main/ets/pages/A2uiHome/html/HtmlAggregateSearchHomeRenderer';
 import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer';
@@ -3324,7 +3326,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('waterfall-card--video')).assertLarger(-1);
       expect(html.indexOf('waterfall-card--image-text')).assertLarger(-1);
       expect(html.indexOf('waterfall-card--text')).assertLarger(-1);
-      expect(html.indexOf('来源偏好')).assertLarger(-1);
+      expect(html.indexOf('内容来源')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-play')).assertEqual(-1);
       expect(html.indexOf('data-waterfall-read')).assertLarger(-1);
       expect(html.indexOf('waterfall-reader')).assertLarger(-1);
@@ -3335,7 +3337,7 @@ export default function htmlHomeRendererTest() {
       expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('poster=true')).assertLarger(-1);
       expect(html.indexOf('waterfall-toolbar-primary')).assertLarger(-1);
       expect(html.indexOf('waterfall-toolbar-secondary')).assertLarger(-1);
-      expect(html.indexOf('aria-label="来源偏好"')).assertLarger(-1);
+      expect(html.indexOf('aria-label="内容来源"')).assertLarger(-1);
       expect(html.indexOf('aria-label="推荐理由"')).assertLarger(-1);
       expect(html.indexOf('window.__aiphoneApplyWaterfallUpdate')).assertLarger(-1);
       expect(html.indexOf('scroll-snap-type: y mandatory')).assertLarger(-1);
@@ -3345,7 +3347,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('data-waterfall-enter')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-preferences')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-empty-sources')).assertLarger(-1);
-      expect(html.indexOf('打开来源偏好')).assertLarger(-1);
+      expect(html.indexOf('打开内容来源')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-reason')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-media-fallback')).assertLarger(-1);
       expect(shouldShowHomeChrome(false)).assertTrue();
@@ -3362,6 +3364,15 @@ export default function htmlHomeRendererTest() {
       const busyHtml = renderHtmlHomeDocument(doc, true);
       expect(busyHtml.indexOf('正在更新')).assertLarger(-1);
       expect(busyHtml.indexOf('正在补充内容')).assertEqual(-1);
+    });
+
+    it('opens the home discovery page directly in the shared Waterfall renderer', 0, () => {
+      const html = renderAggregateSearchHomeDocument(waterfallRendererFixture(), false, true);
+
+      expect(html.indexOf('class="waterfall-overlay active"')).assertLarger(-1);
+      expect(html.indexOf('window.__aiphoneWaterfallDirect=true')).assertLarger(-1);
+      expect(html.indexOf('aria-label="返回首页"')).assertLarger(-1);
+      expect(html.indexOf('waterfall.home.back')).assertLarger(-1);
     });
 
     it('labels ordinary source windows as content instead of payment', 0, () => {
@@ -3485,7 +3496,7 @@ export default function htmlHomeRendererTest() {
       const doc = waterfallRendererFixture();
       const surfaceId = doc.surfaceId ?? '';
       const action = parseHtmlHomeAction(
-        '{"id":"waterfall.sources.select","label":"来源偏好","prompt":"","variant":"secondary",' +
+        '{"id":"waterfall.sources.select","label":"内容来源","prompt":"","variant":"secondary",' +
         '"kind":"client","args":{"surfaceId":"' + surfaceId + '","enabledSources":[]}}'
       );
 
@@ -3513,6 +3524,31 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('waterfall.feed.advance')).assertLarger(-1);
       expect(html.indexOf("track.addEventListener('scroll'")).assertLarger(-1);
       expect(html.indexOf('data-waterfall-id')).assertLarger(-1);
+    });
+
+    it('validates Waterfall behavior actions at the existing client bridge', 0, () => {
+      const valid = parseHtmlHomeAction('{"id":"waterfall.behavior.record","label":"行为",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","topics":["AI"],"source":"youtube",' +
+        '"format":"landscape_video","behavior":"dwell","durationMs":8000,' +
+        '"timestamp":1786579200000}}') as A2uiAction;
+      expect(waterfallBehaviorFromAction(valid, 'surface-1')?.candidateId).assertEqual('candidate-1');
+      expect(waterfallBehaviorFromAction(valid, 'other')).assertEqual(null);
+
+      const invalidBehavior = JSON.parse(JSON.stringify(valid)) as A2uiAction;
+      (invalidBehavior.args as Record<string, Object | string | number>).behavior = 'liked';
+      expect(waterfallBehaviorFromAction(invalidBehavior, 'surface-1')).assertEqual(null);
+      const invalidDuration = JSON.parse(JSON.stringify(valid)) as A2uiAction;
+      (invalidDuration.args as Record<string, Object | string | number>).durationMs = -1;
+      expect(waterfallBehaviorFromAction(invalidDuration, 'surface-1')).assertEqual(null);
+      const missingTopics = parseHtmlHomeAction('{"id":"waterfall.behavior.record","label":"行为",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","source":"youtube","format":"landscape_video",' +
+        '"behavior":"dwell","durationMs":8000,"timestamp":1786579200000}}') as A2uiAction;
+      expect(waterfallBehaviorFromAction(missingTopics, 'surface-1')).assertEqual(null);
+      const unexpectedId = JSON.parse(JSON.stringify(valid)) as A2uiAction;
+      (unexpectedId.args as Record<string, Object | string | number>).candidateId = '';
+      expect(waterfallBehaviorFromAction(unexpectedId, 'surface-1')).assertEqual(null);
     });
 
     it('keeps the Waterfall entry hidden when no candidate is valid', 0, () => {

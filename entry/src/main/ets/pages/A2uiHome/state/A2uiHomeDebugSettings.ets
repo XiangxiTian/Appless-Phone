@@ -53,6 +53,7 @@ export function htmlHomeDebugExportJson(document: HtmlHomeDocument, isBusy: bool
     personaMemory: document.personaMemory,
     personaAvatarDataUri: personaAvatarDataUri(document.persona.avatarKey),
     rawSurfaceRoot: null,
+    waterfall: document.waterfall,
     generatedAt: '',
     isBusy: isBusy || (document as HtmlHomeDebugExportDocument).isBusy === true
   };

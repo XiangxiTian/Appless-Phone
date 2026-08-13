@@ -105,10 +105,14 @@ const REQUEST_SCOPE_CONTRACT: string =
   'mail or email. Explicit multi-domain requests remain valid and should keep independent tasks in the same round. ' +
   'Before returning JSON, silently scope-check every requestedCapabilityId, Data task, allowed tool, and Action ' +
   'against that closed set; do not output the check.';
+const WATERFALL_MEMORY_SELECTION_CONTRACT: string =
+  'Stable content-recommendation preferences such as 以后多推荐..., 不要推荐..., 少给我看... use only ' +
+  'memory.update with personaId entertainment_companion. A one-off search or ordinary topic mention is not a ' +
+  'stable preference.';
 const LEADER_SYSTEM_PROMPT: string = 'Return exactly one JSON object and nothing else. ' +
   'Do not include Thought, markdown, or code fences. ' + ANSWER_FIELD_RULE + ' ' + REASON_CODE_FIELD_RULE + ' ' +
   CONTINUATION_MODE_FIELD_RULE + ' ' + REQUEST_SCOPE_CONTRACT + ' ' + FULL_DECISION_CONTRACT + ' ' +
-  BIM_FIELD_RULES;
+  BIM_FIELD_RULES + ' ' + WATERFALL_MEMORY_SELECTION_CONTRACT;
 const REPAIR_INSTRUCTION: string = 'Correction: previous decision rejected by strict schema. ' +
   'Return one corrected decision matching the schema exactly. ' + FULL_DECISION_CONTRACT;
 const BIM_MEMORY_UPDATE_REPAIR_INSTRUCTION: string =

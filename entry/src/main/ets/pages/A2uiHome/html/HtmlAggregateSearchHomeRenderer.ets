@@ -4,7 +4,14 @@ import {
   WaterfallRankedCandidate,
   WaterfallSourceState
 } from '@loop/agent-core';
-import { HtmlHomeAction, HtmlHomeBlock, HtmlHomeDocument, HtmlHomeMetric, WaterfallHomePayload } from './HtmlHomeTypes';
+import {
+  HtmlHomeAction,
+  HtmlHomeBlock,
+  HtmlHomeDocument,
+  HtmlHomeMetric,
+  WaterfallBehaviorActionArgs,
+  WaterfallHomePayload
+} from './HtmlHomeTypes';
 import {
   APP_LOGO_BILIBILI,
   APP_LOGO_HACKERNEWS,
@@ -800,9 +807,13 @@ const WATERFALL_CSS: string = `
 }
 .waterfall-overlay {
   position: fixed; inset: 0; z-index: 20; display: none; overflow: hidden;
-  background: var(--paper); color: var(--ink);
+  background: var(--paper); color: var(--ink); opacity: 0;
 }
-.waterfall-overlay.active { display: block; }
+.waterfall-overlay.active {
+  display: block; opacity: 1; animation: waterfall-overlay-in 180ms var(--ease-out) both;
+}
+.waterfall-overlay.active.closing { opacity: 0; animation: none; transition: opacity 140ms var(--ease-out); }
+@keyframes waterfall-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 .waterfall-track {
   height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: none;
   scroll-snap-type: y mandatory; scrollbar-width: none; background: var(--paper);
@@ -1043,6 +1054,8 @@ const WATERFALL_CSS: string = `
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .waterfall-overlay.active { animation: waterfall-overlay-in 140ms var(--ease-out) both !important; }
+  .waterfall-overlay.active.closing { animation: none !important; }
   .waterfall-entry button, .waterfall-toolbar button, .waterfall-preferences button,
   .waterfall-preferences label, .waterfall-empty button { transition: none; }
   .waterfall-reader,
@@ -1074,13 +1087,23 @@ const WATERFALL_JS: string = `
   var preferences = document.getElementById('waterfall-preferences');
   var reader = document.getElementById('waterfall-reader');
   var state = window.__aiphoneWaterfallInitial || null;
-  var mode = 'entry';
+  var directDiscovery = window.__aiphoneWaterfallDirect === true;
+  var mode = directDiscovery ? 'discovering' : 'entry';
   var enabledSources = state && state.enabledSources ? state.enabledSources.slice() : [];
   var aggregateHtml = state && state.aggregateHtml ? state.aggregateHtml : '';
   var advancePending = false;
   var renderedCurrentId = '';
   var renderedCards = [];
   var alignToCurrent = false;
+  var closeTimer = null;
+  var behaviorTimer = null;
+  var behaviorCandidateId = '';
+  var behaviorStartedAt = 0;
+  var behaviorDurationMs = 0;
+  var readerCandidateId = '';
+  var readerStartedAt = 0;
+  var readerDurationMs = 0;
+  var emittedBehavior = {};
   function text(value) { return value === null || value === undefined ? '' : String(value); }
   function escapeHtml(value) { return text(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
   function cleanSummary(value) {
@@ -1135,6 +1158,59 @@ const WATERFALL_JS: string = `
       return true;
     });
   }
+  function candidateById(id) {
+    return candidates(state).find(function (item) { return text(item.id) === text(id); }) || null;
+  }
+  function candidateFormat(item) {
+    if (item && item.format) return text(item.format);
+    if (item && item.mediaType === 'video') return 'landscape_video';
+    return item && item.mediaType === 'image_text' ? 'image_text' : 'text';
+  }
+  function postBehavior(id, behavior, durationMs) {
+    var item = candidateById(id);
+    var key = text(id) + '|' + behavior;
+    if (!item || emittedBehavior[key] || !state || !window.AIPhoneHome ||
+      typeof window.AIPhoneHome.postAction !== 'function') return;
+    emittedBehavior[key] = true;
+    window.AIPhoneHome.postAction(JSON.stringify({
+      id: 'waterfall.behavior.record', label: '行为', prompt: '', variant: 'secondary', kind: 'client',
+      args: {
+        surfaceId: state.surfaceId || '', candidateId: text(item.id), topics: item.topics || [],
+        source: text(item.source), format: candidateFormat(item), behavior: behavior,
+        durationMs: Math.max(0, Math.round(durationMs)), timestamp: Date.now()
+      }
+    }));
+  }
+  function clearBehaviorTimer() {
+    if (behaviorTimer !== null) clearTimeout(behaviorTimer);
+    behaviorTimer = null;
+  }
+  function pauseCurrentBehavior(emitQuickSkip) {
+    if (behaviorStartedAt > 0) behaviorDurationMs += Math.max(0, Date.now() - behaviorStartedAt);
+    behaviorStartedAt = 0;
+    clearBehaviorTimer();
+    if (emitQuickSkip && behaviorCandidateId && behaviorDurationMs < 2000) {
+      postBehavior(behaviorCandidateId, 'quick_skip', behaviorDurationMs);
+    }
+  }
+  function resumeCurrentBehavior() {
+    if (mode !== 'discovering' || document.hidden || !state || !state.currentId) return;
+    var nextId = text(state.currentId);
+    if (behaviorCandidateId && behaviorCandidateId !== nextId) {
+      pauseCurrentBehavior(true);
+      behaviorDurationMs = 0;
+    }
+    behaviorCandidateId = nextId;
+    if (behaviorStartedAt > 0 || emittedBehavior[nextId + '|dwell']) return;
+    behaviorStartedAt = Date.now();
+    clearBehaviorTimer();
+    behaviorTimer = setTimeout(function () {
+      behaviorDurationMs += Math.max(0, Date.now() - behaviorStartedAt);
+      behaviorStartedAt = Date.now();
+      postBehavior(behaviorCandidateId, 'dwell', behaviorDurationMs);
+      behaviorTimer = null;
+    }, Math.max(0, 8000 - behaviorDurationMs));
+  }
   function mergePayload(payload) {
     if (!payload) return;
     var oldCurrentId = state ? text(state.currentId) : '';
@@ -1153,7 +1229,7 @@ const WATERFALL_JS: string = `
   function postSourceSelection() {
     if (!state || !window.AIPhoneHome || typeof window.AIPhoneHome.postAction !== 'function') return;
     window.AIPhoneHome.postAction(JSON.stringify({
-      id: 'waterfall.sources.select', label: '来源偏好', prompt: '', variant: 'secondary', kind: 'client',
+      id: 'waterfall.sources.select', label: '内容来源', prompt: '', variant: 'secondary', kind: 'client',
       args: { surfaceId: state.surfaceId || '', enabledSources: enabledSources }
     }));
   }
@@ -1165,6 +1241,7 @@ const WATERFALL_JS: string = `
     var visibleIndex = Math.round(track.scrollTop / Math.max(1, track.clientHeight));
     if (mode !== 'discovering' || advancePending || currentIndex < 0 || visibleIndex <= currentIndex ||
       !window.AIPhoneHome || typeof window.AIPhoneHome.postAction !== 'function') return;
+    pauseCurrentBehavior(true);
     advancePending = true;
     window.AIPhoneHome.postAction(JSON.stringify({
       id: 'waterfall.feed.advance', label: '下一条', prompt: '', variant: 'secondary', kind: 'client',
@@ -1172,9 +1249,17 @@ const WATERFALL_JS: string = `
     }));
   }
   function closeReader() {
+    if (readerCandidateId && readerStartedAt > 0) {
+      readerDurationMs += Math.max(0, Date.now() - readerStartedAt);
+      if (readerDurationMs >= 8000) postBehavior(readerCandidateId, 'read_complete', readerDurationMs);
+    }
+    readerCandidateId = '';
+    readerStartedAt = 0;
+    readerDurationMs = 0;
     if (reader) reader.classList.remove('active');
     if (track) track.classList.remove('reader-open');
     if (mode === 'reading') mode = 'discovering';
+    resumeCurrentBehavior();
   }
   function openReader(id) {
     if (!reader || !track) return;
@@ -1188,6 +1273,10 @@ const WATERFALL_JS: string = `
       escapeHtml(title) + '</h2>' + (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') + '</article>';
     reader.classList.add('active');
     track.classList.add('reader-open');
+    pauseCurrentBehavior(false);
+    readerCandidateId = text(item.id);
+    readerStartedAt = Date.now();
+    readerDurationMs = 0;
     mode = 'reading';
   }
   function renderCandidate(item, index) {
@@ -1229,12 +1318,13 @@ const WATERFALL_JS: string = `
   function renderPreferences() {
     if (!preferences || !state) return;
     var sources = state.sources || [];
-    preferences.innerHTML = '<div class="waterfall-toolbar"><button type="button" data-waterfall-close-preferences>返回</button><b>来源偏好</b><span></span></div>' +
-      '<div><div class="waterfall-source-grid">' + sources.map(function (source) {
-        var checked = enabledSources.indexOf(source.source) >= 0 ? ' checked' : '';
-        return '<label>' + sourceLogoMarkup(source.source) + '<span class="waterfall-source-name">' +
-          escapeHtml(sourceLabel(source.source)) + '</span><input type="checkbox" data-waterfall-source="' +
-          escapeHtml(source.source) + '"' + checked + ' /></label>';
+    var sourceNames = ['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu'];
+    preferences.innerHTML = '<div class="waterfall-toolbar"><button type="button" data-waterfall-close-preferences>返回</button><b>内容来源</b><span></span></div>' +
+      '<div><div class="waterfall-source-grid">' + sourceNames.map(function (sourceName) {
+        var checked = enabledSources.indexOf(sourceName) >= 0 ? ' checked' : '';
+        return '<label>' + sourceLogoMarkup(sourceName) + '<span class="waterfall-source-name">' +
+          escapeHtml(sourceLabel(sourceName)) + '</span><input type="checkbox" data-waterfall-source="' +
+          escapeHtml(sourceName) + '"' + checked + ' /></label>';
       }).join('') + '</div><button type="button" data-waterfall-close-preferences>完成</button></div>';
     preferences.classList.add('active');
     preferences.querySelectorAll('[data-waterfall-source]').forEach(function (input) {
@@ -1257,14 +1347,15 @@ const WATERFALL_JS: string = `
     var viewportHeight = Math.max(1, track.clientHeight);
     var currentIndex = items.findIndex(function (item) { return text(item.id) === nextCurrentId; });
     var maxScrollTop = Math.max(0, items.length - 1) * viewportHeight;
-    var empty = enabledSources.length === 0 ? '<div class="waterfall-empty"><span>至少开启一个来源</span><button type="button" data-waterfall-empty-sources>打开来源偏好</button></div>' : '';
+    var empty = enabledSources.length === 0 ? '<div class="waterfall-empty"><span>至少开启一个来源</span><button type="button" data-waterfall-empty-sources>打开内容来源</button></div>' : '';
     var status = '';
     if (enabledSources.length > 0 && items.length === 0) {
       status = state.exhausted ? '<div class="waterfall-status">\\u672c\\u8f6e\\u5185\\u5bb9\\u5df2\\u7ed3\\u675f</div>' :
         (state.replenishing ? '<div class="waterfall-status">\\u6b63\\u5728\\u8865\\u5145\\u5185\\u5bb9</div>' :
           '<div class="waterfall-status">\\u6b63\\u5728\\u6c47\\u96c6\\u5185\\u5bb9\\u2026</div>');
     }
-    var tailStatus = items.length > 0 ? '<div class="waterfall-tail-status"></div>' : '';
+    var tailStatus = items.length > 0 && state.exhausted ?
+      '<div class="waterfall-tail-status"></div>' : '';
     var cardHtml = items.map(renderCandidate);
     var nextHtml = status + empty + cardHtml.join('') + tailStatus;
     var nodes = typeof track.querySelectorAll === 'function' ?
@@ -1305,7 +1396,9 @@ const WATERFALL_JS: string = `
     }
     renderedCurrentId = nextCurrentId;
     var tailNode = typeof track.querySelector === 'function' ? track.querySelector('.waterfall-tail-status') : null;
-    if (tailNode) tailNode.textContent = state.replenishing ? '\\u6b63\\u5728\\u8865\\u5145\\u5185\\u5bb9' : '\\u4e0a\\u6ed1\\u7ed3\\u675f\\u672c\\u8f6e';
+    if (tailNode) {
+      tailNode.textContent = '\\u672c\\u8f6e\\u5185\\u5bb9\\u5df2\\u7ed3\\u675f';
+    }
     var sourceControl = document.querySelector('.waterfall-source-control-logos');
     if (sourceControl) {
       var sourceLogoHtml = items.length > 0 ? sourceLogoMarkup(items[0].source) : '';
@@ -1324,6 +1417,14 @@ const WATERFALL_JS: string = `
     var portrait = image.naturalHeight > image.naturalWidth * 1.18;
     card.classList.toggle('waterfall-card--portrait', portrait);
     card.classList.toggle('waterfall-card--landscape', !portrait);
+  }, true);
+  track.addEventListener('ended', function (event) {
+    var media = event.target;
+    if (!media || text(media.tagName).toLowerCase() !== 'video' || typeof media.closest !== 'function') return;
+    var card = media.closest('[data-waterfall-id]');
+    if (!card || typeof card.getAttribute !== 'function') return;
+    postBehavior(card.getAttribute('data-waterfall-id'), 'play_complete',
+      typeof media.duration === 'number' && isFinite(media.duration) ? media.duration * 1000 : 0);
   }, true);
   track.addEventListener('click', function (event) {
     var target = event.target;
@@ -1354,17 +1455,37 @@ const WATERFALL_JS: string = `
   document.addEventListener('click', function (event) {
     var target = event.target;
     if (!target || typeof target.closest !== 'function' || !target.closest('[data-waterfall-enter]')) return;
+    if (closeTimer !== null) clearTimeout(closeTimer);
+    closeTimer = null;
     mode = 'discovering';
+    overlay.classList.remove('closing');
     overlay.classList.add('active');
     setFullscreen(true);
     render();
+    resumeCurrentBehavior();
   });
   document.querySelectorAll('[data-waterfall-back]').forEach(function (button) {
     button.addEventListener('click', function () {
+      if (directDiscovery && state && window.AIPhoneHome &&
+        typeof window.AIPhoneHome.postAction === 'function') {
+        pauseCurrentBehavior(false);
+        window.AIPhoneHome.postAction(JSON.stringify({
+          id: 'waterfall.home.back', label: '返回首页', prompt: '', variant: 'secondary', kind: 'client',
+          args: { surfaceId: state.surfaceId || '' }
+        }));
+        return;
+      }
       mode = 'entry';
+      pauseCurrentBehavior(false);
       closeReader();
-      overlay.classList.remove('active');
       if (preferences) preferences.classList.remove('active');
+      if (closeTimer !== null) clearTimeout(closeTimer);
+      overlay.classList.add('closing');
+      closeTimer = setTimeout(function () {
+        overlay.classList.remove('active');
+        overlay.classList.remove('closing');
+        closeTimer = null;
+      }, 140);
       setFullscreen(false);
     });
   });
@@ -1374,12 +1495,38 @@ const WATERFALL_JS: string = `
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && mode === 'reading') closeReader();
   });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      pauseCurrentBehavior(false);
+      if (readerCandidateId && readerStartedAt > 0) {
+        readerDurationMs += Math.max(0, Date.now() - readerStartedAt);
+        readerStartedAt = 0;
+      }
+      return;
+    }
+    if (mode === 'reading' && readerCandidateId) readerStartedAt = Date.now();
+    else resumeCurrentBehavior();
+  });
   window.__aiphoneApplyWaterfallUpdate = function (payload) {
+    var previousCurrentId = state ? text(state.currentId) : '';
     mergePayload(payload);
     render();
     postAdvanceIfNeeded();
+    if (previousCurrentId !== text(state && state.currentId)) {
+      pauseCurrentBehavior(false);
+      behaviorCandidateId = '';
+      behaviorDurationMs = 0;
+    }
+    resumeCurrentBehavior();
   };
-  if (state) mergePayload(state);
+  if (state) {
+    mergePayload(state);
+    if (directDiscovery && overlay) {
+      overlay.classList.add('active');
+      render();
+      resumeCurrentBehavior();
+    }
+  }
 })();
 `;
 
@@ -1435,6 +1582,44 @@ export function waterfallAdvanceCurrentFromAction(action: A2uiAction, surfaceId:
   return currentId.length > 0 ? currentId : null;
 }
 
+export function waterfallBehaviorFromAction(
+  action: A2uiAction,
+  surfaceId: string
+): WaterfallBehaviorActionArgs | null {
+  const args = waterfallArgsFromAction(action, 'waterfall.behavior.record', surfaceId);
+  if (args === null || typeof args['candidateId'] !== 'string' ||
+    (args['candidateId'] as string).trim().length === 0 || !Array.isArray(args['topics']) ||
+    typeof args['source'] !== 'string' || (args['source'] as string).trim().length === 0 ||
+    typeof args['format'] !== 'string' ||
+    (args['format'] !== 'landscape_video' && args['format'] !== 'portrait_video' &&
+      args['format'] !== 'image_text' && args['format'] !== 'text') ||
+    typeof args['behavior'] !== 'string' ||
+    (args['behavior'] !== 'play_complete' && args['behavior'] !== 'read_complete' &&
+      args['behavior'] !== 'dwell' && args['behavior'] !== 'quick_skip') ||
+    typeof args['durationMs'] !== 'number' || !isFinite(args['durationMs'] as number) ||
+    (args['durationMs'] as number) < 0 || typeof args['timestamp'] !== 'number' ||
+    !isFinite(args['timestamp'] as number) || (args['timestamp'] as number) <= 0) {
+    return null;
+  }
+  const rawTopics = args['topics'] as WaterfallActionValue[];
+  const topics: string[] = [];
+  for (let index = 0; index < rawTopics.length; index += 1) {
+    if (typeof rawTopics[index] !== 'string' || (rawTopics[index] as string).trim().length === 0) return null;
+    const topic = (rawTopics[index] as string).trim();
+    if (topics.indexOf(topic) < 0) topics.push(topic);
+  }
+  return {
+    surfaceId,
+    candidateId: (args['candidateId'] as string).trim(),
+    topics,
+    source: (args['source'] as string).trim(),
+    format: args['format'] as 'landscape_video' | 'portrait_video' | 'image_text' | 'text',
+    behavior: args['behavior'] as 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip',
+    durationMs: args['durationMs'] as number,
+    timestamp: args['timestamp'] as number
+  };
+}
+
 export function buildWaterfallHomePayload(
   document: HtmlHomeDocument,
   isBusy: boolean,
@@ -1475,8 +1660,8 @@ export function buildWaterfallHomePayload(
   const relevantSources = state.sources.filter((source: WaterfallSourceState): boolean =>
     state.enabledSources.indexOf(source.source) >= 0);
   const replenishing = relevantSources.some((source: WaterfallSourceState): boolean =>
-    source.inFlight || source.phase === 'loading');
-  const exhausted = activeCandidates.length === 0 && state.enabledSources.length > 0 &&
+    source.inFlight || source.phase === 'loading') || state.expansionInFlight === true;
+  const exhausted = (state.queryStage ?? 'done') === 'done' && activeCandidates.length === 0 && state.enabledSources.length > 0 &&
     relevantSources.length === state.enabledSources.length && relevantSources.every((source: WaterfallSourceState): boolean =>
     source.continuation === null && (source.phase === 'empty' || source.phase === 'needs_auth' ||
     source.phase === 'error' || source.phase === 'exhausted' || source.phase === 'success'));
@@ -1538,7 +1723,11 @@ function renderAggregateMainContent(
   ].join('');
 }
 
-export function renderAggregateSearchHomeDocument(document: HtmlHomeDocument, isBusy: boolean = false): string {
+export function renderAggregateSearchHomeDocument(
+  document: HtmlHomeDocument,
+  isBusy: boolean = false,
+  startInDiscovery: boolean = false
+): string {
   const waterfall = buildWaterfallHomePayload(document, isBusy);
   const waterfallJson = waterfall === null ? 'null' : JSON.stringify(waterfall).replace(/</g, '\\u003c');
   const sourceLogosJson = JSON.stringify({
@@ -1559,8 +1748,11 @@ export function renderAggregateSearchHomeDocument(document: HtmlHomeDocument, is
     '<style>', AGGREGATE_CSS, WATERFALL_CSS, '</style></head><body>',
     '<main class="aggregate-shell">',
     waterfall === null ? renderAggregateMainContent(document, isBusy, false) : waterfall.aggregateHtml,
-    '</main>', waterfall !== null ? '<section id="waterfall-discovery" class="waterfall-overlay"><div class="waterfall-toolbar"><button type="button" class="waterfall-toolbar-primary" aria-label="返回聚合搜索" data-waterfall-back><span aria-hidden="true">‹</span>&nbsp;返回</button><div class="waterfall-toolbar-tools"><button type="button" class="waterfall-toolbar-secondary" aria-label="来源偏好" title="来源偏好" data-waterfall-preferences><span class="waterfall-source-control-logos" aria-hidden="true"></span></button></div></div><div id="waterfall-track" class="waterfall-track">' + waterfallStatus + '</div><div id="waterfall-preferences" class="waterfall-preferences"></div><div id="waterfall-reader" class="waterfall-reader" aria-live="polite"></div></section>' : '',
-    '<script>', AGGREGATE_JS, waterfall !== null ? 'window.__aiphoneWaterfallSourceLogos=' + sourceLogosJson +
+    '</main>', waterfall !== null ? '<section id="waterfall-discovery" class="waterfall-overlay' +
+      (startInDiscovery ? ' active' : '') + '"><div class="waterfall-toolbar"><button type="button" class="waterfall-toolbar-primary" aria-label="' +
+      (startInDiscovery ? '返回首页' : '返回聚合搜索') + '" data-waterfall-back><span aria-hidden="true">‹</span>&nbsp;返回</button><div class="waterfall-toolbar-tools"><button type="button" class="waterfall-toolbar-secondary" aria-label="内容来源" title="内容来源" data-waterfall-preferences><span class="waterfall-source-control-logos" aria-hidden="true"></span></button></div></div><div id="waterfall-track" class="waterfall-track">' + waterfallStatus + '</div><div id="waterfall-preferences" class="waterfall-preferences"></div><div id="waterfall-reader" class="waterfall-reader" aria-live="polite"></div></section>' : '',
+    '<script>', AGGREGATE_JS, waterfall !== null ? 'window.__aiphoneWaterfallDirect=' +
+      (startInDiscovery ? 'true' : 'false') + ';window.__aiphoneWaterfallSourceLogos=' + sourceLogosJson +
       ';window.__aiphoneWaterfallInitial=' + waterfallJson + ';' + WATERFALL_JS : '', '</script></body></html>'
   ].join('');
 }

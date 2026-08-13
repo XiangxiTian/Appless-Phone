@@ -12,11 +12,12 @@ export default function bilibiliApiClientTest() {
   describe('bilibiliApiClient', () => {
     it('builds search and player URLs without credentials', 0, () => {
       const searchUrl: string = bilibiliSearchUrl('qwen max 官方介绍');
-      const apiUrl: string = bilibiliApiSearchUrl('qwen max 官方介绍');
+      const apiUrl: string = bilibiliApiSearchUrl('qwen max 官方介绍', 2);
 
       expect(searchUrl.indexOf('https://search.bilibili.com/video?')).assertEqual(0);
       expect(searchUrl.indexOf('keyword=qwen%20max%20%E5%AE%98%E6%96%B9%E4%BB%8B%E7%BB%8D')).assertLarger(-1);
       expect(apiUrl.indexOf('https://api.bilibili.com/x/web-interface/search/all/v2?')).assertEqual(0);
+      expect(apiUrl.indexOf('page=2')).assertLarger(-1);
       expect(bilibiliPlayerUrl('BV1h57y6pE5o')).assertEqual('https://www.bilibili.com/video/BV1h57y6pE5o');
     });
 

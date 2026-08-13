@@ -492,6 +492,9 @@ export function normalizedComposioUseCase(prompt: string, fixedToolId: string = 
   if (fixedToolId === 'social.reddit.search') {
     return 'Search public Reddit posts across subreddits';
   }
+  if (fixedToolId === 'social.hackernews.search') {
+    return 'Search public Hacker News posts';
+  }
   if (fixedToolId === 'whatsapp.phone_numbers.list') {
     return 'List WhatsApp Business phone numbers for the authenticated account';
   }
@@ -651,7 +654,15 @@ function fixedArgumentAliases(toolId: string): FixedArgumentAlias[] {
   if (toolId === 'social.reddit.search') {
     return [
       { source: 'searchQuery', targets: ['search_query'] },
-      { source: 'limit', targets: ['limit'] }
+      { source: 'limit', targets: ['limit', 'count'] },
+      { source: 'cursor', targets: ['after', 'cursor', 'next_token'] }
+    ];
+  }
+  if (toolId === 'social.hackernews.search') {
+    return [
+      { source: 'query', targets: ['query'] },
+      { source: 'limit', targets: ['size', 'limit'] },
+      { source: 'page', targets: ['page'] }
     ];
   }
   if (toolId === 'social.reddit.comments') {
@@ -774,7 +785,8 @@ function fixedArgumentAliases(toolId: string): FixedArgumentAlias[] {
       { source: 'pageSize', targets: ['pageSize', 'page_size', 'limit', 'count', 'maxResults', 'max_results'] },
       { source: 'expansions', targets: ['expansions'] },
       { source: 'mediaFields', targets: ['media_fields', 'mediaFields'] },
-      { source: 'tweetFields', targets: ['tweet_fields', 'tweetFields'] }
+      { source: 'tweetFields', targets: ['tweet_fields', 'tweetFields'] },
+      { source: 'cursor', targets: ['next_token', 'pagination_token', 'cursor'] }
     ];
   }
   return [];
@@ -910,6 +922,7 @@ export function composioExactToolSlugForFixedTool(fixedToolId: string): string {
   if (fixedToolId === 'social.instagram.media.list') return 'INSTAGRAM_GET_IG_USER_MEDIA';
   if (fixedToolId === 'social.reddit.profile') return 'REDDIT_GET_REDDIT_USER_ABOUT';
   if (fixedToolId === 'social.reddit.search') return 'REDDIT_SEARCH_ACROSS_SUBREDDITS';
+  if (fixedToolId === 'social.hackernews.search') return 'HACKERNEWS_SEARCH_POSTS';
   if (fixedToolId === 'social.reddit.comments') return 'REDDIT_RETRIEVE_POST_COMMENTS';
   if (fixedToolId === 'social.hackernews.item.read') return 'HACKERNEWS_GET_ITEM';
   if (fixedToolId === 'whatsapp.phone_numbers.list') return 'WHATSAPP_GET_PHONE_NUMBERS';
@@ -3310,4 +3323,16 @@ export async function callComposioFixedDynamic(
     fixedArgs: fixedArgs ?? new Object()
   };
   return callComposioParsed(prompt, parsed, true);
+}
+
+export async function callComposioFixedDynamicWithProviderData(
+  prompt: string,
+  fixedToolId: string,
+  fixedArgs: Object | null
+): Promise<DynamicGenericToolResult | null> {
+  const parsed: ComposioExecuteArgs = {
+    fixedToolId: fixedToolId,
+    fixedArgs: fixedArgs ?? new Object()
+  };
+  return callComposioParsed(prompt, parsed, true, true);
 }

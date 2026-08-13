@@ -33,6 +33,10 @@ function stringArrayFrom(value: MediaArgValue): string[] {
   return text.length > 0 ? [text] : [];
 }
 
+function numberFrom(value: MediaArgValue, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 function hasMediaCue(prompt: string): boolean {
   const lower = prompt.toLowerCase();
   return lower.indexOf('youtube') >= 0 ||
@@ -107,6 +111,12 @@ export function mergeMediaVideoProviderResults(results: DynamicGenericToolResult
       rows: result.rows.slice(),
       rawPreview: result.rawPreview
     };
+    if (result.providerData !== undefined) {
+      normalized.providerData = result.providerData;
+    }
+    if (result.providerDataMeta !== undefined) {
+      normalized.providerDataMeta = result.providerDataMeta;
+    }
     return normalized;
   });
 }
@@ -118,12 +128,16 @@ export async function callMediaVideoSearch(
 ): Promise<DynamicGenericToolResult[]> {
   const query = mediaVideoQueryFromArgs(prompt, args);
   const sources = mediaSourcesFromArgs(args);
+  const record = args === null ? new Object() as MediaArgRecord : args as MediaArgRecord;
+  const limit = numberFrom(record.limit, 10);
   const tasks: Promise<DynamicGenericToolResult[]>[] = [];
   if (sources.indexOf('youtube') >= 0) {
-    tasks.push(callYouTubeVideoSearch(query, youtubeApiKey));
+    tasks.push(callYouTubeVideoSearch(query, youtubeApiKey, {
+      order: 'relevance', maxResults: limit, pageToken: textOf(record.pageToken).trim()
+    }));
   }
   if (sources.indexOf('bilibili') >= 0) {
-    tasks.push(callBilibiliVideoSearch(query));
+    tasks.push(callBilibiliVideoSearch(query, numberFrom(record.page, 1)));
   }
   const providerResults = await Promise.all(tasks);
   const merged: DynamicGenericToolResult[] = [];

@@ -79,9 +79,10 @@ export function bilibiliSearchUrl(query: string): string {
   return BILIBILI_SEARCH_URL + '?' + params.map((pair: string[]) => encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1])).join('&');
 }
 
-export function bilibiliApiSearchUrl(query: string): string {
+export function bilibiliApiSearchUrl(query: string, page: number = 1): string {
   const params: string[][] = [
-    ['keyword', query]
+    ['keyword', query],
+    ['page', Math.max(1, Math.floor(page)).toString()]
   ];
   return BILIBILI_API_SEARCH_URL + '?' + params.map((pair: string[]) => encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1])).join('&');
 }
@@ -550,13 +551,13 @@ export function bilibiliVideoResultsFromSearchHtml(html: string, query: string):
   }];
 }
 
-export async function callBilibiliVideoSearch(query: string): Promise<DynamicGenericToolResult[]> {
+export async function callBilibiliVideoSearch(query: string, page: number = 1): Promise<DynamicGenericToolResult[]> {
   const request = http.createHttp();
   let lastError = '';
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const response = await request.request(bilibiliApiSearchUrl(query), {
+        const response = await request.request(bilibiliApiSearchUrl(query, page), {
           method: http.RequestMethod.GET,
           header: {
             'Accept': 'application/json, text/plain, */*',

@@ -1296,6 +1296,23 @@ export default function multiAgentLeaderPlannerTest() {
       expect(decision.bimSuggestion === undefined).assertTrue();
     });
 
+    it('teaches the Leader to route only stable content preferences to entertainment memory', 0, async () => {
+      const model = new QueueLocalModel([actionDecision('memory.update')]);
+      await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        { text: '以后多推荐 AI 视频' },
+        actionOwnerContext(),
+        1
+      );
+
+      expect(model.systemPrompts[0].indexOf(
+        'Stable content-recommendation preferences such as 以后多推荐..., 不要推荐..., 少给我看...'
+      )).assertLarger(-1);
+      expect(model.systemPrompts[0].indexOf(
+        'A one-off search or ordinary topic mention is not a stable preference.'
+      )).assertLarger(-1);
+    });
+
     it('keeps snapshot-only BIM creation out of the foreground tool plan', 0, async () => {
       const model = new QueueLocalModel([LIVE_ANSWER_WITHOUT_REASON_CODE]);
       const decision = await new MultiAgentLeaderPlanner(model).plan(

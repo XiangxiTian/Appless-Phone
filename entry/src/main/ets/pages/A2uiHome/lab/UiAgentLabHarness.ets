@@ -1317,7 +1317,7 @@ export class UiAgentLabHarness {
         listener(event);
         return true;
       },
-      onMemoryUpdate: (): void => {},
+      onMemoryUpdate: (): boolean => true,
       submitTimeoutMs: 120000,
       actionTimeoutMs: 45000,
       settingsFingerprint: 'ui-lab|' + settings.provider + '|' + settings.baseUrl + '|' + settings.model

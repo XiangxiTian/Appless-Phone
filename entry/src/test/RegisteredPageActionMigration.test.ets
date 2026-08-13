@@ -745,7 +745,7 @@ function canary(
       return generation === undefined ? 0 : generation;
     } : currentHostGeneration,
     onSurface: (_surface: A2uiSurfaceState): boolean => true,
-    onMemoryUpdate: (): void => {},
+    onMemoryUpdate: (): boolean => true,
     dataPlanner: new PassthroughDataPlanner(),
     dataExecutor,
     onMailDetail,

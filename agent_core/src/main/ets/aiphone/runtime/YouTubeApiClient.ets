@@ -4,8 +4,10 @@ import { A2uiLabelValueData } from './A2uiTypes';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 
 const YOUTUBE_SEARCH_URL: string = 'https://www.googleapis.com/youtube/v3/search';
+const YOUTUBE_VIDEOS_URL: string = 'https://www.googleapis.com/youtube/v3/videos';
 
 interface YouTubeSearchResponse {
+  nextPageToken?: string;
   items?: YouTubeSearchItem[];
 }
 
@@ -20,9 +22,20 @@ interface YouTubeSearchItemId {
 
 interface YouTubeSnippet {
   title?: string;
+  description?: string;
   channelTitle?: string;
   publishedAt?: string;
   thumbnails?: YouTubeThumbnails;
+}
+
+interface YouTubePopularResponse {
+  nextPageToken?: string;
+  items?: YouTubePopularItem[];
+}
+
+interface YouTubePopularItem {
+  id?: string;
+  snippet?: YouTubeSnippet;
 }
 
 interface YouTubeThumbnails {
@@ -37,6 +50,7 @@ interface YouTubeThumbnail {
 export interface YouTubeSearchOptions {
   order: string;
   maxResults: number;
+  pageToken?: string;
 }
 
 function textOf(value: Object | string | number | boolean | null | undefined): string {
@@ -77,8 +91,8 @@ export function defaultYouTubeSearchOptions(): YouTubeSearchOptions {
   };
 }
 
-export function youtubeSearchUrl(query: string, apiKey: string, order: string = 'relevance', maxResults: number = 10): string {
-  const params = [
+export function youtubeSearchUrl(query: string, apiKey: string, order: string = 'relevance', maxResults: number = 10, pageToken: string = ''): string {
+  const params: string[][] = [
     ['part', 'snippet'],
     ['type', 'video'],
     ['maxResults', normalizedYouTubeMaxResults(maxResults).toString()],
@@ -86,7 +100,26 @@ export function youtubeSearchUrl(query: string, apiKey: string, order: string = 
     ['q', query],
     ['key', apiKey]
   ];
+  if (pageToken.trim().length > 0) {
+    params.push(['pageToken', pageToken.trim()]);
+  }
   return YOUTUBE_SEARCH_URL + '?' + params.map((pair: string[]) => encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1])).join('&');
+}
+
+export function youtubeMostPopularUrl(
+  apiKey: string,
+  maxResults: number = 10,
+  pageToken: string = ''
+): string {
+  const params: string[][] = [
+    ['part', 'snippet'],
+    ['chart', 'mostPopular'],
+    ['maxResults', normalizedYouTubeMaxResults(maxResults).toString()],
+    ['key', apiKey]
+  ];
+  if (pageToken.trim().length > 0) params.push(['pageToken', pageToken.trim()]);
+  return YOUTUBE_VIDEOS_URL + '?' + params.map((pair: string[]): string =>
+    encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1])).join('&');
 }
 
 function watchUrl(videoId: string): string {
@@ -105,6 +138,7 @@ function thumbnailUrl(snippet: YouTubeSnippet): string {
 
 export function youtubeVideoResultsFromSearchPayload(rawJson: string, query: string): DynamicGenericToolResult[] {
   const payload = JSON.parse(rawJson) as YouTubeSearchResponse;
+  const nextPageToken = textOf(payload.nextPageToken).trim();
   const items = Array.isArray(payload.items) ? payload.items : [];
   const results: DynamicGenericToolResult[] = [];
   for (let index = 0; index < items.length; index++) {
@@ -124,7 +158,7 @@ export function youtubeVideoResultsFromSearchPayload(rawJson: string, query: str
     if (image.length > 0) {
       rows.push({ label: 'Thumbnail', value: image });
     }
-    results.push({
+    const result: DynamicGenericToolResult = {
       sourceTag: 'YouTube Data API',
       toolName: 'youtube.video.search',
       title: textOf(snippet.title),
@@ -132,7 +166,11 @@ export function youtubeVideoResultsFromSearchPayload(rawJson: string, query: str
       summary: 'YouTube video result for: ' + query,
       rows: rows,
       rawPreview: 'videoId=' + videoId
-    });
+    };
+    if (nextPageToken.length > 0) {
+      result.providerData = JSON.parse('{"nextPageToken":' + JSON.stringify(nextPageToken) + '}') as Object;
+    }
+    results.push(result);
   }
   if (results.length > 0) {
     return results;
@@ -146,6 +184,40 @@ export function youtubeVideoResultsFromSearchPayload(rawJson: string, query: str
     rows: [{ label: 'Query', value: query }],
     rawPreview: 'query=' + query
   }];
+}
+
+export function youtubeVideoResultsFromPopularPayload(rawJson: string): DynamicGenericToolResult[] {
+  const payload = JSON.parse(rawJson) as YouTubePopularResponse;
+  const nextPageToken = textOf(payload.nextPageToken).trim();
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const results: DynamicGenericToolResult[] = [];
+  items.forEach((item: YouTubePopularItem): void => {
+    const videoId = textOf(item.id).trim();
+    const snippet = item.snippet;
+    if (videoId.length === 0 || snippet === undefined) return;
+    const rows: A2uiLabelValueData[] = [
+      { label: 'Channel', value: textOf(snippet.channelTitle) },
+      { label: 'Published', value: textOf(snippet.publishedAt) },
+      { label: 'Video ID', value: videoId },
+      { label: 'Watch URL', value: watchUrl(videoId) }
+    ];
+    const image = thumbnailUrl(snippet);
+    if (image.length > 0) rows.push({ label: 'Thumbnail', value: image });
+    const result: DynamicGenericToolResult = {
+      sourceTag: 'YouTube Data API',
+      toolName: 'youtube.videos.mostPopular',
+      title: textOf(snippet.title),
+      status: 'success',
+      summary: textOf(snippet.description),
+      rows,
+      rawPreview: 'videoId=' + videoId
+    };
+    if (nextPageToken.length > 0) {
+      result.providerData = JSON.parse('{"nextPageToken":' + JSON.stringify(nextPageToken) + '}') as Object;
+    }
+    results.push(result);
+  });
+  return results;
 }
 
 function responseText(result: Object | string | number | boolean | ArrayBuffer): string {
@@ -172,7 +244,9 @@ export async function callYouTubeVideoSearch(query: string, apiKey: string, opti
   }
   const request = http.createHttp();
   try {
-    const response = await request.request(youtubeSearchUrl(query, apiKey.trim(), options.order, options.maxResults), {
+    const response = await request.request(youtubeSearchUrl(
+      query, apiKey.trim(), options.order, options.maxResults, options.pageToken ?? ''
+    ), {
       method: http.RequestMethod.GET,
       header: { 'Accept': 'application/json' },
       usingProtocol: http.HttpProtocol.HTTP1_1,
@@ -199,6 +273,43 @@ export async function callYouTubeVideoSearch(query: string, apiKey: string, opti
         : rawMessage,
       rows: [{ label: 'Query', value: query }],
       rawPreview: 'error'
+    }];
+  } finally {
+    request.destroy();
+  }
+}
+
+export async function callYouTubeMostPopularVideos(
+  apiKey: string,
+  maxResults: number = 10,
+  pageToken: string = ''
+): Promise<DynamicGenericToolResult[]> {
+  if (apiKey.trim().length === 0) {
+    return [{
+      sourceTag: 'YouTube Data API', toolName: 'youtube.videos.mostPopular', title: '缺少 YouTube API Key',
+      status: 'error', summary: '请在本地 provider 配置中设置 YOUTUBE_API_KEY。',
+      rows: [{ label: 'Credential', value: 'YOUTUBE_API_KEY' }], rawPreview: 'missing YOUTUBE_API_KEY'
+    }];
+  }
+  const request = http.createHttp();
+  try {
+    const response = await request.request(youtubeMostPopularUrl(apiKey.trim(), maxResults, pageToken), {
+      method: http.RequestMethod.GET,
+      header: { 'Accept': 'application/json' },
+      usingProtocol: http.HttpProtocol.HTTP1_1,
+      connectTimeout: 10000,
+      readTimeout: 20000
+    });
+    const text = responseText(response.result);
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      throw new Error('HTTP ' + response.responseCode.toString() + ': ' + text.substring(0, 240));
+    }
+    return youtubeVideoResultsFromPopularPayload(text);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : JSON.stringify(error);
+    return [{
+      sourceTag: 'YouTube Data API', toolName: 'youtube.videos.mostPopular', title: 'YouTube API 调用失败',
+      status: 'error', summary: message, rows: [], rawPreview: 'error'
     }];
   } finally {
     request.destroy();

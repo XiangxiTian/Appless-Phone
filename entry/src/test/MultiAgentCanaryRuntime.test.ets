@@ -1122,8 +1122,9 @@ function canaryOptions(
       surfaces.push(surface);
       return true;
     },
-    onMemoryUpdate: (update: PersonaMemoryUpdateRequest): void => {
+    onMemoryUpdate: (update: PersonaMemoryUpdateRequest): boolean => {
       updates.push(update);
+      return true;
     },
     dataPlanner: new PassthroughDataPlanner(),
     dataExecutor: executor,
@@ -3000,6 +3001,77 @@ export default function multiAgentCanaryRuntimeTest() {
       runtime.dispose();
     });
 
+    it('does not publish memory success when durable persistence fails', 0, async () => {
+      const surfaces: A2uiSurfaceState[] = [];
+      const bus = new TrackingBus();
+      const options = canaryOptions(
+        new QueueModel([MEMORY_DECISION]),
+        new CanaryHotelExecutor(),
+        new RecordingOpener(),
+        surfaces,
+        [],
+        bus
+      );
+      options.onMemoryUpdate = (_update: PersonaMemoryUpdateRequest): boolean => false;
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      await runtime.submit('我只喝瑞幸咖啡', {
+        text: '',
+        previousPersonaId: 'food_companion'
+      });
+      const actionResults = bus.messages.filter((message: AgentMessage): boolean =>
+        message.type === AgentMessageType.ACTION_RESULT);
+      const terminal = actionResults[0].payload as ActionResultPayload;
+
+      expect(surfaces.length).assertEqual(0);
+      expect(terminal.status).assertEqual('error');
+      expect(terminal.errorCode).assertEqual('MEMORY_UPDATE_PERSIST_FAILED');
+      runtime.dispose();
+    });
+
+    it('routes stable content recommendation memory to the entertainment companion', 0, async () => {
+      const updates: PersonaMemoryUpdateRequest[] = [];
+      const runtime = new MultiAgentCanaryRuntime(canaryOptions(
+        new QueueModel([MEMORY_DECISION]),
+        new CanaryHotelExecutor(),
+        new RecordingOpener(),
+        [],
+        updates
+      ));
+
+      await runtime.submit('以后多推荐 AI 视频', {
+        text: '',
+        previousPersonaId: 'food_companion'
+      });
+
+      expect(updates.length).assertEqual(1);
+      expect(updates[0].personaId).assertEqual('entertainment_companion');
+      runtime.dispose();
+    });
+
+    it('keeps BIM snapshots out of stable content recommendation memory', 0, async () => {
+      const updates: PersonaMemoryUpdateRequest[] = [];
+      const runtime = new MultiAgentCanaryRuntime(canaryOptions(
+        new QueueModel([MEMORY_DECISION]),
+        new CanaryHotelExecutor(),
+        new RecordingOpener(),
+        [],
+        updates
+      ));
+
+      const prompt = bimSnapshotPrompt('以后多推荐 AI 视频');
+      await runtime.submit(prompt, {
+        text: prompt,
+        previousPersonaId: 'food_companion'
+      });
+
+      expect(updates.length).assertEqual(1);
+      expect(updates[0].personaId).assertEqual('entertainment_companion');
+      expect(updates[0].summary).assertEqual('以后多推荐 AI 视频');
+      expect(updates[0].memoryText).assertEqual('以后多推荐 AI 视频');
+      runtime.dispose();
+    });
+
     it('keeps a reentrant virtual memory surface on its captured host generation', 0, async () => {
       const surfaceGenerations: number[] = [];
       const updateGenerations: number[] = [];
@@ -3019,12 +3091,13 @@ export default function multiAgentCanaryRuntimeTest() {
       options.onMemoryUpdate = (
         _update: PersonaMemoryUpdateRequest,
         runtimeGeneration: number
-      ): void => {
+      ): boolean => {
         updateGenerations.push(runtimeGeneration);
         if (newerTurn === null) {
           newerTurn = runtime.submit('newer turn', { text: '' }, 202) as
             Promise<MultiAgentSettledOutcome>;
         }
+        return true;
       };
       runtime = new MultiAgentCanaryRuntime(options);
 
@@ -4103,10 +4176,11 @@ export default function multiAgentCanaryRuntimeTest() {
         [],
         updates
       );
-      options.onMemoryUpdate = (update: PersonaMemoryUpdateRequest): void => {
+      options.onMemoryUpdate = (update: PersonaMemoryUpdateRequest): boolean => {
         updates.push(update);
         const pack = personaPackForId(update.personaId);
         updatePersonaPackText(update.personaId, pack.soul, update.memoryText);
+        return true;
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       try {

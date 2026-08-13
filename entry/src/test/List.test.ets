@@ -55,6 +55,8 @@ import mediaVideoClientTest from './MediaVideoClient.test';
 import aggregateSearchA2uiTest from './AggregateSearchA2ui.test';
 import multiTaskA2uiTest from './MultiTaskA2ui.test';
 import aggregateSearchClientTest from './AggregateSearchClient.test';
+import waterfallRankingReplayTest from './WaterfallRankingReplay.test';
+import waterfallPreferencesStoreTest from './WaterfallPreferencesStore.test';
 import paymentCoreTest from './PaymentCore.test';
 import paymentA2uiTest from './PaymentA2ui.test';
 import payPalPaymentClientTest from './PayPalPaymentClient.test';
@@ -175,6 +177,8 @@ export default function testsuite() {
   aggregateSearchA2uiTest();
   multiTaskA2uiTest();
   aggregateSearchClientTest();
+  waterfallRankingReplayTest();
+  waterfallPreferencesStoreTest();
   paymentCoreTest();
   paymentA2uiTest();
   payPalPaymentClientTest();

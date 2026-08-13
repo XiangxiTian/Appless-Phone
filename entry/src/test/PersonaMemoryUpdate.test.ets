@@ -1,16 +1,61 @@
+import { common } from '@kit.AbilityKit';
+import { preferences } from '@kit.ArkData';
 import { describe, it, expect } from '@ohos/hypium';
 import { actionsOf, labelValues } from '@loop/agent-core';
+import { WaterfallExplicitPreference } from '@loop/agent-core';
 import { configureDefaultPersonaStoreForTests } from '../main/ets/model/PersonaStore';
+import { PreferencesPersonaPackStore } from '../main/ets/model/PersonaPreferencesStore';
 import {
   mergePersonaStablePreference,
   memoryUpdateSurface,
   parsePersonaMemoryUpdateInput,
+  isStableWaterfallContentPreference,
+  waterfallExplicitPreferencesFromStatement,
   PersonaMemorySuggestedAction,
   PersonaMemoryUpdateRequest
 } from '../main/ets/model/PersonaMemoryUpdate';
 
+class FailingPersonaPreferences {
+  putSync(_key: string, _value: preferences.ValueType): void {}
+
+  flushSync(): void {
+    throw new Error('durable write failed');
+  }
+}
+
 export default function personaMemoryUpdateTest() {
   describe('personaMemoryUpdate', () => {
+    it('recognizes only stable Waterfall content preferences', 0, () => {
+      expect(isStableWaterfallContentPreference('以后多推荐 AI 视频')).assertTrue();
+      expect(isStableWaterfallContentPreference('我不喜欢娱乐八卦')).assertTrue();
+      expect(isStableWaterfallContentPreference('少给我看 X 的内容')).assertTrue();
+      expect(isStableWaterfallContentPreference('我喜欢清淡口味')).assertFalse();
+      expect(isStableWaterfallContentPreference('帮我搜索 AI 视频')).assertFalse();
+      expect(isStableWaterfallContentPreference('今天聊聊电影')).assertFalse();
+    });
+
+    it('compiles stable content preferences into deterministic rules', 0, () => {
+      const ai: WaterfallExplicitPreference[] = waterfallExplicitPreferencesFromStatement('以后多推荐 AI 视频');
+      expect(ai.map((rule: WaterfallExplicitPreference): string =>
+        rule.dimension + ':' + rule.key + ':' + rule.effect).join(',')).assertEqual(
+        'format:landscape_video:boost,format:portrait_video:boost,topic:AI:boost');
+      const gossip: WaterfallExplicitPreference[] =
+        waterfallExplicitPreferencesFromStatement('我不喜欢娱乐八卦');
+      expect(gossip[0].dimension + ':' + gossip[0].key + ':' + gossip[0].effect)
+        .assertEqual('topic:娱乐八卦:block');
+      const x: WaterfallExplicitPreference[] = waterfallExplicitPreferencesFromStatement('少给我看 X 的内容');
+      expect(x.length).assertEqual(1);
+      expect(x[0].dimension + ':' + x[0].key + ':' + x[0].effect)
+        .assertEqual('source:x:downweight');
+      expect(waterfallExplicitPreferencesFromStatement('帮我搜索 AI 视频').length).assertEqual(0);
+    });
+
+    it('reports a durable persona memory write failure', 0, () => {
+      configureDefaultPersonaStoreForTests();
+      const native = new FailingPersonaPreferences() as Object as preferences.Preferences;
+      const context = new Object() as common.Context;
+      expect(new PreferencesPersonaPackStore(context, native).saveSync()).assertFalse();
+    });
     it('parses a valid memory.update input for the active persona', 0, () => {
       configureDefaultPersonaStoreForTests();
       const update = parsePersonaMemoryUpdateInput('{"personaId":"food_companion","summary":"只喝瑞幸咖啡","memoryText":"用户咖啡偏好：只喝瑞幸咖啡。","reason":"用户明确表达长期饮品偏好","suggestedAction":{"label":"按新偏好重新查咖啡","prompt":"点一杯咖啡","toolId":"food.search"}}', 'food_companion');

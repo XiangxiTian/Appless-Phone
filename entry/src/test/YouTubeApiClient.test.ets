@@ -2,12 +2,32 @@ import { describe, it, expect } from '@ohos/hypium';
 import { DynamicGenericToolResult } from '@loop/agent-core';
 import {
   remainingReadStructuredDataResult,
+  youtubeMostPopularUrl,
   youtubeSearchUrl,
+  youtubeVideoResultsFromPopularPayload,
   youtubeVideoResultsFromSearchPayload
 } from '@loop/agent-core';
 
 export default function youtubeApiClientTest() {
   describe('youTubeApiClient', () => {
+    it('builds and parses the verified YouTube most-popular endpoint', 0, () => {
+      const url: string = youtubeMostPopularUrl('api-key-123', 10, 'next-page');
+      expect(url.indexOf('https://www.googleapis.com/youtube/v3/videos?')).assertEqual(0);
+      expect(url.indexOf('part=snippet')).assertLarger(-1);
+      expect(url.indexOf('chart=mostPopular')).assertLarger(-1);
+      expect(url.indexOf('maxResults=10')).assertLarger(-1);
+      expect(url.indexOf('pageToken=next-page')).assertLarger(-1);
+      const results: DynamicGenericToolResult[] = youtubeVideoResultsFromPopularPayload(
+        '{"nextPageToken":"next-2","items":[{"id":"popular-1","snippet":{' +
+        '"title":"Popular AI video","description":"Real description","channelTitle":"Channel",' +
+        '"publishedAt":"2026-08-12T00:00:00Z","thumbnails":{"medium":{' +
+        '"url":"https://img.test/popular.jpg"}}}}]}');
+      expect(results.length).assertEqual(1);
+      expect(results[0].title).assertEqual('Popular AI video');
+      expect(results[0].summary).assertEqual('Real description');
+      expect(results[0].rows[3].value).assertEqual('https://www.youtube.com/watch?v=popular-1');
+      expect(JSON.stringify(results[0].providerData).indexOf('next-2')).assertLarger(-1);
+    });
     it('builds a search URL for public video search', 0, () => {
       const url = youtubeSearchUrl('qwen max 官方介绍', 'api-key-123');
 
@@ -19,10 +39,11 @@ export default function youtubeApiClientTest() {
     });
 
     it('supports view-count ordering and five-result searches', 0, () => {
-      const url = youtubeSearchUrl('world cup', 'api-key-123', 'viewCount', 5);
+      const url = youtubeSearchUrl('world cup', 'api-key-123', 'viewCount', 5, 'next-page-token');
 
       expect(url.indexOf('order=viewCount')).assertLarger(-1);
       expect(url.indexOf('maxResults=5')).assertLarger(-1);
+      expect(url.indexOf('pageToken=next-page-token')).assertLarger(-1);
       expect(url.indexOf('q=world%20cup')).assertLarger(-1);
     });
 

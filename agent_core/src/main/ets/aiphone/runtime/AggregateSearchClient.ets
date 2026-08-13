@@ -1,6 +1,10 @@
 import { http } from '@kit.NetworkKit';
 import util from '@ohos.util';
-import { callComposioDynamic, callComposioFixedDynamic } from './ComposioDynamicBackend';
+import {
+  callComposioDynamicWithProviderData,
+  callComposioFixedDynamic,
+  callComposioFixedDynamicWithProviderData
+} from './ComposioDynamicBackend';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 import { callMediaVideoSearch } from './MediaVideoClient';
 import {
@@ -18,9 +22,15 @@ import {
   WaterfallCandidate,
   WaterfallContinuation,
   WaterfallFeedState,
+  WaterfallFormat,
+  WaterfallLoadRequest,
+  WaterfallPreferenceSnapshot,
+  WaterfallQueryStage,
+  WaterfallRecallRoute,
   WaterfallSourceState,
   WaterfallSourcePhase,
-  mergeWaterfallBatch
+  mergeWaterfallBatch,
+  waterfallTextTokens
 } from './WaterfallAnythingCore';
 
 type AggregateArgValue = Object | string | number | boolean | null | undefined;
@@ -31,11 +41,9 @@ type DynamicPostRecord = Record<string, DynamicPostValue>;
 interface AggregateMediaSearchArgs {
   query: string;
   sources: string[];
-}
-
-interface AggregateComposioFixedRequest {
-  fixedToolId: string;
-  fixedArgs: Object;
+  limit: number;
+  page?: number;
+  pageToken?: string;
 }
 
 interface AggregateXSearchArgs {
@@ -44,6 +52,19 @@ interface AggregateXSearchArgs {
   expansions: string;
   mediaFields: string;
   tweetFields: string;
+  cursor?: string;
+}
+
+interface AggregateHackerNewsSearchArgs {
+  query: string;
+  page: number;
+  size: number;
+}
+
+interface AggregateRedditSearchArgs {
+  searchQuery: string;
+  limit: number;
+  cursor?: string;
 }
 
 interface AggregateRedditCommentsArgs {
@@ -102,9 +123,21 @@ function waterfallTitle(value: string): string {
 export function aggregateMediaCandidates(
   videos: AggregateSearchVideo[],
   posts: AggregateSearchPost[],
-  batchIndex: number
+  batchIndex: number,
+  searchQuery: string = '',
+  queryStage: WaterfallQueryStage = 'original',
+  recallRoute: WaterfallRecallRoute = 'search',
+  recallWeight: number = 1
 ): WaterfallCandidate[] {
   const candidates: WaterfallCandidate[] = [];
+  const sourceCounts: Record<string, number> = {};
+  const nextSourceRank = (source: string): number => {
+    const rank = (sourceCounts[source] ?? 0) + 1;
+    sourceCounts[source] = rank;
+    return rank;
+  };
+  const topicsFor = (title: string, summary: string): string[] =>
+    waterfallTextTokens(title + ' ' + summary);
   videos.forEach((video: AggregateSearchVideo, index: number) => {
     candidates.push({
       id: video.id,
@@ -116,24 +149,43 @@ export function aggregateMediaCandidates(
       coverUrl: video.thumbnail,
       publishedAt: video.publishedAt,
       duration: video.duration,
-      originalIndex: batchIndex * 1000 + index
+      originalIndex: batchIndex * 1000 + index,
+      searchQuery: searchQuery,
+      queryStage: queryStage,
+      sourceRank: nextSourceRank(video.source),
+      topics: topicsFor(video.title, video.summary),
+      format: 'landscape_video',
+      recallRoute: recallRoute,
+      recallWeight: recallWeight
     });
   });
   posts.forEach((post: AggregateSearchPost, index: number) => {
     const coverUrl = waterfallPostCoverUrl(post);
     const mediaUrl = waterfallPostVideoUrl(post);
     const isVideo = mediaUrl.length > 0 || playableVideoPageUrl(post.url);
+    const mediaType = isVideo ? 'video' : (coverUrl.length > 0 ? 'image_text' : 'post');
+    const parsedScore = Number(post.score.trim());
+    const format: WaterfallFormat = mediaType === 'video' ? 'landscape_video' :
+      (mediaType === 'image_text' ? 'image_text' : 'text');
     candidates.push({
       id: post.id,
       source: post.source,
-      mediaType: isVideo ? 'video' : (coverUrl.length > 0 ? 'image_text' : 'post'),
+      mediaType: mediaType,
       title: waterfallTitle(post.title),
       summary: waterfallPostSummary(post),
       url: post.url,
       coverUrl: coverUrl,
       mediaUrl: mediaUrl,
       publishedAt: post.publishedAt,
-      originalIndex: batchIndex * 1000 + videos.length + index
+      originalIndex: batchIndex * 1000 + videos.length + index,
+      searchQuery: searchQuery,
+      queryStage: queryStage,
+      sourceRank: nextSourceRank(post.source),
+      providerScore: post.score.trim().length > 0 && Number.isFinite(parsedScore) ? parsedScore : undefined,
+      topics: topicsFor(post.title, post.text),
+      format: format,
+      recallRoute: recallRoute,
+      recallWeight: recallWeight
     });
   });
   return candidates;
@@ -149,6 +201,8 @@ interface AggregateHttpResult {
 }
 
 const DEFAULT_SOURCES: AggregateSearchSource[] = ['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu'];
+let runtimeEnabledSources: AggregateSearchSource[] = DEFAULT_SOURCES.slice();
+let runtimePreferenceProfile: WaterfallPreferenceSnapshot | undefined = undefined;
 const X_PUBLIC_SEARCH_MARKER: string = 'X 公开 post 搜索关键词:';
 const ZHIHU_SEARCH_URL: string = 'https://developer.zhihu.com/api/v1/content/zhihu_search';
 
@@ -219,12 +273,15 @@ export function aggregateSearchQueryFromArgs(prompt: string, args: Object | null
 }
 
 export function aggregateSearchSourcesFromArgs(args: Object | null): AggregateSearchSource[] {
+  let requested: AggregateSearchSource[] = [];
   if (args === null) {
-    return DEFAULT_SOURCES.slice();
+    requested = DEFAULT_SOURCES.slice();
+    return requested.filter((source: AggregateSearchSource): boolean => runtimeEnabledSources.indexOf(source) >= 0);
   }
   const raw = (args as AggregateArgRecord).sources;
   if (!Array.isArray(raw)) {
-    return DEFAULT_SOURCES.slice();
+    requested = DEFAULT_SOURCES.slice();
+    return requested.filter((source: AggregateSearchSource): boolean => runtimeEnabledSources.indexOf(source) >= 0);
   }
   const sources: AggregateSearchSource[] = [];
   raw.forEach((item: AggregateArgValue) => {
@@ -246,7 +303,23 @@ export function aggregateSearchSourcesFromArgs(args: Object | null): AggregateSe
       sources.push(value as AggregateSearchSource);
     }
   });
-  return sources.length > 0 ? sources : DEFAULT_SOURCES.slice();
+  requested = sources.length > 0 ? sources : DEFAULT_SOURCES.slice();
+  return requested.filter((source: AggregateSearchSource): boolean => runtimeEnabledSources.indexOf(source) >= 0);
+}
+
+export function configureWaterfallEnabledSourcesForRuntime(sources: AggregateSearchSource[]): void {
+  runtimeEnabledSources = [];
+  sources.forEach((source: AggregateSearchSource): void => {
+    if (DEFAULT_SOURCES.indexOf(source) >= 0 && runtimeEnabledSources.indexOf(source) < 0) {
+      runtimeEnabledSources.push(source);
+    }
+  });
+}
+
+export function configureWaterfallPreferenceProfileForRuntime(
+  profile: WaterfallPreferenceSnapshot | undefined
+): void {
+  runtimePreferenceProfile = profile;
 }
 
 export function unsupportedSourceStatus(source: AggregateSearchSource, message: string): AggregateSearchSourceStatus {
@@ -352,8 +425,9 @@ function dynamicVideoUrl(result: DynamicGenericToolResult): string {
 }
 
 function videoFromDynamic(source: AggregateSearchSource, result: DynamicGenericToolResult, index: number): AggregateSearchVideo {
+  const providerId = rowValue(result, source === 'youtube' ? 'Video ID' : 'BVID');
   return {
-    id: source + '-' + index.toString(),
+    id: source + '-' + (providerId.length > 0 ? providerId : index.toString()),
     source: source,
     provider: result.sourceTag,
     title: result.title,
@@ -753,7 +827,9 @@ function postFromDynamicObject(source: AggregateSearchSource, provider: string, 
     rows: [row],
     rawPreview: value
   };
-  return postFromDynamicRow(source, provider, result, 0);
+  const post = postFromDynamicRow(source, provider, result, 0);
+  post.id = source + '-' + index.toString();
+  return post;
 }
 
 function postsFromDynamicRawPreview(
@@ -763,7 +839,7 @@ function postsFromDynamicRawPreview(
 ): AggregateSearchPost[] {
   try {
     const items = firstObjectArray(JSON.parse(result.rawPreview) as DynamicPostValue);
-    return items.slice(0, 5).map((item: Object, index: number) => postFromDynamicObject(source, provider, item, index));
+    return items.slice(0, 10).map((item: Object, index: number) => postFromDynamicObject(source, provider, item, index));
   } catch (_error) {
     return [];
   }
@@ -926,24 +1002,19 @@ async function appendComposioPosts(
   statuses: AggregateSearchSourceStatus[],
   fixedToolId: string = '',
   fixedArgs: Object | null = null
-): Promise<void> {
+): Promise<DynamicGenericToolResult | null> {
   try {
-    let request: Object | null = null;
-    if (fixedToolId.length > 0 && fixedArgs !== null) {
-      const fixedRequest: AggregateComposioFixedRequest = {
-        fixedToolId: fixedToolId,
-        fixedArgs: fixedArgs
-      };
-      request = fixedRequest as Object;
-    }
-    const result = await callComposioDynamic(prompt, request);
+    const result = fixedToolId.length > 0 ?
+      await callComposioFixedDynamicWithProviderData(prompt, fixedToolId, fixedArgs) :
+      await callComposioDynamicWithProviderData(prompt, null);
     if (result === null) {
       statuses.push(statusFor(source, 'error', 'Composio ' + provider + ' did not run.', 0));
-      return;
+      return null;
     }
     const nextPosts = postsFromDynamicResult(source, provider, result);
     nextPosts.forEach((post: AggregateSearchPost) => posts.push(post));
     statuses.push(statusFor(source, result.status, result.summary, nextPosts.length));
+    return result;
   } catch (error) {
     statuses.push(statusFor(
       source,
@@ -951,7 +1022,78 @@ async function appendComposioPosts(
       'Composio ' + provider + ' failed: ' + errorText(error),
       0
     ));
+    return null;
   }
+}
+
+function continuationText(value: DynamicPostValue, names: string[]): string {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    try {
+      return continuationText(JSON.parse(value) as DynamicPostValue, names);
+    } catch (_error) {
+      return '';
+    }
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return '';
+  }
+  const record = value as DynamicPostRecord;
+  for (let index = 0; index < names.length; index++) {
+    const direct = textOf(record[names[index]]).trim();
+    if (direct.length > 0) {
+      return direct;
+    }
+  }
+  const keys = Object.keys(record);
+  for (let index = 0; index < keys.length; index++) {
+    const nested = continuationText(record[keys[index]], names);
+    if (nested.length > 0) {
+      return nested;
+    }
+  }
+  return '';
+}
+
+function continuationNumber(value: DynamicPostValue, names: string[]): number {
+  const text = continuationText(value, names);
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : -1;
+}
+
+export function aggregateContinuationFromDynamicResult(
+  source: AggregateSearchSource,
+  result: DynamicGenericToolResult,
+  previous: WaterfallContinuation | null
+): WaterfallContinuation | null {
+  let payload: DynamicPostValue = result.providerData as DynamicPostValue;
+  try {
+    if (payload === undefined) {
+      payload = JSON.parse(result.rawPreview) as DynamicPostValue;
+    }
+  } catch (_error) {
+    return null;
+  }
+  if (source === 'x') {
+    const cursor = continuationText(payload, ['next_token', 'nextToken', 'next_cursor', 'nextCursor']);
+    return cursor.length > 0 && (previous === null || cursor !== previous.value) ?
+      { kind: 'cursor', value: cursor } : null;
+  }
+  if (source === 'reddit') {
+    const cursor = continuationText(payload, ['after', 'next', 'next_cursor', 'nextCursor']);
+    return cursor.length > 0 && (previous === null || cursor !== previous.value) ?
+      { kind: 'cursor', value: cursor } : null;
+  }
+  if (source === 'hackernews') {
+    const current = continuationNumber(payload, ['page']);
+    const pages = continuationNumber(payload, ['nbPages', 'nb_pages', 'totalPages', 'total_pages']);
+    const fallback = previous !== null && previous.kind === 'page' ? Number(previous.value) : -1;
+    const page = current >= 0 ? current : fallback;
+    return page >= 0 && pages > page + 1 ? { kind: 'page', value: (page + 1).toString() } : null;
+  }
+  return null;
 }
 
 function responseText(value: Object | string | number | boolean | ArrayBuffer): string {
@@ -1130,9 +1272,10 @@ function waterfallPhaseFor(status: AggregateSearchStatus): WaterfallSourcePhase 
 }
 
 function sourceStateFor(batch: AggregateSearchSourceBatch): WaterfallSourceState {
+  const phase = waterfallPhaseFor(batch.status.status);
   return {
     source: batch.source,
-    phase: waterfallPhaseFor(batch.status.status),
+    phase: batch.continuation === null && (phase === 'success' || phase === 'empty') ? 'exhausted' : phase,
     continuation: batch.continuation,
     inFlight: false,
     reservedCount: 0,
@@ -1155,8 +1298,16 @@ function loadingWaterfallState(
   }));
   return {
     query: query,
+    originalQuery: query,
+    queryStage: 'original',
+    queryHistory: [query],
+    consecutiveEmptyRounds: 0,
+    roundNewItemCount: 0,
+    roundActive: true,
+    expansionInFlight: false,
     enabledSources: sources.slice(),
     preferenceDescription: preferenceDescription,
+    profile: runtimePreferenceProfile,
     shown: [],
     current: null,
     stable: [],
@@ -1197,6 +1348,19 @@ function failedAggregateBatch(source: AggregateSearchSource, error: Error | Obje
   };
 }
 
+function exhaustedAggregateBatch(request: WaterfallLoadRequest): AggregateSearchSourceBatch {
+  const source = request.source as AggregateSearchSource;
+  const status = request.phase === 'needs_auth' ? 'needs_auth' : (request.phase === 'error' ? 'error' : 'empty');
+  return {
+    source: source,
+    videos: [],
+    posts: [],
+    status: statusFor(source, status, request.message.length > 0 ? request.message :
+      aggregateSourceLabel(source) + ' 已无原生下一页。', 0),
+    continuation: null
+  };
+}
+
 export async function streamAggregateSearchSourceBatches(
   query: string,
   requestedSources: AggregateSearchSource[],
@@ -1225,9 +1389,12 @@ export async function streamAggregateSearchSourceBatches(
         replaceAggregateStatus(statuses, batch.status);
         waterfall = mergeWaterfallBatch(
           waterfall,
-          aggregateMediaCandidates(batch.videos.slice(0, 5), batch.posts.slice(0, 5), batchIndex),
+          aggregateMediaCandidates(
+            batch.videos.slice(0, 10), batch.posts.slice(0, 10), batchIndex, query, 'original'
+          ),
           sourceStateFor(batch),
-          nowMs
+          nowMs,
+          false
         ).state;
         batchIndex += 1;
         const snapshot = aggregateSearchResultFromParts(query, videos, posts, orderedAggregateStatuses(requestedSources, statuses));
@@ -1239,7 +1406,7 @@ export async function streamAggregateSearchSourceBatches(
       const failed = failedAggregateBatch(source, error);
       partialChain = partialChain.then((): void => {
         replaceAggregateStatus(statuses, failed.status);
-        waterfall = mergeWaterfallBatch(waterfall, [], sourceStateFor(failed), nowMs).state;
+        waterfall = mergeWaterfallBatch(waterfall, [], sourceStateFor(failed), nowMs, false).state;
         batchIndex += 1;
         const snapshot = aggregateSearchResultFromParts(query, videos, posts, orderedAggregateStatuses(requestedSources, statuses));
         snapshot.waterfall = waterfall;
@@ -1258,13 +1425,32 @@ export async function streamAggregateSearchSourceBatches(
 async function aggregateMediaSourceBatch(
   source: AggregateSearchSource,
   query: string,
-  youtubeApiKey: string
+  youtubeApiKey: string,
+  continuation: WaterfallContinuation | null = null,
+  limit: number = 10
 ): Promise<AggregateSearchSourceBatch> {
-  const mediaArgs: AggregateMediaSearchArgs = { query: query, sources: [source] };
+  const mediaArgs: AggregateMediaSearchArgs = { query: query, sources: [source], limit: limit };
+  if (source === 'youtube' && continuation !== null && continuation.kind === 'cursor') {
+    mediaArgs.pageToken = continuation.value;
+  }
+  const currentPage = source === 'bilibili' && continuation !== null && continuation.kind === 'page' ?
+    Math.max(1, Number(continuation.value)) : 1;
+  if (source === 'bilibili') {
+    mediaArgs.page = currentPage;
+  }
   const mediaResults = await callMediaVideoSearch(query, mediaArgs as Object, youtubeApiKey);
+  return aggregateVideoSourceBatchFromDynamicResults(source, mediaResults, continuation, limit);
+}
+
+export function aggregateVideoSourceBatchFromDynamicResults(
+  source: AggregateSearchSource,
+  mediaResults: DynamicGenericToolResult[],
+  continuation: WaterfallContinuation | null = null,
+  limit: number = 10
+): AggregateSearchSourceBatch {
   const videos: AggregateSearchVideo[] = [];
   mediaResults.forEach((result: DynamicGenericToolResult, index: number): void => {
-    if (result.status !== 'success' || dynamicSource(result) !== source || videos.length >= 5) {
+    if (result.status !== 'success' || dynamicSource(result) !== source || videos.length >= limit) {
       return;
     }
     const video = videoFromDynamic(source, result, index);
@@ -1274,12 +1460,23 @@ async function aggregateMediaSourceBatch(
   });
   const matching = mediaResults.filter((result: DynamicGenericToolResult): boolean => dynamicSource(result) === source);
   const rawStatus = videos.length > 0 ? 'success' : (matching.length > 0 ? matching[0].status : 'empty');
+  let next: WaterfallContinuation | null = null;
+  if (source === 'youtube' && matching.length > 0 && matching[0].providerData !== undefined) {
+    const token = continuationText(matching[0].providerData as DynamicPostValue, ['nextPageToken']);
+    if (token.length > 0 && (continuation === null || token !== continuation.value)) {
+      next = { kind: 'cursor', value: token };
+    }
+  } else if (source === 'bilibili' && videos.length >= limit) {
+    const currentPage = continuation !== null && continuation.kind === 'page' ?
+      Math.max(1, Number(continuation.value)) : 1;
+    next = { kind: 'page', value: (currentPage + 1).toString() };
+  }
   return {
     source: source,
     videos: videos,
     posts: [],
     status: statusFor(source, rawStatus, mediaMessage(source, videos.length, matching), videos.length),
-    continuation: null
+    continuation: next
   };
 }
 
@@ -1288,18 +1485,20 @@ async function aggregateComposioSourceBatch(
   provider: string,
   prompt: string,
   fixedToolId: string = '',
-  fixedArgs: Object | null = null
+  fixedArgs: Object | null = null,
+  previous: WaterfallContinuation | null = null,
+  limit: number = 10
 ): Promise<AggregateSearchSourceBatch> {
   const posts: AggregateSearchPost[] = [];
   const statuses: AggregateSearchSourceStatus[] = [];
-  await appendComposioPosts(source, provider, prompt, posts, statuses, fixedToolId, fixedArgs);
+  const result = await appendComposioPosts(source, provider, prompt, posts, statuses, fixedToolId, fixedArgs);
   await enrichPostComments(source, posts);
   return {
     source: source,
     videos: [],
-    posts: posts.slice(0, 5),
+    posts: posts.slice(0, limit),
     status: statuses.length > 0 ? statuses[0] : statusFor(source, 'empty', provider + ' returned 0 rows.', 0),
-    continuation: null
+    continuation: result === null ? null : aggregateContinuationFromDynamicResult(source, result, previous)
   };
 }
 
@@ -1362,10 +1561,9 @@ function childIdsFromResult(result: DynamicGenericToolResult): string[] {
 }
 
 async function enrichPostComments(source: AggregateSearchSource, posts: AggregateSearchPost[]): Promise<void> {
-  // ponytail: 串行富集前 5 条（与最终展示条数一致）；量小无需并发。
-  const visible = posts.slice(0, 5);
-  for (let index = 0; index < visible.length; index++) {
-    await enrichOnePostComments(source, visible[index]);
+  // ponytail: 首卡补评论不阻塞整批；逐卡评论等真正展示时再懒加载。
+  if (posts.length > 0) {
+    await enrichOnePostComments(source, posts[0]);
   }
 }
 
@@ -1427,10 +1625,119 @@ async function aggregateZhihuSourceBatch(config: AggregateZhihuConfig, query: st
   return {
     source: 'zhihu',
     videos: [],
-    posts: posts.slice(0, 5),
+    posts: posts.slice(0, 10),
     status: statuses.length > 0 ? statuses[0] : statusFor('zhihu', 'empty', '知乎返回 0 条。', 0),
     continuation: null
   };
+}
+
+function aggregateSourceBatch(
+  source: AggregateSearchSource,
+  query: string,
+  youtubeApiKey: string,
+  zhihuConfig: AggregateZhihuConfig,
+  continuation: WaterfallContinuation | null,
+  limit: number
+): Promise<AggregateSearchSourceBatch> {
+  if (source === 'youtube' || source === 'bilibili') {
+    return aggregateMediaSourceBatch(source, query, youtubeApiKey, continuation, limit);
+  }
+  if (source === 'x') {
+    const args: AggregateXSearchArgs = {
+      query: query,
+      pageSize: limit,
+      expansions: 'attachments.media_keys,author_id',
+      mediaFields: 'media_key,type,url,preview_image_url,variants,width,height',
+      tweetFields: 'id,text,author_id,created_at,public_metrics,attachments,conversation_id'
+    };
+    if (continuation !== null && continuation.kind === 'cursor') {
+      args.cursor = continuation.value;
+    }
+    return aggregateComposioSourceBatch(
+      source, 'X', '帮我用 Composio X 搜索 ' + query + ' 的公开 post',
+      'x.post.search', args as Object, continuation, limit
+    );
+  }
+  if (source === 'hackernews') {
+    const page = continuation !== null && continuation.kind === 'page' ? Number(continuation.value) : 0;
+    const args: AggregateHackerNewsSearchArgs = { query: query, page: page, size: limit };
+    return aggregateComposioSourceBatch(
+      source, 'Hacker News', '帮我用 Composio Hacker News 查 ' + query,
+      'social.hackernews.search', args as Object, continuation, limit
+    );
+  }
+  if (source === 'reddit') {
+    const args: AggregateRedditSearchArgs = { searchQuery: query, limit: limit };
+    if (continuation !== null && continuation.kind === 'cursor') {
+      args.cursor = continuation.value;
+    }
+    return aggregateComposioSourceBatch(
+      source, 'Reddit', '帮我用 Composio Reddit 查 ' + query + ' 的帖子',
+      'social.reddit.search', args as Object, continuation, limit
+    );
+  }
+  return aggregateZhihuSourceBatch(zhihuConfig, query);
+}
+
+export type AggregateSearchBatchObserver = (batch: AggregateSearchSourceBatch) => void;
+
+export type AggregateSearchSourceLoader = (
+  source: AggregateSearchSource,
+  query: string,
+  youtubeApiKey: string,
+  zhihuConfig: AggregateZhihuConfig,
+  continuation: WaterfallContinuation | null,
+  limit: number
+) => Promise<AggregateSearchSourceBatch>;
+
+export async function callAggregateSearchContinuation(
+  query: string,
+  requests: WaterfallLoadRequest[],
+  youtubeApiKey: string,
+  zhihuConfig: AggregateZhihuConfig,
+  onBatch: AggregateSearchBatchObserver,
+  loadSource: AggregateSearchSourceLoader = aggregateSourceBatch
+): Promise<void> {
+  await Promise.all(requests.map((request: WaterfallLoadRequest): Promise<void> => {
+    if (request.mode === 'native' && request.continuation === null) {
+      onBatch(exhaustedAggregateBatch(request));
+      return Promise.resolve();
+    }
+    return loadSource(
+      request.source as AggregateSearchSource,
+      query,
+      youtubeApiKey,
+      zhihuConfig,
+      request.continuation,
+      request.limit
+    ).then((batch: AggregateSearchSourceBatch): void => onBatch(batch)).catch(
+      (error: Error | Object | string | number | boolean | null | undefined): void => {
+        const failed = failedAggregateBatch(request.source as AggregateSearchSource, error);
+        onBatch(failed);
+      }
+    );
+  }));
+}
+
+export function mergeAggregateSearchContinuationBatch(
+  state: WaterfallFeedState,
+  batch: AggregateSearchSourceBatch,
+  batchIndex: number,
+  nowMs: number
+): WaterfallFeedState {
+  return mergeWaterfallBatch(
+    state,
+    aggregateMediaCandidates(
+      batch.videos.slice(0, 10),
+      batch.posts.slice(0, 10),
+      batchIndex,
+      state.query,
+      state.queryStage ?? 'original'
+    ),
+    sourceStateFor(batch),
+    nowMs,
+    false
+  ).state;
 }
 
 export async function callAggregateSearch(
@@ -1446,24 +1753,7 @@ export async function callAggregateSearch(
   const preferenceDescription = args === null ? '' : textOf((args as AggregateArgRecord).preferenceDescription).trim();
   const tasks: Promise<AggregateSearchSourceBatch>[] = [];
   sources.forEach((source: AggregateSearchSource): void => {
-    if (source === 'youtube' || source === 'bilibili') {
-      tasks.push(aggregateMediaSourceBatch(source, query, youtubeApiKey));
-    } else if (source === 'x') {
-      const xArgs: AggregateXSearchArgs = {
-        query: query,
-        pageSize: 10,
-        expansions: 'attachments.media_keys,author_id',
-        mediaFields: 'media_key,type,url,preview_image_url,variants,width,height',
-        tweetFields: 'id,text,author_id,created_at,public_metrics,attachments,conversation_id'
-      };
-      tasks.push(aggregateComposioSourceBatch(source, 'X', '帮我用 Composio X 搜索 ' + query + ' 的公开 post', 'x.post.search', xArgs as Object));
-    } else if (source === 'hackernews') {
-      tasks.push(aggregateComposioSourceBatch(source, 'Hacker News', '帮我用 Composio Hacker News 查 ' + query));
-    } else if (source === 'reddit') {
-      tasks.push(aggregateComposioSourceBatch(source, 'Reddit', '帮我用 Composio Reddit 查 ' + query + ' 的帖子'));
-    } else {
-      tasks.push(aggregateZhihuSourceBatch(zhihuConfig, query));
-    }
+    tasks.push(aggregateSourceBatch(source, query, youtubeApiKey, zhihuConfig, null, 10));
   });
   const observer: AggregateSearchPartialObserver = onPartial === null ? (() => {}) : onPartial;
   return streamAggregateSearchSourceBatches(query, sources, tasks, observer, nowMs, preferenceDescription);

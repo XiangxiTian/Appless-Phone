@@ -1,4 +1,10 @@
-import { A2uiComponent, WaterfallFeedState, WaterfallRankedCandidate, WaterfallSourceState } from '@loop/agent-core';
+import {
+  A2uiComponent,
+  WaterfallFeedState,
+  WaterfallFormat,
+  WaterfallRankedCandidate,
+  WaterfallSourceState
+} from '@loop/agent-core';
 import { DailyBriefPreference, DailyBriefSnapshot } from '../dailybrief/DailyBriefTypes';
 
 export type HtmlHomeSource = 'welcome' | 'pending' | 'model' | 'tool';
@@ -101,6 +107,17 @@ export interface WaterfallHomePayload {
   sources: WaterfallSourceState[];
   replenishing: boolean;
   exhausted: boolean;
+}
+
+export interface WaterfallBehaviorActionArgs {
+  surfaceId: string;
+  candidateId: string;
+  topics: string[];
+  source: string;
+  format: WaterfallFormat;
+  behavior: 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip';
+  durationMs: number;
+  timestamp: number;
 }
 
 export interface HtmlHomeDocument {

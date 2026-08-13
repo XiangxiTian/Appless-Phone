@@ -7,9 +7,17 @@ import {
   normalizeFoodProviderDelayMs
 } from '../main/ets/pages/A2uiHome/state/A2uiHomeDebugSettings';
 import { HtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
+import { WaterfallRankedCandidate } from '@loop/agent-core';
 
 function htmlHomeDocumentFixture(): HtmlHomeDocument {
-  return {
+  const candidate: WaterfallRankedCandidate = {
+    id: 'youtube-1', source: 'youtube', mediaType: 'video', title: 'OpenAI Codex', summary: 'Agent tools',
+    url: 'https://youtube.test/codex', coverUrl: '', publishedAt: '2026-08-13T00:00:00.000Z', originalIndex: 0,
+    sourceRank: 1, topics: ['openai', 'codex'], format: 'landscape_video', recallRoute: 'search', recallWeight: 1,
+    normalizedUrl: 'https://youtube.test/codex',
+    signals: { relevanceTier: 3, titleHits: 1, summaryHits: 0, freshnessTier: 4 }, reason: '标题命中查询'
+  };
+  const document: HtmlHomeDocument = {
     version: 1,
     source: 'tool',
     kind: 'food',
@@ -37,8 +45,15 @@ function htmlHomeDocumentFixture(): HtmlHomeDocument {
       component: 'surfaceRoot',
       children: []
     },
-    generatedAt: '2026-07-08T00:00:00.000Z'
+    generatedAt: '2026-07-08T00:00:00.000Z',
+    waterfall: {
+      query: 'OpenAI Codex', enabledSources: ['youtube'], preferenceDescription: '', shown: [], current: candidate,
+      stable: [], tail: [candidate], sources: [{
+        source: 'youtube', phase: 'success', continuation: null, inFlight: false, reservedCount: 0, message: 'ok'
+      }]
+    }
   };
+  return document;
 }
 
 export default function a2uiHomeDebugSettingsTest() {
@@ -72,6 +87,14 @@ export default function a2uiHomeDebugSettingsTest() {
       expect(parsed['generatedAt'] as string).assertEqual('');
       expect((parsed['history'] as Object[]).length).assertEqual(0);
       expect((parsed['personaAvatarDataUri'] as string).length).assertLarger(0);
+      const waterfall = parsed['waterfall'] as Record<string, Object | string | number | boolean | null>;
+      const current = waterfall['current'] as Record<string, Object | string | number | boolean | null>;
+      const tail = waterfall['tail'] as Object[];
+      expect(current['sourceRank'] as number).assertEqual(1);
+      expect((current['topics'] as string[]).join(',')).assertEqual('openai,codex');
+      expect(current['format'] as string).assertEqual('landscape_video');
+      expect(current['recallRoute'] as string).assertEqual('search');
+      expect(tail.length).assertEqual(1);
     });
   });
 }

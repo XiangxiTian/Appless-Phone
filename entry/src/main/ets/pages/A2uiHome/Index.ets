@@ -19,9 +19,31 @@ import {
 import { isRollingGoHotelBookingUrl } from '@loop/agent-core';
 import {
   advanceWaterfallFeed,
+  applyWaterfallExpandedQuery,
   applyWaterfallSourceSelection,
+  callConfiguredAggregateSearchContinuation,
+  callConfiguredWaterfallInterestRecall,
+  AggregateSearchSourceBatch,
+  AggregateSearchSource,
+  configureWaterfallEnabledSourcesForRuntime,
+  configureWaterfallPreferenceProfileForRuntime,
+  failWaterfallExpansion,
+  mergeAggregateSearchContinuationBatch,
+  mergeWaterfallBatch,
   mergeWaterfallFeedSnapshot,
-  WaterfallFeedState
+  planWaterfallInterestRecall,
+  planWaterfallContinuation,
+  parseWaterfallExpandedQuery,
+  WaterfallFeedState,
+  WaterfallFeedUpdate,
+  WaterfallInterestRecallBatch,
+  WaterfallLoadRequest,
+  WaterfallPreferenceWeight,
+  WaterfallQueryExpansionRequest,
+  WaterfallRankedCandidate,
+  WaterfallSourcePhase,
+  WaterfallSourceState,
+  waterfallExpansionPrompt
 } from '@loop/agent-core';
 import router from '@ohos.router';
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
@@ -137,7 +159,10 @@ import {
   leaderPersonaSurfaceUpdate
 } from '../../model/PersonaA2ui';
 import {
+  isStableWaterfallContentPreference,
   mergePersonaStablePreference,
+  waterfallExplicitPreferencesFromMemory,
+  waterfallExplicitPreferencesFromStatement,
   PersonaMemoryUpdateRequest
 } from '../../model/PersonaMemoryUpdate';
 import { PreferencesPersonaPackStore } from '../../model/PersonaPreferencesStore';
@@ -152,6 +177,7 @@ import {
 } from './components/BimHomePage';
 import { ComposioAuthPage } from './components/ComposioAuthPage';
 import { BimRememberState, HomePage } from './components/HomePage';
+import { HtmlHomeSurfaceView } from './components/HtmlHomeSurfaceView';
 import {
   cancelScheduledTrainPresaleTask,
   emptyTrainPresaleTrip,
@@ -214,6 +240,15 @@ import {
   BIM_STORE_NAME
 } from './bim/BimStore';
 import {
+  emptyWaterfallPreferenceProfile,
+  updateWaterfallPreferenceWeight,
+  waterfallBehaviorDelta,
+  WaterfallBehaviorEvidence,
+  WaterfallPreferenceProfile,
+  WaterfallPreferencesStore,
+  WATERFALL_PREFERENCES_STORE_NAME
+} from './waterfall/WaterfallPreferencesStore';
+import {
   BimAttentionEvent,
   BimCuratorResult,
   BimForegroundRequest,
@@ -259,12 +294,19 @@ import { createHtmlHomeDocument } from './html/HtmlHomeSnapshot';
 import { buildMultiTaskHomePayload, renderHtmlHomeDocument } from './html/HtmlHomeRenderer';
 import {
   buildWaterfallHomePayload,
+  renderAggregateSearchHomeDocument,
   waterfallAdvanceCurrentFromAction,
+  waterfallBehaviorFromAction,
   waterfallEnabledSourcesFromAction
 } from './html/HtmlAggregateSearchHomeRenderer';
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
 import { isHtmlHomeActionAllowed } from './html/HtmlHomeActionPolicy';
-import { HtmlHomeAction, HtmlHomeBlock, HtmlHomeDocument } from './html/HtmlHomeTypes';
+import {
+  HtmlHomeAction,
+  HtmlHomeBlock,
+  HtmlHomeDocument,
+  WaterfallBehaviorActionArgs
+} from './html/HtmlHomeTypes';
 import {
   ensureReminderNotificationEnabled,
   SystemOneShotScheduler
@@ -843,6 +885,9 @@ struct Index {
   @State multiTaskPayloadTick: number = 0;
   @State waterfallPayloadJson: string = '';
   @State waterfallPayloadTick: number = 0;
+  @State interestWaterfallHtml: string = '';
+  @State interestWaterfallPayloadJson: string = '';
+  @State interestWaterfallPayloadTick: number = 0;
   private waterfallShellHtml: string = '';
   private waterfallShellSurfaceId: string = '';
   private waterfallFeedState: WaterfallFeedState | null = null;
@@ -850,6 +895,15 @@ struct Index {
   private dailyBriefSnapshot: DailyBriefSnapshot | null = null;
   private dailyBriefGeneration: number = 0;
   private dailyBriefCatchUpPending: boolean = false;
+  private waterfallContinuationBatchIndex: number = 100;
+  private interestWaterfallFeedState: WaterfallFeedState | null = null;
+  private interestRecallStarted: boolean = false;
+  private waterfallPreferencesStoreInstance: WaterfallPreferencesStore | null = null;
+  private waterfallPreferenceProfile: WaterfallPreferenceProfile = emptyWaterfallPreferenceProfile();
+  private waterfallSessionTopicWeights: WaterfallPreferenceWeight[] = [];
+  private waterfallSessionSourceWeights: WaterfallPreferenceWeight[] = [];
+  private waterfallSessionFormatWeights: WaterfallPreferenceWeight[] = [];
+  private waterfallSessionEvidence: WaterfallBehaviorEvidence[] = [];
   private multiTaskActiveSectionId: string = '';
   private multiTaskUserPinnedSection: boolean = false;
   private multiTaskLastMergedRawBySlot: Record<string, string> = {};
@@ -1312,6 +1366,263 @@ struct Index {
     this.waterfallPayloadTick = this.waterfallPayloadTick + 1;
   }
 
+  private interestWaterfallDocument(): HtmlHomeDocument {
+    const current = this.currentHtmlHomeDocument();
+    return {
+      version: 1,
+      surfaceId: 'waterfall-interest-home',
+      source: 'tool',
+      kind: 'aggregate-search',
+      title: '发现流',
+      subtitle: '',
+      chips: [],
+      metrics: [],
+      timeline: [],
+      blocks: [],
+      actions: [],
+      history: [],
+      persona: current.persona,
+      personaMemory: current.personaMemory,
+      rawSurfaceRoot: null,
+      waterfall: this.interestWaterfallFeedState ?? undefined,
+      generatedAt: new Date().toISOString()
+    };
+  }
+
+  private publishInterestWaterfallPayload(): void {
+    const payload = buildWaterfallHomePayload(
+      this.interestWaterfallDocument(), false, this.interestWaterfallFeedState);
+    this.interestWaterfallPayloadJson = payload === null ? '' : JSON.stringify(payload);
+    this.interestWaterfallPayloadTick = this.interestWaterfallPayloadTick + 1;
+  }
+
+  private interestSourceState(result: WaterfallInterestRecallBatch): WaterfallSourceState {
+    let phase: WaterfallSourcePhase = 'error';
+    if (result.batch.status.status === 'success' || result.batch.status.status === 'empty') {
+      phase = 'exhausted';
+    } else if (result.batch.status.status === 'needs_auth') {
+      phase = 'needs_auth';
+    }
+    return {
+      source: result.batch.source,
+      phase,
+      continuation: null,
+      inFlight: false,
+      reservedCount: 0,
+      message: result.batch.status.message
+    };
+  }
+
+  private recentPositiveWaterfallCandidates(): WaterfallRankedCandidate[] {
+    const candidates: WaterfallRankedCandidate[] = [];
+    for (let index = this.waterfallSessionEvidence.length - 1; index >= 0 && candidates.length < 3; index -= 1) {
+      const evidence = this.waterfallSessionEvidence[index];
+      if (evidence.behavior === 'quick_skip' || candidates.some(
+        (candidate: WaterfallRankedCandidate): boolean => candidate.id === evidence.candidateId)) {
+        continue;
+      }
+      const candidate = this.waterfallCandidate(evidence.candidateId, this.waterfallFeedState) ??
+        this.waterfallCandidate(evidence.candidateId, this.interestWaterfallFeedState);
+      if (candidate !== null) candidates.push(candidate);
+    }
+    return candidates;
+  }
+
+  private runInterestRecall(target: 'home' | 'search', document: HtmlHomeDocument | null): void {
+    const state = target === 'home' ? this.interestWaterfallFeedState : this.waterfallFeedState;
+    if (state === null) return;
+    const surfaceId = target === 'search' ? this.waterfallFeedSurfaceId : 'waterfall-interest-home';
+    const requests = planWaterfallInterestRecall(
+      this.currentWaterfallPreferenceProfile(), this.recentPositiveWaterfallCandidates(), state.enabledSources);
+    aiLogInfo('[AIPhone][WaterfallInterestRecallStart] target=' + target +
+      ' requests=' + requests.length.toString());
+    callConfiguredWaterfallInterestRecall(requests, (result: WaterfallInterestRecallBatch): void => {
+      let current = target === 'home' ? this.interestWaterfallFeedState : this.waterfallFeedState;
+      if (current === null || (target === 'search' && this.waterfallFeedSurfaceId !== surfaceId)) return;
+      current = mergeWaterfallBatch(
+        current, result.candidates, this.interestSourceState(result), Date.now(), false).state;
+      if (target === 'home') {
+        this.interestWaterfallFeedState = current;
+        this.publishInterestWaterfallPayload();
+      } else if (document !== null) {
+        this.waterfallFeedState = current;
+        this.publishWaterfallPayload(document);
+      }
+    }).then((): void => {
+      const current = target === 'home' ? this.interestWaterfallFeedState : this.waterfallFeedState;
+      if (current === null || (target === 'search' && this.waterfallFeedSurfaceId !== surfaceId)) return;
+      current.sources.forEach((source: WaterfallSourceState): void => {
+        if (source.inFlight || source.phase === 'loading') {
+          source.phase = 'exhausted';
+          source.inFlight = false;
+          source.continuation = null;
+          source.reservedCount = 0;
+        }
+      });
+      if (target === 'home') {
+        this.publishInterestWaterfallPayload();
+      } else if (document !== null) {
+        this.publishWaterfallPayload(document);
+      }
+      aiLogInfo('[AIPhone][WaterfallInterestRecallReady] target=' + target);
+    }).catch((error: Error): void => {
+      const current = target === 'home' ? this.interestWaterfallFeedState : this.waterfallFeedState;
+      if (current !== null) {
+        current.sources.forEach((source: WaterfallSourceState): void => {
+          if (source.inFlight || source.phase === 'loading') {
+            source.phase = 'error';
+            source.inFlight = false;
+            source.message = '内容补充失败';
+          }
+        });
+        if (target === 'home') this.publishInterestWaterfallPayload();
+        else if (document !== null) this.publishWaterfallPayload(document);
+      }
+      aiLogError('[AIPhone][WaterfallInterestRecallFailed] target=' + target +
+        ' error=' + error.message.substring(0, 240));
+    });
+  }
+
+  private ensureInterestWaterfall(): void {
+    if (this.interestWaterfallFeedState === null) {
+      const enabledSources = this.waterfallPreferenceProfile.enabledSources.slice();
+      this.interestWaterfallFeedState = {
+        mode: 'interest',
+        interestFallbackStarted: true,
+        query: '',
+        originalQuery: '',
+        queryStage: 'done',
+        queryHistory: [],
+        enabledSources,
+        preferenceDescription: '',
+        profile: this.currentWaterfallPreferenceProfile(),
+        shown: [],
+        current: null,
+        stable: [],
+        tail: [],
+        reserve: [],
+        sources: ['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu'].map(
+          (source: string): WaterfallSourceState => ({
+          source,
+          phase: enabledSources.indexOf(source) >= 0 ? 'loading' : 'exhausted',
+          continuation: null,
+          inFlight: enabledSources.indexOf(source) >= 0,
+          reservedCount: 0,
+          message: '正在汇集内容'
+        }))
+      };
+      const document = this.interestWaterfallDocument();
+      this.interestWaterfallHtml = renderAggregateSearchHomeDocument(document, false, true);
+      this.publishInterestWaterfallPayload();
+    }
+    if (!this.interestRecallStarted) {
+      this.interestRecallStarted = true;
+      this.runInterestRecall('home', null);
+    }
+  }
+
+  private shouldStartSearchInterestFallback(state: WaterfallFeedState): boolean {
+    if ((state.mode ?? 'search') !== 'search' || (state.queryStage ?? 'original') !== 'done' ||
+      state.interestFallbackStarted === true || state.enabledSources.length === 0) return false;
+    const candidates = (state.current === null ? [] : [state.current]).concat(
+      state.stable, state.tail, state.reserve ?? []);
+    return !candidates.some((candidate: WaterfallRankedCandidate): boolean =>
+      state.enabledSources.indexOf(candidate.source) >= 0);
+  }
+
+  private startSearchInterestFallback(document: HtmlHomeDocument): void {
+    if (this.waterfallFeedState === null) return;
+    const state = this.waterfallFeedState;
+    state.mode = 'interest';
+    state.interestFallbackStarted = true;
+    state.sources.forEach((source: WaterfallSourceState): void => {
+      if (state.enabledSources.indexOf(source.source) >= 0) {
+        source.phase = 'loading';
+        source.inFlight = true;
+        source.continuation = null;
+        source.message = '正在补充兴趣内容';
+      }
+    });
+    this.publishWaterfallPayload(document);
+    this.runInterestRecall('search', document);
+  }
+
+  private applyWaterfallUpdate(document: HtmlHomeDocument, update: WaterfallFeedUpdate): void {
+    this.waterfallFeedState = update.state;
+    this.publishWaterfallPayload(document);
+    if (update.loadRequests.length > 0) {
+      this.runWaterfallContinuation(document, update.loadRequests);
+    } else if (update.expansionRequest !== undefined) {
+      this.runWaterfallExpansion(document, update.expansionRequest);
+    } else if (this.shouldStartSearchInterestFallback(update.state)) {
+      this.startSearchInterestFallback(document);
+    }
+  }
+
+  private runWaterfallExpansion(document: HtmlHomeDocument, request: WaterfallQueryExpansionRequest): void {
+    const surfaceId = document.surfaceId ?? '';
+    aiLogInfo('[AIPhone][WaterfallExpansionStart] stage=' + request.stage);
+    this.canaryModel().complete(waterfallExpansionPrompt(request)).then((raw: string): void => {
+      if (this.waterfallFeedState === null || this.waterfallFeedSurfaceId !== surfaceId) {
+        return;
+      }
+      const query = parseWaterfallExpandedQuery(raw, this.waterfallFeedState.query);
+      if (query.length === 0) {
+        aiLogError('[AIPhone][WaterfallExpansionInvalid] stage=' + request.stage);
+        this.applyWaterfallUpdate(document, failWaterfallExpansion(this.waterfallFeedState, request.stage));
+        return;
+      }
+      aiLogInfo('[AIPhone][WaterfallExpansionReady] stage=' + request.stage + ' queryChars=' + query.length.toString());
+      this.applyWaterfallUpdate(
+        document,
+        applyWaterfallExpandedQuery(this.waterfallFeedState, request.stage, query, Date.now())
+      );
+    }).catch((error: Error): void => {
+      if (this.waterfallFeedState === null || this.waterfallFeedSurfaceId !== surfaceId) {
+        return;
+      }
+      aiLogError('[AIPhone][WaterfallExpansionFailed] stage=' + request.stage +
+        ' error=' + error.message.substring(0, 240));
+      this.applyWaterfallUpdate(document, failWaterfallExpansion(this.waterfallFeedState, request.stage));
+    });
+  }
+
+  private runWaterfallContinuation(document: HtmlHomeDocument, requests: WaterfallLoadRequest[]): void {
+    const surfaceId = document.surfaceId ?? '';
+    const networkRequests = requests.filter((request: WaterfallLoadRequest): boolean =>
+      request.mode === 'search' || request.continuation !== null).length;
+    aiLogInfo('[AIPhone][WaterfallContinuationRound] sources=' + requests.length.toString() +
+      ' network=' + networkRequests.toString() + ' queryStage=' +
+      (this.waterfallFeedState?.queryStage ?? 'original'));
+    callConfiguredAggregateSearchContinuation(
+      this.waterfallFeedState?.query ?? '',
+      requests,
+      (batch: AggregateSearchSourceBatch): void => {
+        if (this.waterfallFeedState === null || this.waterfallFeedSurfaceId !== surfaceId) {
+          return;
+        }
+        this.waterfallFeedState = mergeAggregateSearchContinuationBatch(
+          this.waterfallFeedState,
+          batch,
+          this.waterfallContinuationBatchIndex,
+          Date.now()
+        );
+        this.waterfallContinuationBatchIndex++;
+        aiLogInfo('[AIPhone][WaterfallContinuationBatch] source=' + batch.source +
+          ' count=' + (batch.videos.length + batch.posts.length).toString() +
+          ' hasNext=' + (batch.continuation === null ? 'false' : 'true'));
+        this.publishWaterfallPayload(document);
+      }
+    ).then((): void => {
+      if (this.waterfallFeedState === null || this.waterfallFeedSurfaceId !== surfaceId) {
+        return;
+      }
+      this.applyWaterfallUpdate(document, planWaterfallContinuation(this.waterfallFeedState));
+    }).catch((error: Error): void => {
+      aiLogError('[AIPhone][WaterfallContinuationFailed] error=' + error.message.substring(0, 240));
+    });
+  }
+
   private syncWaterfallPayloadUpdate(document: HtmlHomeDocument): void {
     if (document.kind !== 'aggregate-search' || document.waterfall === undefined) {
       this.waterfallPayloadJson = '';
@@ -1323,18 +1634,21 @@ struct Index {
     if (this.waterfallFeedState === null || this.waterfallFeedSurfaceId !== surfaceId) {
       this.waterfallFeedState = document.waterfall;
       this.waterfallFeedSurfaceId = surfaceId;
+      this.waterfallContinuationBatchIndex = 100;
     } else {
       this.waterfallFeedState = mergeWaterfallFeedSnapshot(
         this.waterfallFeedState,
         document.waterfall,
-        Date.now()
+        Date.now(),
+        false
       ).state;
     }
-    this.publishWaterfallPayload(document);
+    this.applyWaterfallUpdate(document, planWaterfallContinuation(this.waterfallFeedState));
   }
 
   private handleWaterfallClientAction(action: A2uiAction): boolean {
-    if (action.id !== 'waterfall.sources.select' && action.id !== 'waterfall.feed.advance') {
+    if (action.id !== 'waterfall.sources.select' && action.id !== 'waterfall.feed.advance' &&
+      action.id !== 'waterfall.behavior.record') {
       return false;
     }
     const document = this.currentHtmlHomeDocument();
@@ -1353,12 +1667,57 @@ struct Index {
         this.logHtmlHomeActionError(action, 'invalid_waterfall_source_selection');
         return true;
       }
-      this.waterfallFeedState = applyWaterfallSourceSelection(
-        this.waterfallFeedState,
+      const feedState = this.waterfallFeedState as WaterfallFeedState;
+      const interestState = this.interestWaterfallFeedState;
+      const addedSource = enabledSources.some((source: string): boolean =>
+        feedState.enabledSources.indexOf(source) < 0);
+      const interestAddedSource = interestState !== null && enabledSources.some(
+        (source: string): boolean => interestState.enabledSources.indexOf(source) < 0);
+      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().saveEnabledSources(enabledSources);
+      configureWaterfallEnabledSourcesForRuntime(enabledSources as AggregateSearchSource[]);
+      if (this.interestWaterfallFeedState !== null) {
+        this.interestWaterfallFeedState = applyWaterfallSourceSelection(
+          this.interestWaterfallFeedState, enabledSources, Date.now()).state;
+        if (interestAddedSource) {
+          this.interestWaterfallFeedState.sources.forEach((source: WaterfallSourceState): void => {
+            if (enabledSources.indexOf(source.source) >= 0) {
+              source.phase = 'loading';
+              source.inFlight = true;
+            }
+          });
+        }
+        this.publishInterestWaterfallPayload();
+        if (interestAddedSource) this.runInterestRecall('home', null);
+      }
+      const next = applyWaterfallSourceSelection(
+        feedState,
         enabledSources,
         Date.now()
-      ).state;
-      this.publishWaterfallPayload(document);
+      );
+      if ((next.state.mode ?? 'search') === 'interest' && addedSource) {
+        next.state.sources.forEach((source: WaterfallSourceState): void => {
+          if (enabledSources.indexOf(source.source) >= 0) {
+            source.phase = 'loading';
+            source.inFlight = true;
+          }
+        });
+        this.waterfallFeedState = next.state;
+        this.publishWaterfallPayload(document);
+        this.runInterestRecall('search', document);
+      } else {
+        this.applyWaterfallUpdate(document, next);
+      }
+      return true;
+    }
+    if (action.id === 'waterfall.behavior.record') {
+      const behavior = waterfallBehaviorFromAction(action, surfaceId);
+      const candidate = behavior === null ? null : this.waterfallCandidate(
+        behavior.candidateId, this.waterfallFeedState);
+      if (behavior === null || candidate === null) {
+        this.logHtmlHomeActionError(action, 'invalid_waterfall_behavior');
+        return true;
+      }
+      this.recordWaterfallBehavior(candidate, behavior);
       return true;
     }
     const currentId = waterfallAdvanceCurrentFromAction(action, surfaceId);
@@ -1367,9 +1726,129 @@ struct Index {
       this.logHtmlHomeActionError(action, 'stale_waterfall_current');
       return true;
     }
-    this.waterfallFeedState = advanceWaterfallFeed(this.waterfallFeedState, Date.now()).state;
-    this.publishWaterfallPayload(document);
+    this.applyWaterfallUpdate(document, advanceWaterfallFeed(this.waterfallFeedState, Date.now()));
     return true;
+  }
+
+  private handleInterestWaterfallClientAction(action: A2uiAction): void {
+    const state = this.interestWaterfallFeedState;
+    const surfaceId = 'waterfall-interest-home';
+    if (action.id === 'waterfall.home.back') {
+      this.bimRootController.changeIndex(1, !this.bimReduceMotion);
+      return;
+    }
+    if (state === null) return;
+    if (action.id === 'waterfall.sources.select') {
+      const enabledSources = waterfallEnabledSourcesFromAction(action, surfaceId);
+      if (enabledSources === null) return;
+      const addedSource = enabledSources.some((source: string): boolean =>
+        state.enabledSources.indexOf(source) < 0);
+      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().saveEnabledSources(enabledSources);
+      configureWaterfallEnabledSourcesForRuntime(enabledSources as AggregateSearchSource[]);
+      this.interestWaterfallFeedState = applyWaterfallSourceSelection(state, enabledSources, Date.now()).state;
+      if (addedSource) {
+        this.interestWaterfallFeedState.sources.forEach((source: WaterfallSourceState): void => {
+          if (enabledSources.indexOf(source.source) >= 0) {
+            source.phase = 'loading';
+            source.inFlight = true;
+          }
+        });
+      }
+      this.publishInterestWaterfallPayload();
+      if (addedSource) this.runInterestRecall('home', null);
+      const searchState = this.waterfallFeedState;
+      if (searchState !== null) {
+        const searchAddedSource = enabledSources.some((source: string): boolean =>
+          searchState.enabledSources.indexOf(source) < 0);
+        const document = this.currentHtmlHomeDocument();
+        const update = applyWaterfallSourceSelection(searchState, enabledSources, Date.now());
+        if (document.kind === 'aggregate-search' && document.waterfall !== undefined &&
+          (document.surfaceId ?? '') === this.waterfallFeedSurfaceId) {
+          if ((update.state.mode ?? 'search') === 'interest' && searchAddedSource) {
+            this.waterfallFeedState = update.state;
+            this.runInterestRecall('search', document);
+          } else {
+            this.applyWaterfallUpdate(document, update);
+          }
+        } else {
+          this.waterfallFeedState = update.state;
+        }
+      }
+      return;
+    }
+    if (action.id === 'waterfall.behavior.record') {
+      const behavior = waterfallBehaviorFromAction(action, surfaceId);
+      const candidate = behavior === null ? null : this.waterfallCandidate(behavior.candidateId, state);
+      if (behavior !== null && candidate !== null) this.recordWaterfallBehavior(candidate, behavior);
+      return;
+    }
+    if (action.id === 'waterfall.feed.advance') {
+      const currentId = waterfallAdvanceCurrentFromAction(action, surfaceId);
+      if (currentId !== null && state.current !== null && state.current.id === currentId) {
+        this.interestWaterfallFeedState = advanceWaterfallFeed(state, Date.now()).state;
+        this.publishInterestWaterfallPayload();
+      }
+    }
+  }
+
+  private waterfallCandidate(
+    candidateId: string,
+    state: WaterfallFeedState | null
+  ): WaterfallRankedCandidate | null {
+    if (state === null) return null;
+    const values = state.shown.concat(
+      state.current === null ? [] : [state.current], state.stable, state.tail, state.reserve ?? []);
+    for (let index = 0; index < values.length; index += 1) {
+      if (values[index].id === candidateId) return values[index];
+    }
+    return null;
+  }
+
+  private recordWaterfallBehavior(
+    candidate: WaterfallRankedCandidate,
+    args: WaterfallBehaviorActionArgs
+  ): void {
+    const format = candidate.format ?? (candidate.mediaType === 'video' ? 'landscape_video' :
+      (candidate.mediaType === 'image_text' ? 'image_text' : 'text'));
+    const event: WaterfallBehaviorEvidence = {
+      candidateId: candidate.id,
+      topics: (candidate.topics ?? []).slice(),
+      source: candidate.source,
+      format,
+      behavior: args.behavior,
+      durationMs: args.durationMs,
+      timestamp: args.timestamp
+    };
+    const delta = waterfallBehaviorDelta(event, this.waterfallSessionEvidence);
+    this.waterfallSessionEvidence.push(event);
+    if (delta !== 0) {
+      event.topics.forEach((topic: string): void => {
+        updateWaterfallPreferenceWeight(this.waterfallSessionTopicWeights, topic, delta, event.timestamp);
+      });
+      updateWaterfallPreferenceWeight(this.waterfallSessionSourceWeights, event.source, delta, event.timestamp);
+      updateWaterfallPreferenceWeight(this.waterfallSessionFormatWeights, event.format, delta, event.timestamp);
+    }
+    configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile());
+    if (this.waterfallFeedState !== null) {
+      this.waterfallFeedState.profile = this.currentWaterfallPreferenceProfile();
+    }
+    if (this.interestWaterfallFeedState !== null) {
+      this.interestWaterfallFeedState.profile = this.currentWaterfallPreferenceProfile();
+    }
+    setTimeout((): void => {
+      try {
+        this.waterfallPreferenceProfile = this.waterfallPreferencesStore().recordBehavior(event);
+        configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile());
+        if (this.waterfallFeedState !== null) {
+          this.waterfallFeedState.profile = this.currentWaterfallPreferenceProfile();
+        }
+        if (this.interestWaterfallFeedState !== null) {
+          this.interestWaterfallFeedState.profile = this.currentWaterfallPreferenceProfile();
+        }
+      } catch (_error) {
+        aiLogError('[AIPhone][WaterfallBehaviorRecord] ok=false candidateId=' + event.candidateId);
+      }
+    }, 0);
   }
 
   private scheduleMultiTaskPayloadRefresh(): void {
@@ -1505,6 +1984,7 @@ struct Index {
     this.configureComposioRuntimeForCurrentUser();
     this.loadPersonaOverrides();
     this.loadPublicPersona();
+    this.loadWaterfallPreferences();
     this.loadPaymentAccounts();
     this.loadStripeReceivingProfile();
     void this.requestLocationPermissionOnLaunch();
@@ -2278,11 +2758,9 @@ struct Index {
     }
   }
 
-  private savePersonaOverrides(): void {
+  private savePersonaOverrides(): boolean {
     const store = this.personaPackStore();
-    if (store !== null) {
-      store.saveSync();
-    }
+    return store !== null && store.saveSync();
   }
 
   private selectPersonaForEdit(personaId: string): void {
@@ -2304,21 +2782,41 @@ struct Index {
     this.personaSaveMessage = '已恢复默认';
   }
 
-  private applyPersonaMemoryUpdate(update: PersonaMemoryUpdateRequest): void {
+  private applyPersonaMemoryUpdate(update: PersonaMemoryUpdateRequest): boolean {
     const pack = personaPackForId(update.personaId);
     if (pack.manifest.id !== update.personaId) {
       aiLogError('[AIPhone][PersonaMemoryUpdate] ok=false reason=unknown_persona personaId=' + update.personaId);
-      return;
+      return false;
     }
     updatePersonaPackText(
       update.personaId,
       pack.soul,
       mergePersonaStablePreference(pack.memory, update.memoryText)
     );
-    this.savePersonaOverrides();
+    if (!this.savePersonaOverrides()) {
+      updatePersonaPackText(update.personaId, pack.soul, pack.memory);
+      this.refreshPersonaEditor(update.personaId);
+      aiLogError('[AIPhone][PersonaMemoryUpdate] ok=false reason=persist_failed personaId=' + update.personaId);
+      return false;
+    }
+    if (update.personaId === 'entertainment_companion' &&
+      isStableWaterfallContentPreference(update.memoryText)) {
+      try {
+        const rules = this.waterfallPreferenceProfile.explicitRules.concat(
+          waterfallExplicitPreferencesFromStatement(update.memoryText));
+        this.waterfallPreferenceProfile = this.waterfallPreferencesStore().replaceExplicitPreferences(rules);
+        configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile());
+        if (this.waterfallFeedState !== null) {
+          this.waterfallFeedState.profile = this.currentWaterfallPreferenceProfile();
+        }
+      } catch (_error) {
+        aiLogError('[AIPhone][WaterfallPreferenceProjection] ok=false source=memory_update');
+      }
+    }
     this.refreshPersonaEditor(update.personaId);
     this.personaSaveMessage = '已保存：' + update.summary;
     aiLogInfo('[AIPhone][PersonaMemoryUpdate] ok=true personaId=' + update.personaId + ' summary=' + update.summary);
+    return true;
   }
 
   private isPersonaEditorAction(action: A2uiAction): boolean {
@@ -2391,6 +2889,48 @@ struct Index {
       this.bimStoreInstance = new BimStore(native);
     }
     return this.bimStoreInstance;
+  }
+
+  private waterfallPreferencesStore(): WaterfallPreferencesStore {
+    if (this.waterfallPreferencesStoreInstance === null) {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      const native = preferences.getPreferencesSync(context, { name: WATERFALL_PREFERENCES_STORE_NAME });
+      this.waterfallPreferencesStoreInstance = new WaterfallPreferencesStore(native);
+    }
+    return this.waterfallPreferencesStoreInstance;
+  }
+
+  private currentWaterfallPreferenceProfile(): WaterfallPreferenceProfile {
+    return {
+      version: 1,
+      topicWeights: this.waterfallPreferenceProfile.topicWeights.slice(),
+      sourceWeights: this.waterfallPreferenceProfile.sourceWeights.slice(),
+      formatWeights: this.waterfallPreferenceProfile.formatWeights.slice(),
+      explicitRules: this.waterfallPreferenceProfile.explicitRules.slice(),
+      recentEvidence: this.waterfallPreferenceProfile.recentEvidence.slice(),
+      enabledSources: this.waterfallPreferenceProfile.enabledSources.slice(),
+      updatedAt: this.waterfallPreferenceProfile.updatedAt,
+      sessionTopicWeights: this.waterfallSessionTopicWeights.slice(),
+      sessionSourceWeights: this.waterfallSessionSourceWeights.slice(),
+      sessionFormatWeights: this.waterfallSessionFormatWeights.slice()
+    };
+  }
+
+  private loadWaterfallPreferences(): void {
+    try {
+      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().load();
+    } catch (_error) {
+      this.waterfallPreferenceProfile = emptyWaterfallPreferenceProfile();
+    }
+    try {
+      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().replaceExplicitPreferences(
+        waterfallExplicitPreferencesFromMemory(personaPackForId('entertainment_companion').memory));
+    } catch (_error) {
+      aiLogError('[AIPhone][WaterfallPreferenceProjection] ok=false source=startup');
+    }
+    configureWaterfallEnabledSourcesForRuntime(
+      this.waterfallPreferenceProfile.enabledSources as AggregateSearchSource[]);
+    configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile());
   }
 
   private refreshBimRecords(): void {
@@ -2670,12 +3210,13 @@ struct Index {
         }
         return accepted;
       },
-      onMemoryUpdate: (update: PersonaMemoryUpdateRequest, generation: number): void => {
+      onMemoryUpdate: (update: PersonaMemoryUpdateRequest, generation: number): boolean => {
         if (runtimeCallbackIsCurrent(
           this.activeRuntimeOwner, this.runtimeGeneration, 'multi_agent', generation
         )) {
-          this.applyPersonaMemoryUpdate(update);
+          return this.applyPersonaMemoryUpdate(update);
         }
+        return false;
       },
       onMailDetail: async (
         result: MailDetailInPlaceEvent,
@@ -3457,6 +3998,11 @@ struct Index {
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;
     this.messages = [];
+    this.waterfallSessionTopicWeights = [];
+    this.waterfallSessionSourceWeights = [];
+    this.waterfallSessionFormatWeights = [];
+    this.waterfallSessionEvidence = [];
+    configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile());
     this.registeredPageSnapshotStore.clear();
     this.registeredPageRenderGeneration = 0;
     this.currentSurface = this.surfaceSnapshot(createSeedA2uiSurface());
@@ -7008,7 +7554,7 @@ struct Index {
         this.closeBimDetail();
         return true;
       }
-      if (this.bimRootIndex === 0) {
+      if (this.bimRootIndex === 0 || this.bimRootIndex === 2) {
         this.bimRootController.changeIndex(1, !this.bimReduceMotion);
         return true;
       }
@@ -7335,6 +7881,20 @@ struct Index {
           this.sendAction(action);
         }
       })
+
+      HtmlHomeSurfaceView({
+        html: this.interestWaterfallHtml,
+        waterfallPayloadJson: this.interestWaterfallPayloadJson,
+        waterfallPayloadTick: this.interestWaterfallPayloadTick,
+        isBusy: false,
+        renderTick: this.interestWaterfallPayloadTick,
+        onAction: (action: A2uiAction): void => {
+          this.handleInterestWaterfallClientAction(action);
+        },
+        onWaterfallFullscreenChange: (_active: boolean): void => {}
+      })
+      .width('100%')
+      .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -7346,6 +7906,7 @@ struct Index {
       .curve(A2UI_MOTION_MOVE_CURVE)
       .onChange((index: number) => {
         this.bimRootIndex = index;
+        if (index === 2) this.ensureInterestWaterfall();
       })
     }
   }

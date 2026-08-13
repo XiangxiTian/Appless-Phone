@@ -22,6 +22,8 @@
 
 清单约定：`[x]` 是单项完成；PR 阶段状态以本表和该阶段退出门槛为准，不能由某几个 `[x]` 推断整段完成。
 
+清单字段约定：只有“需要实现或验证的交付项”使用 `[ ]/[x]`。架构约束使用“约束：”，禁止事项使用“禁止：”，评审和设备执行使用“状态：”，避免把它们误读成代码未完成项。
+
 ### 本轮查漏补缺记录（2026-08-13）
 
 - 已补齐可在当前工作区验证的 Presentation View Model：Timeline、MetricGrid、Form、Approval、ResultCollection，并登记 schema version/path registry。
@@ -245,7 +247,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 退出门槛
 
-- [ ] 无生产调用点切换。
+- 约束：本阶段不得发生生产调用点切换；当前 v4 仍未接入生产主链。
 - [ ] 所有旧测试保持全绿。
 - [ ] 20 个代表性 surface 完成 golden snapshot。
 
@@ -311,20 +313,20 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### Extension 准入
 
-每个 Extension PR 必须填写：
+每个 Extension PR 必须填写以下准入字段（这是 PR 模板，不是本阶段的完成项）：
 
-- [ ] 为什么 Foundation/Semantic + View Model 无法表达。
-- [ ] 独特交互状态机、平台能力或复杂布局算法是什么。
-- [ ] 安全差异为什么不能仅由 ActionRouter/ApprovalPanel 表达。
-- [ ] Renderer、无障碍、测试和降级路径。
-- [ ] 是否可被至少两个场景复用；若不能，说明硬性领域理由。
+- 必填：为什么 Foundation/Semantic + View Model 无法表达。
+- 必填：独特交互状态机、平台能力或复杂布局算法是什么。
+- 必填：安全差异为什么不能仅由 ActionRouter/ApprovalPanel 表达。
+- 必填：Renderer、无障碍、测试和降级路径。
+- 必填：是否可被至少两个场景复用；若不能，说明硬性领域理由。
 
-以下差异不得作为 Extension 理由：
+以下差异禁止作为 Extension 理由（这是架构规则，不是待办项）：
 
-- [ ] 仅字段名不同。
-- [ ] 仅 Provider/Tool 不同。
-- [ ] 仅文案、颜色、图标或排列不同。
-- [ ] 仅 intent 名称不同。
+- 禁止：仅字段名不同。
+- 禁止：仅 Provider/Tool 不同。
+- 禁止：仅文案、颜色、图标或排列不同。
+- 禁止：仅 intent 名称不同。
 
 ### Legacy 迁移表
 
@@ -412,7 +414,7 @@ entry/src/test/UiLabV4Integration.test.ets
 - [x] v4 Core 通过无 UI Lab/无页面依赖静态依赖检查；完整 ArkTS 构建仍待 IDE/设备环境。
 - [ ] UI Lab 能独立选择 legacy 或 v4 shadow。
 - [ ] 主 UI 无 v4 新调用点，行为和指标无变化。
-- [ ] 设计评审确认 UiRunCoordinator 没有复制 MultiAgent Runtime 职责。
+- 状态：待设计评审确认 UiRunCoordinator 没有复制 MultiAgent Runtime 职责。
 
 ---
 
@@ -433,7 +435,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [ ] UI Lab legacy `A2uiSurfaceStore.apply()` 成功后，通过 Host Adapter shadow 写入新 SurfaceController（真实 legacy double-write 待下一步）。
 - [ ] 新 Controller materialize legacy view，与当前 UI Lab Surface 做 snapshot compare。
-- [ ] mismatch 仅记录，不影响用户界面。
+- 约束：mismatch 只记录，不影响用户界面；页面级 shadow 接线仍未完成。
 - [x] `UiLabV4ShadowMirror` 对 mismatch 分类：canonical、data、phase、user overlay、revision（页面级 compare 尚未接线）。
 - [x] 不修改主 UI `A2uiSurfaceStore.apply()` 调用点。
 - [x] UI Lab v4 runtime 的 Tool Result 已经过 Presentation Adapter 写入 DataModelStore；原始 Tool payload 不保存在 v4 Surface 状态中。
@@ -460,7 +462,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过，v4 core 未出现 `entry/`、ArkUI、WebView 或 `MultiAgentCanaryRuntime` 反向依赖。
-- [ ] 专项 Hypium 测试已建立但尚未在设备/IDE 环境执行。
+- 状态：专项 Hypium 测试已建立，但尚未在设备/IDE 环境执行。
 
 ### 退出门槛
 
@@ -504,7 +506,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过；revision gate/snapshot 代码仍位于 `agent_core`，无宿主反向依赖。
-- [ ] 专项 Hypium 测试已建立但尚未在设备/IDE 环境执行。
+- 状态：专项 Hypium 测试已建立，但尚未在设备/IDE 环境执行。
 
 ### 退出门槛
 
@@ -571,13 +573,13 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过，Compiler 仅位于 `agent_core`。
-- [ ] 专项 Hypium 测试已建立但尚未在设备/IDE 环境执行。
+- 状态：专项 Hypium 测试已建立，但尚未在设备/IDE 环境执行。
 
 ### 退出门槛
 
 - [ ] UI Lab JSON 路径可切 feature flag 到 v4 Compiler。
 - [ ] 关闭 UI Lab flag 可完整回退旧 Lab 路径。
-- [ ] 主 UI 仍无 v4 Compiler feature flag。
+- 约束：主 UI 仍不得增加 v4 Compiler feature flag；当前保持旧链路。
 
 ---
 

@@ -23,6 +23,12 @@ export * from './src/main/ets/aiphone/ui/presentation/adapters/ChoicePresentatio
 export * from './src/main/ets/aiphone/ui/host/UiRuntimeHostTypes';
 export * from './src/main/ets/aiphone/ui/host/UiRuntimeHostPorts';
 export * from './src/main/ets/aiphone/ui/runtime/UiRunCoordinator';
+export * from './src/main/ets/aiphone/ui/runtime/UiLayoutStore';
+export * from './src/main/ets/aiphone/ui/runtime/UiDataModelStore';
+export * from './src/main/ets/aiphone/ui/runtime/UiRuntimeOverlayStore';
+export * from './src/main/ets/aiphone/ui/runtime/UiUserOverlayStore';
+export * from './src/main/ets/aiphone/ui/runtime/UiSurfaceController';
+export * from './src/main/ets/aiphone/ui/runtime/UiReconciler';
 export { ChatMessage, ConversationContext, ConversationRole } from './src/main/ets/agent/ConversationContext';
 export {
   ApplessCapabilityEnvironment,

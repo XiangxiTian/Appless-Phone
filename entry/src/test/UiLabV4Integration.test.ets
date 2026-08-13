@@ -54,10 +54,18 @@ export default function uiLabV4IntegrationTest(): void {
         eventId: 'event-1', runId: 'lab-run', surfaceId: 'lab-surface', epoch: 1,
         nodeKey: 'action', eventType: 'activate', offerId: 'offer-1'
       });
+      bundle.coordinator.onToolResult({
+        runId: 'lab-run', surfaceId: 'lab-surface', epoch: 1,
+        toolId: 'restaurant.search', outputSchemaRef: 'restaurant-search-result.v1',
+        provider: 'test-provider', status: 'ok',
+        data: { items: [{ shop_id: 'r-1', shop_name: 'Test Kitchen' }] }
+      });
       expect(requests.length).assertEqual(1);
       expect(sessions.length).assertEqual(1);
       expect(actions.length).assertEqual(1);
       expect(diagnostics.length).assertEqual(0);
+      expect(bundle.surfaceController.snapshot('lab-surface').data?.viewModelType)
+        .assertEqual('ui.option-collection');
       const directAdapter = new UiLabV4HostAdapter(callbacks);
       expect(directAdapter !== null).assertTrue();
     });

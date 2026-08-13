@@ -10,6 +10,7 @@ import {
   UiSurfaceRequest,
   UiSurfaceSession
 } from '../host/UiRuntimeHostTypes';
+import { UiSurfaceController } from './UiSurfaceController';
 
 interface UiRunState {
   session: UiSurfaceSession;
@@ -22,11 +23,17 @@ interface UiRunState {
 export class UiRunCoordinator {
   private readonly host: UiRuntimeHostPorts;
   private readonly presentation: UiPresentationAdapterRegistry;
+  readonly surfaceController: UiSurfaceController;
   private readonly runs: Map<string, UiRunState> = new Map<string, UiRunState>();
 
-  constructor(host: UiRuntimeHostPorts, presentation: UiPresentationAdapterRegistry) {
+  constructor(
+    host: UiRuntimeHostPorts,
+    presentation: UiPresentationAdapterRegistry,
+    surfaceController: UiSurfaceController = new UiSurfaceController()
+  ) {
     this.host = host;
     this.presentation = presentation;
+    this.surfaceController = surfaceController;
   }
 
   startSurface(request: UiSurfaceRequest): UiSurfaceSession {
@@ -76,7 +83,15 @@ export class UiRunCoordinator {
       runId: result.runId
     };
     try {
-      this.presentation.adapt(source, context);
+      const envelope = this.presentation.adapt(source, context);
+      this.surfaceController.setDataModel(
+        result.surfaceId,
+        envelope.data,
+        state.toolResultCount,
+        envelope.viewModelType,
+        envelope.viewModelVersion,
+        envelope.provenance as Object
+      );
     } catch (error) {
       this.host.onDiagnostic('PRESENTATION_ADAPTER_FAILURE', String(error));
     }

@@ -16,7 +16,7 @@
 | PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab host/factory/projection bridge/feature flags | `e083e52` | 目前是接入骨架，尚未接入现有 MultiAgent Runtime 的真实事件流 |
 | PR-V4-2 | 四 Store、SurfaceController、首版 Reconciler；Tool Result → Presentation Adapter → DataModelStore shadow 链路 | `b1aadb2`, `a74d196` | 尚未从 legacy `A2uiSurfaceStore.apply()` 自动 double-write，也未完成 snapshot compare/设备验收 |
 | PR-V4-3 | Revision Gate、mutationId ring、baseRevision/epoch admission、Surface Snapshot 导入导出 | `f7a5606`, `7ae92fc` | 尚未接入 UI Lab 现有 generation/lease；layout mutation 仍等待 Compiler/Reconciler 正式入口 |
-| PR-V4-4 | A2UI JSON → Candidate → Validator → Canonical IR 首版；复用 A2UI stream scanner；Legacy Adapter 已补齐 | `11ed243`, `9a4b483` | 尚未接 UI Lab v4 Reconciler/Legacy Adapter runtime path；binding schema、golden 和完整错误覆盖待补 |
+| PR-V4-4 | A2UI JSON → Candidate → Validator → Canonical IR 首版；复用 A2UI stream scanner；Legacy Adapter 已补齐；UiRunCoordinator shadow 接线 | `11ed243`, `9a4b483`, `244a836` | 尚未接 UI Lab v4 Reconciler/Legacy Adapter runtime path；binding schema、golden 和完整错误覆盖待补 |
 
 上述“已完成”表示代码已提交并通过静态/结构检查；不代表已经通过设备验收，也不代表已经切换任何可见生产路径。
 
@@ -538,6 +538,9 @@ entry/src/test/UiLabV4Integration.test.ets
   → LegacyA2uiSurfaceAdapter
   → UI Lab 当前 WebView Renderer
 ```
+
+- [x] 当前已接通 `model delta/completed → A2uiJsonOutputAdapter → Canonicalizer → SurfaceController` 的 shadow 路径。
+- [ ] `SurfaceController → UiReconciler → LegacyA2uiSurfaceAdapter → UI Lab WebView` 的可见/对照路径仍待实现。
 
 ### 测试
 

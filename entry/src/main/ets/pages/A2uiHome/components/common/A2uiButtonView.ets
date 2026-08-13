@@ -12,7 +12,9 @@ import {
 export struct A2uiButtonView {
   @Prop label: string = '';
   @Prop icon: Resource = $r('app.media.startIcon');
+  @Prop symbol: Resource = $r('sys.symbol.person');
   @Prop hasIcon: boolean = false;
+  @Prop hasSymbol: boolean = false;
   @Prop shape: string = 'pill';
   @Prop tone: string = 'secondary';
   @Prop active: boolean = false;
@@ -61,7 +63,12 @@ export struct A2uiButtonView {
 
   @Builder
   private Content(style: A2uiButtonVisualStyle) {
-    if (this.hasIcon) {
+    if (this.hasSymbol) {
+      SymbolGlyph(this.symbol)
+        .fontSize(this.resolvedIconSize())
+        .fontColor([style.textColor])
+        .fontWeight(FontWeight.Normal)
+    } else if (this.hasIcon) {
       Image(this.icon)
         .width(this.resolvedIconSize())
         .height(this.resolvedIconSize())

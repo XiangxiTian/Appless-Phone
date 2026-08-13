@@ -3,6 +3,8 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, statSync, writeFile
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createInterface } from 'node:readline';
+import { createHash } from 'node:crypto';
 import {
   evaluateHotelSystemActionEvidence,
   foregroundBundleFromAbilityDump,
@@ -244,6 +246,14 @@ const googleAppCases = [
   { query: '帮我看本月的 Google Calendar 日程', expectsTool: true, expectedToolId: 'calendar.events.search' },
   { query: '帮我在 2026年7月30日下午3点创建一个标题为 AIPhoneDemo 的30分钟日程', expectsTool: true, expectedToolId: 'calendar.event.create' },
   { query: '帮我用 Google Maps 搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'maps.place.search' }
+];
+
+const publicPersonaCases = [
+  { id: 'P01', description: 'first launch, retained platform terminals, confirmed four-field accounts' },
+  { id: 'P02', description: 'confirm selection and prove only selected account reads' },
+  { id: 'P03', description: 'leave while reading and keep partial provider state truthful' },
+  { id: 'P04', description: 'one main avatar, Markdown save, MBTI re-inference and hide reload' },
+  { id: 'P05', description: 'delete locally and prove persona is absent from the next normal prompt' }
 ];
 
 const smokeRunId = process.env.AIPHONE_SMOKE_RUN_ID ||
@@ -627,6 +637,7 @@ const runFullRegression = argv.includes('--full-regression');
 const runCoreRegression = argv.includes('--core-regression');
 const runGmailSendManual = argv.includes('--gmail-send-manual');
 const runBimSmoke = argv.includes('--bim');
+const runPublicPersona = argv.includes('--public-persona');
 const listCases = argv.includes('--list-cases');
 const queryArgs = argv.filter((arg) => arg !== '--clean-data' &&
   arg !== '--dynamic-tools' &&
@@ -637,6 +648,7 @@ const queryArgs = argv.filter((arg) => arg !== '--clean-data' &&
   arg !== '--core-regression' &&
   arg !== '--gmail-send-manual' &&
   arg !== '--bim' &&
+  arg !== '--public-persona' &&
   arg !== '--list-cases');
 const selectedDefaultCases = runComposioCases ? composioCases :
   (runFullRegression ? fullRegressionCases :
@@ -655,6 +667,22 @@ if (listCases) {
       preservesAppData: true,
       requires: ['local-model', 'heart-things']
     }], null, 2));
+    process.exit(0);
+  }
+  if (runPublicPersona) {
+    console.log(JSON.stringify(publicPersonaCases.map((testCase) => ({
+      id: testCase.id,
+      description: testCase.description,
+      automated: false,
+      manualGate: true,
+      runner: 'runPublicPersonaSmoke',
+      requires: [
+        'AIPHONE_PUBLIC_PERSONA_USERNAME',
+        'AIPHONE_PUBLIC_PERSONA_MANUAL_RESUME=1',
+        'AIPHONE_PUBLIC_PERSONA_SELECTED_URLS + AIPHONE_PUBLIC_PERSONA_UNSELECTED_URLS'
+      ],
+      providerSuccessRequired: true
+    })), null, 2));
     process.exit(0);
   }
   if (runGmailSendManual) {
@@ -684,6 +712,64 @@ if (listCases) {
     [...coreScenarioManifest, ...fullScenarioManifest] : coreScenarioManifest);
   console.log(JSON.stringify(manifest, null, 2));
   process.exit(0);
+}
+
+function publicPersonaConfiguredUrls(value) {
+  const urls = [];
+  for (const candidate of String(value || '').split(/[\n,]/)) {
+    const trimmed = candidate.trim();
+    if (!/^https:\/\/[^\s?#]+$/i.test(trimmed) || urls.includes(trimmed)) {
+      continue;
+    }
+    urls.push(trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed);
+  }
+  return urls;
+}
+
+const publicPersonaUsername = (process.env.AIPHONE_PUBLIC_PERSONA_USERNAME || '').trim();
+const publicPersonaSearchMode = (process.env.AIPHONE_PUBLIC_PERSONA_SEARCH_MODE || 'fuzzy').trim().toLowerCase();
+const publicPersonaExpectedPlatform = (process.env.AIPHONE_PUBLIC_PERSONA_EXPECTED_PLATFORM || '').trim().toLowerCase();
+const publicPersonaExpectedState = (process.env.AIPHONE_PUBLIC_PERSONA_EXPECTED_STATE || '').trim().toLowerCase();
+const publicPersonaSelectedUrls = publicPersonaConfiguredUrls(process.env.AIPHONE_PUBLIC_PERSONA_SELECTED_URLS);
+const publicPersonaUnselectedUrls = publicPersonaConfiguredUrls(process.env.AIPHONE_PUBLIC_PERSONA_UNSELECTED_URLS);
+const publicPersonaExpectedHapSha256 = (process.env.AIPHONE_PUBLIC_PERSONA_HAP_SHA256 || '').trim().toLowerCase();
+const publicPersonaHapPath = join(rootDir, 'entry/build/default/outputs/default/entry-default-signed.hap');
+let publicPersonaHapSha256 = '';
+try {
+  publicPersonaHapSha256 = createHash('sha256').update(readFileSync(publicPersonaHapPath)).digest('hex');
+} catch (_error) {}
+const publicPersonaAdmissionPlatforms = [
+  'weibo', 'github', 'qq', 'inaturalist', 'leetcode_cn', 'gitee', 'stackoverflow', 'gitlab',
+  'bitbucket', 'devto', 'keybase', 'lemmy', 'codeberg', 'codeforces', 'leetcode', 'gitea',
+  'hackerrank', 'discogs'
+];
+if (runPublicPersona && !/^[A-Za-z0-9._-]{1,64}$/.test(publicPersonaUsername)) {
+  console.error('Public persona smoke requires AIPHONE_PUBLIC_PERSONA_USERNAME; no provider result is synthesized.');
+  process.exit(2);
+}
+if (runPublicPersona && publicPersonaSearchMode !== 'exact' && publicPersonaSearchMode !== 'fuzzy') {
+  console.error('AIPHONE_PUBLIC_PERSONA_SEARCH_MODE must be exact or fuzzy.');
+  process.exit(2);
+}
+if (runPublicPersona && publicPersonaExpectedPlatform.length > 0 &&
+  !publicPersonaAdmissionPlatforms.includes(publicPersonaExpectedPlatform)) {
+  console.error('AIPHONE_PUBLIC_PERSONA_EXPECTED_PLATFORM is not an enabled public persona source.');
+  process.exit(2);
+}
+if (runPublicPersona && publicPersonaExpectedPlatform.length > 0 &&
+  (!/^[a-f0-9]{64}$/.test(publicPersonaExpectedHapSha256) ||
+    publicPersonaExpectedHapSha256 !== publicPersonaHapSha256)) {
+  console.error('AIPHONE_PUBLIC_PERSONA_HAP_SHA256 must match the local signed HAP used for admission.');
+  process.exit(2);
+}
+if (runPublicPersona && publicPersonaExpectedState.length > 0 &&
+  !['found', 'not_found'].includes(publicPersonaExpectedState)) {
+  console.error('AIPHONE_PUBLIC_PERSONA_EXPECTED_STATE must be found or not_found; unknown cannot pass admission.');
+  process.exit(2);
+}
+if (runPublicPersona && (publicPersonaExpectedPlatform.length > 0) !== (publicPersonaExpectedState.length > 0)) {
+  console.error('AIPHONE_PUBLIC_PERSONA_EXPECTED_PLATFORM and AIPHONE_PUBLIC_PERSONA_EXPECTED_STATE are required together.');
+  process.exit(2);
 }
 if (runGmailSendManual) {
   console.error('gmail.message.send is manual-only; use --gmail-send-manual --list-cases to inspect its safe gate.');
@@ -1026,6 +1112,17 @@ function cleanBundleData() {
 
 const personaStorePath = '/data/app/el2/100/base/com.example.aiphonedemo/haps/entry/preferences/aiphone_persona_store';
 const personaBackupPath = `/data/local/tmp/aiphone-persona-store-${smokeRunId}`;
+const publicPersonaStorePath = '/data/app/el2/100/base/com.example.aiphonedemo/haps/entry/preferences/aiphone_public_persona';
+
+function publicPersonaSnapshotExists() {
+  const output = hdc(['shell',
+    `if [ -f ${publicPersonaStorePath} ] && grep -q snapshot_v1 ${publicPersonaStorePath}; then echo PRESENT; else echo ABSENT; fi`
+  ]).trim();
+  if (output !== 'PRESENT' && output !== 'ABSENT') {
+    throw new Error(`Could not determine public persona snapshot state: ${output}`);
+  }
+  return output === 'PRESENT';
+}
 
 function backupPersonaMemoryStore() {
   hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
@@ -1185,9 +1282,23 @@ function attrIsFalse(value) {
   return value === false || value === 'false';
 }
 
+function redactPublicPersonaLayout(value) {
+  if (typeof value === 'string') {
+    return value.replace(/https:\/\/[^\s"'<>|]+/gi, 'https://<redacted>');
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactPublicPersonaLayout(item));
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactPublicPersonaLayout(item)]));
+  }
+  return value;
+}
+
 function dumpLayout(localName = 'latest-layout.json', bundleName = 'com.example.aiphonedemo') {
   const remote = '/data/local/tmp/aiphone-smoke-layout.json';
   const local = join(outDir, localName);
+  const redact = localName.startsWith('public-persona-');
   let lastError = null;
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -1203,9 +1314,18 @@ function dumpLayout(localName = 'latest-layout.json', bundleName = 'com.example.
       if (!Array.isArray(layout.children) || layout.children.length === 0) {
         throw new Error('dumpLayout produced an empty accessibility tree');
       }
+      if (redact) {
+        writeFileSync(local, JSON.stringify(redactPublicPersonaLayout(layout), null, 2));
+      }
       return layout;
     } catch (error) {
       lastError = error;
+      if (redact) {
+        try {
+          writeFileSync(local, '{}');
+        } catch (_writeError) {
+        }
+      }
       spawnSync('sleep', ['0.5']);
     }
   }
@@ -1239,6 +1359,168 @@ function sanitizeExternalUrlLogs(logText) {
   return String(logText || '')
     .replace(/("(?:bookingUrl|uri|url)"\s*:\s*")[^"]*(")/g, '$1<redacted>$2')
     .replace(/\b(url|uri|bookingUrl)=\S+/g, '$1=<redacted>');
+}
+
+function publicPersonaLogDelta(before, after) {
+  const previous = String(before || '');
+  const current = String(after || '');
+  if (previous.length === 0) {
+    return { delta: '', baselineMismatch: true };
+  }
+  const offset = current.indexOf(previous);
+  return offset >= 0 ?
+    { delta: current.slice(offset + previous.length), baselineMismatch: false } :
+    { delta: '', baselineMismatch: true };
+}
+
+function publicPersonaStrictLogDelta(before, after) {
+  const previous = String(before || '');
+  const current = String(after || '');
+  if (previous.length === 0) {
+    return { matched: false, delta: '' };
+  }
+  const offset = current.indexOf(previous);
+  return offset >= 0 ? { matched: true, delta: current.slice(offset + previous.length) } : { matched: false, delta: '' };
+}
+
+function publicPersonaPlatformFromHost(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
+  if (host === 'space.bilibili.com') return 'bilibili';
+  if (host === 'zhihu.com') return 'zhihu';
+  if (host === 'weibo.com') return 'weibo';
+  if (host === 'github.com') return 'github';
+  if (host.endsWith('.qzone.qq.com') || host === 'qzone.qq.com') return 'qq';
+  if (host === 'scratch.mit.edu') return 'scratch';
+  if (host === 'hackernoon.com') return 'hackernoon';
+  if (host === 'inaturalist.org') return 'inaturalist';
+  if (host === 'disqus.com') return 'disqus';
+  if (host === 'bsky.app') return 'bluesky';
+  if (host === 'chess.com') return 'chess';
+  if (host === 'boosty.to') return 'boosty';
+  if (host === 'tieba.baidu.com') return 'tieba';
+  if (host.endsWith('.douban.com') || host === 'douban.com') return 'douban';
+  if (host === 'npmjs.com') return 'npm';
+  if (host === 'leetcode.cn') return 'leetcode_cn';
+  if (host === 'gitee.com') return 'gitee';
+  if (host === 'gitcode.com') return 'gitcode';
+  if (host === 'yuque.com') return 'yuque';
+  if (host === 'cnblogs.com') return 'cnblogs';
+  if (host === 'v2ex.com') return 'v2ex';
+  if (host === 'matrix-client.matrix.org') return 'matrix';
+  if (host.endsWith('.tuchong.com') || host === 'tuchong.com') return 'tuchong';
+  if (host === 'stackoverflow.com') return 'stackoverflow';
+  if (host === 'gitlab.com') return 'gitlab';
+  if (host === 'bitbucket.org') return 'bitbucket';
+  if (host === 'hub.docker.com') return 'dockerhub';
+  if (host === 'dev.to') return 'devto';
+  if (host === 'producthunt.com') return 'producthunt';
+  if (host === 'keybase.io') return 'keybase';
+  if (host === 'huggingface.co') return 'huggingface';
+  if (host === 'blog.csdn.net') return 'csdn';
+  if (host === 'medium.com') return 'medium';
+  if (host === 'mastodon.social' || host === 'fosstodon.org') return 'mastodon';
+  if (host === 'about.me') return 'aboutme';
+  if (host === 't.me') return 'telegram';
+  if (host === 'behance.net') return 'behance';
+  if (host === 'steamcommunity.com') return 'steam';
+  if (host === 'lemmy.world') return 'lemmy';
+  if (host === 'substack.com') return 'substack';
+  if (host === 'codeberg.org') return 'codeberg';
+  if (host === 'codeforces.com') return 'codeforces';
+  if (host === 'leetcode.com') return 'leetcode';
+  if (host === 'picsart.com') return 'picsart';
+  if (host === 'dailymotion.com') return 'dailymotion';
+  if (host === 'topcoder.com') return 'topcoder';
+  if (host === 'mixcloud.com') return 'mixcloud';
+  if (host.endsWith('.gravatar.com') || host === 'gravatar.com') return 'gravatar';
+  if (host === 'gitea.com') return 'gitea';
+  if (host.endsWith('.launchpad.net') || host === 'launchpad.net') return 'launchpad';
+  if (host === 'deviantart.com') return 'deviantart';
+  if (host === 'hackerrank.com') return 'hackerrank';
+  if (host === 'discogs.com') return 'discogs';
+  if (host === 'opencollective.com') return 'opencollective';
+  if (host === 'misskey.io') return 'misskey';
+  if (host === 'x.com' || host === 'twitter.com') return 'x';
+  if (host === 'youtube.com') return 'youtube';
+  if (host === 'linkedin.com') return 'linkedin';
+  return '';
+}
+
+function publicPersonaAccountKey(url) {
+  try {
+    const parsed = new URL(url);
+    const platform = publicPersonaPlatformFromHost(parsed.hostname);
+    const segments = parsed.pathname.split('/').filter((value) => value.length > 0);
+    if (platform.length === 0) return '';
+    let username = segments.length === 0 ? '' : segments[segments.length - 1].replace(/^@/, '');
+    if (platform === 'tieba') username = parsed.searchParams.get('un') || '';
+    if (platform === 'tuchong' && parsed.hostname.toLowerCase() !== 'tuchong.com') {
+      username = parsed.hostname.split('.')[0];
+    }
+    return username.length === 0 ? '' : `${platform}:${username.toLowerCase()}`;
+  } catch {
+    return '';
+  }
+}
+
+function publicPersonaCandidateLayoutState(layout) {
+  const labels = [
+    ['bilibili', '哔哩哔哩'], ['zhihu', '知乎'], ['weibo', '微博'],
+    ['github', 'GitHub'], ['qq', 'QQ 空间'], ['tieba', '百度贴吧'], ['douban', '豆瓣'], ['npm', 'NPM'],
+    ['scratch', 'Scratch'], ['hackernoon', 'HackerNoon'], ['inaturalist', 'iNaturalist'],
+    ['disqus', 'Disqus'], ['bluesky', 'Bluesky'], ['chess', 'Chess.com'], ['boosty', 'Boosty'],
+    ['leetcode_cn', '力扣'], ['gitee', 'Gitee'], ['gitcode', 'GitCode'], ['yuque', '语雀'],
+    ['cnblogs', '博客园'], ['v2ex', 'V2EX'], ['matrix', 'Matrix'], ['tuchong', '图虫'], ['stackoverflow', 'Stack Overflow'],
+    ['gitlab', 'GitLab'], ['bitbucket', 'Bitbucket'], ['dockerhub', 'Docker Hub'], ['devto', 'DEV Community'],
+    ['producthunt', 'Product Hunt'], ['keybase', 'Keybase'], ['huggingface', 'Hugging Face'], ['csdn', 'CSDN'],
+    ['medium', 'Medium'], ['mastodon', 'Mastodon'], ['aboutme', 'About.me'], ['telegram', 'Telegram'],
+    ['behance', 'Behance'], ['steam', 'Steam'],
+    ['lemmy', 'Lemmy'], ['substack', 'Substack'], ['codeberg', 'Codeberg'],
+    ['codeforces', 'Codeforces'], ['leetcode', 'LeetCode'], ['picsart', 'Picsart'],
+    ['dailymotion', 'Dailymotion'], ['topcoder', 'Topcoder'],
+    ['mixcloud', 'Mixcloud'], ['gravatar', 'Gravatar'], ['gitea', 'Gitea'],
+    ['launchpad', 'Launchpad'], ['deviantart', 'DeviantArt'],
+    ['hackerrank', 'HackerRank'], ['discogs', 'Discogs'], ['opencollective', 'Open Collective'], ['misskey', 'Misskey'],
+    ['x', 'X'], ['youtube', 'YouTube'], ['linkedin', 'LinkedIn']
+  ];
+  const rows = [];
+  walk(layout, (node) => {
+    const bounds = parseBounds((node.attributes || {}).bounds);
+    if (bounds === null || bounds.width < 200 || bounds.height < 45 || bounds.height > 300) return;
+    const values = [];
+    walk(node, (child) => {
+      const attrs = child.attributes || {};
+      ['text', 'content', 'description', 'hint'].forEach((key) => {
+        const value = attrs[key];
+        if (typeof value === 'string' && value.trim().length > 0) values.push(value.trim());
+      });
+    });
+    const uniqueValues = [...new Set(values)];
+    const line = uniqueValues.join('|');
+    const username = /@([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(line);
+    const platform = labels.find((entry) => uniqueValues.some((value) => value === entry[1] ||
+      value.indexOf('·') >= 0 && value.endsWith(entry[1])));
+    const selected = uniqueValues.some((value) => value === '已选');
+    const unselected = uniqueValues.some((value) => value === '选择');
+    if (username === null || platform === undefined || !selected && !unselected) return;
+    const key = `${platform[0]}:${username[1].toLowerCase()}`;
+    if (!rows.some((row) => row.key === key)) rows.push({ key, selected });
+  });
+  return rows;
+}
+
+function publicPersonaProbeResultFromLog(log, platform) {
+  const pattern = new RegExp(`\\[AIPhone\\]\\[PublicPersonaProbe\\] platform=${platform} result=(found|not_found|unknown)`, 'g');
+  let result = '';
+  for (const match of String(log || '').matchAll(pattern)) result = match[1];
+  return result;
+}
+
+function publicPersonaProbeStatesFromLog(log) {
+  const states = {};
+  const pattern = /\[AIPhone\]\[PublicPersonaProbe\] platform=([a-z0-9_]+) result=(found|not_found|unknown)/g;
+  for (const match of String(log || '').matchAll(pattern)) states[match[1]] = match[2];
+  return states;
 }
 
 function collectLayoutText(layout) {
@@ -1316,6 +1598,20 @@ function findHeaderSettingsCenter(layout) {
   });
   candidates.sort((left, right) => right.x - left.x);
   return candidates.length > 0 ? { x: candidates[0].x, y: candidates[0].y } : null;
+}
+
+function findHeaderPublicPersonaCenter(layout) {
+  const candidates = [];
+  walk(layout, (node) => {
+    const attrs = node.attributes || {};
+    const bounds = parseBounds(attrs.bounds);
+    if (bounds === null || !attrIsTrue(attrs.clickable) || attrIsFalse(attrs.enabled)) return;
+    if (bounds.top <= 360 && bounds.width >= 32 && bounds.width <= 160 && bounds.height >= 32 && bounds.height <= 160) {
+      candidates.push(bounds);
+    }
+  });
+  candidates.sort((left, right) => right.x - left.x);
+  return candidates.length > 1 ? { x: candidates[1].x, y: candidates[1].y } : null;
 }
 
 async function findTextCenterWithScroll(marker, localNamePrefix, maxSwipes = 4) {
@@ -4111,7 +4407,577 @@ function finishBimSmoke(scenarios, failureReason, failedId = '') {
   return summary;
 }
 
+async function tapPublicPersonaText(marker, localName, attempts = 18) {
+  let lastLayout = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      lastLayout = dumpLayout(`${localName}-${attempt + 1}.json`);
+    } catch (_error) {
+      await sleep(700);
+      continue;
+    }
+    const center = findTextCenter(lastLayout, marker);
+    if (center !== null) {
+      hdc(['shell', 'uitest', 'uiInput', 'click', String(center.x), String(center.y)]);
+      await sleep(500);
+      return { center, layout: lastLayout };
+    }
+    await sleep(700);
+  }
+  return { center: null, layout: lastLayout };
+}
+
+async function waitForPublicPersonaTerminal(localName) {
+  let last = null;
+  let lastPath = '';
+  const maxAttempts = Number.parseInt(process.env.AIPHONE_PUBLIC_PERSONA_MAX_ATTEMPTS || '180', 10);
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    lastPath = join(outDir, `${localName}-${attempt + 1}.json`);
+    last = dumpLayout(`${localName}-${attempt + 1}.json`);
+    const text = collectLayoutText(last).join('\n');
+    if (text.includes('确认这些账号') || text.includes('暂时没有能确认的公开账号') ||
+      text.includes('这次没有完成') || text.includes('你的画像')) {
+      return { layout: last, text, attempts: attempt + 1, path: lastPath };
+    }
+    await sleep(1000);
+  }
+  return { layout: last, text: last === null ? '' : collectLayoutText(last).join('\n'), attempts: maxAttempts, path: lastPath };
+}
+
+async function waitForPublicPersonaManualResume(message = '完成当前画像页面的手动步骤后按 Enter 继续取证：') {
+  if (!process.stdin.isTTY) {
+    return false;
+  }
+  const reader = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    reader.question(message, () => {
+      reader.close();
+      resolve(true);
+    });
+  });
+}
+
+async function waitForPublicPersonaReadingState(localName) {
+  let last = null;
+  let lastPath = '';
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    lastPath = join(outDir, `${localName}-${attempt + 1}.json`);
+    last = dumpLayout(`${localName}-${attempt + 1}.json`);
+    const text = collectLayoutText(last).join('\n');
+    if (/正在整理你的画像|正在读取|正在生成/.test(text)) {
+      return { layout: last, text, path: lastPath, attempts: attempt + 1 };
+    }
+    await sleep(1000);
+  }
+  return { layout: last, text: last === null ? '' : collectLayoutText(last).join('\n'), path: lastPath, attempts: 90 };
+}
+
+function publicPersonaMbtiLine(text) {
+  const match = /[EI][NS][TF][JP] · \d+%/.exec(text);
+  return match === null ? '' : match[0];
+}
+
+function publicPersonaSeedHandle(url) {
+  try {
+    const path = new URL(url).pathname.replace(/\/+$/, '');
+    const segments = path.split('/').filter((value) => value.length > 0);
+    return segments.length === 0 ? '' : segments[segments.length - 1].replace(/^@/, '');
+  } catch {
+    return '';
+  }
+}
+
+function publicPersonaRequestMarker(text) {
+  const match = /\b(?:request|turn|conversation|message|prompt)[_-]?id\s*[:=]\s*["']?([A-Za-z0-9][A-Za-z0-9_-]{3,})/i.exec(text);
+  return match === null ? '' : match[1];
+}
+
+function publicPersonaPromptAssemblySafe() {
+  const source = readFileSync(join(rootDir, 'entry/src/main/ets/pages/A2uiHome/Index.ets'), 'utf8');
+  const start = source.indexOf('  private async submitPrompt(');
+  const end = source.indexOf('\n  private ', start + 1);
+  if (start < 0 || end <= start) {
+    return false;
+  }
+  return !/publicPersonaSnapshot|publicPersonaStore|aiphone_public_persona|snapshot_v1/.test(source.slice(start, end));
+}
+
+function publicPersonaMainAvatarEvidence(layout) {
+  let count = 0;
+  walk(layout, (node) => {
+    const attrs = node.attributes || {};
+    const bounds = parseBounds(attrs.bounds);
+    const type = String(node.type || node.componentType || attrs.type || '');
+    if (bounds !== null && /image/i.test(type) && bounds.width >= 70 && bounds.width <= 100 &&
+      bounds.height >= 70 && bounds.height <= 100 && bounds.top < 720) {
+      count += 1;
+    }
+  });
+  return count === 1;
+}
+
+function publicPersonaLayoutContainsType(layout, pattern) {
+  let found = false;
+  walk(layout, (node) => {
+    const attrs = node.attributes || {};
+    const type = String(node.type || node.componentType || attrs.type || '');
+    if (pattern.test(type)) found = true;
+  });
+  return found;
+}
+
+async function enterPublicPersonaFromHome(existingSnapshot = false) {
+  let opened = await tapPublicPersonaText('我的画像', 'public-persona-open', 2);
+  if (opened.center === null && opened.layout !== null) {
+    const center = findHeaderPublicPersonaCenter(opened.layout);
+    if (center !== null) {
+      hdc(['shell', 'uitest', 'uiInput', 'click', String(center.x), String(center.y)]);
+      await sleep(500);
+      opened = { center, layout: opened.layout };
+    }
+  }
+  if (opened.center === null) {
+    return { ok: false, reason: 'public persona entry not found' };
+  }
+  const layout = dumpLayout('public-persona-opened-after-tap.json');
+  const layoutText = collectLayoutText(layout).join('\n');
+  const onboarding = layoutText.includes('开始设置');
+  let input = layoutText.includes('开始查找') || layoutText.includes('输入一个你常用的用户名');
+  if (onboarding) {
+    await tapPublicPersonaText('开始设置', 'public-persona-setup');
+  }
+  if (existingSnapshot && input === false) {
+    const restart = await tapPublicPersonaText('重新认识我', 'public-persona-restart');
+    if (restart.center !== null) input = true;
+  }
+  if (input === false) {
+    const retry = await tapPublicPersonaText('重新输入', 'public-persona-retry-input');
+    if (retry.center !== null) input = true;
+  }
+  return { ok: input || onboarding, onboarding, input };
+}
+
+async function startPublicPersonaDiscoveryOnDevice() {
+  const layout = dumpLayout('public-persona-input-layout.json');
+  const input = findTextMatches(layout, '例如 XiaoLuoLYG')[0] ||
+    findTextMatches(layout, '输入一个你常用的用户名')[0];
+  if (input === undefined) {
+    return { ok: false, reason: 'public persona username input not found' };
+  }
+  hdc(['shell', 'uitest', 'uiInput', 'click', String(input.bounds.x), String(input.bounds.y)]);
+  hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2072', '2017']);
+  hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2055']);
+  hdc(['shell', 'uitest', 'uiInput', 'text', publicPersonaUsername]);
+  hdc(['shell', 'uitest', 'uiInput', 'keyEvent', 'Back']);
+  await sleep(250);
+  if (publicPersonaSearchMode === 'exact') {
+    const mode = await tapPublicPersonaText('精确', 'public-persona-exact-mode');
+    if (mode.center === null) return { ok: false, reason: '精确 mode button not found' };
+  }
+  const started = await tapPublicPersonaText('开始查找', 'public-persona-start');
+  return started.center === null ? { ok: false, reason: '开始查找 button not found' } : { ok: true };
+}
+
+async function runPublicPersonaSmoke() {
+  const nativeAdmission = publicPersonaExpectedPlatform.length > 0 &&
+    publicPersonaExpectedState.length > 0;
+  if (nativeAdmission) {
+    const installOutput = hdc(['install', '-r', publicPersonaHapPath]);
+    if (!/install bundle successfully/i.test(installOutput)) {
+      throw new Error('Could not install the verified public persona HAP for admission.');
+    }
+  }
+  if (publicPersonaSnapshotExists() && !nativeAdmission) {
+    const reason = 'existing_persona_snapshot';
+    const summary = {
+      mode: 'public-persona',
+      username: '<redacted>',
+      blocked: reason,
+      cases: publicPersonaCases.map((testCase) => ({
+        id: testCase.id,
+        status: 'BLOCKED',
+        ok: false,
+        manualGate: true,
+        reason
+      })),
+      ok: false
+    };
+    writeFileSync(join(outDir, 'public-persona-summary.json'), JSON.stringify(summary, null, 2));
+    return summary;
+  }
+  let snapshotCreatedThisRun = false;
+  let snapshotDeleted = false;
+  try {
+    clearHilog();
+    hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+    hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
+    await sleep(3000);
+    moveAppWindowIntoScreenshot();
+    const cases = [];
+    const manualResume = process.env.AIPHONE_PUBLIC_PERSONA_MANUAL_RESUME === '1' && Boolean(process.stdin.isTTY);
+    const firstLaunch = await enterPublicPersonaFromHome(nativeAdmission && publicPersonaSnapshotExists());
+    let p01 = { id: 'P01', status: 'BLOCKED', ok: false, manualGate: true, reason: firstLaunch.reason || '' };
+    const p02 = {
+      id: 'P02', status: 'BLOCKED', ok: false, manualGate: true,
+      reason: manualResume ? 'manual confirmation not yet evidenced' : 'requires explicit manual resume'
+    };
+    let p02Result = p02;
+    let p02Baseline = '';
+    let selectedProfileUrls = [];
+    let knownUnselectedProfileUrls = [];
+    let selectionMode = 'unavailable';
+    let selectionStepEvidence = false;
+    let selectionLayoutEvidence = false;
+    let selectionSetsMatch = false;
+    let selectionLayoutPath = null;
+    let p01Terminal = { layout: null, text: '', attempts: 0, path: '' };
+    let discoveryLogs = [];
+    if (firstLaunch.ok) {
+      const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim();
+      discoveryLogs = await captureAppLogsFor(appPid, async () => {
+        await sleep(250);
+        const started = await startPublicPersonaDiscoveryOnDevice();
+        p01Terminal = started.ok ? await waitForPublicPersonaTerminal('public-persona-p01') : p01Terminal;
+      }, 250);
+      const summaryMatch = /明确结果 (\d+) · 找到 (\d+) · 未找到 (\d+) · 未完成 (\d+)/.exec(p01Terminal.text);
+      let explicitCount = summaryMatch === null ? -1 : Number(summaryMatch[1]);
+      let foundCount = summaryMatch === null ? -1 : Number(summaryMatch[2]);
+      let notFoundCount = summaryMatch === null ? -1 : Number(summaryMatch[3]);
+      let unknownCount = summaryMatch === null ? -1 : Number(summaryMatch[4]);
+      const totalMatch = /已尝试 (\d+) 个公开平台/.exec(p01Terminal.text);
+      let attemptedTotal = totalMatch === null ? -1 : Number(totalMatch[1]);
+      let attemptedAll = attemptedTotal > 0 && explicitCount === foundCount + notFoundCount &&
+        foundCount + notFoundCount + unknownCount === attemptedTotal;
+      const candidateLayout = p01Terminal.layout === null ? null : p01Terminal.layout;
+      const candidateText = candidateLayout === null ? p01Terminal.text : collectLayoutText(candidateLayout).join('\n');
+      const candidateRows = candidateLayout === null ? [] : publicPersonaCandidateLayoutState(candidateLayout);
+      const candidateExists = candidateRows.length > 0 &&
+        !candidateText.includes('暂时没有能确认的公开账号') && !candidateText.includes('这次没有完成');
+      const seedHandle = publicPersonaUsername.replace(/^@/, '');
+      const seedCandidateVisible = seedHandle.length > 0 && (publicPersonaExpectedPlatform.length > 0 ?
+        candidateRows.some((row) => row.key === `${publicPersonaExpectedPlatform}:${seedHandle.toLowerCase()}`) :
+        candidateText.includes('@' + seedHandle));
+      const discoveryProviderLog = sanitizeExternalUrlLogs(discoveryLogs.join('\n'));
+      writeFileSync(join(outDir, 'public-persona-discovery.log'), discoveryProviderLog + '\n');
+      const probeStates = publicPersonaProbeStatesFromLog(discoveryProviderLog);
+      writeFileSync(join(outDir, 'public-persona-probe-states.json'), JSON.stringify(probeStates, null, 2));
+      const loggedStates = Object.values(probeStates);
+      const loggedTerminal = /completed=(\d+)\/\1(?:\D|$)/.exec(discoveryProviderLog);
+      if (!attemptedAll && loggedTerminal !== null && loggedStates.length === Number(loggedTerminal[1])) {
+        attemptedTotal = Number(loggedTerminal[1]);
+        foundCount = loggedStates.filter((state) => state === 'found').length;
+        notFoundCount = loggedStates.filter((state) => state === 'not_found').length;
+        unknownCount = loggedStates.filter((state) => state === 'unknown').length;
+        explicitCount = foundCount + notFoundCount;
+        attemptedAll = explicitCount + unknownCount === attemptedTotal;
+      }
+      const admissionMode = publicPersonaExpectedPlatform.length > 0 && publicPersonaExpectedState.length > 0;
+      const actualExpectedState = admissionMode ?
+        probeStates[publicPersonaExpectedPlatform] ||
+          publicPersonaProbeResultFromLog(discoveryProviderLog, publicPersonaExpectedPlatform) : '';
+      const expectedStateMatched = admissionMode && actualExpectedState === publicPersonaExpectedState;
+      const expectedCandidateMatched = publicPersonaExpectedState === 'found' ? seedCandidateVisible :
+        publicPersonaExpectedState === 'not_found' && !seedCandidateVisible;
+      clearHilog();
+      p02Baseline = hdc(['shell', 'hilog', '-d']);
+      const manualCandidateConfirmed = manualResume && candidateExists && await waitForPublicPersonaManualResume(
+        '请逐张核对候选卡的头像、平台 logo、显示名、@用户名和主页链接；确认无误后按 Enter：'
+      );
+      const candidateCardEvidence = {
+        avatar: manualCandidateConfirmed,
+        platformLogo: manualCandidateConfirmed,
+        displayName: manualCandidateConfirmed,
+        username: manualCandidateConfirmed,
+        profileUrl: manualCandidateConfirmed,
+        manualCandidateConfirmed
+      };
+      const candidateFieldsConfirmed = Object.values(candidateCardEvidence).every(Boolean);
+      selectionStepEvidence = manualCandidateConfirmed && seedCandidateVisible &&
+        await waitForPublicPersonaManualResume(
+          '请在当前确认页实际选择账号，并核对选中/排除列表后按 Enter：'
+        );
+      const configuredInput = publicPersonaSelectedUrls.length > 0 && publicPersonaUnselectedUrls.length > 0;
+      const requestedSelectedUrls = configuredInput ? publicPersonaSelectedUrls.slice() : [];
+      const requestedUnselectedUrls = publicPersonaUnselectedUrls.slice();
+      const expectedSelectedKeys = requestedSelectedUrls.map((url) => publicPersonaAccountKey(url));
+      const expectedUnselectedKeys = requestedUnselectedUrls.map((url) => publicPersonaAccountKey(url));
+      const invalidConfiguredAccount = expectedSelectedKeys.some((key) => key.length === 0) ||
+        expectedUnselectedKeys.some((key) => key.length === 0);
+      const uniqueExpectedSelectedKeys = [...new Set(expectedSelectedKeys)];
+      const uniqueExpectedUnselectedKeys = [...new Set(expectedUnselectedKeys)];
+      const selectionLayout = selectionStepEvidence ? dumpLayout('public-persona-p01-selection.json') : null;
+      selectionLayoutPath = selectionLayout === null ? null : join(outDir, 'public-persona-p01-selection.json');
+      const layoutCandidates = selectionLayout === null ? [] : publicPersonaCandidateLayoutState(selectionLayout);
+      const layoutKeys = layoutCandidates.map((row) => row.key);
+      const expectedKeys = [...new Set(uniqueExpectedSelectedKeys.concat(uniqueExpectedUnselectedKeys))];
+      const layoutKeySetMatches = expectedKeys.length > 0 && layoutCandidates.length === expectedKeys.length &&
+        layoutKeys.filter((key) => expectedKeys.includes(key)).length === expectedKeys.length;
+      const selectedStateMatches = uniqueExpectedSelectedKeys.length > 0 && uniqueExpectedUnselectedKeys.length > 0 &&
+        layoutCandidates.filter((row) => uniqueExpectedSelectedKeys.includes(row.key) && row.selected).length === uniqueExpectedSelectedKeys.length &&
+        layoutCandidates.filter((row) => uniqueExpectedUnselectedKeys.includes(row.key) && !row.selected).length === uniqueExpectedUnselectedKeys.length;
+      selectionSetsMatch = !invalidConfiguredAccount && uniqueExpectedSelectedKeys.length > 0 &&
+        uniqueExpectedUnselectedKeys.length > 0 &&
+        uniqueExpectedSelectedKeys.filter((key) => uniqueExpectedUnselectedKeys.includes(key)).length === 0 &&
+        layoutKeySetMatches && selectedStateMatches;
+      selectionLayoutEvidence = selectionStepEvidence && selectionSetsMatch;
+      const providerLog = discoveryProviderLog + '\n' + sanitizeExternalUrlLogs(hdc(['shell', 'hilog', '-d']));
+      const allSourcesTerminal = unknownCount === 0;
+      const providerBlocked = !allSourcesTerminal || candidateText.includes('模糊搜索未完成') ||
+        /AUTH_REQUIRED|needs_auth|blocked_by_site|credits_exhausted|timeout|调用失败|login wall/i.test(providerLog);
+      const admissionOk = admissionMode && attemptedAll && allSourcesTerminal && expectedStateMatched && expectedCandidateMatched;
+      const normalOk = attemptedAll && candidateExists && candidateFieldsConfirmed && !providerBlocked;
+      p01 = {
+        id: 'P01',
+        status: (admissionMode ? admissionOk : normalOk) ? 'PASS' : 'BLOCKED',
+        ok: admissionMode ? admissionOk : normalOk, manualGate: !admissionMode,
+        attemptedAll,
+        attemptedTotal,
+        explicitCount,
+        foundCount,
+        notFoundCount,
+        unknownCount,
+        allSourcesTerminal,
+        candidateCardEvidence,
+        candidateFieldsConfirmed,
+        seedCandidateVisible,
+        admissionMode,
+        expectedPlatform: publicPersonaExpectedPlatform,
+        expectedState: publicPersonaExpectedState,
+        actualExpectedState,
+        expectedStateMatched,
+        expectedCandidateMatched,
+        selectionStepEvidence,
+        selectionLayoutEvidence,
+        selectionSetsMatch,
+        selectionLayoutPath,
+        providerBlocked,
+        attempts: p01Terminal.attempts,
+        layoutPath: p01Terminal.path,
+        screenPath: captureScreen('P01-public-persona.png')
+      };
+      if (selectionLayoutEvidence && configuredInput) {
+        selectionMode = 'configured_urls';
+        selectedProfileUrls = publicPersonaSelectedUrls.slice();
+        knownUnselectedProfileUrls = publicPersonaUnselectedUrls.slice();
+      }
+    }
+    cases.push(p01);
+    snapshotCaseArtifacts('P01', 1, ['public-persona-p01'], p01);
+    if (publicPersonaExpectedPlatform.length > 0 && publicPersonaExpectedState.length > 0) {
+      const row = {
+        platform: publicPersonaExpectedPlatform,
+        fixtureClass: (process.env.AIPHONE_PUBLIC_PERSONA_FIXTURE_CLASS ||
+          (publicPersonaExpectedState === 'found' ? 'claimed' : 'unclaimed')).trim(),
+        username: '<redacted>',
+        hapSha256: publicPersonaHapSha256,
+        device: target,
+        status: p01.ok ? 'PASS' : 'BLOCKED',
+        bodyLength: null,
+        matchedRule: 'structured_progress',
+        state: p01.actualExpectedState,
+        timestamp: new Date().toISOString()
+      };
+      writeFileSync(join(outDir, 'public-persona-native-row.json'), JSON.stringify(row, null, 2));
+      const summary = {
+        mode: 'public-persona-native-admission', username: '<redacted>', searchMode: publicPersonaSearchMode,
+        cases: [p01], row, cleanup_required: false, ok: p01.ok
+      };
+      writeFileSync(join(outDir, 'public-persona-summary.json'), JSON.stringify(summary, null, 2));
+      return summary;
+    }
+
+    const p03 = {
+      id: 'P03', status: 'BLOCKED', ok: false, manualGate: true,
+      reason: 'no_safe_job_token', leaveWhileBusyEvidence: false,
+      taskContinuedEvidence: false, jobEvidence: 'unavailable', jobIdPresent: false
+    };
+    let p03Result = p03;
+    if (manualResume && p01.ok && selectionMode !== 'unavailable' && selectionStepEvidence && selectionLayoutEvidence &&
+      await waitForPublicPersonaManualResume(
+        '请在候选页点击“确认并生成画像”，等待画像终态可见后按 Enter：'
+      )) {
+      const terminal = await waitForPublicPersonaTerminal('public-persona-p02');
+      const afterRaw = hdc(['shell', 'hilog', '-d']);
+      const deltaResult = publicPersonaLogDelta(p02Baseline, afterRaw);
+      const deltaRaw = deltaResult.delta;
+      const baselineMismatch = deltaResult.baselineMismatch;
+      const profileMarkers = selectedProfileUrls.flatMap((url) => {
+        try {
+          const parsed = new URL(url);
+          return [url, `${parsed.hostname}${parsed.pathname}`];
+        } catch {
+          return [url];
+        }
+      });
+      const correlationMarker = profileMarkers.some((marker) => marker.length > 0 && deltaRaw.includes(marker));
+      const webPageReadObserved = /web\.page\.read/.test(deltaRaw);
+      const knownUnselectedPresent = knownUnselectedProfileUrls.filter((url) => {
+        if (deltaRaw.includes(url)) {
+          return true;
+        }
+        try {
+          const parsed = new URL(url);
+          return deltaRaw.includes(`${parsed.hostname}${parsed.pathname}`);
+        } catch {
+          return false;
+        }
+      });
+      const knownUnselectedAbsent = knownUnselectedProfileUrls.length > 0 && knownUnselectedPresent.length === 0;
+      const deltaLogPath = join(outDir, 'public-persona-p02-delta.log');
+      writeFileSync(deltaLogPath, JSON.stringify({
+        webPageReadObserved, correlationMarker, selectedProfileCount: selectedProfileUrls.length,
+        selectionMode, knownUnselectedCount: knownUnselectedProfileUrls.length, knownUnselectedAbsent,
+        baselineMismatch
+      }, null, 2));
+      const completedLayout = terminal.text.includes('你的画像') && !terminal.text.includes('确认这些账号');
+      snapshotCreatedThisRun = completedLayout && publicPersonaSnapshotExists();
+      const completedText = terminal.text.toLowerCase();
+      const selectedHandles = selectedProfileUrls.map((url) => publicPersonaSeedHandle(url).toLowerCase()).filter(Boolean);
+      const unselectedHandles = knownUnselectedProfileUrls.map((url) => publicPersonaSeedHandle(url).toLowerCase()).filter(Boolean);
+      const selectedSourcesVisible = selectedHandles.length > 0 && selectedHandles.every((handle) => completedText.includes('@' + handle));
+      const unselectedSourcesAbsent = unselectedHandles.length > 0 && unselectedHandles.every((handle) => !completedText.includes('@' + handle));
+      const selectedReadEvidence = selectionLayoutEvidence && selectionMode === 'configured_urls' &&
+        selectedSourcesVisible && unselectedSourcesAbsent && snapshotCreatedThisRun;
+      p02Result = {
+        id: 'P02', status: selectedReadEvidence && completedLayout ? 'PASS' : 'BLOCKED',
+        ok: selectedReadEvidence && completedLayout, manualGate: true,
+        selectedReadEvidence, completedLayout, snapshotCreatedThisRun,
+        selectedProfileUrls: selectedProfileUrls.length, selectionMode, correlationMarker,
+        selectedSourcesVisible, unselectedSourcesAbsent, webPageReadObserved,
+        knownUnselectedCount: knownUnselectedProfileUrls.length, knownUnselectedAbsent, baselineMismatch,
+        selectionLayoutEvidence, deltaLogPath,
+        screenPath: captureScreen('P02-public-persona.png')
+      };
+    }
+    cases.push(p02Result);
+    snapshotCaseArtifacts('P02', 1, ['public-persona-p02'], p02Result);
+    cases.push(p03Result);
+    snapshotCaseArtifacts('P03', 1, ['public-persona-p03'], p03Result);
+
+    let p04Result = {
+      id: 'P04', status: 'BLOCKED', ok: false, manualGate: true,
+      reason: 'requires manual edit/save/reload/reinfer/hide evidence',
+      oneMainAvatar: null, markdownPresent: null, mbtiPresent: null,
+      editSaveReload: false, saveExitEvidence: false, reenterReloadEvidence: false,
+      mbtiReinferred: false, mbtiHiddenReloaded: false,
+      screenPath: null
+    };
+    if (manualResume && p02Result.ok && await waitForPublicPersonaManualResume(
+      '请编辑 persona.md 加入 P04-smoke-edit，点击保存并退出编辑态；回到画像页后按 Enter：'
+    )) {
+      const afterSaveExitLayout = dumpLayout('public-persona-p04-after-save-exit.json');
+      const afterSaveExitText = collectLayoutText(afterSaveExitLayout).join('\n');
+      const saveExitEvidence = !publicPersonaLayoutContainsType(afterSaveExitLayout, /TextArea/i) &&
+        afterSaveExitText.includes('persona.md');
+      const reenterReady = saveExitEvidence && await waitForPublicPersonaManualResume(
+        '请离开画像页后重新进入画像页（可再进入编辑页），确认已保存内容后按 Enter：'
+      );
+      const savedReloadedLayout = reenterReady ? dumpLayout('public-persona-p04-saved-reloaded.json') : null;
+      const savedReloadedText = savedReloadedLayout === null ? '' : collectLayoutText(savedReloadedLayout).join('\n');
+      const reenterReloadEvidence = reenterReady && savedReloadedLayout !== null &&
+        savedReloadedText.includes('persona.md');
+      const editSaveReload = saveExitEvidence && reenterReloadEvidence &&
+        savedReloadedText.includes('P04-smoke-edit');
+      const mbtiBefore = publicPersonaMbtiLine(savedReloadedText);
+      const reinferReady = reenterReloadEvidence && await waitForPublicPersonaManualResume(
+        '请点击 MBTI 触发重新推测，等待结果可见后按 Enter：'
+      );
+      const reinferLayout = reinferReady ? dumpLayout('public-persona-p04-reinferred.json') : null;
+      const reinferText = reinferLayout === null ? '' : collectLayoutText(reinferLayout).join('\n');
+      const mbtiReinferred = reinferReady && publicPersonaMbtiLine(reinferText).length > 0 &&
+        publicPersonaMbtiLine(reinferText) !== mbtiBefore;
+      const hideReady = reinferReady && await waitForPublicPersonaManualResume(
+        '请点击隐藏 MBTI，离开再返回后按 Enter：'
+      );
+      const hiddenLayout = hideReady ? dumpLayout('public-persona-p04-hidden-reloaded.json') : null;
+      const hiddenText = hiddenLayout === null ? '' : collectLayoutText(hiddenLayout).join('\n');
+      const mbtiHiddenReloaded = hideReady && !/## MBTI 推测|[EI][NS][TF][JP] · \d+%/.test(hiddenText);
+      const oneMainAvatar = hiddenLayout !== null && publicPersonaMainAvatarEvidence(hiddenLayout);
+      const p04Ok = oneMainAvatar && editSaveReload && mbtiReinferred && mbtiHiddenReloaded;
+      p04Result = {
+        id: 'P04', status: p04Ok ? 'PASS' : 'BLOCKED', ok: p04Ok, manualGate: true,
+        oneMainAvatar, markdownPresent: savedReloadedText.includes('persona.md'),
+        mbtiPresent: mbtiBefore.length > 0, editSaveReload, saveExitEvidence, reenterReloadEvidence,
+        mbtiReinferred, mbtiHiddenReloaded,
+        afterSaveExitLayoutPath: join(outDir, 'public-persona-p04-after-save-exit.json'),
+        savedReloadedLayoutPath: savedReloadedLayout === null ? null : join(outDir, 'public-persona-p04-saved-reloaded.json'),
+        reinferLayoutPath: reinferLayout === null ? null : join(outDir, 'public-persona-p04-reinferred.json'),
+        hiddenLayoutPath: hiddenLayout === null ? null : join(outDir, 'public-persona-p04-hidden-reloaded.json'),
+        screenPath: hiddenLayout === null ? null : captureScreen('P04-public-persona.png')
+      };
+    }
+    cases.push(p04Result);
+    snapshotCaseArtifacts('P04', 1, ['public-persona-p04'], p04Result);
+
+    let p05Result = {
+      id: 'P05', status: 'BLOCKED', ok: false, manualGate: true,
+      reason: snapshotCreatedThisRun ? 'cleanup_required: explicit manual delete not evidenced' : 'snapshot_not_created_this_run',
+      localDeleteOk: null, promptPersonaAbsent: null, promptEvidence: 'not_attempted',
+      promptAssemblySafe: publicPersonaPromptAssemblySafe(),
+      cleanup_required: snapshotCreatedThisRun, screenPath: null
+    };
+    if (manualResume && snapshotCreatedThisRun && await waitForPublicPersonaManualResume(
+      '请手动点击“删除画像”并确认删除；返回首页后按 Enter：'
+    )) {
+      const localDeleteOk = !publicPersonaSnapshotExists();
+      snapshotDeleted = localDeleteOk;
+      let promptPersonaAbsent = null;
+      let promptEvidence = 'not_attempted';
+      let promptEvidencePath = null;
+      const p05PromptBaseline = localDeleteOk ? hdc(['shell', 'hilog', '-d']) : '';
+      if (localDeleteOk && await waitForPublicPersonaManualResume(
+        '删除后发送一条普通对话，确认请求未带入画像上下文；完成后按 Enter：'
+      )) {
+        const promptAfterRaw = hdc(['shell', 'hilog', '-d']);
+        const promptDeltaResult = publicPersonaStrictLogDelta(p05PromptBaseline, promptAfterRaw);
+        const promptDelta = promptDeltaResult.delta;
+        const requestMarker = publicPersonaRequestMarker(promptDelta);
+        const requestMarkerObserved = promptDeltaResult.matched && requestMarker.length > 0 &&
+          /model|chat|inference|prompt/i.test(promptDelta);
+        const personaMarkerObserved = /snapshot_v1|persona\.md|public persona|MBTI 推测/i.test(promptDelta);
+        const promptAssemblySafe = publicPersonaPromptAssemblySafe();
+        promptPersonaAbsent = requestMarkerObserved && promptAssemblySafe && !personaMarkerObserved;
+        promptEvidence = promptPersonaAbsent ? 'request_canary_absent' : 'request_canary_unproven';
+        promptEvidencePath = join(outDir, 'public-persona-p05-prompt-canary.log');
+        writeFileSync(promptEvidencePath, JSON.stringify({
+          requestMarkerObserved, personaMarkerObserved, requestMarker: requestMarker.length > 0 ? '<present>' : '<absent>'
+        }, null, 2));
+      }
+      const p05Ok = localDeleteOk && promptPersonaAbsent === true;
+      p05Result = {
+        id: 'P05', status: p05Ok ? 'PASS' : 'BLOCKED', ok: p05Ok, manualGate: true,
+        localDeleteOk, promptPersonaAbsent, promptEvidence, promptEvidencePath,
+        promptAssemblySafe: publicPersonaPromptAssemblySafe(),
+        cleanup_required: !localDeleteOk, screenPath: captureScreen('P05-public-persona.png')
+      };
+    }
+    cases.push(p05Result);
+    snapshotCaseArtifacts('P05', 1, ['public-persona-p05'], p05Result);
+    const summary = {
+      mode: 'public-persona', username: '<redacted>', searchMode: publicPersonaSearchMode, cases,
+      cleanup_required: snapshotCreatedThisRun && !snapshotDeleted,
+      ok: cases.every((item) => item.ok)
+    };
+    writeFileSync(join(outDir, 'public-persona-summary.json'), JSON.stringify(summary, null, 2));
+    return summary;
+  } finally {
+    try {
+      hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+      clearHilog();
+      hdc(['shell', 'rm', '-f', '/data/local/tmp/aiphone-smoke-layout.json', '/data/local/tmp/aiphone-smoke-screen.png']);
+    } catch (error) {
+      console.warn(`Could not finalize public persona smoke process cleanup: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
 console.log(`cleanData: ${cleanData ? 'true' : 'false'}`);
+
+if (runPublicPersona) {
+  const summary = await runPublicPersonaSmoke();
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(summary.ok ? 0 : 1);
+}
 
 if (runComposioAuthCases) {
   const summary = await runComposioAuthSmoke();

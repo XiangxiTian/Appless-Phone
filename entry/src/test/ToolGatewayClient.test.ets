@@ -70,6 +70,7 @@ import {
   foodRecordFromTencentMapPlace,
   foodRecordFromTaobaoFlashStore,
   flightRecordForA2ui,
+  genericStructuredDataResult,
   isReadonlyBrandMcpTool,
   isLocalToolGatewayUrl,
   isRegisteredToolId,
@@ -4920,6 +4921,18 @@ export default function toolGatewayClientTest() {
       } finally {
         configureLocalProviderConfigFromRawJson('{}');
       }
+    });
+
+    it('preserves URL-only partial results through the structured tool bridge', 0, () => {
+      const result = genericStructuredDataResult('web.research.search', 'genericToolResults', [{
+        sourceTag: 'Firecrawl', toolName: 'firecrawl_search', title: '搜索结果',
+        summary: '', status: 'partial', rawPreview: '', rows: [
+          { label: 'URL', value: 'https://github.com/XiaoLuoLYG' }
+        ], actions: []
+      }]);
+
+      expect(result.status).assertEqual('partial');
+      expect(JSON.stringify(result.data)).assertContain('https://github.com/XiaoLuoLYG');
     });
   });
 }

@@ -110,6 +110,7 @@ import bimRuntimeTest from './BimRuntime.test';
 import bimDailyReminderTest from './BimDailyReminder.test';
 import bimHomePageTest from './BimHomePage.test';
 import capabilityRuntimeTest from './CapabilityRuntime.test';
+import publicPersonaTest from './PublicPersona.test';
 
 export default function testsuite() {
   movieDemoContractTest();
@@ -224,4 +225,5 @@ export default function testsuite() {
   htmlHomeRendererTest();
   htmlHomeActionPolicyTest();
   capabilityRuntimeTest();
+  publicPersonaTest();
 }

@@ -115,6 +115,7 @@ interface FirecrawlResearchArgs {
   domains?: string[];
   maxResults?: number;
   recency?: string;
+  searchOnly?: boolean;
 }
 
 interface FirecrawlShoppingArgs {
@@ -592,7 +593,8 @@ function normalizedStatus(httpStatus: number, message: string): FirecrawlResultS
     return 'credits_exhausted';
   }
   if (httpStatus === 429 || lower.indexOf('rate limit') >= 0 ||
-    lower.indexOf('too many requests') >= 0) {
+    lower.indexOf('too many requests') >= 0 ||
+    lower.indexOf('status code 429') >= 0 || lower.indexOf('http 429') >= 0) {
     return 'rate_limited';
   }
   if (lower.indexOf('timeout') >= 0 || lower.indexOf('timed out') >= 0) {
@@ -2757,6 +2759,7 @@ export class FirecrawlMcpClient {
     }
     const domains = domainFilter.domains;
     const recency = textOf(input.recency);
+    const searchOnly = input.searchOnly === true;
     const registration = registrationFor(toolId, 'firecrawl_search', config);
     const preflightFailure = await this.ensurePreflight(toolId, registration, config);
     if (preflightFailure !== null) {
@@ -2782,11 +2785,11 @@ export class FirecrawlMcpClient {
       const item = items[index];
       const searchSummary = textOf(item.description).trim().length > 0 ?
         textOf(item.description).trim() : textOf(item.markdown).trim();
-      let status: FirecrawlResultStatus = searchSummary.length > 0 ? 'success' : 'empty';
+      let status: FirecrawlResultStatus = searchSummary.length > 0 ? 'success' : searchOnly ? 'partial' : 'empty';
       let summary = searchSummary;
       let rawPreview = searchSummary;
       let scrapeUsage: UsageSnapshot | null = null;
-      if (scrapeCount < 3 && (deepResearch || searchSummary.length === 0)) {
+      if (!searchOnly && scrapeCount < 3 && (deepResearch || searchSummary.length === 0)) {
         scrapeCount++;
         const scrape = await this.callScrape(
           toolId,

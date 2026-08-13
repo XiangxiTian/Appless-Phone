@@ -29,6 +29,7 @@ export * from './src/main/ets/aiphone/ui/runtime/UiRuntimeOverlayStore';
 export * from './src/main/ets/aiphone/ui/runtime/UiUserOverlayStore';
 export * from './src/main/ets/aiphone/ui/runtime/UiSurfaceController';
 export * from './src/main/ets/aiphone/ui/runtime/UiReconciler';
+export * from './src/main/ets/aiphone/ui/runtime/UiRevisionGate';
 export { ChatMessage, ConversationContext, ConversationRole } from './src/main/ets/agent/ConversationContext';
 export {
   ApplessCapabilityEnvironment,

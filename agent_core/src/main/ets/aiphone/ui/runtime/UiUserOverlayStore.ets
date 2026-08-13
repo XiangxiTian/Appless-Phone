@@ -89,6 +89,12 @@ export class UiUserOverlayStore {
     return current === undefined ? null : this.snapshotValue(current);
   }
 
+  restore(snapshot: UiUserOverlaySnapshot): boolean {
+    if (snapshot.surfaceId.length === 0 || snapshot.revision < 0) return false;
+    this.overlays.set(snapshot.surfaceId, this.snapshotValue(snapshot));
+    return true;
+  }
+
   remove(surfaceId: string): boolean {
     return this.overlays.delete(surfaceId);
   }

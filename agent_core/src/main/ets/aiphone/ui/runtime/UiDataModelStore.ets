@@ -76,6 +76,13 @@ export class UiDataModelStore {
     return true;
   }
 
+  canSetPath(surfaceId: string, path: string, value: UiDataModelValue): boolean {
+    const current = this.models.get(surfaceId);
+    if (current === undefined) return false;
+    const result = setJsonPointer(current.root as JsonValue, path, value as JsonValue);
+    return result.ok;
+  }
+
   resolve(surfaceId: string, path: string): UiDataModelValue | undefined {
     const current = this.models.get(surfaceId);
     if (current === undefined) return undefined;
@@ -88,6 +95,16 @@ export class UiDataModelStore {
   get(surfaceId: string): UiDataModelSnapshot | null {
     const current = this.models.get(surfaceId);
     return current === undefined ? null : cloneSnapshot(current);
+  }
+
+  restore(snapshot: UiDataModelSnapshot): boolean {
+    if (snapshot.surfaceId.length === 0 || snapshot.revision < 0 || snapshot.schemaVersion < 0) return false;
+    try {
+      this.models.set(snapshot.surfaceId, cloneSnapshot(snapshot));
+      return true;
+    } catch (_error) {
+      return false;
+    }
   }
 
   remove(surfaceId: string): boolean {

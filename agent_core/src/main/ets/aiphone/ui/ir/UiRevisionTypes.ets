@@ -36,3 +36,22 @@ export interface UiMutationMeta {
   baseRevision: UiRevisionVector;
   nextRevision: UiRevisionVector;
 }
+
+export type UiRevisionDomain = 'layout' | 'data' | 'runtime' | 'user';
+
+export type UiRevisionRejectReason =
+  'accepted' |
+  'INVALID_MUTATION' |
+  'SURFACE_MISMATCH' |
+  'STALE_EPOCH' |
+  'DUPLICATE_MUTATION' |
+  'BASE_REVISION_MISMATCH' |
+  'REVISION_REGRESSION' |
+  'REVISION_GAP' |
+  'INVALID_SNAPSHOT';
+
+export interface UiRevisionGateResult {
+  accepted: boolean;
+  reason: UiRevisionRejectReason;
+  revision: UiRevisionVector;
+}

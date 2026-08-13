@@ -62,6 +62,13 @@ export class UiRuntimeOverlayStore {
     return current === undefined ? null : this.snapshotValue(current);
   }
 
+  restore(snapshot: UiRuntimeOverlaySnapshot): boolean {
+    if (snapshot.surfaceId.length === 0 || snapshot.revision < 0) return false;
+    const restored = this.snapshotValue(snapshot);
+    this.overlays.set(snapshot.surfaceId, restored);
+    return true;
+  }
+
   clearNode(surfaceId: string, nodeKey: string, revision: number): void {
     const current = this.ensure(surfaceId);
     delete current.nodePhases[nodeKey];

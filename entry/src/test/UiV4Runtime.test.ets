@@ -2,7 +2,10 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   UiCanonicalNode,
   UiCanonicalSurface,
+  UiMutation,
   UiReconciler,
+  UiRevisionGate,
+  UiRevisionVector,
   UiSurfaceController,
   UiUserMutationPayload,
   UiLayoutStore,
@@ -48,6 +51,10 @@ function node(nodeKey: string, text: string): UiCanonicalNode {
     actionRefs: [],
     children: []
   };
+}
+
+function revision(epoch: number, layout: number, data: number, runtime: number, user: number): UiRevisionVector {
+  return { epoch, layout, data, runtime, user };
 }
 
 export default function uiV4RuntimeTest(): void {
@@ -138,6 +145,85 @@ export default function uiV4RuntimeTest(): void {
       expect(revision.data).assertEqual(0);
       expect(revision.runtime).assertEqual(0);
       expect(revision.user).assertEqual(0);
+    });
+
+    it('gates epoch, base revision, ordering and duplicate mutation ids', 0, (): void => {
+      const gate = new UiRevisionGate(4);
+      gate.openSurface('s-6', 'run-s-6', 1);
+      const first: UiMutation = {
+        kind: 'data',
+        meta: {
+          mutationId: 'm-1', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
+          baseRevision: revision(1, 0, 0, 0, 0),
+          nextRevision: revision(1, 0, 1, 0, 0)
+        },
+        payload: { path: '/items', value: [] }
+      };
+      expect(gate.evaluate(first.meta, first.kind).accepted).assertTrue();
+      expect(gate.evaluate(first.meta, first.kind).reason).assertEqual('DUPLICATE_MUTATION');
+      expect(gate.evaluate({
+        mutationId: 'm-gap', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
+        baseRevision: revision(1, 0, 1, 0, 0),
+        nextRevision: revision(1, 0, 3, 0, 0)
+      }, 'data').reason).assertEqual('REVISION_GAP');
+      expect(gate.evaluate({
+        mutationId: 'm-2', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
+        baseRevision: revision(1, 0, 1, 0, 0),
+        nextRevision: revision(1, 0, 2, 0, 0)
+      }, 'data').accepted).assertTrue();
+      expect(gate.evaluate({
+        mutationId: 'm-old', runId: 'run-s-6', surfaceId: 's-6', epoch: 0,
+        baseRevision: revision(0, 0, 2, 0, 0),
+        nextRevision: revision(0, 0, 3, 0, 0)
+      }, 'data').reason).assertEqual('STALE_EPOCH');
+    });
+
+    it('round-trips a surface snapshot and rejects replay after restore', 0, (): void => {
+      const original = new UiSurfaceController();
+      original.commitLayout(surface('s-7', [node('root', 'snapshot')], 1));
+      original.setDataModel('s-7', { items: [] }, 1, 'ui.option-collection', 1);
+      original.setRuntimePhase('s-7', 'root', 'confirmed', 1);
+      const mutation: UiMutation = {
+        kind: 'user',
+        meta: {
+          mutationId: 'snapshot-user-1', runId: 'run-s-7', surfaceId: 's-7', epoch: 1,
+          baseRevision: revision(1, 1, 0, 0, 0),
+          nextRevision: revision(1, 1, 0, 0, 1)
+        },
+        payload: { nodeKey: 'root', operation: 'pin' }
+      };
+      expect(original.applyMutation(mutation).accepted).assertTrue();
+      const json = original.exportSnapshotJson('s-7');
+      expect(json.length > 0).assertTrue();
+
+      const restored = new UiSurfaceController();
+      expect(restored.restoreSnapshotJson(json)).assertTrue();
+      expect(restored.layoutStore.fingerprint('s-7'))
+        .assertEqual(original.layoutStore.fingerprint('s-7'));
+      expect(restored.snapshot('s-7').data?.viewModelType).assertEqual('ui.option-collection');
+      expect(restored.snapshot('s-7').runtime?.nodePhases['root']).assertEqual('confirmed');
+      expect(restored.snapshot('s-7').user?.pinnedNodeKeys).assertContain('root');
+      expect(restored.applyMutation(mutation).reason).assertEqual('DUPLICATE_MUTATION');
+    });
+
+    it('rejects an old epoch after a newer surface generation opens', 0, (): void => {
+      const controller = new UiSurfaceController();
+      controller.commitLayout(surface('s-8', [node('root', 'old')], 1));
+      const newer = surface('s-8', [node('root', 'new')], 1);
+      newer.epoch = 2;
+      newer.revision.epoch = 2;
+      controller.commitLayout(newer);
+      const result = controller.applyMutation({
+        kind: 'runtime',
+        meta: {
+          mutationId: 'old-epoch', runId: 'run-s-8', surfaceId: 's-8', epoch: 1,
+          baseRevision: revision(1, 1, 0, 0, 0),
+          nextRevision: revision(1, 1, 0, 1, 0)
+        },
+        payload: { nodeKey: 'root', phase: 'confirmed' }
+      });
+      expect(result.accepted).assertFalse();
+      expect(result.reason).assertEqual('STALE_EPOCH');
     });
   });
 }

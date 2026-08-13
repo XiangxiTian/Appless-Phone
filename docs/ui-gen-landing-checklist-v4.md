@@ -4,7 +4,7 @@
 方案文档：`docs/ui-gen-refactor-plan-v4.md`
 当前实施记录：`docs/ui-gen-landing-checklist.md`
 
-本轮执行状态：PR-V4-0 Node 验收通过；PR-V4-1/1A/1B 已建立首批宿主无关契约代码，主 UI 未接入。Hypium、真机和完整 ArkTS 构建待设备/IDE 环境执行。
+本轮执行状态：PR-V4-0 Node 验收通过；PR-V4-1/1A/1B 已建立首批宿主无关契约代码；PR-V4-2 的四 Store、SurfaceController、Reconciler 和 UI Lab shadow 数据接线已提交。主 UI 未接入。Hypium、真机和完整 ArkTS 构建待设备/IDE 环境执行。
 
 ### 本轮已完成记录
 
@@ -14,6 +14,7 @@
 | PR-V4-1 | Canonical IR、Binding、Mutation、Revision 基础类型 | `ad5ea84` | Legacy Surface 兼容转换尚未实现 |
 | PR-V4-1A | 三层 Catalog 首版、Catalog Prompt、Option Presentation Adapter（Food/Hotel/Product） | `ad5ea84` | 其余 View Model、Compiler 和完整 Adapter 覆盖尚未完成 |
 | PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab host/factory/projection bridge/feature flags | `e083e52` | 目前是接入骨架，尚未接入现有 MultiAgent Runtime 的真实事件流 |
+| PR-V4-2 | 四 Store、SurfaceController、首版 Reconciler；Tool Result → Presentation Adapter → DataModelStore shadow 链路 | `b1aadb2`, `a74d196` | 尚未从 legacy `A2uiSurfaceStore.apply()` 自动 double-write，也未完成 snapshot compare/设备验收 |
 
 上述“已完成”表示代码已提交并通过静态/结构检查；不代表已经通过设备验收，也不代表已经切换任何可见生产路径。
 
@@ -403,19 +404,21 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 新增
 
-- [ ] `UiLayoutStore.ets`。
-- [ ] `UiDataModelStore.ets`。
-- [ ] `UiRuntimeOverlayStore.ets`。
-- [ ] `UiUserOverlayStore.ets`。
-- [ ] `UiSurfaceController.ets`。
+- [x] `UiLayoutStore.ets`。
+- [x] `UiDataModelStore.ets`。
+- [x] `UiRuntimeOverlayStore.ets`。
+- [x] `UiUserOverlayStore.ets`。
+- [x] `UiSurfaceController.ets`。
+- [x] `UiReconciler.ets` 首版：按稳定 `nodeKey` 分类 confirm/replace/insert/remove，并以 authoritative layout 作为下一版 canonical layout。
 
 ### 接线
 
-- [ ] UI Lab legacy `A2uiSurfaceStore.apply()` 成功后，通过 Host Adapter shadow 写入新 SurfaceController。
+- [ ] UI Lab legacy `A2uiSurfaceStore.apply()` 成功后，通过 Host Adapter shadow 写入新 SurfaceController（真实 legacy double-write 待下一步）。
 - [ ] 新 Controller materialize legacy view，与当前 UI Lab Surface 做 snapshot compare。
 - [ ] mismatch 仅记录，不影响用户界面。
 - [ ] 对 mismatch 分类：canonical、data、phase、user overlay、revision。
-- [ ] 不修改主 UI `A2uiSurfaceStore.apply()` 调用点。
+- [x] 不修改主 UI `A2uiSurfaceStore.apply()` 调用点。
+- [x] UI Lab v4 runtime 的 Tool Result 已经过 Presentation Adapter 写入 DataModelStore；原始 Tool payload 不保存在 v4 Surface 状态中。
 
 ### 迁移规则
 
@@ -423,17 +426,23 @@ entry/src/test/UiLabV4Integration.test.ets
 - [ ] `pinned/hidden/orderHint` → User Overlay。
 - [ ] `dataModelJson` 中供 UI 绑定的数据 → 经验证的 Presentation View Model → DataModel Store。
 - [ ] Tool/Provider 原始结果继续留在 Tool/Agent 域，不作为 Semantic Component 的直接 binding schema。
-- [ ] DataModel Store 记录 `viewModelType/schemaVersion/provenance`，支持按标准类型校验 path。
+- [x] DataModel Store 记录 `viewModelType/schemaVersion/provenance`；标准类型的完整 path schema 校验待 Compiler 阶段补齐。
 - [ ] `components/rootId/title/intent` → Layout Store；title/intent 是否属于 layout 必须以 ADR 固定。
 - [ ] 兼容 view 在 Renderer 迁移前继续填回旧字段。
 
 ### 测试
 
-- [ ] shimmer → confirmed → hydrated 独立改变 runtime revision。
-- [ ] Data path 更新不改变 layout revision。
-- [ ] pin/hide/order 不改变 canonical fingerprint。
-- [ ] authoritative replace 后兼容用户编辑保留。
-- [ ] 被删除节点的 user overlay 进入 orphan retention。
+- [x] Store 专项测试覆盖 predicted/hydrated phase 独立更新 runtime overlay revision。
+- [x] Store 专项测试覆盖 Data path 更新不改变 layout fingerprint。
+- [x] Store 专项测试覆盖 pin/hide/order 不改变 canonical fingerprint。
+- [x] Store/Reconciler 专项测试覆盖 authoritative replace 后保留兼容用户编辑。
+- [x] Store 专项测试覆盖被删除节点的 user overlay orphan retention。
+
+### 当前验收状态
+
+- [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
+- [x] `git diff --check` 通过，v4 core 未出现 `entry/`、ArkUI、WebView 或 `MultiAgentCanaryRuntime` 反向依赖。
+- [ ] 专项 Hypium 测试已建立但尚未在设备/IDE 环境执行。
 
 ### 退出门槛
 

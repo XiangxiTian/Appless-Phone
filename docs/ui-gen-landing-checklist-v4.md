@@ -12,7 +12,7 @@
 | --- | --- | --- | --- |
 | PR-V4-0 | 四组 Node 回归测试通过 | 基线验收 | 真机/Hypium/完整 ArkTS 构建待执行 |
 | PR-V4-1 | Canonical IR、Binding、Mutation、Revision 基础类型 | `ad5ea84` | Legacy Surface 兼容转换尚未实现 |
-| PR-V4-1A | 三层 Catalog 首版、Catalog Prompt、Option Presentation Adapter（Food/Hotel/Product） | `ad5ea84` | 其余 View Model、Compiler 和完整 Adapter 覆盖尚未完成 |
+| PR-V4-1A | 三层 Catalog 骨架、Foundation/Semantic 首版组件、Catalog Prompt、Option Presentation Adapter（Food/Hotel/Product） | `ad5ea84` | PR 未整体完成：其余 View Model、完整 Adapter 覆盖、测试和迁移表尚未收口 |
 | PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab host/factory/projection bridge/feature flags | `e083e52` | 目前是接入骨架，尚未接入现有 MultiAgent Runtime 的真实事件流 |
 | PR-V4-2 | 四 Store、SurfaceController、首版 Reconciler；Tool Result → Presentation Adapter → DataModelStore shadow 链路 | `b1aadb2`, `a74d196` | 尚未从 legacy `A2uiSurfaceStore.apply()` 自动 double-write，也未完成 snapshot compare/设备验收 |
 
@@ -250,18 +250,20 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### Foundation 首版
 
-- [ ] `Surface/Stack/Row/Grid/Card`。
-- [ ] `Text/Icon/Image/Badge/Divider/Progress/Spacer`。
-- [ ] `Button/Tabs`。
+- [x] `Surface/Stack/Row/Grid/Card`。
+- [x] `Text/Icon/Image/Badge/Divider/Progress/Spacer`。
+- [x] `Button/Tabs`。
 
 ### Semantic 首版
 
-- [ ] `ResultCollection/ChoiceList/OptionCard/JourneyOptionList`。
-- [ ] `ComparisonTable/KeyValueList/MetricGrid`。
-- [ ] `Timeline/Schedule`。
-- [ ] `MessageFeed/ThreadList/DetailPanel`。
-- [ ] `Form/FormField/FilterBar/ActionBar`。
-- [ ] `ApprovalPanel/AccountStatus/StatusNotice/ActivityFeed/MediaGallery`。
+- [x] `ResultCollection/ChoiceList/OptionCard/JourneyOptionList`。
+- [x] `ComparisonTable/KeyValueList/MetricGrid`。
+- [x] `Timeline/Schedule`。
+- [x] `MessageFeed/ThreadList/DetailPanel`。
+- [x] `Form/FormField/FilterBar/ActionBar`。
+- [x] `ApprovalPanel/AccountStatus/StatusNotice/ActivityFeed/MediaGallery`。
+
+说明：这里的“完成”仅表示首版 `UiCatalogItem` 已登记并具备 schema/rendererKey/事件声明；不表示这些组件已经全部接入 Renderer、Presentation View Model 或生产路径。
 
 ### Presentation View Model
 

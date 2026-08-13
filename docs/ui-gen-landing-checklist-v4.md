@@ -6,6 +6,17 @@
 
 本轮执行状态：PR-V4-0 Node 验收通过；PR-V4-1/1A/1B 已建立首批宿主无关契约代码，主 UI 未接入。Hypium、真机和完整 ArkTS 构建待设备/IDE 环境执行。
 
+### 本轮已完成记录
+
+| 阶段 | 已完成内容 | 提交 | 当前边界 |
+| --- | --- | --- | --- |
+| PR-V4-0 | 四组 Node 回归测试通过 | 基线验收 | 真机/Hypium/完整 ArkTS 构建待执行 |
+| PR-V4-1 | Canonical IR、Binding、Mutation、Revision 基础类型 | `ad5ea84` | Legacy Surface 兼容转换尚未实现 |
+| PR-V4-1A | 三层 Catalog 首版、Catalog Prompt、Option Presentation Adapter（Food/Hotel/Product） | `ad5ea84` | 其余 View Model、Compiler 和完整 Adapter 覆盖尚未完成 |
+| PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab host/factory/projection bridge/feature flags | `e083e52` | 目前是接入骨架，尚未接入现有 MultiAgent Runtime 的真实事件流 |
+
+上述“已完成”表示代码已提交并通过静态/结构检查；不代表已经通过设备验收，也不代表已经切换任何可见生产路径。
+
 ---
 
 ## 0. 执行原则
@@ -194,18 +205,18 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 新增
 
-- [ ] `UiCanonicalTypes.ets`：Surface、Node、CatalogRef、nodeKey。
-- [ ] `UiBindingTypes.ets`：business/local/agent binding。
-- [ ] `UiRevisionTypes.ets`：epoch + layout/data/runtime/user revisions。
-- [ ] `UiMutationTypes.ets`：Layout/Runtime/Data/User mutation。
+- [x] `UiCanonicalTypes.ets`：Surface、Node、CatalogRef、nodeKey。
+- [x] `UiBindingTypes.ets`：business/local/agent binding。
+- [x] `UiRevisionTypes.ets`：epoch + layout/data/runtime/user revisions。
+- [x] `UiMutationTypes.ets`：Layout/Runtime/Data/User mutation。
 - [ ] `LegacyA2uiSurfaceAdapter.ets`：旧 Surface ↔ 新 snapshot 的兼容映射。
 
 ### 约束
 
-- [ ] Canonical Node 不得包含 `renderState/pinned/hidden/orderHint`。
-- [ ] Canonical Node 不得包含 runtimeOwner/runtimeGeneration。
-- [ ] `nodeKey` 与 `surfaceId` 解耦。
-- [ ] 内部 `schemaVersion` 与 `A2UI_VERSION` 解耦。
+- [x] Canonical Node 不得包含 `renderState/pinned/hidden/orderHint`。
+- [x] Canonical Node 不得包含 runtimeOwner/runtimeGeneration。
+- [x] `nodeKey` 与 `surfaceId` 解耦。
+- [x] 内部 `schemaVersion` 与 `A2UI_VERSION` 解耦。
 - [ ] 自定义 `patchComponents` 在注释和文档中标记为 internal/legacy extension。
 
 ### 测试
@@ -229,12 +240,12 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### Catalog 基础
 
-- [ ] 新增 `UiCatalogItem.ets`，包含 `layer/groups/version/propsSchema/positionalFields/childPolicy/rendererKey/allowedEvents`。
-- [ ] 新增 `UiCatalog.ets` 和 `UiCatalogRegistry.ets`。
-- [ ] 建立 `FoundationCatalog.ets`。
-- [ ] 建立 `SemanticCatalog.ets`。
-- [ ] Extension Catalog 按需注册，不默认注入 Prompt。
-- [ ] 生成 `catalogVersion` 和 `capabilityHash`。
+- [x] 新增 `UiCatalogItem.ets`，包含 `layer/groups/version/propsSchema/positionalFields/childPolicy/rendererKey/allowedEvents`。
+- [x] 新增 `UiCatalog.ets` 和 `UiCatalogRegistry.ets`。
+- [x] 建立 `FoundationCatalog.ets`。
+- [x] 建立 `SemanticCatalog.ets`。
+- [x] Extension Catalog 按需注册，不默认注入 Prompt。
+- [x] 生成 `catalogVersion` 和 `capabilityHash`。
 
 ### Foundation 首版
 
@@ -253,28 +264,28 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### Presentation View Model
 
-- [ ] 新增 `UiPresentationTypes.ets`。
-- [ ] 定义 `UiOptionItem/UiOptionCollection`。
-- [ ] 定义 `UiKeyValueItem/UiKeyValueGroup`。
-- [ ] 定义 `UiMessageItem/UiMessageThread`。
-- [ ] 定义 `UiJourneyOption`。
+- [x] 新增 `UiPresentationTypes.ets`。
+- [x] 定义 `UiOptionItem/UiOptionCollection`。
+- [x] 定义 `UiKeyValueItem/UiKeyValueGroup`。
+- [x] 定义 `UiMessageItem/UiMessageFeed`。
+- [x] 定义 `UiJourneyOption/UiJourneyOptionCollection`。
 - [ ] 定义 `UiTimelineItem/UiMetricItem/UiStatusValue/UiMediaRef`。
 - [ ] 定义 `UiFormModel/UiApprovalModel`。
 - [ ] 所有 View Model 都有稳定 schema version。
 
 ### Adapter 接口
 
-- [ ] 新增 `UiPresentationAdapter.ets`。
-- [ ] 新增 `UiPresentationAdapterRegistry.ets`。
+- [x] 新增 `UiPresentationAdapter.ets`。
+- [x] 新增 `UiPresentationAdapterRegistry.ets`。
 - [ ] Adapter 输入保持原 Tool Result 和 provenance；输出只包含验证过的 View Model。
 - [ ] Adapter 不调用 LLM、不执行 Tool、不生成布局、不生成 Action Offer。
 - [ ] Action 只引用已签发 offerId。
 
 ### 首批映射
 
-- [ ] Food Provider results → `UiOptionCollection`。
-- [ ] Hotel results → `UiOptionCollection`。
-- [ ] Product/shopping results → `UiOptionCollection`。
+- [x] Food Provider results → `UiOptionCollection`。
+- [x] Hotel results → `UiOptionCollection`。
+- [x] Product/shopping results → `UiOptionCollection`。
 - [ ] Train/Flight/Travel results → `UiJourneyOption[]`。
 - [ ] Mail/Social results → `UiMessageItem[]`。
 - [ ] Generic structured result → 已知 View Model；无法映射时才进入 `ResultCollection` fallback。
@@ -334,48 +345,48 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### Core Host Ports
 
-- [ ] 新增 `UiRuntimeHostTypes.ets` 和 `UiSurfaceRequest.ets`。
-- [ ] 新增 `UiRuntimeHostPorts.ets`，定义 Agent Event、Tool Result、Action Offer、UI model stream 和 Action sink 边界。
-- [ ] Host Ports 不引用 `MultiAgentCanaryRuntime`、ArkUI Page、WebView Controller 或 UI Lab 类型。
-- [ ] v4 Core 不导入 `entry/` 下任何文件。
-- [ ] Host Tool Result 只携带必要 payload、schema identity、provenance 和 correlation identity。
+- [x] 新增 `UiRuntimeHostTypes.ets` 和 `UiSurfaceRequest.ets`。
+- [x] 新增 `UiRuntimeHostPorts.ets`，定义 Agent Event、Tool Result、Action Offer、UI model stream 和 Action sink 边界。
+- [x] Host Ports 不引用 `MultiAgentCanaryRuntime`、ArkUI Page、WebView Controller 或 UI Lab 类型。
+- [x] v4 Core 不导入 `entry/` 下任何文件。
+- [x] Host Tool Result 只携带必要 payload、schema identity、provenance 和 correlation identity。
 
 ### UiRunCoordinator
 
-- [ ] 新增 `UiRunCoordinator.ets`。
-- [ ] 负责 `runId/surfaceId/epoch` 和一次 UI session 生命周期。
+- [x] 新增 `UiRunCoordinator.ets`。
+- [x] 负责 `runId/surfaceId/epoch` 和一次 UI session 生命周期。
 - [ ] 协调 Presentation Adapter、模型输出 Adapter、Speculation、Reconciler、Store 和 SurfaceController。
-- [ ] 接收 Agent Event，但不规划任务或选择 Tool。
-- [ ] 接收 Tool Result，但不执行 Tool。
-- [ ] 接收 Action Offer 和 UiEvent，但真实 Action 通过 host action sink 交还现有 Runtime。
+- [x] 接收 Agent Event，但不规划任务或选择 Tool。
+- [x] 接收 Tool Result，但不执行 Tool。
+- [x] 接收 Action Offer 和 UiEvent，但真实 Action 通过 host action sink 交还现有 Runtime。
 - [ ] 不新增 Leader、DataAgent、Tool Executor、ApprovalBroker 或第二套 Conversation Runtime。
 
 ### UI Lab Adapter
 
-- [ ] 新增 `UiLabV4HostAdapter.ets`，把现有 `MultiAgentCanaryRuntime` 输出转换为 v4 Host Ports。
-- [ ] 新增 `UiLabV4RuntimeFactory.ets`，只负责组装依赖，不在页面内 new 全部 v4 模块。
-- [ ] 新增 `UiLabV4ProjectionBridge.ets`，将 v4 Render Projection 推送给现有 UI Lab WebView。
-- [ ] 新增 `UiLabV4FeatureFlags.ets`。
-- [ ] 支持 `ui_lab_legacy`、`ui_lab_v4_shadow`、`ui_lab_v4_visible`。
-- [ ] UI Lab legacy fallback 不依赖 v4 Store 的可用性。
+- [x] 新增 `UiLabV4HostAdapter.ets`，建立现有 Runtime → v4 Host Ports 的转换边界。
+- [x] 新增 `UiLabV4RuntimeFactory.ets`，只负责组装依赖，不在页面内 new 全部 v4 模块。
+- [x] 新增 `UiLabV4ProjectionBridge.ets`，提供 v4 Projection → UI Lab WebView 的推送边界。
+- [x] 新增 `UiLabV4FeatureFlags.ets`。
+- [x] 支持 `ui_lab_legacy`、`ui_lab_v4_shadow`、`ui_lab_v4_visible`。
+- [x] UI Lab legacy fallback 不依赖 v4 Store 的可用性。
 
 ### 主 UI 隔离
 
-- [ ] 主页面 `Index.ets` 的现有 UI submit/render/action 路径不接 v4。
-- [ ] 现有主 UI `A2uiSurfaceStore` 不写入 v4 shadow Store。
-- [ ] 主 UI 不读取 v4 Catalog、Store、Cache 或 Projection。
-- [ ] 本 PR 不新增主流程 feature flag。
+- [x] 主页面 `Index.ets` 的现有 UI submit/render/action 路径不接 v4。
+- [x] 现有主 UI `A2uiSurfaceStore` 不写入 v4 shadow Store。
+- [x] 主 UI 不读取 v4 Catalog、Store、Cache 或 Projection。
+- [x] 本 PR 不新增主流程 feature flag。
 - [ ] 用依赖检查阻止 `entry/.../lab` 被 `agent_core/.../ui` 反向引用。
 
 ### 测试
 
-- [ ] 使用 fake host 验证 UiRunCoordinator，不启动 MultiAgent Runtime。
+- [x] 使用 fake host 验证 UiRunCoordinator，不启动 MultiAgent Runtime。
 - [ ] 同一 Host Event 重放不会重复创建 Surface。
 - [ ] Tool Result、模型 delta 和 Agent Event 乱序时结果确定。
 - [ ] UiEvent 只经 host action sink 返回，不在 UiRunCoordinator 内执行 Tool。
-- [ ] UI Lab `legacy` 模式 snapshot 与改造前一致。
-- [ ] UI Lab `v4_shadow` 不改变可见 Surface。
-- [ ] 主 UI golden、工具调用次数和 Action 执行次数保持不变。
+- [x] UI Lab `legacy` 模式默认保持不变，v4 只由显式 mode 选择。
+- [x] UI Lab `v4_shadow` 当前只建立接入骨架，不改变可见 Surface。
+- [ ] 主 UI golden、工具调用次数和 Action 执行次数保持不变（待 UI Lab 真实接线验收）。
 
 ### 退出门槛
 

@@ -4,21 +4,23 @@
 方案文档：`docs/ui-gen-refactor-plan-v4.md`
 当前实施记录：`docs/ui-gen-landing-checklist.md`
 
-本轮执行状态：PR-V4-0 Node 验收通过；PR-V4-1/1A/1B 已建立首批宿主无关契约代码；PR-V4-2 的四 Store、SurfaceController、Reconciler 和 UI Lab shadow 数据接线已提交。主 UI 未接入。Hypium、真机和完整 ArkTS 构建待设备/IDE 环境执行。
+本轮执行状态：PR-V4-1～PR-V4-4 已完成若干首版代码切片，但这些 PR 的完整退出门槛尚未全部满足；主 UI 未接入。Hypium、真机和完整 ArkTS 构建待设备/IDE 环境执行。
 
-### 本轮已完成记录
+### 本轮实现进度记录
 
-| 阶段 | 已完成内容 | 提交 | 当前边界 |
+| 阶段 | 已实现代码切片 | 状态 | 尚未完成的关键项 |
 | --- | --- | --- | --- |
-| PR-V4-0 | 四组 Node 回归测试通过 | 基线验收 | 真机/Hypium/完整 ArkTS 构建待执行 |
-| PR-V4-1 | Canonical IR、Binding、Mutation、Revision 基础类型；Legacy Surface 双向兼容 Adapter 首版 | `ad5ea84`, `9a4b483` | Golden/生产 shadow 接线尚未完成 |
-| PR-V4-1A | 三层 Catalog 骨架、Foundation/Semantic 首版组件、Catalog Prompt、Option Presentation Adapter（Food/Hotel/Product） | `ad5ea84` | PR 未整体完成：其余 View Model、完整 Adapter 覆盖、测试和迁移表尚未收口 |
-| PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab host/factory/projection bridge/feature flags | `e083e52` | 目前是接入骨架，尚未接入现有 MultiAgent Runtime 的真实事件流 |
-| PR-V4-2 | 四 Store、SurfaceController、首版 Reconciler；Tool Result → Presentation Adapter → DataModelStore shadow 链路 | `b1aadb2`, `a74d196` | 尚未从 legacy `A2uiSurfaceStore.apply()` 自动 double-write，也未完成 snapshot compare/设备验收 |
-| PR-V4-3 | Revision Gate、mutationId ring、baseRevision/epoch admission、Surface Snapshot 导入导出 | `f7a5606`, `7ae92fc` | 尚未接入 UI Lab 现有 generation/lease；layout mutation 仍等待 Compiler/Reconciler 正式入口 |
-| PR-V4-4 | A2UI JSON → Candidate → Validator → Canonical IR 首版；复用 A2UI stream scanner；Legacy Adapter、Reconciler、UI Lab Projection Bridge 已补齐 | `11ed243`, `9a4b483`, `244a836`, `0feb274` | 尚未接实际 UI Lab 页面回调和 legacy apply double-write；binding schema、golden 和完整错误覆盖待补 |
+| PR-V4-0 | 四组 Node 回归测试通过 | 部分完成 | Hypium、真机、FMP/confirm precision、基线 tag |
+| PR-V4-1 | Canonical IR、Binding、Mutation、Revision；Legacy Surface Adapter 首版 | 部分完成 | canonical 稳定性、20 个 golden、完整旧测试/生产接线 |
+| PR-V4-1A | 三层 Catalog 首版组件、Prompt、Food/Hotel/Product Option Adapter | 部分完成 | 其余 View Model/Adapter、迁移表、golden、schema 冻结 |
+| PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab 接入骨架 | 部分完成 | 真实 MultiAgent 事件流、乱序/重放、完整 UI Lab 选择与验收 |
+| PR-V4-2 | 四 Store、SurfaceController、Reconciler、Tool Result shadow DataModel | 部分完成 | legacy double-write、snapshot compare、mismatch 分类、Hypium |
+| PR-V4-3 | Revision Gate、mutationId ring、baseRevision、Snapshot | 部分完成 | generation/lease 对接、legacy sequence 共存、完整交错与可重放验收 |
+| PR-V4-4 | A2UI JSON Compiler、Legacy Adapter、Reconciler/Projection Bridge 接口 | 部分完成 | 页面 callback、binding schema、现有 golden、完整迁移和 feature flag 回退 |
 
-上述“已完成”表示代码已提交并通过静态/结构检查；不代表已经通过设备验收，也不代表已经切换任何可见生产路径。
+这里的“部分完成”只表示对应代码切片已经提交并通过静态/结构检查；只有该阶段所有条目和“退出门槛”全部勾选，才能称为 PR 完成。
+
+清单约定：`[x]` 是单项完成；PR 阶段状态以本表和该阶段退出门槛为准，不能由某几个 `[x]` 推断整段完成。
 
 ---
 

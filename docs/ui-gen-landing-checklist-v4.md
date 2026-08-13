@@ -16,6 +16,7 @@
 | PR-V4-1B | Host Ports、UiRunCoordinator、UI Lab host/factory/projection bridge/feature flags | `e083e52` | 目前是接入骨架，尚未接入现有 MultiAgent Runtime 的真实事件流 |
 | PR-V4-2 | 四 Store、SurfaceController、首版 Reconciler；Tool Result → Presentation Adapter → DataModelStore shadow 链路 | `b1aadb2`, `a74d196` | 尚未从 legacy `A2uiSurfaceStore.apply()` 自动 double-write，也未完成 snapshot compare/设备验收 |
 | PR-V4-3 | Revision Gate、mutationId ring、baseRevision/epoch admission、Surface Snapshot 导入导出 | `f7a5606`, `7ae92fc` | 尚未接入 UI Lab 现有 generation/lease；layout mutation 仍等待 Compiler/Reconciler 正式入口 |
+| PR-V4-4 | A2UI JSON → Candidate → Validator → Canonical IR 首版；复用 A2UI stream scanner | `11ed243` | 尚未接 UI Lab v4 Reconciler/Legacy Adapter；binding schema、golden 和完整错误覆盖待补 |
 
 上述“已完成”表示代码已提交并通过静态/结构检查；不代表已经通过设备验收，也不代表已经切换任何可见生产路径。
 
@@ -504,15 +505,15 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 新增
 
-- [ ] `UiModelOutputAdapter.ets`。
-- [ ] `A2uiJsonOutputAdapter.ets`，复用现有 scanner。
-- [ ] `UiCandidateValidator.ets`。
-- [ ] `UiCanonicalizer.ets`。
-- [ ] `UiCompileError` 与 source span/reason code。
+- [x] `UiModelOutputAdapter.ets`。
+- [x] `A2uiJsonOutputAdapter.ets`，复用现有 `A2uiUpdateComponentsStreamScanner`。
+- [x] `UiCandidateValidator.ets`。
+- [x] `UiCanonicalizer.ets`。
+- [x] `UiCompileError` 与 source/reason code 首版。
 
 ### Catalog 与数据契约
 
-- [ ] Validator 只接受当前请求选中的 Foundation/Semantic/Extension Catalog groups。
+- [x] Validator 只接受当前请求选中的 Foundation/Semantic/Extension Catalog groups。
 - [ ] Canonical binding 的目标 path 必须属于已注册的 Presentation View Model schema。
 - [ ] Candidate 不得引用 Tool/Provider 原始字段路径。
 - [ ] legacy 场景组件只允许通过兼容 Adapter 进入，不接受新模型输出。
@@ -540,13 +541,19 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 测试
 
-- [ ] SSE 每种 chunk boundary。
-- [ ] UTF-8 中文跨 chunk。
+- [x] A2UI scanner 分块边界首版。
+- [x] UTF-8 中文跨 chunk。
 - [ ] 重复 id、环、孤儿节点、未知 root。
-- [ ] 未知组件/字段、非法 binding/action。
-- [ ] 部分合法、尾部断流。
+- [x] 未知组件、重复 id、非法 binding 首版。
+- [x] 部分输入和尾部断流返回 compile error，不产生 surface。
 - [ ] 当前 UI Lab JSON golden cases canonical fingerprint 不变。
-- [ ] 主 UI 生产 JSON 不进入 v4 Compiler。
+- [x] 主 UI 生产 JSON 不进入 v4 Compiler。
+
+### 当前验收状态
+
+- [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
+- [x] `git diff --check` 通过，Compiler 仅位于 `agent_core`。
+- [ ] 专项 Hypium 测试已建立但尚未在设备/IDE 环境执行。
 
 ### 退出门槛
 

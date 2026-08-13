@@ -2,6 +2,8 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   A2uiJsonOutputAdapter,
   createDefaultUiCatalogRegistry,
+  emptyA2uiSurface,
+  LegacyA2uiSurfaceAdapter,
   UiCompileContext,
   canonicalSurfaceFingerprint
 } from '@loop/agent-core';
@@ -99,6 +101,28 @@ export default function uiV4CompilerTest(): void {
       const completed = adapter.finalize(context());
       expect(completed.ok).assertFalse();
       expect(completed.surface === null).assertTrue();
+    });
+
+    it('round-trips a legacy A2UI surface through canonical IR', 0, (): void => {
+      const legacy = emptyA2uiSurface('legacy-surface');
+      legacy.rootId = 'root';
+      legacy.title = 'Legacy';
+      legacy.intent = 'status';
+      legacy.sequence = 4;
+      legacy.components = [
+        { id: 'root', component: 'SurfaceRoot', children: ['text'] },
+        { id: 'text', component: 'Text', text: 'hello', dataPath: '/message' }
+      ];
+      const adapter = new LegacyA2uiSurfaceAdapter();
+      const canonical = adapter.toCanonical(legacy, 'legacy-run', 2);
+      expect(canonical.rootNodeKey).assertEqual('root');
+      expect(canonical.revision.layout).assertEqual(4);
+      expect(canonical.nodes[1].bindings['data'].path).assertEqual('/message');
+      const materialized = adapter.toLegacy(canonical, legacy);
+      expect(materialized.components.length).assertEqual(2);
+      expect(materialized.components[0].id).assertEqual('root');
+      expect(materialized.components[1].dataPath).assertEqual('/message');
+      expect(materialized.sequence).assertEqual(4);
     });
   });
 }

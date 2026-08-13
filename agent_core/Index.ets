@@ -30,6 +30,7 @@ export * from './src/main/ets/aiphone/ui/runtime/UiUserOverlayStore';
 export * from './src/main/ets/aiphone/ui/runtime/UiSurfaceController';
 export * from './src/main/ets/aiphone/ui/runtime/UiReconciler';
 export * from './src/main/ets/aiphone/ui/runtime/UiRevisionGate';
+export * from './src/main/ets/aiphone/ui/runtime/LegacyA2uiSurfaceAdapter';
 export * from './src/main/ets/aiphone/ui/compiler/UiModelOutputAdapter';
 export * from './src/main/ets/aiphone/ui/compiler/UiCandidateValidator';
 export * from './src/main/ets/aiphone/ui/compiler/UiCanonicalizer';

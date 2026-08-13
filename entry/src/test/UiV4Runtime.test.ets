@@ -97,15 +97,19 @@ export default function uiV4RuntimeTest(): void {
       controller.commitLayout(candidate);
       const fingerprint = controller.layoutStore.fingerprint('s-4');
       controller.setDataModel('s-4', { items: [] }, 1, 'ui.option-collection', 1);
+      expect(controller.setDataPath('s-4', '/items', [{ id: 'x' }], 2)).assertTrue();
       controller.setRuntimePhase('s-4', 'card-1', 'confirmed', 1);
       const mutation: UiUserMutationPayload = { nodeKey: 'card-1', operation: 'pin' };
       controller.applyUserMutation('s-4', mutation, 1);
+      controller.applyUserMutation('s-4', { nodeKey: 'card-1', operation: 'move' }, 2);
+      controller.applyUserMutation('s-4', { nodeKey: 'root', operation: 'hide' }, 3);
       const snapshot = controller.snapshot('s-4');
       expect(snapshot.layout !== null).assertTrue();
       expect(snapshot.runtime?.nodePhases['card-1']).assertEqual('confirmed');
       expect(snapshot.user?.pinnedNodeKeys).assertContain('card-1');
+      expect(snapshot.user?.hiddenNodeKeys).assertContain('root');
       expect(controller.layoutStore.fingerprint('s-4')).assertEqual(fingerprint);
-      expect(snapshot.data?.revision).assertEqual(1);
+      expect(snapshot.data?.revision).assertEqual(2);
     });
 
     it('classifies speculative nodes against authoritative nodes', 0, (): void => {
@@ -119,6 +123,12 @@ export default function uiV4RuntimeTest(): void {
       expect(result.removedNodeKeys).assertContain('remove');
       expect(result.surface.nodes.length).assertEqual(3);
       expect(result.surface.revision.layout).assertEqual(2);
+
+      const controller = new UiSurfaceController();
+      controller.commitLayout(speculative);
+      controller.applyUserMutation('s-5', { nodeKey: 'replace', operation: 'pin' }, 1);
+      controller.commitLayout(result.surface);
+      expect(controller.snapshot('s-5').user?.pinnedNodeKeys).assertContain('replace');
     });
 
     it('initializes a stable revision vector for future gates', 0, (): void => {

@@ -17,7 +17,6 @@ interface UiRunState {
   modelDeltaCount: number;
   toolResultCount: number;
   lastEventId: string;
-  dataByTool: Map<string, Object>;
 }
 
 export class UiRunCoordinator {
@@ -51,8 +50,7 @@ export class UiRunCoordinator {
       session,
       modelDeltaCount: 0,
       toolResultCount: 0,
-      lastEventId: '',
-      dataByTool: new Map<string, Object>()
+      lastEventId: ''
     });
     this.host.onSessionChanged(session);
     this.host.requestLayout(request);
@@ -72,7 +70,6 @@ export class UiRunCoordinator {
     const state = this.stateFor(result.runId, result.surfaceId, result.epoch);
     if (state === null) return;
     state.toolResultCount++;
-    state.dataByTool.set(result.toolId, result.data);
     const context: UiPresentationContext = { actionRefsByItemId: new Map<string, string[]>() };
     const source: UiPresentationSource = {
       toolId: result.toolId,

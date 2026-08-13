@@ -60,12 +60,17 @@ export default function uiLabV4IntegrationTest(): void {
         provider: 'test-provider', status: 'ok',
         data: { items: [{ shop_id: 'r-1', shop_name: 'Test Kitchen' }] }
       });
+      bundle.coordinator.onModelCompleted({
+        runId: 'lab-run', surfaceId: 'lab-surface', format: 'a2ui-json', accepted: true,
+        text: '{"updateComponents":{"surfaceId":"lab-surface","components":[{"id":"root","component":"Surface"}]}}'
+      });
       expect(requests.length).assertEqual(1);
       expect(sessions.length).assertEqual(1);
       expect(actions.length).assertEqual(1);
       expect(diagnostics.length).assertEqual(0);
       expect(bundle.surfaceController.snapshot('lab-surface').data?.viewModelType)
         .assertEqual('ui.option-collection');
+      expect(bundle.surfaceController.snapshot('lab-surface').layout?.rootNodeKey).assertEqual('root');
       const directAdapter = new UiLabV4HostAdapter(callbacks);
       expect(directAdapter !== null).assertTrue();
     });

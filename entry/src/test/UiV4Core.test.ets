@@ -95,7 +95,9 @@ export default function uiV4CoreTest(): void {
       };
       coordinator.onModelDelta(delta);
       const result: UiModelResult = {
-        runId: 'run-1', surfaceId: 'surface-1', format: 'a2ui-json', text: '{}', accepted: true
+        runId: 'run-1', surfaceId: 'surface-1', format: 'a2ui-json',
+        text: '{"updateComponents":{"surfaceId":"surface-1","components":[{"id":"root","component":"Surface"}]}}',
+        accepted: true
       };
       coordinator.onModelCompleted(result);
       coordinator.onUiEvent({

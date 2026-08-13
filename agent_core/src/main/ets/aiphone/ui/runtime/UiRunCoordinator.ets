@@ -1,6 +1,10 @@
 import { UiPresentationAdapterRegistry } from '../presentation/UiPresentationAdapterRegistry';
 import { UiPresentationContext, UiPresentationSource } from '../presentation/UiPresentationTypes';
 import { UiRuntimeHostPorts } from '../host/UiRuntimeHostPorts';
+import { A2uiJsonOutputAdapter } from '../compiler/A2uiJsonOutputAdapter';
+import { UiCompileContext } from '../compiler/UiModelOutputAdapter';
+import { UiCatalogRegistry } from '../catalog/UiCatalogRegistry';
+import { createDefaultUiCatalogRegistry } from '../catalog/DefaultUiCatalog';
 import {
   AgentUiEvent,
   UiEvent,
@@ -14,25 +18,30 @@ import { UiSurfaceController } from './UiSurfaceController';
 
 interface UiRunState {
   session: UiSurfaceSession;
+  request: UiSurfaceRequest;
   modelDeltaCount: number;
   toolResultCount: number;
   lastEventId: string;
+  jsonAdapter: A2uiJsonOutputAdapter;
 }
 
 export class UiRunCoordinator {
   private readonly host: UiRuntimeHostPorts;
   private readonly presentation: UiPresentationAdapterRegistry;
+  private readonly catalogRegistry: UiCatalogRegistry;
   readonly surfaceController: UiSurfaceController;
   private readonly runs: Map<string, UiRunState> = new Map<string, UiRunState>();
 
   constructor(
     host: UiRuntimeHostPorts,
     presentation: UiPresentationAdapterRegistry,
-    surfaceController: UiSurfaceController = new UiSurfaceController()
+    surfaceController: UiSurfaceController = new UiSurfaceController(),
+    catalogRegistry: UiCatalogRegistry = createDefaultUiCatalogRegistry()
   ) {
     this.host = host;
     this.presentation = presentation;
     this.surfaceController = surfaceController;
+    this.catalogRegistry = catalogRegistry;
   }
 
   startSurface(request: UiSurfaceRequest): UiSurfaceSession {
@@ -48,9 +57,11 @@ export class UiRunCoordinator {
     };
     this.runs.set(request.runId, {
       session,
+      request,
       modelDeltaCount: 0,
       toolResultCount: 0,
-      lastEventId: ''
+      lastEventId: '',
+      jsonAdapter: new A2uiJsonOutputAdapter()
     });
     this.host.onSessionChanged(session);
     this.host.requestLayout(request);
@@ -98,6 +109,11 @@ export class UiRunCoordinator {
     const state = this.stateFor(delta.runId, delta.surfaceId, this.epochFor(delta.runId));
     if (state === null) return;
     state.modelDeltaCount++;
+    if (delta.format !== 'a2ui-json') return;
+    const compiled = state.jsonAdapter.feed(delta.text, this.compileContext(state));
+    if (compiled !== null && compiled.ok && compiled.surface !== null) {
+      this.surfaceController.commitLayout(compiled.surface);
+    }
   }
 
   onModelCompleted(result: UiModelResult): void {
@@ -105,6 +121,17 @@ export class UiRunCoordinator {
     if (state === null) return;
     if (!result.accepted) {
       this.host.onDiagnostic('MODEL_CANDIDATE_REJECTED', result.format);
+      return;
+    }
+    if (result.format === 'a2ui-json') {
+      const compiled = state.jsonAdapter.compile(result.text, this.compileContext(state));
+      if (!compiled.ok || compiled.surface === null) {
+        this.host.onDiagnostic('MODEL_CANDIDATE_REJECTED', this.compileErrorSummary(compiled.errors));
+        return;
+      }
+      this.surfaceController.commitLayout(compiled.surface);
+    } else {
+      this.host.onDiagnostic('MODEL_FORMAT_UNSUPPORTED', result.format);
       return;
     }
     this.updateStatus(state, 'completed');
@@ -140,6 +167,21 @@ export class UiRunCoordinator {
   private epochFor(runId: string): number {
     const state = this.runs.get(runId);
     return state === undefined ? -1 : state.session.epoch;
+  }
+
+  private compileContext(state: UiRunState): UiCompileContext {
+    return {
+      surfaceId: state.session.surfaceId,
+      runId: state.session.runId,
+      epoch: state.session.epoch,
+      catalogGroups: state.request.catalogGroups,
+      catalogRegistry: this.catalogRegistry
+    };
+  }
+
+  private compileErrorSummary(errors: { code: string; message: string }[]): string {
+    if (errors.length === 0) return 'unknown compiler error';
+    return errors.map((error): string => error.code + ':' + error.message).join('|');
   }
 
   private updateStatus(state: UiRunState, status: 'completed' | 'error' | 'canceled'): void {

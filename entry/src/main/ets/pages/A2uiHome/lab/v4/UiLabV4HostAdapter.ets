@@ -6,12 +6,14 @@ import {
   UiModelResult,
   UiRuntimeHostPorts,
   UiSurfaceRequest,
-  UiSurfaceSession
+  UiSurfaceSession,
+  UiCanonicalSurface
 } from '@loop/agent-core';
 
 export interface UiLabV4HostCallbacks {
   onLayoutRequest: (request: UiSurfaceRequest) => void;
   onActionEvent: (event: UiEvent) => void;
+  onCanonicalSurface: (surface: UiCanonicalSurface) => void;
   onSession: (session: UiSurfaceSession) => void;
   onDiagnostic: (code: string, detail: string) => void;
 }
@@ -29,6 +31,10 @@ export class UiLabV4HostAdapter implements UiRuntimeHostPorts {
 
   emitAction(event: UiEvent): void {
     this.callbacks.onActionEvent(event);
+  }
+
+  publishSurface(surface: UiCanonicalSurface): void {
+    this.callbacks.onCanonicalSurface(surface);
   }
 
   onSessionChanged(session: UiSurfaceSession): void {

@@ -1,3 +1,5 @@
+import { LegacyA2uiSurfaceAdapter, UiCanonicalSurface } from '@loop/agent-core';
+
 export interface UiLabV4ProjectionCallbacks {
   pushSurfaceJson: (surfaceJson: string, revision: number) => void;
   pushDiagnostic: (code: string, detail: string) => void;
@@ -19,6 +21,11 @@ export class UiLabV4ProjectionBridge {
     this.revision++;
     this.callbacks.pushSurfaceJson(surfaceJson, this.revision);
     return this.revision;
+  }
+
+  pushCanonicalSurface(surface: UiCanonicalSurface): number {
+    const legacy = new LegacyA2uiSurfaceAdapter().toLegacy(surface);
+    return this.pushSurfaceJson(JSON.stringify(legacy));
   }
 
   diagnostic(code: string, detail: string): void {

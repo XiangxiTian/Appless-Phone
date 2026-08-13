@@ -36,10 +36,12 @@ export default function uiLabV4IntegrationTest(): void {
       const requests: UiSurfaceRequest[] = [];
       const sessions: UiSurfaceSession[] = [];
       const actions: UiEvent[] = [];
+      const surfaces: string[] = [];
       const diagnostics: string[] = [];
       const callbacks: UiLabV4HostCallbacks = {
         onLayoutRequest: (request: UiSurfaceRequest): void => requests.push(request),
         onActionEvent: (event: UiEvent): void => actions.push(event),
+        onCanonicalSurface: (surface): void => surfaces.push(surface.surfaceId),
         onSession: (session: UiSurfaceSession): void => sessions.push(session),
         onDiagnostic: (code: string, detail: string): void => diagnostics.push(code + detail)
       };
@@ -67,6 +69,7 @@ export default function uiLabV4IntegrationTest(): void {
       expect(requests.length).assertEqual(1);
       expect(sessions.length).assertEqual(1);
       expect(actions.length).assertEqual(1);
+      expect(surfaces.length).assertEqual(1);
       expect(diagnostics.length).assertEqual(0);
       expect(bundle.surfaceController.snapshot('lab-surface').data?.viewModelType)
         .assertEqual('ui.option-collection');

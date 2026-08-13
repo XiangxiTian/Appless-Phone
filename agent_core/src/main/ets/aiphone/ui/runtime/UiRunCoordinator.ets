@@ -5,6 +5,8 @@ import { A2uiJsonOutputAdapter } from '../compiler/A2uiJsonOutputAdapter';
 import { UiCompileContext } from '../compiler/UiModelOutputAdapter';
 import { UiCatalogRegistry } from '../catalog/UiCatalogRegistry';
 import { createDefaultUiCatalogRegistry } from '../catalog/DefaultUiCatalog';
+import { UiCanonicalSurface } from '../ir/UiCanonicalTypes';
+import { UiReconciler } from './UiReconciler';
 import {
   AgentUiEvent,
   UiEvent,
@@ -29,6 +31,7 @@ export class UiRunCoordinator {
   private readonly host: UiRuntimeHostPorts;
   private readonly presentation: UiPresentationAdapterRegistry;
   private readonly catalogRegistry: UiCatalogRegistry;
+  private readonly reconciler: UiReconciler = new UiReconciler();
   readonly surfaceController: UiSurfaceController;
   private readonly runs: Map<string, UiRunState> = new Map<string, UiRunState>();
 
@@ -112,7 +115,7 @@ export class UiRunCoordinator {
     if (delta.format !== 'a2ui-json') return;
     const compiled = state.jsonAdapter.feed(delta.text, this.compileContext(state));
     if (compiled !== null && compiled.ok && compiled.surface !== null) {
-      this.surfaceController.commitLayout(compiled.surface);
+      this.commitCompiledSurface(compiled.surface);
     }
   }
 
@@ -129,7 +132,7 @@ export class UiRunCoordinator {
         this.host.onDiagnostic('MODEL_CANDIDATE_REJECTED', this.compileErrorSummary(compiled.errors));
         return;
       }
-      this.surfaceController.commitLayout(compiled.surface);
+      this.commitCompiledSurface(compiled.surface);
     } else {
       this.host.onDiagnostic('MODEL_FORMAT_UNSUPPORTED', result.format);
       return;
@@ -177,6 +180,13 @@ export class UiRunCoordinator {
       catalogGroups: state.request.catalogGroups,
       catalogRegistry: this.catalogRegistry
     };
+  }
+
+  private commitCompiledSurface(surface: UiCanonicalSurface): void {
+    const previous = this.surfaceController.layoutStore.get(surface.surfaceId);
+    const next = previous === null ? surface : this.reconciler.reconcile(previous, surface).surface;
+    this.surfaceController.commitLayout(next);
+    this.host.publishSurface(next);
   }
 
   private compileErrorSummary(errors: { code: string; message: string }[]): string {

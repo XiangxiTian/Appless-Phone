@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   UiEvent,
+  UiCanonicalSurface,
   UiHostToolResult,
   UiModelDelta,
   UiModelResult,
@@ -22,6 +23,7 @@ class RecordingHost implements UiRuntimeHostPorts {
   readonly requested: UiSurfaceRequest[] = [];
   readonly sessions: UiSurfaceSession[] = [];
   readonly actions: UiEvent[] = [];
+  readonly surfaces: string[] = [];
   readonly diagnostics: string[] = [];
 
   requestLayout(request: UiSurfaceRequest): void {
@@ -30,6 +32,10 @@ class RecordingHost implements UiRuntimeHostPorts {
 
   emitAction(event: UiEvent): void {
     this.actions.push(event);
+  }
+
+  publishSurface(surface: UiCanonicalSurface): void {
+    this.surfaces.push(surface.surfaceId);
   }
 
   onSessionChanged(session: UiSurfaceSession): void {
@@ -106,6 +112,7 @@ export default function uiV4CoreTest(): void {
       });
       expect(host.requested.length).assertEqual(1);
       expect(host.actions.length).assertEqual(1);
+      expect(host.surfaces.length).assertEqual(1);
       expect(coordinator.session('run-1')?.status).assertEqual('completed');
     });
 

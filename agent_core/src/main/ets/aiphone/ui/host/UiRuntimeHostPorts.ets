@@ -7,10 +7,12 @@ import {
   UiSurfaceRequest,
   UiSurfaceSession
 } from './UiRuntimeHostTypes';
+import { UiCanonicalSurface } from '../ir/UiCanonicalTypes';
 
 export interface UiRuntimeHostPorts {
   requestLayout(request: UiSurfaceRequest): void;
   emitAction(event: UiEvent): void;
+  publishSurface(surface: UiCanonicalSurface): void;
   onSessionChanged(session: UiSurfaceSession): void;
   onDiagnostic(code: string, detail: string): void;
 }

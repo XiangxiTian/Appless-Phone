@@ -1,4 +1,28 @@
 export { DEBUG as AGENT_CORE_DEBUG } from './BuildProfile';
+export { A2uiSurfaceStore, createSeedA2uiSurface } from './src/main/ets/aiphone/runtime/A2uiSurfaceStore';
+export * from './src/main/ets/aiphone/runtime/A2uiTypes';
+export { planSkeleton, routeIntentFast, skeletonSurface } from './src/main/ets/aiphone/skeleton/SkeletonPlanner';
+export { A2UI_SLOT_VOCAB, isA2uiSlot } from './src/main/ets/aiphone/runtime/A2uiSlotVocab';
+export * from './src/main/ets/aiphone/ui/ir/UiBindingTypes';
+export * from './src/main/ets/aiphone/ui/ir/UiCanonicalTypes';
+export * from './src/main/ets/aiphone/ui/ir/UiMutationTypes';
+export * from './src/main/ets/aiphone/ui/ir/UiRevisionTypes';
+export * from './src/main/ets/aiphone/ui/catalog/UiCatalog';
+export * from './src/main/ets/aiphone/ui/catalog/UiCatalogItem';
+export * from './src/main/ets/aiphone/ui/catalog/UiCatalogPromptBuilder';
+export * from './src/main/ets/aiphone/ui/catalog/UiCatalogRegistry';
+export * from './src/main/ets/aiphone/ui/catalog/DefaultUiCatalog';
+export * from './src/main/ets/aiphone/ui/catalog/foundation/FoundationCatalog';
+export * from './src/main/ets/aiphone/ui/catalog/semantic/SemanticCatalog';
+export * from './src/main/ets/aiphone/ui/catalog/extensions/ExtensionCatalogs';
+export * from './src/main/ets/aiphone/ui/presentation/UiPresentationTypes';
+export * from './src/main/ets/aiphone/ui/presentation/UiPresentationAdapter';
+export * from './src/main/ets/aiphone/ui/presentation/UiPresentationAdapterRegistry';
+export * from './src/main/ets/aiphone/ui/presentation/DefaultUiPresentationRegistry';
+export * from './src/main/ets/aiphone/ui/presentation/adapters/ChoicePresentationAdapters';
+export * from './src/main/ets/aiphone/ui/host/UiRuntimeHostTypes';
+export * from './src/main/ets/aiphone/ui/host/UiRuntimeHostPorts';
+export * from './src/main/ets/aiphone/ui/runtime/UiRunCoordinator';
 export { ChatMessage, ConversationContext, ConversationRole } from './src/main/ets/agent/ConversationContext';
 export {
   ApplessCapabilityEnvironment,

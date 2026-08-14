@@ -21,24 +21,11 @@ function context(): UiCompileContext {
 }
 
 function validJson(): string {
-  return JSON.stringify({
-    version: 'v0.9.1',
-    createSurface: {
-      surfaceId: 'compiler-surface',
-      root: 'root',
-      title: 'Status',
-      intent: 'status'
-    }
-  }) + '\n' + JSON.stringify({
-    version: 'v0.9.1',
-    updateComponents: {
-      surfaceId: 'compiler-surface',
-      components: [
-        { id: 'root', component: 'Surface', children: ['status'] },
-        { id: 'status', component: 'StatusNotice' }
-      ]
-    }
-  });
+  return '{"version":"v0.9.1","createSurface":{"surfaceId":"compiler-surface","root":"root",' +
+    '"title":"Status","intent":"status"}}\n' +
+    '{"version":"v0.9.1","updateComponents":{"surfaceId":"compiler-surface","components":[' +
+    '{"id":"root","component":"Surface","children":["status"]},' +
+    '{"id":"status","component":"StatusNotice"}]}}';
 }
 
 export default function uiV4CompilerTest(): void {
@@ -54,17 +41,12 @@ export default function uiV4CompilerTest(): void {
     });
 
     it('rejects unknown component, duplicate id and invalid binding', 0, (): void => {
-      const raw = JSON.stringify({
-        updateComponents: {
-          surfaceId: 'compiler-surface',
-          components: [
-            { id: 'root', component: 'Surface', children: ['bad'] },
-            { id: 'bad', component: 'NotInCatalog', bindings: { value: { store: 'business', path: 'bad', expectedType: 'string' } } },
-            { id: 'bad', component: 'Text' },
-            { id: 'bad-binding', component: 'Text', bindings: { value: { store: 'business', path: 'bad', expectedType: 'string' } } }
-          ]
-        }
-      });
+      const raw = '{"updateComponents":{"surfaceId":"compiler-surface","components":[' +
+        '{"id":"root","component":"Surface","children":["bad"]},' +
+        '{"id":"bad","component":"NotInCatalog","bindings":{"value":{"store":"business",' +
+        '"path":"bad","expectedType":"string"}}},{"id":"bad","component":"Text"},' +
+        '{"id":"bad-binding","component":"Text","bindings":{"value":{"store":"business",' +
+        '"path":"bad","expectedType":"string"}}}]}}';
       const result = new A2uiJsonOutputAdapter().compile(raw, context());
       expect(result.ok).assertFalse();
       expect(result.errors.map((value): string => value.code)).assertContain('UNKNOWN_COMPONENT');
@@ -73,17 +55,10 @@ export default function uiV4CompilerTest(): void {
     });
 
     it('accepts only paths declared by the Presentation View Model schema', 0, (): void => {
-      const raw = JSON.stringify({
-        updateComponents: {
-          surfaceId: 'compiler-surface',
-          components: [
-            { id: 'root', component: 'Surface', children: ['choices'] },
-            { id: 'choices', component: 'ChoiceList', bindings: {
-              items: { store: 'business', path: '/items', expectedType: 'array' }
-            } }
-          ]
-        }
-      });
+      const raw = '{"updateComponents":{"surfaceId":"compiler-surface","components":[' +
+        '{"id":"root","component":"Surface","children":["choices"]},' +
+        '{"id":"choices","component":"ChoiceList","bindings":{"items":{"store":"business",' +
+        '"path":"/items","expectedType":"array"}}}]}}';
       const accepted = new A2uiJsonOutputAdapter().compile(raw, context());
       expect(accepted.ok).assertTrue();
       expect(accepted.metadata?.adapterId).assertEqual('a2ui-json');
@@ -91,23 +66,21 @@ export default function uiV4CompilerTest(): void {
       expect(rejected.ok).assertFalse();
       expect(rejected.errors.map((value): string => value.code)).assertContain('INVALID_BINDING_SCHEMA');
 
-      const rawBusiness = JSON.stringify({ updateComponents: { surfaceId: 'compiler-surface', components: [
-        { id: 'root', component: 'Surface', children: ['text'] },
-        { id: 'text', component: 'Text', bindings: { value: { store: 'business', path: '/rawProviderPayload', expectedType: 'string' } } }
-      ] } });
+      const rawBusiness = '{"updateComponents":{"surfaceId":"compiler-surface","components":[' +
+        '{"id":"root","component":"Surface","children":["text"]},' +
+        '{"id":"text","component":"Text","bindings":{"value":{"store":"business",' +
+        '"path":"/rawProviderPayload","expectedType":"string"}}}]}}';
       const rawBusinessResult = new A2uiJsonOutputAdapter().compile(rawBusiness, context());
       expect(rawBusinessResult.errors.map((value): string => value.code)).assertContain('INVALID_BINDING_SCHEMA');
     });
 
     it('produces a stable canonical fingerprint across node arrival order', 0, (): void => {
-      const first = JSON.stringify({ updateComponents: { surfaceId: 'compiler-surface', components: [
-        { id: 'root', component: 'Surface', children: ['b', 'a'] },
-        { id: 'b', component: 'Text', text: 'B' }, { id: 'a', component: 'Text', text: 'A' }
-      ] } });
-      const second = JSON.stringify({ updateComponents: { surfaceId: 'compiler-surface', components: [
-        { id: 'a', component: 'Text', text: 'A' }, { id: 'b', component: 'Text', text: 'B' },
-        { id: 'root', component: 'Surface', children: ['b', 'a'] }
-      ] } });
+      const first = '{"updateComponents":{"surfaceId":"compiler-surface","components":[' +
+        '{"id":"root","component":"Surface","children":["b","a"]},' +
+        '{"id":"b","component":"Text","text":"B"},{"id":"a","component":"Text","text":"A"}]}}';
+      const second = '{"updateComponents":{"surfaceId":"compiler-surface","components":[' +
+        '{"id":"a","component":"Text","text":"A"},{"id":"b","component":"Text","text":"B"},' +
+        '{"id":"root","component":"Surface","children":["b","a"]}]}}';
       const firstResult = new A2uiJsonOutputAdapter().compile(first, context());
       const secondResult = new A2uiJsonOutputAdapter().compile(second, context());
       const repeatedResult = new A2uiJsonOutputAdapter().compile(first, context());
@@ -121,10 +94,9 @@ export default function uiV4CompilerTest(): void {
     });
 
     it('rejects cycles, orphan children and an unknown root', 0, (): void => {
-      const raw = JSON.stringify({ updateComponents: { surfaceId: 'compiler-surface', components: [
-        { id: 'a', component: 'Stack', children: ['b', 'missing'] },
-        { id: 'b', component: 'Stack', children: ['a'] }
-      ] } });
+      const raw = '{"updateComponents":{"surfaceId":"compiler-surface","components":[' +
+        '{"id":"a","component":"Stack","children":["b","missing"]},' +
+        '{"id":"b","component":"Stack","children":["a"]}]}}';
       const result = new A2uiJsonOutputAdapter().compile(raw, context());
       expect(result.ok).assertFalse();
       const codes = result.errors.map((value): string => value.code);
@@ -135,16 +107,9 @@ export default function uiV4CompilerTest(): void {
 
     it('reuses the A2UI scanner across chunk boundaries', 0, (): void => {
       const adapter = new A2uiJsonOutputAdapter();
-      const input = JSON.stringify({
-        version: 'v0.9.1',
-        updateComponents: {
-          surfaceId: 'compiler-surface',
-          components: [
-            { id: 'root', component: 'Surface', children: ['text'] },
-            { id: 'text', component: 'Text', text: '中文' }
-          ]
-        }
-      });
+      const input = '{"version":"v0.9.1","updateComponents":{"surfaceId":"compiler-surface",' +
+        '"components":[{"id":"root","component":"Surface","children":["text"]},' +
+        '{"id":"text","component":"Text","text":"中文"}]}}';
       const first = adapter.feed(input.substring(0, 40), context());
       expect(first === null || first.ok).assertTrue();
       adapter.feed(input.substring(40, input.length - 2), context());
@@ -152,7 +117,8 @@ export default function uiV4CompilerTest(): void {
       expect(final === null || final.ok).assertTrue();
       const completed = adapter.finalize(context());
       expect(completed.ok).assertTrue();
-      expect(completed.surface?.nodes[1].props['text']).assertEqual('中文');
+      const props = completed.surface?.nodes[1].props as Record<string, Object | string | number | boolean | null>;
+      expect(props['text']).assertEqual('中文');
     });
 
     it('rejects a partial or malformed stream without producing a surface', 0, (): void => {

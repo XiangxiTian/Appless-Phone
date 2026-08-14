@@ -13,14 +13,16 @@ function source(schema: string, data: Object): UiPresentationSource {
   };
 }
 
-const context: UiPresentationContext = { actionRefsByItemId: new Map<string, string[]>([['item-1', ['offer-1']]]) };
+const actionRefsByItemId: Map<string, string[]> = new Map<string, string[]>();
+actionRefsByItemId.set('item-1', ['offer-1']);
+const context: UiPresentationContext = { actionRefsByItemId };
 
 export default function uiV4PresentationTest(): void {
   describe('UiV4Presentation', (): void => {
     it('maps train, flight and travel results to one journey schema', 0, (): void => {
       const registry = createDefaultUiPresentationAdapterRegistry();
-      const data = { items: [{ id: 'item-1', title: 'G 1', origin: 'SZ', destination: 'GZ',
-        departAt: '09:00', arriveAt: '10:00', currency: 'CNY', price: 100 }] };
+      const data = JSON.parse('{"items":[{"id":"item-1","title":"G 1","origin":"SZ","destination":"GZ",' +
+        '"departAt":"09:00","arriveAt":"10:00","currency":"CNY","price":100}]}') as Object;
       ['train-search-result.v1', 'flight-search-result.v1', 'travel-search-result.v1'].forEach((schema: string): void => {
         const output = registry.adapt(source(schema, data), context);
         expect(output.viewModelType).assertEqual('ui.journey-option-collection');
@@ -33,21 +35,20 @@ export default function uiV4PresentationTest(): void {
 
     it('maps mail and social results to message feed without inventing content', 0, (): void => {
       const registry = createDefaultUiPresentationAdapterRegistry();
-      const mail = registry.adapt(source('mail-search-result.v1', {
-        items: [{ id: 'item-1', sender: 'A', subject: 'Hello', preview: 'Preview' }]
-      }), context);
+      const mailData = JSON.parse('{"items":[{"id":"item-1","sender":"A","subject":"Hello",' +
+        '"preview":"Preview"}]}') as Object;
+      const mail = registry.adapt(source('mail-search-result.v1', mailData), context);
       expect(mail.viewModelType).assertEqual('ui.message-feed');
-      const social = registry.adapt(source('social-feed-result.v1', {
-        items: [{ id: 'item-1', author: 'A' }]
-      }), context);
+      const socialData = JSON.parse('{"items":[{"id":"item-1","author":"A"}]}') as Object;
+      const social = registry.adapt(source('social-feed-result.v1', socialData), context);
       expect(((social.data as Record<string, Object>)['items'] as Object[]).length).assertEqual(0);
     });
 
     it('maps generic structured results only through the known fallback schema', 0, (): void => {
       const registry = createDefaultUiPresentationAdapterRegistry();
-      const output = registry.adapt(source('generic-structured-result.v1', {
-        items: [{ id: 'item-1', title: 'Known', extra: 'value' }, { id: 'item-2' }]
-      }), context);
+      const genericData = JSON.parse('{"items":[{"id":"item-1","title":"Known","extra":"value"},' +
+        '{"id":"item-2"}]}') as Object;
+      const output = registry.adapt(source('generic-structured-result.v1', genericData), context);
       expect(output.viewModelType).assertEqual('ui.result-collection');
       expect(output.provenance.adapterId).assertEqual('generic-result-adapter');
       expect(((output.data as Record<string, Object>)['items'] as Object[]).length).assertEqual(1);

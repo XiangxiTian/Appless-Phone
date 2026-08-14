@@ -64,16 +64,15 @@ export default function uiV4CoreTest(): void {
     it('maps different option schemas into one view model', 0, (): void => {
       const registry = new UiPresentationAdapterRegistry();
       createChoicePresentationAdapters().forEach((adapter): void => registry.register(adapter));
-      const context: UiPresentationContext = { actionRefsByItemId: new Map<string, string[]>() };
+      const actionRefsByItemId: Map<string, string[]> = new Map<string, string[]>();
+      const context: UiPresentationContext = { actionRefsByItemId };
       const source: UiPresentationSource = {
         toolId: 'restaurant.search',
         outputSchemaRef: 'restaurant-search-result.v1',
         provider: 'test-provider',
         surfaceId: 'surface-1',
         runId: 'run-1',
-        data: {
-          items: [{ shop_id: 'r-1', shop_name: 'Test Kitchen', address: 'Shenzhen' }]
-        }
+        data: JSON.parse('{"items":[{"shop_id":"r-1","shop_name":"Test Kitchen","address":"Shenzhen"}]}') as Object
       };
       const output = registry.adapt(source, context);
       const data = output.data as Record<string, Object>;
@@ -132,7 +131,7 @@ export default function uiV4CoreTest(): void {
       const result: UiHostToolResult = {
         resultId: 'tool-result-1', runId: 'run-tool', surfaceId: 'surface-tool', epoch: 1,
         toolId: 'restaurant.search', outputSchemaRef: 'restaurant-search-result.v1', provider: 'test', status: 'ok',
-        data: { items: [{ shop_id: 'r-1', shop_name: 'Kitchen' }] }
+        data: JSON.parse('{"items":[{"shop_id":"r-1","shop_name":"Kitchen"}]}') as Object
       };
       coordinator.onToolResult(result);
       coordinator.onToolResult(result);
@@ -156,10 +155,11 @@ export default function uiV4CoreTest(): void {
       expect(host.actions.length).assertEqual(0);
       expect(host.diagnostics.length).assertEqual(1);
       const revision = initialUiRevision(4);
-      expect(canonicalSurfaceFingerprint({
+      const fingerprintSurface: UiCanonicalSurface = {
         schemaVersion: 1, surfaceId: 'surface-2', runId: 'run-2', epoch: 4,
         rootNodeKey: 'root', title: '', intent: '', catalogVersion: 'v1', nodes: [], revision
-      }).length > 0).assertTrue();
+      };
+      expect(canonicalSurfaceFingerprint(fingerprintSurface).length > 0).assertTrue();
     });
   });
 }

@@ -4,7 +4,7 @@
 方案文档：`docs/ui-gen-refactor-plan-v4.md`
 当前实施记录：`docs/ui-gen-landing-checklist.md`
 
-本轮执行状态：PR-V4-1～PR-V4-4 已完成若干首版代码切片，但这些 PR 的完整退出门槛尚未全部满足；主 UI 未接入。2026-08-14 已用 DevEco SDK 完成严格 ArkTS 编译并成功生成签名 HAP；Hypium 与真机场景验收仍待执行。
+本轮执行状态：PR-V4-1～PR-V4-4 已完成若干首版代码切片，但这些 PR 的完整退出门槛尚未全部满足；主 UI 未接入。2026-08-14 已用 DevEco SDK 完成生产代码与全部已注册测试的严格 ArkTS 编译并成功生成签名 HAP；Hypium 运行结果与真机场景验收仍待完成。
 
 ### 本轮实现进度记录
 
@@ -33,7 +33,7 @@
 - 已增加 `scripts/ui-v4-dependency-check.mjs`，当前通过；它只检查 `agent_core/.../ui` 的宿主反向依赖，不替代 ArkTS/设备构建。
 - 2026-08-14 已修复 v4 的 ArkTS 严格语法缺口（动态索引、匿名对象类型、对象展开、`delete` 等），`assembleHap -p product=default -p module=entry@default --no-daemon` 构建成功并生成 `entry-default-signed.hap`。
 - 2026-08-14 UI Lab 页面已接入 `legacy/shadow/visible` 三档选择；通过现有 MultiAgent host `onSurface` generation gate 后，shadow 写入 v4 四 Store、回投影并按五类 mismatch 记录，默认仍为 legacy，主 UI 无 v4 调用点。
-- 2026-08-14 `UiLabV4Integration` 已注册到 Hypium，严格测试编译通过；本机 Previewer command pipe 连接失败且未生成 `test_result.txt`，因此“Hypium 全量无新增失败”仍不勾选。
+- 2026-08-14 查出 `UiV4Core`、`UiV4Presentation`、`UiV4Compiler`、`UiV4Runtime` 四组核心测试文件此前未进入 `List.test.ets`；现已全部注册并修复严格 ArkTS 测试语法，连同 `UiLabV4Integration` 完成 `UnitTestArkTS` 编译。进入 Darwin Previewer 后 command pipe 仍无法完成运行且未生成 `test_result.txt`，因此“Hypium 全量无新增失败”仍不勾选。
 - 2026-08-14 签名 HAP 已安装到 USB 真机；设备安全锁阻止 Ability 启动，页面级真机验收等待人工解锁后继续。
 - 仍未完成：20 个 golden、完整旧 Hypium/真机验收、Presentation VM 接入 legacy data shadow、Extension 评审和主 UI 接入。
 
@@ -466,7 +466,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过，v4 core 未出现 `entry/`、ArkUI、WebView 或 `MultiAgentCanaryRuntime` 反向依赖。
-- 状态：专项 Hypium 已注册且通过严格测试编译；本机 Previewer command pipe 失败，尚无运行结果汇总。
+- 状态：`UiV4Runtime` 已注册并通过严格测试编译；本机 Previewer command pipe 失败，尚无运行结果汇总。
 
 ### 退出门槛
 
@@ -510,7 +510,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过；revision gate/snapshot 代码仍位于 `agent_core`，无宿主反向依赖。
-- 状态：专项 Hypium 已注册且通过严格测试编译；本机 Previewer command pipe 失败，设备交错运行仍待执行。
+- 状态：`UiV4Runtime` 的 revision/snapshot/交错用例已注册并通过严格测试编译；本机 Previewer command pipe 失败，设备交错运行仍待执行。
 
 ### 退出门槛
 
@@ -577,7 +577,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过，Compiler 仅位于 `agent_core`。
-- 状态：专项 Hypium 已注册且通过严格测试编译；本机 Previewer command pipe 失败，尚无运行结果汇总。
+- 状态：`UiV4Compiler` 已注册并通过严格测试编译；本机 Previewer command pipe 失败，尚无运行结果汇总。
 
 ### 退出门槛
 
@@ -1054,7 +1054,7 @@ UI Lang input → Canonical IR
 
 ### 自动测试
 
-- [ ] 新纯逻辑 Hypium 用例注册进 `List.test.ets`。
+- [x] 当前新增的 `UiV4Core/Presentation/Compiler/Runtime` 与 `UiLabV4Integration` 纯逻辑 Hypium 用例均已注册进 `List.test.ets`。
 - [ ] 相关 Node 脚本全绿。
 - [ ] 现有 Renderer、多任务、支付、邮件、日历测试无回归。
 - [ ] golden snapshot 变更有明确审阅说明。

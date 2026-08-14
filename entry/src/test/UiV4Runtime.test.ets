@@ -2,8 +2,11 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   UiCanonicalNode,
   UiCanonicalSurface,
+  UiBindingSet,
+  UiDataMutationPayload,
   canonicalSurfaceFingerprint,
   UiMutation,
+  UiMutationMeta,
   UiReconciler,
   UiRevisionGate,
   UiRevisionVector,
@@ -15,6 +18,10 @@ import {
   UiUserOverlayStore,
   initialUiRevision
 } from '@loop/agent-core';
+
+interface UiV4TextProps {
+  text: string;
+}
 
 function surface(
   surfaceId: string,
@@ -43,15 +50,36 @@ function surface(
 }
 
 function node(nodeKey: string, text: string): UiCanonicalNode {
+  const props: UiV4TextProps = { text };
+  const bindings = JSON.parse('{}') as UiBindingSet;
   return {
     nodeKey,
     component: 'Text',
     catalogRef: { name: 'Text', version: 1, layer: 'foundation' },
-    props: { text },
-    bindings: {},
+    props,
+    bindings,
     actionRefs: [],
     children: []
   };
+}
+
+function parsedObject(json: string): Object {
+  return JSON.parse(json) as Object;
+}
+
+function userMutation(nodeKey: string, operation: 'pin' | 'move' | 'hide'): UiUserMutationPayload {
+  return { nodeKey, operation };
+}
+
+function mutationMeta(
+  mutationId: string,
+  epoch: number,
+  baseRevision: UiRevisionVector,
+  nextRevision: UiRevisionVector,
+  runId: string = 'run-s-6',
+  surfaceId: string = 's-6'
+): UiMutationMeta {
+  return { mutationId, runId, surfaceId, epoch, baseRevision, nextRevision };
 }
 
 function revision(epoch: number, layout: number, data: number, runtime: number, user: number): UiRevisionVector {
@@ -67,7 +95,8 @@ export default function uiV4RuntimeTest(): void {
       const fingerprint = store.fingerprint('s-1');
       const copy = store.get('s-1');
       expect(copy !== null).assertTrue();
-      (copy as UiCanonicalSurface).nodes[0].props = { text: 'changed' };
+      const changedProps: UiV4TextProps = { text: 'changed' };
+      (copy as UiCanonicalSurface).nodes[0].props = changedProps;
       expect(store.fingerprint('s-1')).assertEqual(fingerprint);
     });
 
@@ -81,7 +110,7 @@ export default function uiV4RuntimeTest(): void {
 
     it('updates data paths without changing layout', 0, (): void => {
       const data = new UiDataModelStore();
-      data.setRoot('s-2', { result: { count: 1 } }, 1, 'ui.option-collection', 1);
+      data.setRoot('s-2', parsedObject('{"result":{"count":1}}'), 1, 'ui.option-collection', 1);
       expect(data.setPath('s-2', '/result/count', 2, 2)).assertTrue();
       expect(data.resolve('s-2', '/result/count')).assertEqual(2);
       expect(data.setPath('s-2', '/missing/count', 3, 3)).assertFalse();
@@ -91,7 +120,8 @@ export default function uiV4RuntimeTest(): void {
 
     it('accepts tool data before the model node arrives', 0, (): void => {
       const controller = new UiSurfaceController();
-      controller.setDataModel('s-data-first', { items: [{ id: 'x' }] }, 1, 'ui.option-collection', 1);
+      controller.setDataModel('s-data-first', parsedObject('{"items":[{"id":"x"}]}'), 1,
+        'ui.option-collection', 1);
       controller.commitLayout(surface('s-data-first', [node('root', 'late')], 1));
       expect(controller.snapshot('s-data-first').data?.revision).assertEqual(1);
       expect(controller.snapshot('s-data-first').data?.viewModelType).assertEqual('ui.option-collection');
@@ -120,13 +150,14 @@ export default function uiV4RuntimeTest(): void {
       const candidate = surface('s-4', [node('root', 'hello'), node('card-1', 'card')]);
       controller.commitLayout(candidate);
       const fingerprint = controller.layoutStore.fingerprint('s-4');
-      controller.setDataModel('s-4', { items: [] }, 1, 'ui.option-collection', 1);
-      expect(controller.setDataPath('s-4', '/items', [{ id: 'x' }], 2)).assertTrue();
+      controller.setDataModel('s-4', parsedObject('{"items":[]}'), 1, 'ui.option-collection', 1);
+      const optionItems = JSON.parse('[{"id":"x"}]') as Object[];
+      expect(controller.setDataPath('s-4', '/items', optionItems, 2)).assertTrue();
       controller.setRuntimePhase('s-4', 'card-1', 'confirmed', 1);
       const mutation: UiUserMutationPayload = { nodeKey: 'card-1', operation: 'pin' };
       controller.applyUserMutation('s-4', mutation, 1);
-      controller.applyUserMutation('s-4', { nodeKey: 'card-1', operation: 'move' }, 2);
-      controller.applyUserMutation('s-4', { nodeKey: 'root', operation: 'hide' }, 3);
+      controller.applyUserMutation('s-4', userMutation('card-1', 'move'), 2);
+      controller.applyUserMutation('s-4', userMutation('root', 'hide'), 3);
       const snapshot = controller.snapshot('s-4');
       expect(snapshot.layout !== null).assertTrue();
       expect(snapshot.runtime?.nodePhases['card-1']).assertEqual('confirmed');
@@ -150,7 +181,7 @@ export default function uiV4RuntimeTest(): void {
 
       const controller = new UiSurfaceController();
       controller.commitLayout(speculative);
-      controller.applyUserMutation('s-5', { nodeKey: 'replace', operation: 'pin' }, 1);
+      controller.applyUserMutation('s-5', userMutation('replace', 'pin'), 1);
       controller.commitLayout(result.surface);
       expect(controller.snapshot('s-5').user?.pinnedNodeKeys).assertContain('replace');
     });
@@ -167,52 +198,36 @@ export default function uiV4RuntimeTest(): void {
     it('gates epoch, base revision, ordering and duplicate mutation ids', 0, (): void => {
       const gate = new UiRevisionGate(4);
       gate.openSurface('s-6', 'run-s-6', 1);
+      const emptyItems = JSON.parse('[]') as Object[];
+      const firstPayload: UiDataMutationPayload = { path: '/items', value: emptyItems };
       const first: UiMutation = {
         kind: 'data',
-        meta: {
-          mutationId: 'm-1', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
-          baseRevision: revision(1, 0, 0, 0, 0),
-          nextRevision: revision(1, 0, 1, 0, 0)
-        },
-        payload: { path: '/items', value: [] }
+        meta: mutationMeta('m-1', 1, revision(1, 0, 0, 0, 0), revision(1, 0, 1, 0, 0)),
+        payload: firstPayload
       };
       expect(gate.evaluate(first.meta, first.kind).accepted).assertTrue();
       expect(gate.evaluate(first.meta, first.kind).reason).assertEqual('DUPLICATE_MUTATION');
-      expect(gate.evaluate({
-        mutationId: 'm-base', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
-        baseRevision: revision(1, 0, 0, 0, 0),
-        nextRevision: revision(1, 0, 2, 0, 0)
-      }, 'data').reason).assertEqual('BASE_REVISION_MISMATCH');
-      expect(gate.evaluate({
-        mutationId: 'm-gap', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
-        baseRevision: revision(1, 0, 1, 0, 0),
-        nextRevision: revision(1, 0, 3, 0, 0)
-      }, 'data').reason).assertEqual('REVISION_GAP');
-      expect(gate.evaluate({
-        mutationId: 'm-2', runId: 'run-s-6', surfaceId: 's-6', epoch: 1,
-        baseRevision: revision(1, 0, 1, 0, 0),
-        nextRevision: revision(1, 0, 2, 0, 0)
-      }, 'data').accepted).assertTrue();
-      expect(gate.evaluate({
-        mutationId: 'm-old', runId: 'run-s-6', surfaceId: 's-6', epoch: 0,
-        baseRevision: revision(0, 0, 2, 0, 0),
-        nextRevision: revision(0, 0, 3, 0, 0)
-      }, 'data').reason).assertEqual('STALE_EPOCH');
+      expect(gate.evaluate(mutationMeta('m-base', 1, revision(1, 0, 0, 0, 0),
+        revision(1, 0, 2, 0, 0)), 'data').reason).assertEqual('BASE_REVISION_MISMATCH');
+      expect(gate.evaluate(mutationMeta('m-gap', 1, revision(1, 0, 1, 0, 0),
+        revision(1, 0, 3, 0, 0)), 'data').reason).assertEqual('REVISION_GAP');
+      expect(gate.evaluate(mutationMeta('m-2', 1, revision(1, 0, 1, 0, 0),
+        revision(1, 0, 2, 0, 0)), 'data').accepted).assertTrue();
+      expect(gate.evaluate(mutationMeta('m-old', 0, revision(0, 0, 2, 0, 0),
+        revision(0, 0, 3, 0, 0)), 'data').reason).assertEqual('STALE_EPOCH');
     });
 
     it('round-trips a surface snapshot and rejects replay after restore', 0, (): void => {
       const original = new UiSurfaceController();
       original.commitLayout(surface('s-7', [node('root', 'snapshot')], 1));
-      original.setDataModel('s-7', { items: [] }, 1, 'ui.option-collection', 1);
+      original.setDataModel('s-7', parsedObject('{"items":[]}'), 1, 'ui.option-collection', 1);
       original.setRuntimePhase('s-7', 'root', 'confirmed', 1);
+      const snapshotUserPayload: UiUserMutationPayload = { nodeKey: 'root', operation: 'pin' };
       const mutation: UiMutation = {
         kind: 'user',
-        meta: {
-          mutationId: 'snapshot-user-1', runId: 'run-s-7', surfaceId: 's-7', epoch: 1,
-          baseRevision: revision(1, 1, 0, 0, 0),
-          nextRevision: revision(1, 1, 0, 0, 1)
-        },
-        payload: { nodeKey: 'root', operation: 'pin' }
+        meta: mutationMeta('snapshot-user-1', 1, revision(1, 1, 0, 0, 0),
+          revision(1, 1, 0, 0, 1), 'run-s-7', 's-7'),
+        payload: snapshotUserPayload
       };
       expect(original.applyMutation(mutation).accepted).assertTrue();
       const json = original.exportSnapshotJson('s-7');
@@ -235,15 +250,13 @@ export default function uiV4RuntimeTest(): void {
       newer.epoch = 2;
       newer.revision.epoch = 2;
       controller.commitLayout(newer);
-      const result = controller.applyMutation({
+      const runtimeMutation: UiMutation = {
         kind: 'runtime',
-        meta: {
-          mutationId: 'old-epoch', runId: 'run-s-8', surfaceId: 's-8', epoch: 1,
-          baseRevision: revision(1, 1, 0, 0, 0),
-          nextRevision: revision(1, 1, 0, 1, 0)
-        },
-        payload: { nodeKey: 'root', phase: 'confirmed' }
-      });
+        meta: mutationMeta('old-epoch', 1, revision(1, 1, 0, 0, 0),
+          revision(1, 1, 0, 1, 0), 'run-s-8', 's-8'),
+        payload: parsedObject('{"nodeKey":"root","phase":"confirmed"}')
+      };
+      const result = controller.applyMutation(runtimeMutation);
       expect(result.accepted).assertFalse();
       expect(result.reason).assertEqual('STALE_EPOCH');
     });

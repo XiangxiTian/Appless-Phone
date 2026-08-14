@@ -20,12 +20,14 @@ import {
 export default function calendarApiClientTest() {
   describe('calendarApiClient', () => {
     it('maps list payload into generic results', 0, () => {
-      const payload = '{"items":[{"id":"event-123","summary":"AIPhoneDemo smoke","start":{"dateTime":"2026-06-30T15:00:00+08:00"},"end":{"dateTime":"2026-06-30T15:30:00+08:00"},"htmlLink":"https://calendar.google.com/event?eid=123"}]}';
+      const payload = '{"items":[{"id":"event-123","summary":"AIPhoneDemo smoke","location":"上海会议中心","start":{"dateTime":"2026-06-30T15:00:00+08:00"},"end":{"dateTime":"2026-06-30T15:30:00+08:00"},"htmlLink":"https://calendar.google.com/event?eid=123"}]}';
       const results = calendarEventResultsFromListPayload(payload);
       expect(results.length).assertEqual(1);
       expect(results[0].toolName).assertEqual('calendar.events.search');
       expect(results[0].title).assertEqual('AIPhoneDemo smoke');
       expect(results[0].rows[0].value).assertEqual('event-123');
+      expect(results[0].rows.some((row) => row.label === 'Location' && row.value === '上海会议中心'))
+        .assertTrue();
     });
 
     it('builds create and update bodies from structured args', 0, () => {

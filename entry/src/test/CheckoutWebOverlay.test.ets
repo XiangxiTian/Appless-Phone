@@ -4,7 +4,9 @@ import {
   checkoutWebMobileReadable,
   checkoutWebNavigationDecision,
   isAllowed12306BookingUrl,
+  isAllowedCtripMainFrameUrl,
   isOfficial12306PaymentUrl,
+  trainBookingTargetDateForDisplay,
   webHostForDisplay
 } from '../main/ets/pages/A2uiHome/components/CheckoutWebOverlay';
 import { a2uiWebExecutionTokenForRequest, a2uiWebNavigationBindingForBegin,
@@ -65,10 +67,19 @@ export default function checkoutWebOverlayTest() {
       expect(checkoutWebInitialSource('hotel', 'https://rollinggo.cn/hotel')).assertEqual(
         'https://rollinggo.cn/hotel'
       );
+      const flight = 'https://flights.ctrip.com/online/list/oneway-szx-sha?' +
+        'depdate=2026-08-21&cabin=y_s_c_f&adult=1&child=0&infant=0';
+      expect(checkoutWebInitialSource('flight', flight)).assertEqual(flight);
+      expect(checkoutWebInitialSource(
+        'flight',
+        'https://flights.ctrip.com.evil.example/online/list/oneway-szx-sha?' +
+          'depdate=2026-08-21&cabin=y_s_c_f&adult=1&child=0&infant=0'
+      )).assertEqual('');
     });
 
-    it('uses mobile-readable WebView presentation only for train booking', 0, () => {
+    it('uses mobile-readable WebView presentation for transport booking', 0, () => {
       expect(checkoutWebMobileReadable('train')).assertTrue();
+      expect(checkoutWebMobileReadable('flight')).assertTrue();
       expect(checkoutWebMobileReadable('payment')).assertFalse();
       expect(checkoutWebMobileReadable('hotel')).assertFalse();
     });
@@ -84,6 +95,18 @@ export default function checkoutWebOverlayTest() {
         'train',
         'https://kyfw.12306.cn@evil.example/otn/leftTicket/init'
       ))).assertEqual('未加载');
+    });
+
+    it('keeps the selected train date visible outside the provider page', 0, () => {
+      expect(trainBookingTargetDateForDisplay(
+        'https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc&date=2026-08-21&flag=N,N,Y'
+      )).assertEqual('2026-08-21');
+      expect(trainBookingTargetDateForDisplay(
+        'https://kyfw.12306.cn/otn/leftTicket/init?date=javascript:alert(1)'
+      )).assertEqual('');
+      expect(trainBookingTargetDateForDisplay(
+        'https://kyfw.12306.cn.evil.example/otn/leftTicket/init?date=2026-08-21'
+      )).assertEqual('');
     });
 
     it('allows only exact official train main-frame booking routes', 0, () => {
@@ -161,6 +184,34 @@ export default function checkoutWebOverlayTest() {
         'https://evil.example/',
         true
       )).assertEqual('block');
+    });
+
+    it('keeps Ctrip booking inside official HTTPS domains', 0, () => {
+      expect(isAllowedCtripMainFrameUrl(
+        'https://flights.ctrip.com/online/list/oneway-szx-sha?depdate=2026-08-21'
+      )).assertTrue();
+      expect(isAllowedCtripMainFrameUrl('https://passport.ctrip.com/user/login')).assertTrue();
+      expect(checkoutWebNavigationDecision(
+        'flight', 'https://m.ctrip.com/html5/flight/taro/first', true
+      )).assertEqual('allow');
+      expect(checkoutWebNavigationDecision(
+        'flight', 'https://flights.ctrip.com.evil.example/online', true
+      )).assertEqual('block');
+      expect(checkoutWebNavigationDecision(
+        'flight', 'https://user:secret@flights.ctrip.com/online', true
+      )).assertEqual('block');
+      expect(checkoutWebNavigationDecision(
+        'flight', 'https://flights.ctrip.com:8443/online', true
+      )).assertEqual('block');
+      expect(checkoutWebNavigationDecision(
+        'flight', 'http://flights.ctrip.com/online', true
+      )).assertEqual('block');
+      expect(checkoutWebNavigationDecision(
+        'flight', 'ctrip://wireless/flight', true
+      )).assertEqual('block');
+      expect(checkoutWebNavigationDecision(
+        'flight', 'https://static.example/frame', false
+      )).assertEqual('allow');
     });
 
     it('gives script ownership to only one active controller across popup handoff', 0, () => {

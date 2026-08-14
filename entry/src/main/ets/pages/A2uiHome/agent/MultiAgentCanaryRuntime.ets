@@ -59,7 +59,8 @@ import {
   parseA2uiJsonl,
   setJsonPointer,
   toolDefinitionForToolId,
-  toolPlanningDescriptionForToolId
+  toolPlanningDescriptionForToolId,
+  travelSearchPreflight
 } from '@loop/agent-core';
 import { leaderPersonaContext } from '../../../model/LeaderPersonaContext';
 import {
@@ -807,6 +808,20 @@ function normalizeCanaryTaskInput(
       } else {
         throw new Error('BIM_TRAVEL_QUERY_INCOMPLETE');
       }
+    } else {
+      const modelQuery = typeof taskQuery === 'string' ? taskQuery.trim() : '';
+      const candidateQueries: string[] = [modelQuery, originalInput.text, fieldQuery];
+      let resolvedQuery = '';
+      for (let index = 0; index < candidateQueries.length; index++) {
+        if (candidateQueries[index].length === 0) continue;
+        const preflight = travelSearchPreflight(candidateQueries[index], currentLocalDate);
+        if (preflight.complete) {
+          resolvedQuery = candidateQueries[index].trim();
+          break;
+        }
+      }
+      if (resolvedQuery.length === 0) throw new Error('TRAVEL_QUERY_INCOMPLETE');
+      query = resolvedQuery;
     }
     const normalized = setJsonPointer(task.input as JsonValue, '/query', query);
     if (!normalized.ok || normalized.value === undefined || normalized.value === null ||

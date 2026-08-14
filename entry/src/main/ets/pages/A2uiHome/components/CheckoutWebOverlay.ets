@@ -39,10 +39,11 @@ import {
   TrainPresaleTaskStore
 } from '../train/TrainPresaleTaskStore';
 import { COLOR_CARD, COLOR_CARD_EDGE, COLOR_ERROR, COLOR_ERROR_SOFT, COLOR_INK, COLOR_MUTED, COLOR_PAGE } from '../style/A2uiHomeTheme';
+import { isAllowedCtripFlightBookingUrl } from '../travel/TravelBookingProvider';
 import { A2uiButtonView } from './common/A2uiButtonView';
 import { A2uiWebControllerIdentity, A2uiWebSurfaceView } from './common/A2uiWebSurfaceView';
 
-export type CheckoutWebKind = 'payment' | 'hotel' | 'train';
+export type CheckoutWebKind = 'payment' | 'hotel' | 'train' | 'flight';
 export type CheckoutNavigationDecision = 'allow' | 'payment_return' | 'block';
 
 interface StrictHttpsLocation {
@@ -97,11 +98,18 @@ export function isAllowed12306BookingUrl(url: string): boolean {
 }
 
 export function checkoutWebInitialSource(kind: CheckoutWebKind, url: string): string {
-  return kind === 'train' && !isAllowed12306BookingUrl(url) ? '' : url;
+  if (kind === 'train' && !isAllowed12306BookingUrl(url)) return '';
+  if (kind === 'flight' && !isAllowedCtripFlightBookingUrl(url)) return '';
+  return url;
 }
 
 export function checkoutWebMobileReadable(kind: CheckoutWebKind): boolean {
-  return kind === 'train';
+  return kind === 'train' || kind === 'flight';
+}
+
+export function isAllowedCtripMainFrameUrl(value: string): boolean {
+  const parsed = strictHttpsLocation(value);
+  return parsed !== undefined && (parsed.host === 'ctrip.com' || parsed.host.endsWith('.ctrip.com'));
 }
 
 export function isOfficial12306PaymentUrl(value: string): boolean {
@@ -118,7 +126,7 @@ export function checkoutWebNavigationDecision(
   isMainFrame: boolean
 ): CheckoutNavigationDecision {
   const value = url.trim().toLowerCase();
-  if (kind === 'train' && !value.startsWith('https://')) {
+  if ((kind === 'train' || kind === 'flight') && !value.startsWith('https://')) {
     return 'block';
   }
   if (!isMainFrame) {
@@ -131,6 +139,9 @@ export function checkoutWebNavigationDecision(
     return 'block';
   }
   if (kind === 'train' && !isAllowed12306MainFrameUrl(url)) {
+    return 'block';
+  }
+  if (kind === 'flight' && !isAllowedCtripMainFrameUrl(url)) {
     return 'block';
   }
   return 'allow';
@@ -176,11 +187,28 @@ export function webHostForDisplay(url: string): string {
     hostname.toLowerCase() : '未加载';
 }
 
+export function trainBookingTargetDateForDisplay(url: string): string {
+  if (!isAllowed12306BookingUrl(url)) return '';
+  const queryStart = url.indexOf('?');
+  if (queryStart < 0 || queryStart >= url.length - 1) return '';
+  const fragmentStart = url.indexOf('#', queryStart + 1);
+  const query = url.substring(queryStart + 1, fragmentStart < 0 ? url.length : fragmentStart);
+  const pairs = query.split('&');
+  for (let index = 0; index < pairs.length; index++) {
+    const separator = pairs[index].indexOf('=');
+    if (separator <= 0 || pairs[index].substring(0, separator) !== 'date') continue;
+    const value = pairs[index].substring(separator + 1);
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
+  }
+  return '';
+}
+
 @Component
 export struct CheckoutWebOverlay {
   @Prop kind: CheckoutWebKind = 'payment';
   @Prop url: string = '';
   @Prop taskId: string = '';
+  @Prop contextText: string = '';
   onClose: (taskId: string) => void = (_taskId: string): void => {};
   onReturnUrl: (url: string) => void = (_url: string): void => {};
   @State blockedNavigation: string = '';
@@ -437,12 +465,18 @@ export struct CheckoutWebOverlay {
     if (this.kind === 'train') {
       return '12306 官方购票';
     }
+    if (this.kind === 'flight') {
+      return '携程机票预订';
+    }
     return this.kind === 'hotel' ? 'RollingGo 酒店预订' : '安全支付确认';
   }
 
   private closeLabel(): string {
     if (this.kind === 'train') {
       return '返回车次';
+    }
+    if (this.kind === 'flight') {
+      return '返回航班';
     }
     return this.kind === 'hotel' ? '返回房型' : '关闭';
   }
@@ -453,7 +487,14 @@ export struct CheckoutWebOverlay {
     }
     if (this.kind === 'train') {
       const activeUrl = this.currentUrl.length > 0 ? this.currentUrl : checkoutWebInitialSource(this.kind, this.url);
-      return webHostForDisplay(activeUrl);
+      const targetDate = trainBookingTargetDateForDisplay(this.url);
+      const host = webHostForDisplay(activeUrl);
+      return targetDate.length > 0 ? '目标日期 ' + targetDate + ' · ' + host : host;
+    }
+    if (this.kind === 'flight') {
+      const activeUrl = this.currentUrl.length > 0 ? this.currentUrl : checkoutWebInitialSource(this.kind, this.url);
+      const host = webHostForDisplay(activeUrl);
+      return this.contextText.trim().length > 0 ? this.contextText.trim() + ' · ' + host : host;
     }
     const lower = this.url.trim().toLowerCase();
     return lower.indexOf('paypal.com') >= 0 ? 'paypal.com' :
@@ -470,6 +511,9 @@ export struct CheckoutWebOverlay {
       if (this.kind === 'train') {
         this.blockedNavigation = '已阻止离开安全的 HTTPS 页面。';
         aiLogInfo('[AIPhone][TrainBookingNavigationBlocked] chars=' + url.length.toString());
+      } else if (this.kind === 'flight') {
+        this.blockedNavigation = '已阻止离开携程安全域名。';
+        aiLogInfo('[AIPhone][FlightBookingNavigationBlocked] chars=' + url.length.toString());
       } else {
         this.blockedNavigation = '已阻止离开 RollingGo 安全域名。';
         aiLogInfo('[AIPhone][HotelBookingNavigationBlocked] chars=' + url.length.toString());

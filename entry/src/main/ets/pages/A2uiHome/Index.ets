@@ -1,4 +1,5 @@
 import {
+  AGENT_CORE_DEBUG,
   A2uiAgentRunner,
   ActionExecutionResult,
   ConversationTurnMessage,
@@ -16,7 +17,7 @@ import {
   defaultLocalModelSettings,
   summarizeAppliedA2uiSurface
 } from '@loop/agent-core';
-import { isRollingGoHotelBookingUrl } from '@loop/agent-core';
+import { isRollingGoHotelBookingUrl, validHotelBookingOpenArgs } from '@loop/agent-core';
 import {
   advanceWaterfallFeed,
   applyWaterfallExpandedQuery,
@@ -98,6 +99,7 @@ import { aiLogError, aiLogInfo } from '@loop/agent-core';
 import { sha256Digest } from '@loop/agent-core';
 import {
   appendMultiTaskSlot,
+  callStructuredTool,
   callToolGateway,
   childSurfaceIdForMultiTaskSlot,
   COMPOSIO_USER_ID_PREFIX,
@@ -249,6 +251,12 @@ import {
   WATERFALL_PREFERENCES_STORE_NAME
 } from './waterfall/WaterfallPreferencesStore';
 import {
+  buildCtripFlightSearchUrl,
+  buildCtripFlightSelectionContext,
+  ctripFlightBookingSelection,
+  ctripTravelOptionBookingSelection
+} from './travel/TravelBookingProvider';
+import {
   BimAttentionEvent,
   BimCuratorResult,
   BimForegroundRequest,
@@ -394,6 +402,8 @@ import {
 } from './lab/UiLabRuntimeConfig';
 
 const CONNECTION_TEST_PROMPT: string = '连接检查：请返回 A2UI v0.9.1 setup surface，说明 Local API 已可用。';
+const TRAVEL_STAGE55_DEVICE_FIXTURE_PURPOSE: string = '阶段5.5恢复验收样例';
+const TRAVEL_STAGE55_DEVICE_FIXTURE_RESTORE_COMMAND: string = 'travel-stage55-restore-original';
 const ENABLE_MULTI_AGENT_UI_LAYOUT_LLM: boolean = false;
 const TOOL_GATEWAY_URL: string = defaultToolGatewayUrl();
 const initialConnectionState: ConnectionPanelState = createInitialConnectionPanelState();
@@ -596,6 +606,9 @@ interface HtmlPinPayload {
   to?: HtmlActionValue;
   dep?: HtmlActionValue;
   arr?: HtmlActionValue;
+  fromCode?: HtmlActionValue;
+  toCode?: HtmlActionValue;
+  travelDate?: HtmlActionValue;
 }
 
 interface SocialHubReplyPayload {
@@ -836,6 +849,7 @@ struct Index {
   @State showCheckoutWeb: boolean = false;
   @State checkoutWebKind: CheckoutWebKind = 'payment';
   @State checkoutWebUrl: string = '';
+  @State checkoutWebContext: string = '';
   @State trainPresaleCheckoutTaskId: string = '';
   @State showTrainPresalePanel: boolean = false;
   @State trainPresaleTrip: TrainPresaleTrip = emptyTrainPresaleTrip();
@@ -4603,14 +4617,16 @@ struct Index {
       this.isAwaitingFirstSurface = false;
       const message = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][A2uiHomeModelException] ' + logSnippet(message));
+      const visibleError = 'A2UI 生成异常，请到配置页查看详情。';
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
         ok: false,
         status: 'error',
-        message: 'A2UI 生成异常，请到配置页查看详情。',
+        message: visibleError,
         requestDebug: this.lastModelRequest,
         assistantDebug: this.lastModelOutput,
         error: message
       }));
+      this.appendMessage('assistant', visibleError);
     } finally {
       if (this.runtimeGeneration === turnGeneration) {
         this.isAwaitingFirstSurface = false;
@@ -4982,6 +4998,54 @@ struct Index {
       return true;
     }
     await this.pinNavigationCard(row);
+    return true;
+  }
+
+  private async handleFlightBookingAction(action: A2uiAction): Promise<boolean> {
+    if (action.id !== 'flight.booking.ctrip.open') return false;
+    const model = this.parsedDataModel();
+    const payload = this.htmlPinPayload(action);
+    const index = this.htmlActionIndex(action, payload);
+    if (model === null) {
+      this.logHtmlHomeActionError(action, 'invalid_model');
+      return true;
+    }
+    let bookingUrl = '';
+    let bookingContext = '';
+    let source = 'flight.search';
+    if (this.actionText(payload.source) === 'flight') {
+      const travelRow = this.htmlPinTravelRow(model, payload, index);
+      if (travelRow === null || travelRow.source !== 'flight') {
+        this.logHtmlHomeActionError(action, 'missing_travel_flight_row');
+        return true;
+      }
+      const selection = ctripTravelOptionBookingSelection(travelRow);
+      bookingUrl = buildCtripFlightSearchUrl(selection);
+      bookingContext = buildCtripFlightSelectionContext(selection);
+      source = 'travel.search';
+    } else {
+      const flightRow = this.htmlPinFlightRow(model, payload, index);
+      if (flightRow === null) {
+        this.logHtmlHomeActionError(action, 'missing_flight_row');
+        return true;
+      }
+      const selection = ctripFlightBookingSelection(flightRow);
+      bookingUrl = buildCtripFlightSearchUrl(selection);
+      bookingContext = buildCtripFlightSelectionContext(selection);
+    }
+    if (bookingUrl.length === 0) {
+      this.getUIContext().getPromptAction().showToast({
+        message: '这条航班缺少出发机场、到达机场或日期，请重新查询后再订票。'
+      });
+      aiLogError('[AIPhone][FlightBookingOpen] ok=false reason=missing_trusted_parameters');
+      return true;
+    }
+    this.checkoutWebKind = 'flight';
+    this.checkoutWebUrl = bookingUrl;
+    this.checkoutWebContext = bookingContext;
+    this.trainPresaleCheckoutTaskId = '';
+    this.showCheckoutWeb = true;
+    aiLogInfo('[AIPhone][FlightBookingOpen] provider=携程 channel=flight_ctrip mode=in_app source=' + source);
     return true;
   }
 
@@ -6507,6 +6571,9 @@ struct Index {
     if (await this.handleHtmlFoodMapAction(action)) {
       return;
     }
+    if (await this.handleFlightBookingAction(action)) {
+      return;
+    }
     if (await this.handleHtmlPinAction(action)) {
       return;
     }
@@ -6549,7 +6616,10 @@ struct Index {
     }
     if (action.id === 'train.booking.alipay.open') {
       aiLogInfo('[AIPhone][TrainAlipayOpen] chars=' + action.prompt.length.toString());
-      await this.openExternalUrl(action.prompt, ['alipays']);
+      const opened = await this.openExternalUrl(action.prompt, ['alipays']);
+      if (!opened) {
+        this.logHtmlHomeActionError(action, 'alipay_open_failed');
+      }
       return;
     }
     if (action.id === 'luckin.pay.open') {
@@ -7782,6 +7852,7 @@ struct Index {
         checkoutWebKind: this.checkoutWebKind,
         checkoutWebUrl: this.checkoutWebUrl,
         checkoutWebTaskId: this.trainPresaleCheckoutTaskId,
+        checkoutWebContext: this.checkoutWebContext,
         showTrainPresalePanel: this.showTrainPresalePanel,
         trainPresaleTrip: this.trainPresaleTrip,
         trainPresaleTask: this.trainPresaleTask,
@@ -7840,12 +7911,14 @@ struct Index {
         onCloseCheckoutWeb: (closingTaskId: string) => {
           const closedTrainBooking = this.checkoutWebKind === 'train';
           const closedHotelBooking = this.checkoutWebKind === 'hotel';
+          const closedFlightBooking = this.checkoutWebKind === 'flight';
           if (closedTrainBooking && closingTaskId.length > 0 &&
             closingTaskId !== this.trainPresaleCheckoutTaskId) {
             aiLogInfo('[AIPhone][TrainPresaleCheckoutClose] taskId=' + closingTaskId + ' ignored=stale');
             return;
           }
           this.showCheckoutWeb = false;
+          this.checkoutWebContext = '';
           if (closedHotelBooking) {
             this.restoreHotelReturnSurface('hotel_booking_closed');
           }
@@ -7861,6 +7934,9 @@ struct Index {
               error: ''
             }));
             this.getUIContext().getPromptAction().showToast({ message: '订单与支付结果请以 12306 为准。' });
+          }
+          if (closedFlightBooking) {
+            this.getUIContext().getPromptAction().showToast({ message: '请核对携程订单后确认是否完成预订。' });
           }
         },
         onCheckoutWebReturn: (url: string) => {

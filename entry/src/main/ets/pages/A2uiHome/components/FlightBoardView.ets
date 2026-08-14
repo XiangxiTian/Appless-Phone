@@ -17,6 +17,10 @@ import {
   COLOR_TEXT
 } from '../style/A2uiHomeTheme';
 import { componentBodyOf, componentStatusOf, componentTitleOf } from '../render/A2uiRenderData';
+import {
+  buildCtripFlightSearchUrl,
+  ctripFlightBookingSelection
+} from '../travel/TravelBookingProvider';
 import { A2UI_PANEL_BACKGROUND_COLOR, A2UI_PANEL_BORDER_COLOR, A2UI_PANEL_CORNER_RADIUS } from '../style/A2uiPanelFrameStyle';
 import { ActionBarView } from './ActionBarView';
 import { StatusBadgeView } from './StatusBadgeView';
@@ -108,6 +112,29 @@ export struct FlightBoardView {
     return dep + ' - ' + arr;
   }
 
+  private canBookOnCtrip(item: A2uiFlightOption): boolean {
+    return buildCtripFlightSearchUrl(ctripFlightBookingSelection(item)).length > 0;
+  }
+
+  private ctripBookingAction(item: A2uiFlightOption): A2uiAction {
+    const selection = ctripFlightBookingSelection(item);
+    return {
+      id: 'flight.booking.ctrip.open',
+      label: '去携程订票',
+      prompt: JSON.stringify({
+        flightNo: item.flightNo,
+        depTime: item.depTime,
+        dep: item.dep,
+        arr: item.arr,
+        fromCode: selection.fromCode,
+        toCode: selection.toCode,
+        travelDate: selection.travelDate
+      }),
+      kind: 'client',
+      variant: 'primary'
+    };
+  }
+
   @Builder
   private FlightDetailPanel(item: A2uiFlightOption) {
     Column() {
@@ -155,11 +182,24 @@ export struct FlightBoardView {
         .alignItems(VerticalAlign.Top)
         .padding({ top: 4, bottom: 4 })
       }
-      Text('以飞常准返回为准，不支持订票。')
+      Text('航班信息来自飞常准；票价、余票和订单状态以携程实时页面为准。')
         .fontSize(12)
         .fontColor(COLOR_MUTED)
         .lineHeight(18)
         .margin({ top: 8 })
+      Button(this.canBookOnCtrip(item) ? '去携程订票' : '缺少航线或日期，暂不能订票')
+        .enabled(this.canBookOnCtrip(item) && !this.isBusy)
+        .height(42)
+        .width('100%')
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.canBookOnCtrip(item) ? COLOR_BUTTON_TEXT : COLOR_MUTED)
+        .backgroundColor(this.canBookOnCtrip(item) ? COLOR_ACCENT_DEEP : COLOR_FIELD)
+        .borderRadius(11)
+        .margin({ top: 10 })
+        .onClick(() => {
+          this.onAction(this.ctripBookingAction(item));
+        })
       Button(canCreateNavigationCardFromFlightOption(item) ? '固定为导航卡片' : '缺少坐标，不能固定')
         .enabled(canCreateNavigationCardFromFlightOption(item) && !this.isBusy)
         .height(38)

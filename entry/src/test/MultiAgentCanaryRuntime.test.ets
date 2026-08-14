@@ -139,6 +139,24 @@ const TWO_TOOL_DONE_DECISION: string = '{"personaId":"travel_companion","skillId
   '"dataTasks":[],"uiIntent":{"purpose":"travel.compare",' +
   '"preferredDensity":"comfortable","requiredSections":[]},' +
   '"answer":"出行结果已就绪","reasonCode":"two_tool_ready"}';
+const INCOMPLETE_TRAVEL_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":["travel.search"],"roundAction":"execute","continuationMode":"complete",' +
+  '"dataTasks":[{"localId":"travel","goal":"查询下周去上海的综合出行方案",' +
+  '"allowedToolIds":["travel.search"],"toolId":"travel.search",' +
+  '"input":{"query":"下周去上海出差"},"required":true}],' +
+  '"uiIntent":{"purpose":"出行方案","preferredDensity":"medium",' +
+  '"requiredSections":["出行方案"]}}';
+const TRAVEL_REPAIR_CLARIFY_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":["travel.search"],"roundAction":"clarify","continuationMode":"complete",' +
+  '"dataTasks":[],"uiIntent":{"purpose":"补充出行条件","preferredDensity":"comfortable",' +
+  '"requiredSections":[]},"answer":"你从哪座城市出发？另外，下周具体哪一天出发？"}';
+const CONTEXTUAL_TRAVEL_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":["travel.search"],"roundAction":"execute","continuationMode":"complete",' +
+  '"dataTasks":[{"localId":"travel","goal":"查询深圳到上海的出行方案",' +
+  '"allowedToolIds":["travel.search"],"toolId":"travel.search",' +
+  '"input":{"query":"从深圳到上海，出发日期 2026-08-21，查询高铁和航班"},"required":true}],' +
+  '"uiIntent":{"purpose":"travel.search","preferredDensity":"comfortable",' +
+  '"requiredSections":["travel"]}}';
 const TIME_DECISION: string = '{"personaId":"default_companion","skillId":"",' +
   '"requestedCapabilityIds":["time"],"roundAction":"execute","continuationMode":"complete",' +
   '"dataTasks":[{"localId":"current-time","goal":"查询当前设备时间",' +
@@ -171,7 +189,7 @@ const C02_QUERY_DECISION: string = '{"personaId":"travel_companion","skillId":""
   '"dataTasks":[{"localId":"travel","goal":"搜索从北京到上海的出行方案",' +
   '"allowedToolIds":["travel.search"],"toolId":"travel.search",' +
   '"input":{"origin":"北京","destination":"上海","departureDate":"2026-07-23",' +
-  '"query":"模型伪造的后天广州到深圳"},"required":true}],' +
+  '"query":"我明天要从北京去上海，帮我搜索出行方案"},"required":true}],' +
   '"uiIntent":{"purpose":"travel.search","preferredDensity":"comfortable",' +
   '"requiredSections":["travel"]}}';
 const C02_QUERY_DONE: string = '{"personaId":"travel_companion","skillId":"",' +
@@ -1584,7 +1602,7 @@ export default function multiAgentCanaryRuntimeTest() {
         bus
       ));
 
-      const outcome = await runtime.submit('比较北京到上海的出行和高铁', {
+      const outcome = await runtime.submit('比较明天北京到上海的出行和高铁', {
         text: ''
       }) as MultiAgentSettledOutcome;
 
@@ -1593,6 +1611,31 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(executor.calls.sort().join(',')).assertEqual('train.search,travel.search');
       expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(2);
       expect(model.prompts.length).assertEqual(1);
+      runtime.dispose();
+    });
+
+    it('repairs an incomplete travel execution into a model-authored clarification', 0, async () => {
+      const executor = new TwoToolExecutor();
+      const bus = new TrackingBus();
+      const model = new QueueModel([INCOMPLETE_TRAVEL_DECISION, TRAVEL_REPAIR_CLARIFY_DECISION]);
+      const runtime = new MultiAgentCanaryRuntime(canaryOptions(
+        model,
+        executor,
+        new RecordingOpener(),
+        [],
+        [],
+        bus
+      ));
+
+      const outcome = await runtime.submit(
+        '我下周要去上海出差', { text: '' }
+      ) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('success');
+      expect(outcome.message).assertEqual('你从哪座城市出发？另外，下周具体哪一天出发？');
+      expect(executor.calls.length).assertEqual(0);
+      expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(0);
+      expect(model.prompts.length).assertEqual(2);
       runtime.dispose();
     });
 
@@ -1610,7 +1653,7 @@ export default function multiAgentCanaryRuntimeTest() {
           bus
         ));
 
-        const pending = runtime.submit('比较北京到上海的航班和高铁', { text: '' });
+        const pending = runtime.submit('比较明天北京到上海的航班和高铁', { text: '' });
         await executor.bothStarted.promise;
 
         expect(executor.started.join(',')).assertEqual('flight.search,train.search');
@@ -1715,6 +1758,46 @@ export default function multiAgentCanaryRuntimeTest() {
         expect(dynamicArgs['qualifiedName']).assertEqual('NOTION_SEARCH');
         runtime.dispose();
       });
+
+    it('uses the model query produced from standard recent context before calling the provider', 0, async () => {
+      const calls: StructuredToolCallRecord[] = [];
+      const model = new QueueModel([CONTEXTUAL_TRAVEL_DECISION]);
+      const options = canaryOptions(
+        model,
+        new CanaryHotelExecutor(),
+        new RecordingOpener(),
+        [],
+        []
+      );
+      options.dataExecutor = undefined;
+      options.currentLocalDate = (): string => '2026-08-13';
+      options.structuredToolCall = async (
+        toolId: string,
+        prompt: string,
+        args: Object
+      ): Promise<DataResult> => {
+        calls.push({ toolId, prompt, args });
+        return canaryStructuredResult(toolId, 'travelOptions');
+      };
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const outcome = await runtime.submit('深圳，8月21号', {
+        text: '深圳，8月21号',
+        recentMessages: [
+          { role: 'user', content: '我下周要去上海出差' },
+          { role: 'assistant', content: '你从哪座城市出发？另外，下周具体哪一天出发？' },
+          { role: 'user', content: '深圳，8月21号' }
+        ]
+      }) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('success');
+      expect(calls.length).assertEqual(1);
+      expect(calls[0].toolId).assertEqual('travel.search');
+      expect(calls[0].prompt).assertEqual('从深圳到上海，出发日期 2026-08-21，查询高铁和航班');
+      const args = calls[0].args as Record<string, Object | string | number | boolean>;
+      expect(args['query']).assertEqual('从深圳到上海，出发日期 2026-08-21，查询高铁和航班');
+      runtime.dispose();
+    });
 
     it('executes C02 travel Data only once without opening a repeat round', 0, async () => {
       const model = new QueueModel([C02_QUERY_DECISION]);
@@ -3192,7 +3275,7 @@ export default function multiAgentCanaryRuntimeTest() {
       const runtime = new MultiAgentCanaryRuntime(options);
 
       const outcome = await runtime.submit(
-        '查询北京到上海的出行方案并打开世界杯页面',
+        '查询明天北京到上海的出行方案并打开世界杯页面',
         { text: '' },
         1
       ) as MultiAgentSettledOutcome;

@@ -4218,6 +4218,9 @@ export default function toolGatewayClientTest() {
 
       expect(record.dep).assertEqual('深圳宝安国际机场');
       expect(record.arr).assertEqual('上海虹桥机场');
+      expect(record.depCode).assertEqual('SZX');
+      expect(record.arrCode).assertEqual('SHA');
+      expect(record.travelDate).assertEqual('2026-06-24');
     });
 
     it('maps Meituan union delivery coupon results to food records', 0, () => {

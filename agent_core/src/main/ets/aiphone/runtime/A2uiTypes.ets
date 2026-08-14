@@ -88,6 +88,9 @@ export interface A2uiFlightData {
   airline: string;
   dep: string;
   arr: string;
+  depCode?: string;
+  arrCode?: string;
+  travelDate?: string;
   depLocation?: string;
   depTime: string;
   arrTime: string;
@@ -117,6 +120,13 @@ export interface A2uiTravelOptionData {
   saleAt?: string;
   fromCode?: string;
   toCode?: string;
+  doorToDoorDuration?: string;
+  leaveOriginAt?: string;
+  finalArrivalAt?: string;
+  feasibility?: string;
+  feasibilityReason?: string;
+  recommendationLabels?: string[];
+  selected?: boolean;
 }
 
 export interface A2uiFoodData {

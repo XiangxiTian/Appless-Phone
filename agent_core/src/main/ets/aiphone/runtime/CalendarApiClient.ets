@@ -50,6 +50,7 @@ interface CalendarEventBody {
 export interface CalendarEventPayload {
   id?: string;
   summary?: string;
+  location?: string;
   htmlLink?: string;
   updated?: string;
   start?: CalendarEventTime;
@@ -122,6 +123,9 @@ function eventRows(item: CalendarEventPayload): A2uiLabelValueData[] {
     { label: 'Start', value: eventTime(item.start) },
     { label: 'End', value: eventTime(item.end) }
   ];
+  if (textOf(item.location).length > 0) {
+    rows.push({ label: 'Location', value: textOf(item.location) });
+  }
   if (textOf(item.updated).length > 0) {
     rows.push({ label: 'Updated', value: textOf(item.updated) });
   }

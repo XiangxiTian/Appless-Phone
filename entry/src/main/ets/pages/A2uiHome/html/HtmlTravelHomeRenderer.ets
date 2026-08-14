@@ -304,6 +304,38 @@ button:disabled { cursor: default; opacity: 0.52; }
   gap: 10px;
   padding: 10px 14px 20px;
 }
+.travel-evidence {
+  margin: 12px 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255, 250, 241, 0.88);
+}
+.travel-evidence h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.travel-evidence p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.travel-evidence-grid {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+.travel-evidence-row {
+  display: grid;
+  grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
+  gap: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.travel-evidence-row b { color: var(--muted); }
+.travel-evidence-row span { overflow-wrap: anywhere; }
 .journey-empty {
   border: 1px dashed rgba(23, 18, 13, 0.18);
   border-radius: 20px;
@@ -327,6 +359,10 @@ button:disabled { cursor: default; opacity: 0.52; }
 .journey-card[data-source="train"] { --source: var(--rail); }
 .journey-card[data-source="flight"] { --source: var(--air); }
 .journey-card[data-source="food"] { --source: var(--signal); }
+.journey-card.selected {
+  border-color: var(--source);
+  box-shadow: 0 0 0 2px var(--source), var(--shadow);
+}
 .journey-card::before {
   content: "";
   position: absolute;
@@ -406,6 +442,17 @@ button:disabled { cursor: default; opacity: 0.52; }
   color: var(--muted);
   font-size: 13px;
   line-height: 1.42;
+}
+.journey-selected {
+  width: fit-content;
+  margin-top: 8px;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: var(--source);
+  color: var(--void);
+  font-size: 10px;
+  font-weight: 840;
+  line-height: 1;
 }
 .journey-expand {
   border: 1px solid var(--line);
@@ -637,9 +684,15 @@ const TRAVEL_HOME_JS: string = `
   try { data = JSON.parse(node && node.textContent ? node.textContent : '{}') || {}; } catch (error) { data = {}; }
   var app = document.getElementById('app');
   if (!app) { return; }
-  var state = { mode: 'all', trainFastest: false, trainAvailable: false, trainShowMore: false, expandedKey: '' };
   function text(value) { return value === undefined || value === null ? '' : String(value); }
   function list(value) { return Array.isArray(value) ? value : []; }
+  var activatedFilter = list(data.actions).find(function (action) {
+    return text(action && action.variant) === 'activated' &&
+      ['travel_show_all', 'travel_filter_train', 'travel_filter_flight'].indexOf(text(action && action.id)) >= 0;
+  });
+  var initialMode = text(activatedFilter && activatedFilter.id) === 'travel_filter_train' ? 'train' :
+    (text(activatedFilter && activatedFilter.id) === 'travel_filter_flight' ? 'flight' : 'all');
+  var state = { mode: initialMode, trainFastest: false, trainAvailable: false, trainShowMore: false, expandedKey: '' };
   var isBusy = text(data.isBusy).toLowerCase() === 'true';
   function add(parent, tag, className, value) {
     var el = document.createElement(tag);
@@ -756,9 +809,9 @@ const TRAVEL_HOME_JS: string = `
   function handleLocalAction(action) {
     if (isBusy) { return false; }
     var id = text(action && action.id);
-    if (id === 'travel_show_all') { state.mode = 'all'; applyView(); return true; }
-    if (id === 'travel_filter_train') { state.mode = 'train'; applyView(); return true; }
-    if (id === 'travel_filter_flight') { state.mode = 'flight'; applyView(); return true; }
+    if (id === 'travel_show_all') { state.mode = 'all'; applyView(); if (action.args && action.args.taskId) { postAction(action); } return true; }
+    if (id === 'travel_filter_train') { state.mode = 'train'; applyView(); if (action.args && action.args.taskId) { postAction(action); } return true; }
+    if (id === 'travel_filter_flight') { state.mode = 'flight'; applyView(); if (action.args && action.args.taskId) { postAction(action); } return true; }
     if (id === 'client_show_more') { state.trainShowMore = !state.trainShowMore; applyView(); return true; }
     if (id === 'client_sort_fastest') { state.trainFastest = !state.trainFastest; applyView(); return true; }
     if (id === 'client_filter_available') { state.trainAvailable = !state.trainAvailable; applyView(); return true; }
@@ -823,6 +876,11 @@ const TRAVEL_HOME_JS: string = `
     if (raw === 'to' || raw === 'arr') { return '到达'; }
     if (raw === 'depart' || raw === 'depTime') { return raw === 'depTime' ? '起飞' : '发车'; }
     if (raw === 'arrive' || raw === 'arrTime') { return raw === 'arrTime' ? '落地' : '到站'; }
+    if (raw === 'recommendation') { return '推荐标签'; }
+    if (raw === 'doorToDoorDuration') { return '门到门'; }
+    if (raw === 'leaveOriginAt') { return '建议出发'; }
+    if (raw === 'finalArrivalAt') { return '到最终目的地'; }
+    if (raw === 'feasibilityReason') { return '会议判断'; }
     if (raw === 'duration') { return '耗时'; }
     if (raw === 'price') { return '价格'; }
     if (raw === 'availability' || raw === 'status') { return '状态'; }
@@ -874,14 +932,18 @@ const TRAVEL_HOME_JS: string = `
   app.textContent = '';
   var blocks = list(data.blocks);
   var travelBlocks = blocks.filter(function (block) {
-    var source = sourceKind(block);
-    return source === 'train' || source === 'flight';
+    var kind = text(block && block.kind);
+    return kind === 'travel-option' || kind === 'train-option' || kind === 'flight-option';
+  });
+  var cardBlocks = blocks.filter(function (block) {
+    return travelBlocks.indexOf(block) >= 0 || text(block && block.kind) === 'food-result';
   });
   var shell = add(app, 'main', 'itinerary-shell');
   var hero = add(shell, 'header', 'route-hero');
   add(hero, 'div', 'route-kicker', '出行方案 · 实时候选');
   add(hero, 'h1', '', text(data.title) || '今日出行方案');
-  add(hero, 'p', '', text(data.subtitle) || '高铁和航班结果来自真实工具返回，页面只做本地筛选和展示。');
+  add(hero, 'p', '', text(data.subtitle) ||
+    '高铁和航班结果来自真实工具返回，页面只做本地筛选和展示。');
   renderPersonaBanner(hero);
   var map = add(hero, 'section', 'route-map');
   var from = firstMetric(travelBlocks, ['from', 'dep']) || '出发';
@@ -910,13 +972,16 @@ const TRAVEL_HOME_JS: string = `
   var localControls = [
     { id: 'travel_show_all', label: '全部', prompt: 'travel_show_all', variant: 'secondary', kind: 'client' },
     { id: 'travel_filter_train', label: '高铁', prompt: 'travel_filter_train', variant: 'secondary', kind: 'client' },
-    { id: 'travel_filter_flight', label: '飞机', prompt: 'travel_filter_flight', variant: 'secondary', kind: 'client' },
+    { id: 'travel_filter_flight', label: '飞机', prompt: 'travel_filter_flight', variant: 'secondary', kind: 'client' }
+  ];
+  localControls.push(
     { id: 'client_sort_fastest', label: '最快', prompt: 'client_sort_fastest', variant: 'secondary', kind: 'client' },
     { id: 'client_filter_available', label: '有票', prompt: 'client_filter_available', variant: 'secondary', kind: 'client' },
     { id: 'client_show_more', label: '更多', prompt: 'client_show_more', variant: 'secondary', kind: 'client' }
-  ];
+  );
   var seen = {};
-  localControls.concat(list(data.actions)).forEach(function (action) {
+  var controlActions = localControls.concat(list(data.actions));
+  controlActions.forEach(function (action) {
     var id = text(action && action.id);
     if (id.length === 0 || seen[id]) { return; }
     seen[id] = true;
@@ -941,20 +1006,24 @@ const TRAVEL_HOME_JS: string = `
   var empty = add(board, 'div', 'journey-empty', '当前筛选下暂无匹配出行方案。');
   empty.id = 'journey-empty';
   empty.style.display = 'none';
-  blocks.forEach(function (block, index) {
+  cardBlocks.forEach(function (block, index) {
     var source = sourceKind(block);
     var key = text(block.id) || String(index);
-    var card = add(board, 'article', index === 0 ? 'journey-card featured' : 'journey-card');
+    var selected = text(block.status) === '已选择';
+    var cardClass = index === 0 ? 'journey-card featured' : 'journey-card';
+    if (selected) { cardClass += ' selected'; }
+    var card = add(board, 'article', cardClass);
     card.setAttribute('data-card-key', key);
     card.setAttribute('data-source', source);
     card.setAttribute('data-index', String(index));
-    card.setAttribute('data-duration', metric(block, ['duration']));
+    card.setAttribute('data-duration', metric(block, ['doorToDoorDuration', 'duration']));
     card.setAttribute('data-availability', [metric(block, ['availability', 'status']), metric(block, ['seats', 'business', 'first', 'second', 'noSeat', 'hardSeat', 'sleeperSoft'])].join(' '));
     card.setAttribute('aria-expanded', 'false');
     var top = add(card, 'div', 'journey-top');
     var title = add(top, 'div', 'journey-title');
     add(title, 'div', 'journey-tag ' + source, sourceLabel(block));
     add(title, 'h2', '', text(block.title) || text(block.kind) || '出行结果');
+    if (selected) { add(title, 'div', 'journey-selected', '已选择'); }
     var expand = add(top, 'button', 'journey-expand', '展开');
     expand.type = 'button';
     expand.addEventListener('click', function (event) { event.stopPropagation(); setExpanded(key); });

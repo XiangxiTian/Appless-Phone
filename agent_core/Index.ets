@@ -1,3 +1,4 @@
+export { DEBUG as AGENT_CORE_DEBUG } from './BuildProfile';
 export { ChatMessage, ConversationContext, ConversationRole } from './src/main/ets/agent/ConversationContext';
 export {
   ApplessCapabilityEnvironment,
@@ -207,6 +208,7 @@ export * from './src/main/ets/aiphone/runtime/SocialHubTypes';
 export * from './src/main/ets/aiphone/runtime/ToolDefinitionRegistry';
 export * from './src/main/ets/aiphone/runtime/ToolDefinitionTypes';
 export * from './src/main/ets/aiphone/runtime/ToolGatewayClient';
+export * from './src/main/ets/aiphone/runtime/TravelSearchPreflight';
 export * from './src/main/ets/aiphone/runtime/Utf8Bytes';
 export * from './src/main/ets/aiphone/runtime/WaterfallAnythingCore';
 export * from './src/main/ets/aiphone/runtime/YouTubeApiClient';

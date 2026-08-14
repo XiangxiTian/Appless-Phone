@@ -132,6 +132,7 @@ const UNBOUND_LATER_TOOL_ERROR: string = 'LEADER_UNBOUND_LATER_TOOL';
 const SAME_ROUND_DEPENDENCY_ERROR: string = 'LEADER_SAME_ROUND_DEPENDENCY';
 const OVERLAPPING_VIDEO_TOOLS_ERROR: string = 'LEADER_OVERLAPPING_VIDEO_TOOLS';
 const TASK_INPUT_INVALID_ERROR: string = 'LEADER_TASK_INPUT_INVALID';
+const TRAVEL_QUERY_INCOMPLETE_ERROR: string = 'LEADER_TRAVEL_QUERY_INCOMPLETE';
 const ACTION_OWNED_DATA_TASK_ERROR: string = 'LEADER_ACTION_OWNED_DATA_TASK';
 const SKILL_CAPABILITY_ERROR: string = 'LEADER_SKILL_CAPABILITY_VIOLATION';
 const PERSONA_SKILL_SWITCH_ERROR: string = 'LEADER_PERSONA_SKILL_SWITCH';
@@ -216,6 +217,13 @@ const TASK_INPUT_REPAIR_INSTRUCTION: string =
   'registered input shape. Keep personaId, skillId, requestedCapabilityIds, roundAction, each Data task localId, ' +
   'goal, allowedToolIds, toolId and required value, uiIntent, actionIntent, answer, and Data task order exactly ' +
   'unchanged. The only permitted difference is inside dataTasks[].input. ' + FULL_DECISION_CONTRACT;
+const TRAVEL_QUERY_INCOMPLETE_REPAIR_INSTRUCTION: string =
+  'Correction: LEADER_TRAVEL_QUERY_INCOMPLETE. A selected travel, train, or flight search lacks an exact ' +
+  'departure date, origin, or destination. Re-read the current message and standard recent conversation. ' +
+  'If all required values are explicitly grounded there, correct only the affected task input. Otherwise return ' +
+  'clarify with empty dataTasks and no actionIntent, and ask only for the missing values in your own natural words. ' +
+  'Preserve requestedCapabilityIds and do not invent a date, city, airport, station, or provider result. ' +
+  FULL_DECISION_CONTRACT;
 const BIM_STATE_ONLY_REPAIR_INSTRUCTION: string =
   'Correction: LEADER_TASK_INPUT_INVALID during a BIM turn. First decide whether the user explicitly requested ' +
   'the selected business tool. A BIM state-only update, including participants, room preferences, dates, budgets, ' +
@@ -267,7 +275,9 @@ const TRAVEL_SELECTION_CONTRACT: string =
   'user explicitly asks only for train/高铁/火车. For requests that do not explicitly name those concrete modes, ' +
   'broad or multimodal wording such as 出行方案, 怎么去, or 综合比较 means exactly ' +
   'one travel.search Data task. Preserve route fields and relative date wording such as 明天 in the selected ' +
-  'task input; do not drop or silently replace them.';
+  'task input; do not drop or silently replace them. This contract chooses a tool only after its required date, ' +
+  'origin, and destination are grounded. If any required value is missing or ambiguous, return clarify with no ' +
+  'Data task and ask for the missing value in your own words.';
 const VIDEO_SELECTION_CONTRACT: string =
   'Video selection contract: A video-only request that explicitly names both YouTube and Bilibili means exactly ' +
   'one media.video.search Data task with sources ["youtube","bilibili"]. Never schedule youtube.video.search in ' +
@@ -561,6 +571,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
         correction = input.text.indexOf('[BIM_CONTEXT]') === 0 ?
           BIM_STATE_ONLY_REPAIR_INSTRUCTION + '\nRejected decision: ' + output :
           TASK_INPUT_REPAIR_INSTRUCTION + '\nRejected decision: ' + output;
+      } else if (error instanceof Error && error.message === TRAVEL_QUERY_INCOMPLETE_ERROR) {
+        correction = TRAVEL_QUERY_INCOMPLETE_REPAIR_INSTRUCTION + '\nRejected decision: ' + output;
       } else if (error instanceof Error && error.message === ACTION_OWNED_DATA_TASK_ERROR) {
         correction = ACTION_OWNED_DATA_TASK_REPAIR_INSTRUCTION + '\nRejected decision: ' + output;
       } else if (error instanceof Error && error.message === SKILL_CAPABILITY_ERROR) {
@@ -593,6 +605,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           error.message === UNBOUND_LATER_TOOL_ERROR ||
           error.message === PREMATURE_CALENDAR_DELETE_ACTION_ERROR ||
           error.message === PREMATURE_CALENDAR_UPDATE_AFTER_SEARCH_ERROR ||
+          error.message === TRAVEL_QUERY_INCOMPLETE_ERROR ||
           error.message === BIM_MEMORY_UPDATE_ERROR ||
           error.message === BIM_NEW_MATTER_MEMORY_UPDATE_ERROR ||
           error.message === BIM_NEW_MATTER_CONTRACT_ERROR);
@@ -669,6 +682,10 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           round
         );
         this.validateDecisionInputs(input, repairedDecision, currentLocalDate);
+        if (error instanceof Error && error.message === TRAVEL_QUERY_INCOMPLETE_ERROR &&
+          repairedDecision.roundAction === 'clarify') {
+          repairedDecision.reasonCode = 'host_preflight_clarify';
+        }
         repairedDecision.normalizationCurrentLocalDate = currentLocalDate;
         return repairedDecision;
       } catch (repairError) {
@@ -695,7 +712,10 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       for (let index = 0; index < decision.dataTasks.length; index++) {
         normalizer(input, decision.dataTasks[index], currentLocalDate);
       }
-    } catch (_error) {
+    } catch (error) {
+      if (error instanceof Error && error.message === 'TRAVEL_QUERY_INCOMPLETE') {
+        throw new Error(TRAVEL_QUERY_INCOMPLETE_ERROR);
+      }
       throw new Error(TASK_INPUT_INVALID_ERROR);
     }
   }

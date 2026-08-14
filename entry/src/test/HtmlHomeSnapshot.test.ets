@@ -352,7 +352,8 @@ export default function htmlHomeSnapshotTest() {
           '"from":"深圳北","to":"上海虹桥","depart":"09:00","arrive":"13:28","duration":"4h28m",' +
           '"price":"553","availability":"有票","status":"success","detail":"","bookingUrl":"' + bookingUrl +
           '"},{"id":"flight-CZ1","source":"flight","sourceTag":"飞机 · 飞常准","title":"CZ1",' +
-          '"from":"SZX","to":"SHA","depart":"10:00","arrive":"12:20","duration":"2h20m",' +
+          '"from":"深圳宝安","to":"上海虹桥","fromCode":"SZX","toCode":"SHA","travelDate":"2026-08-28",' +
+          '"depart":"10:00","arrive":"12:20","duration":"2h20m",' +
           '"price":"680","availability":"","status":"scheduled","detail":"南方航空"}]}'),
         messages: [],
         isBusy: false,
@@ -365,6 +366,17 @@ export default function htmlHomeSnapshotTest() {
       expect(trainAction.label).assertEqual('去购票');
       expect(JSON.stringify(trainAction.args).indexOf('"bookingUrl":"' + bookingUrl + '"')).assertLarger(-1);
       expect(JSON.stringify(doc.blocks[1].actions).indexOf('train.booking.open')).assertEqual(-1);
+      expect(doc.blocks[1].actions.length).assertEqual(2);
+      expect(doc.blocks[1].actions[0].id).assertEqual('flight.booking.ctrip.open');
+      expect(doc.blocks[1].actions[0].label).assertEqual('去携程订票');
+      expect(doc.blocks[1].actions[0].variant).assertEqual('primary');
+      expect(doc.blocks[1].actions[0].prompt.indexOf('"id":"flight-CZ1"')).assertLarger(-1);
+      expect(doc.blocks[1].actions[0].prompt.indexOf('"source":"flight"')).assertLarger(-1);
+      expect(doc.blocks[1].actions[0].prompt.indexOf('"fromCode":"SZX"')).assertLarger(-1);
+      expect(doc.blocks[1].actions[0].prompt.indexOf('"toCode":"SHA"')).assertLarger(-1);
+      expect(doc.blocks[1].actions[0].prompt.indexOf('"travelDate":"2026-08-28"')).assertLarger(-1);
+      expect(doc.blocks[1].actions[1].id).assertEqual('html_pin_travel');
+      expect(isHtmlHomeActionAllowed(doc, doc.blocks[1].actions[0] as A2uiAction)).assertTrue();
     });
 
     it('keeps presale mixed travel train cards on the schedule action', 0, () => {
@@ -423,7 +435,7 @@ export default function htmlHomeSnapshotTest() {
       };
       const doc = createHtmlHomeDocument({
         surface: surface('travel', 'ready', [root('trains'), trains, flights],
-          '{"trains":[{"trainCode":"G123","from":"深圳北","to":"上海虹桥","depart":"09:00","arrive":"15:30","duration":"6h30m","seats":"二等座有票","status":"available","business":"","first":"2","second":"有","noSeat":"","hardSeat":"","sleeperSoft":"","price":"553","bookingUrl":"https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc&fs=test&ts=test&date=2026-07-22&flag=N,N,Y"}],"flights":[{"flightNo":"CZ8888","airline":"南方航空","dep":"SZX","arr":"SHA","depTime":"10:20","arrTime":"12:45","status":"scheduled","price":"680"}],"summary":{"text":"北京到上海 2026-07-01 航班结果","toolName":"flight.search","dataLabel":"航班","count":1}}'),
+          '{"trains":[{"trainCode":"G123","from":"深圳北","to":"上海虹桥","depart":"09:00","arrive":"15:30","duration":"6h30m","seats":"二等座有票","status":"available","business":"","first":"2","second":"有","noSeat":"","hardSeat":"","sleeperSoft":"","price":"553","bookingUrl":"https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc&fs=test&ts=test&date=2026-07-22&flag=N,N,Y"}],"flights":[{"flightNo":"CZ8888","airline":"南方航空","dep":"深圳宝安","arr":"上海虹桥","depCode":"SZX","arrCode":"SHA","travelDate":"2026-07-01","depTime":"10:20","arrTime":"12:45","status":"scheduled","price":"680"}],"summary":{"text":"北京到上海 2026-07-01 航班结果","toolName":"flight.search","dataLabel":"航班","count":1}}'),
         messages: [],
         isBusy: false,
         isAwaitingFirstSurface: false
@@ -450,7 +462,11 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.blocks[0].actions[1].label).assertEqual('支付宝购票');
       expect(doc.blocks[0].actions[1].prompt).assertEqual('alipays://platformapi/startapp?appId=20000135');
       expect(doc.blocks[0].actions[2].id).assertEqual('html_pin_train');
-      expect(doc.blocks[1].actions[0].id).assertEqual('html_pin_flight');
+      expect(doc.blocks[1].actions.length).assertEqual(2);
+      expect(doc.blocks[1].actions[0].id).assertEqual('flight.booking.ctrip.open');
+      expect(doc.blocks[1].actions[0].label).assertEqual('去携程订票');
+      expect(doc.blocks[1].actions[0].variant).assertEqual('primary');
+      expect(doc.blocks[1].actions[1].id).assertEqual('html_pin_flight');
       expect(JSON.stringify(doc.blocks[0].actions).indexOf('train.booking.open')).assertLarger(-1);
       expect(JSON.stringify(doc.blocks[1].actions).indexOf('html_pin_flight')).assertLarger(-1);
       expect(doc.blocks[0].actions[2].prompt.indexOf('"trainCode":"G123"')).assertLarger(-1);
@@ -459,8 +475,16 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.blocks[0].actions[2].prompt.indexOf('"to":"上海虹桥"')).assertLarger(-1);
       expect(doc.blocks[1].actions[0].prompt.indexOf('"flightNo":"CZ8888"')).assertLarger(-1);
       expect(doc.blocks[1].actions[0].prompt.indexOf('"depTime":"10:20"')).assertLarger(-1);
-      expect(doc.blocks[1].actions[0].prompt.indexOf('"dep":"SZX"')).assertLarger(-1);
-      expect(doc.blocks[1].actions[0].prompt.indexOf('"arr":"SHA"')).assertLarger(-1);
+      expect(doc.blocks[1].actions[0].prompt.indexOf('"fromCode":"SZX"')).assertLarger(-1);
+      expect(doc.blocks[1].actions[0].prompt.indexOf('"toCode":"SHA"')).assertLarger(-1);
+      expect(doc.blocks[1].actions[0].prompt.indexOf('"travelDate":"2026-07-01"')).assertLarger(-1);
+      expect(isHtmlHomeActionAllowed(doc, doc.blocks[1].actions[0] as A2uiAction)).assertTrue();
+      const forgedFlightBooking: A2uiAction = {
+        id: 'flight.booking.ctrip.open', label: '去携程订票',
+        prompt: doc.blocks[1].actions[0].prompt.replace('"toCode":"SHA"', '"toCode":"PEK"'),
+        variant: 'primary', kind: 'client'
+      };
+      expect(isHtmlHomeActionAllowed(doc, forgedFlightBooking)).assertFalse();
       expect(doc.blocks[1].prompt).assertEqual('2026-07-01');
     });
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
+  A2uiAction,
   A2uiCallResult,
   A2uiFlightData,
   A2uiFoodData,
@@ -62,6 +63,8 @@ import {
   foodStructuredDataResult,
   foodStructuredDataResultFromProviders,
   foodDistanceMeters,
+  foodCoordinateForTest,
+  foodGoogleSearchQueryForTest,
   foodProviderProgressRows,
   foodRecordFromBaiduPlace,
   foodRecordsFromLuckinMcpTool,
@@ -4321,6 +4324,44 @@ export default function toolGatewayClientTest() {
       expect(foodDistanceMeters('832米')).assertEqual(832);
       expect(foodDistanceMeters('1.2千米')).assertEqual(1200);
       expect(foodDistanceMeters('0.85公里')).assertEqual(850);
+    });
+
+    it('rejects missing food coordinates without turning empty text into zero', 0, () => {
+      expect(foodCoordinateForTest(undefined, -180, 180)).assertNull();
+      expect(foodCoordinateForTest(null, -180, 180)).assertNull();
+      expect(foodCoordinateForTest('', -180, 180)).assertNull();
+      expect(foodCoordinateForTest('   ', -90, 90)).assertNull();
+      expect(foodCoordinateForTest('not-a-coordinate', -180, 180)).assertNull();
+      expect(foodCoordinateForTest(0, -180, 180)).assertEqual(0);
+      expect(foodCoordinateForTest('0', -90, 90)).assertEqual(0);
+      expect(foodCoordinateForTest('114.0579', -180, 180)).assertEqual(114.0579);
+    });
+
+    it('rebuilds Google food text searches from the selected place instead of the stale prompt', 0, () => {
+      expect(foodGoogleSearchQueryForTest(
+        '帮我搜索深圳北站附近的咖啡店', '坂田华为基地', '咖啡店'
+      )).assertEqual('坂田华为基地附近的咖啡店');
+      expect(foodGoogleSearchQueryForTest(
+        '帮我搜索深圳北站附近的咖啡店', '', '咖啡店'
+      )).assertEqual('帮我搜索深圳北站附近的咖啡店');
+    });
+
+    it('keeps the native fallback location change promptable without structured args', 0, () => {
+      const state = foodA2uiRenderState(
+        'surface_food_fallback', '附近餐饮', '真实 provider 返回', '共 0 条', [], []
+      );
+      let locationActionKind = '';
+      for (let componentIndex = 0; componentIndex < state.components.length; componentIndex++) {
+        const actions = state.components[componentIndex].actions === undefined ?
+          [] : state.components[componentIndex].actions as A2uiAction[];
+        for (let actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+          if (actions[actionIndex].id === 'food_change_location') {
+            locationActionKind = actions[actionIndex].kind;
+          }
+        }
+      }
+
+      expect(locationActionKind).assertEqual('prompt');
     });
 
     it('deduplicates food results and merges source tags without fake rows', 0, () => {

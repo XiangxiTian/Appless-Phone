@@ -54,6 +54,7 @@ import {
   shouldShowHomeChrome
 } from '../main/ets/pages/A2uiHome/components/HomePage';
 import { renderRideDriverMapHtml } from '../main/ets/pages/A2uiHome/html/RideDriverMapHtmlRenderer';
+import { renderFoodLocationPickerHtml } from '../main/ets/pages/A2uiHome/html/FoodLocationPickerHtmlRenderer';
 import {
   advanceWaterfallFeed,
   WaterfallFeedState,
@@ -810,7 +811,8 @@ function foodDocumentFixture(): HtmlHomeDocument {
   doc.actions = [
     { id: 'food_show_all', label: '全部', prompt: 'food_show_all', variant: 'activated', kind: 'client' },
     { id: 'food_filter_1km', label: '1公里内', prompt: 'food_filter_1km', variant: 'secondary', kind: 'client' },
-    { id: 'food_show_more', label: '展示更多', prompt: 'food_show_more', variant: 'secondary', kind: 'client' }
+    { id: 'food_show_more', label: '展示更多', prompt: 'food_show_more', variant: 'secondary', kind: 'client' },
+    { id: 'food_change_location', label: '换位置', prompt: 'food_change_location', variant: 'secondary', kind: 'client' }
   ];
   doc.blocks = [{
     id: 'food-0',
@@ -2360,6 +2362,27 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('预计 6 分钟接驾')).assertLarger(-1);
     });
 
+    it('renders standalone Amap food location picker with search and bridge confirmation', 0, () => {
+      const html = renderFoodLocationPickerHtml({
+        amapKey: 'amap-js-key',
+        amapSecurityJsCode: '',
+        initialLongitude: 114.063873,
+        initialLatitude: 22.631273
+      });
+
+      expect(html.indexOf('webapi.amap.com/maps?v=2.0')).assertLarger(-1);
+      expect(html.indexOf('restapi.amap.com/v3/place/text')).assertLarger(-1);
+      expect(html.indexOf('restapi.amap.com/v3/geocode/regeo')).assertLarger(-1);
+      expect(html.indexOf('new AMap.Map')).assertLarger(-1);
+      expect(html.indexOf('new AMap.PlaceSearch')).assertEqual(-1);
+      expect(html.indexOf('function showResults')).assertLarger(-1);
+      expect(html.indexOf('function reverseGeocode')).assertLarger(-1);
+      expect(html.indexOf('AIPhoneFoodLocationPicker.postMessage')).assertLarger(-1);
+      expect(html.indexOf("type: 'confirm'")).assertLarger(-1);
+      expect(html.indexOf('114.063873')).assertLarger(-1);
+      expect(html.indexOf('22.631273')).assertLarger(-1);
+    });
+
     it('renders ride driver map with fullscreen control and eta detail row', 0, () => {
       const html = renderHtmlHomeDocument(rideDriverDocumentFixture());
 
@@ -2585,10 +2608,22 @@ export default function htmlHomeRendererTest() {
     });
 
     it('renders food documents with the food scene template and preserves actions', 0, () => {
-      const html = renderHtmlHomeDocument(foodDocumentFixture());
+      const html = renderHtmlHomeDocument(foodDocumentFixture(), false, {
+        longitude: 114.063873,
+        latitude: 22.631273,
+        radiusMeters: 3000,
+        name: '坂田',
+        address: '深圳市龙岗区坂田街道'
+      });
 
       expect(html.indexOf('editorial-food-shell')).assertLarger(-1);
       expect(html.indexOf('editorial-cover')).assertLarger(-1);
+      expect(html.indexOf('food_change_location')).assertLarger(-1);
+      expect(html.indexOf('food_relocate_current')).assertLarger(-1);
+      expect(html.indexOf('food_address_book')).assertLarger(-1);
+      expect(html.indexOf('food_address_book_save')).assertLarger(-1);
+      expect(html.indexOf('food_address_book_delete')).assertLarger(-1);
+      expect(html.indexOf('AIPhoneFoodLocationPickerBridge')).assertLarger(-1);
       expect(html.indexOf('editorial-tabs')).assertLarger(-1);
       expect(html.indexOf('editorial-feature')).assertLarger(-1);
       expect(html.indexOf('photo-1552566626-52f8b828add9')).assertLarger(-1);
@@ -2608,10 +2643,6 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('function addAvatar(parent, block)')).assertLarger(-1);
       expect(html.indexOf('addAvatar(head, block)')).assertLarger(-1);
       expect(html.indexOf('border-radius: 999px')).assertLarger(-1);
-      expect(html.indexOf('今日附近值得吃')).assertLarger(-1);
-      expect(html.indexOf('附近餐饮 · 今日编辑')).assertLarger(-1);
-      expect(html.indexOf('今日编辑')).assertLarger(-1);
-      expect(html.indexOf('高德 / 腾讯地图')).assertLarger(-1);
       expect(html.indexOf('三津汤包 (深圳北站店)')).assertLarger(-1);
       expect(html.indexOf('N多寿司 (深圳北站店)')).assertLarger(-1);
       expect(html.indexOf('麦当劳 (深圳北站店)')).assertLarger(-1);
@@ -2650,8 +2681,6 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('setExpanded(key)')).assertLarger(-1);
       expect(html.indexOf('Food Field')).assertEqual(-1);
       expect(html.indexOf('附近餐饮探索')).assertEqual(-1);
-      expect(html.indexOf('window.AMap')).assertEqual(-1);
-      expect(html.indexOf('webapi.amap.com')).assertEqual(-1);
       expect(html.indexOf('ReactDOM')).assertEqual(-1);
     });
 

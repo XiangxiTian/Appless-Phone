@@ -3,7 +3,11 @@ import { renderMultiTaskHomeDocument, shouldRenderMultiTaskHomeDocument } from '
 import { renderAggregateSearchHomeDocument, shouldRenderAggregateSearchHomeDocument } from './HtmlAggregateSearchHomeRenderer';
 import { renderDailyBriefHomeDocument, shouldRenderDailyBriefHomeDocument } from './HtmlDailyBriefHomeRenderer';
 import { renderCalendarHomeDocument, shouldRenderCalendarHomeDocument } from './HtmlCalendarHomeRenderer';
-import { renderFoodHomeDocument, shouldRenderFoodHomeDocument } from './HtmlFoodHomeRenderer';
+import {
+  renderFoodHomeDocument,
+  shouldRenderFoodHomeDocument
+} from './HtmlFoodHomeRenderer';
+import { FoodLocationViewModel, FoodSavedAddressViewModel } from '../FoodAddressBookStore';
 import { renderFirecrawlHomeDocument, shouldRenderFirecrawlHomeDocument } from './HtmlFirecrawlHomeRenderer';
 import { renderHotelHomeDocument, shouldRenderHotelHomeDocument } from './HtmlHotelHomeRenderer';
 import { renderMediaHomeDocument, shouldRenderMediaHomeDocument } from './HtmlMediaHomeRenderer';
@@ -5561,7 +5565,12 @@ const HTML_HOME_JS: string = `
 })();
 `;
 
-export function renderHtmlHomeDocument(document: HtmlHomeDocument, isBusy: boolean = false): string {
+export function renderHtmlHomeDocument(
+  document: HtmlHomeDocument,
+  isBusy: boolean = false,
+  foodLocation?: FoodLocationViewModel,
+  foodAddressBook: FoodSavedAddressViewModel[] = []
+): string {
   if (shouldRenderMultiTaskHomeDocument(document)) {
     return renderMultiTaskHomeDocument(document, isBusy);
   }
@@ -5587,7 +5596,7 @@ export function renderHtmlHomeDocument(document: HtmlHomeDocument, isBusy: boole
     return renderHotelHomeDocument(document, isBusy);
   }
   if (shouldRenderFoodHomeDocument(document)) {
-    return renderFoodHomeDocument(document, isBusy);
+    return renderFoodHomeDocument(document, isBusy, foodLocation, foodAddressBook);
   }
   if (shouldRenderRideHailingHomeDocument(document)) {
     return renderRideHailingHomeDocument(document, isBusy);

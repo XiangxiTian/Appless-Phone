@@ -23,6 +23,7 @@ import {
   A2uiComponent,
   A2uiDynamicToolConnectData,
   A2uiFoodData,
+  A2uiFoodSearchContext,
   A2uiFlightData,
   A2uiGenericToolResultData,
   A2uiLabelValueData,
@@ -220,6 +221,12 @@ export function createHtmlHomeDocument(params: CreateHtmlHomeDocumentParams): Ht
     generatedAt: new Date().toISOString()
   };
   const document: HtmlHomeDocument = withBusy(baseDocument, params.isBusy);
+  if (kind === 'food') {
+    const foodSearchContext = resolveData(surface, '/foodSearchContext') as A2uiFoodSearchContext;
+    if (foodSearchContext !== undefined && foodSearchContext !== null) {
+      document.foodSearchContext = foodSearchContext;
+    }
+  }
   if (kind === 'daily-brief') {
     const model = dailyBriefHomeDataModel(surface);
     const snapshot = model === null ? undefined : model.dailyBrief;
@@ -451,6 +458,12 @@ function buildEmbeddedDocumentFromSurface(
     rawSurfaceRoot: root,
     generatedAt: new Date().toISOString()
   };
+  if (kind === 'food') {
+    const foodSearchContext = resolveData(embedded, '/foodSearchContext') as A2uiFoodSearchContext;
+    if (foodSearchContext !== undefined && foodSearchContext !== null) {
+      document.foodSearchContext = foodSearchContext;
+    }
+  }
   embedded.components.forEach((component: A2uiComponent) => {
     appendComponentActions(document.actions, component);
     appendBlocksForComponent(document, embedded, component);

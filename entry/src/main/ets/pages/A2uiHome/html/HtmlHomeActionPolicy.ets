@@ -96,6 +96,19 @@ function isHtmlHomeActionAllowedInDocument(document: HtmlHomeDocument, action: A
   if (action.id === 'flight_retry_date') {
     return hasBlockKind(document, 'flight-option');
   }
+  if (document.kind === 'food' && action.kind === 'client' &&
+    (action.id === 'food_address_book_save' || action.id === 'food_address_book_delete') &&
+    foodAddressBookActionAllowed(document, action)) {
+    return true;
+  }
+  if (document.kind === 'food' && action.kind === 'client' && action.id === 'food_change_location' &&
+    foodLocationChangeAllowed(document, action)) {
+    return true;
+  }
+  if (document.kind === 'food' && action.kind === 'client' && action.id === 'food_relocate_current' &&
+    foodSurfaceOwnedActionAllowed(document, action)) {
+    return true;
+  }
   if (action.id === 'payment.account.save' && paymentAccountSaveAllowed(document, action)) {
     return true;
   }
@@ -141,6 +154,46 @@ function isHtmlHomeActionAllowedInDocument(document: HtmlHomeDocument, action: A
     return true;
   }
   return false;
+}
+
+function foodAddressBookActionAllowed(document: HtmlHomeDocument, action: A2uiAction): boolean {
+  if (action.args === undefined || action.args === null) {
+    return false;
+  }
+  const args = action.args as Record<string, HtmlHomePolicyValue>;
+  if (policyText(args['surfaceId']).trim() !== (document.surfaceId ?? '')) {
+    return false;
+  }
+  return action.id !== 'food_address_book_delete' || policyText(args['addressId']).trim().length > 0;
+}
+
+function foodSurfaceOwnedActionAllowed(document: HtmlHomeDocument, action: A2uiAction): boolean {
+  if (action.args === undefined || action.args === null) {
+    return false;
+  }
+  const args = action.args as Record<string, HtmlHomePolicyValue>;
+  return policyText(args['surfaceId']).trim() === (document.surfaceId ?? '');
+}
+
+function foodLocationChangeAllowed(document: HtmlHomeDocument, action: A2uiAction): boolean {
+  if (action.args === undefined || action.args === null) {
+    return false;
+  }
+  const args = action.args as Record<string, HtmlHomePolicyValue>;
+  if (policyText(args['surfaceId']).trim() !== (document.surfaceId ?? '')) {
+    return false;
+  }
+  const areaValue = args['searchArea'];
+  if (areaValue === undefined || areaValue === null || typeof areaValue !== 'object' || Array.isArray(areaValue)) {
+    return false;
+  }
+  const area = areaValue as Record<string, HtmlHomePolicyValue>;
+  const longitude = Number(policyText(area['longitude']));
+  const latitude = Number(policyText(area['latitude']));
+  const radius = Number(policyText(area['radiusMeters']));
+  return Number.isFinite(longitude) && longitude >= -180 && longitude <= 180 &&
+    Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 &&
+    Number.isFinite(radius) && radius >= 100 && radius <= 50000;
 }
 
 function dailyBriefPreferenceSaveAllowed(document: HtmlHomeDocument, action: A2uiAction): boolean {

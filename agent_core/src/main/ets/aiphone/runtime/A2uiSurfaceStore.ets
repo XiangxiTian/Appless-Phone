@@ -9,6 +9,7 @@ import {
   A2uiFlightData,
   A2uiFormData,
   A2uiFoodData,
+  A2uiFoodSearchContext,
   A2uiGenericToolResultData,
   A2uiGenericToolResultRowData,
   A2uiLabelValueData,
@@ -488,6 +489,7 @@ function parseDataModel(json: string): A2uiRuntimeDataModel {
       flights: Array.isArray(parsed.flights) ? parsed.flights : fallback.flights,
       travelOptions: Array.isArray(parsed.travelOptions) ? parsed.travelOptions : fallback.travelOptions,
       foods: Array.isArray(parsed.foods) ? parsed.foods : fallback.foods,
+      foodSearchContext: parsed.foodSearchContext,
       thoughts: Array.isArray(parsed.thoughts) ? parsed.thoughts : fallback.thoughts,
       summary: parsed.summary === undefined || parsed.summary === null ? fallback.summary : parsed.summary,
       trip: parsed.trip === undefined || parsed.trip === null ? fallback.trip : {
@@ -587,6 +589,8 @@ function setKnownDataPath(model: A2uiRuntimeDataModel, path: string, value: A2ui
     next.travelOptions = value as A2uiTravelOptionData[];
   } else if (path === '/foods') {
     next.foods = value as A2uiFoodData[];
+  } else if (path === '/foodSearchContext') {
+    next.foodSearchContext = value as A2uiFoodSearchContext;
   } else if (path === '/thoughts') {
     const incoming = value as string[];
     const existingJoined = next.thoughts.join('');

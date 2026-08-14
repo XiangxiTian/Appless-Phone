@@ -8,6 +8,8 @@ import {
   A2uiEnvelope,
   A2uiFlightData,
   A2uiFoodData,
+  A2uiFoodSearchArea,
+  A2uiFoodSearchContext,
   A2uiGenericToolResultData,
   A2uiLabelValueData,
   A2uiSummaryData,
@@ -948,7 +950,8 @@ export interface FoodProviderPartialSnapshot {
 
 interface FoodProviderAdapter {
   name: string;
-  search(prompt: string, query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult>;
+  search(prompt: string, query: FoodQuery, keyword: string, location: string, locationSource: string,
+    radiusMeters: string): Promise<FoodProviderResult>;
 }
 
 export interface MeituanUnionBrandInfo {
@@ -6260,7 +6263,9 @@ function foodSummarySignature(summary: A2uiSummaryData): string {
   return summary.text + '|' + summary.toolName + '|' + summary.dataLabel + '|' + summary.count.toString();
 }
 
-export function foodA2uiRenderState(surfaceId: string, title: string, body: string, summaryText: string, foods: A2uiFoodData[], rows: A2uiLabelValueData[] = [], status: string = 'ready'): A2uiPartialRenderState {
+export function foodA2uiRenderState(surfaceId: string, title: string, body: string, summaryText: string,
+  foods: A2uiFoodData[], rows: A2uiLabelValueData[] = [], status: string = 'ready',
+  foodSearchContext?: A2uiFoodSearchContext): A2uiPartialRenderState {
   const components: A2uiComponent[] = [];
   components.push({
     id: 'root',
@@ -6320,6 +6325,13 @@ export function foodA2uiRenderState(surfaceId: string, title: string, body: stri
       signature: foodSummarySignature(summary)
     }
   ];
+  if (foodSearchContext !== undefined) {
+    dataPatches.push({
+      path: '/foodSearchContext',
+      value: foodSearchContext,
+      signature: JSON.stringify(foodSearchContext)
+    });
+  }
   return {
     surfaceId: surfaceId,
     root: 'root',
@@ -6335,7 +6347,7 @@ export function foodA2uiRenderState(surfaceId: string, title: string, body: stri
 
 export function foodStructuredDataA2ui(surfaceId: string, data: FoodStructuredData): string {
   return planA2uiPartialUpdate(null, foodA2uiRenderState(
-    surfaceId, data.title, data.body, data.summary, data.foods, data.rows, 'ready'
+    surfaceId, data.title, data.body, data.summary, data.foods, data.rows, 'ready', data.foodSearchContext
   )).jsonl;
 }
 
@@ -9600,6 +9612,66 @@ export interface FoodPreferenceArgs {
   sweetness?: string;
 }
 
+interface FoodSearchAreaArgs {
+  longitude?: Object | string | number | boolean | null;
+  latitude?: Object | string | number | boolean | null;
+  radiusMeters?: Object | string | number | boolean | null;
+  name?: Object | string | number | boolean | null;
+  address?: Object | string | number | boolean | null;
+}
+
+interface FoodSearchArgsRecord {
+  query?: Object | string | number | boolean | null;
+  keyword?: Object | string | number | boolean | null;
+  brandPreference?: Object | string | number | boolean | null;
+  brandStrict?: Object | string | number | boolean | null;
+  sweetness?: Object | string | number | boolean | null;
+  searchArea?: FoodSearchAreaArgs;
+}
+
+function foodSearchArgs(args: Object | null): FoodSearchArgsRecord {
+  if (args === null || Array.isArray(args)) {
+    return {};
+  }
+  return args as FoodSearchArgsRecord;
+}
+
+export function foodCoordinateForTest(value: Object | string | number | boolean | null | undefined,
+  min: number, max: number): number | null {
+  const raw = textOf(value).trim();
+  if (raw.length === 0) {
+    return null;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null;
+}
+
+function normalizedFoodRadius(value: Object | string | number | boolean | null | undefined): number {
+  const parsed = Number(textOf(value).trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return Number(localProviderConfig.amapRadius);
+  }
+  return Math.max(100, Math.min(50000, Math.round(parsed)));
+}
+
+function structuredFoodSearchArea(args: FoodSearchArgsRecord): A2uiFoodSearchArea | null {
+  if (args.searchArea === undefined || args.searchArea === null || Array.isArray(args.searchArea)) {
+    return null;
+  }
+  const longitude = foodCoordinateForTest(args.searchArea.longitude, -180, 180);
+  const latitude = foodCoordinateForTest(args.searchArea.latitude, -90, 90);
+  if (longitude === null || latitude === null) {
+    return null;
+  }
+  return {
+    longitude: longitude,
+    latitude: latitude,
+    radiusMeters: normalizedFoodRadius(args.searchArea.radiusMeters),
+    name: textOf(args.searchArea.name).trim(),
+    address: textOf(args.searchArea.address).trim()
+  };
+}
+
 function foodPreferenceArgs(args: Object | null): FoodPreferenceArgs {
   if (args === null) {
     return {};
@@ -9906,9 +9978,15 @@ function taobaoRecordsFromResult(result: TaobaoFlashResult): TaobaoFlashStoreRec
   return [];
 }
 
-async function safeFoodProviderSearch(adapter: FoodProviderAdapter, prompt: string, query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult> {
+async function safeFoodProviderSearch(adapter: FoodProviderAdapter, prompt: string, query: FoodQuery, keyword: string,
+  location: string, locationSource: string, radiusMeters: string): Promise<FoodProviderResult> {
+  aiLogInfo('[AIPhone][FoodProviderDispatch] provider=' + adapter.name +
+    ' locationSource=' + locationSource +
+    ' longitude=' + locationLongitude(location) +
+    ' latitude=' + locationLatitude(location) +
+    ' radiusMeters=' + radiusMeters);
   try {
-    return await adapter.search(prompt, query, keyword, location, locationSource);
+    return await adapter.search(prompt, query, keyword, location, locationSource, radiusMeters);
   } catch (error) {
     return emptyProviderResult(adapter.name, describeThrown(error), true);
   }
@@ -9923,7 +10001,8 @@ function waitForDebugDelay(delayMs: number): Promise<void> {
 class AmapFoodProvider implements FoodProviderAdapter {
   name: string = '高德';
 
-  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult> {
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string,
+    radiusMeters: string): Promise<FoodProviderResult> {
     const key = localProviderConfig.amapKey;
     if (key.length === 0) {
       return emptyProviderResult(this.name, '未配置 AMAP_KEY');
@@ -9944,7 +10023,7 @@ class AmapFoodProvider implements FoodProviderAdapter {
       const payload = await amapJsonGet(buildQueryUrl(
         'https://restapi.amap.com/v3/place/around',
         ['key', 'location', 'types', 'keywords', 'radius', 'offset', 'page', 'extensions'],
-        [key, location, '050000', currentKeyword, localProviderConfig.amapRadius, '10', '1', 'all']
+        [key, location, '050000', currentKeyword, radiusMeters, '10', '1', 'all']
       ));
       if (textOf(payload.status) !== '1') {
         const providerMessage = firstText([payload.info, payload.infocode, payload.message]);
@@ -9981,7 +10060,8 @@ class AmapFoodProvider implements FoodProviderAdapter {
 class TencentMapFoodProvider implements FoodProviderAdapter {
   name: string = '腾讯地图';
 
-  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult> {
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string,
+    radiusMeters: string): Promise<FoodProviderResult> {
     const key = localProviderConfig.tencentMapKey;
     if (key.length === 0) {
       return emptyProviderResult(this.name, '未配置 TENCENT_MAP_KEY');
@@ -9994,7 +10074,7 @@ class TencentMapFoodProvider implements FoodProviderAdapter {
     if (longitude.length === 0 || latitude.length === 0) {
       return emptyProviderResult(this.name, '经纬度格式无效：' + location);
     }
-    const boundary = 'nearby(' + latitude + ',' + longitude + ',' + localProviderConfig.amapRadius + ',1)';
+    const boundary = 'nearby(' + latitude + ',' + longitude + ',' + radiusMeters + ',1)';
     aiLogInfo('[AIPhone][LocalToolTencentMapRequest] endpoint=' + localProviderConfig.tencentMapApiUrl +
       ' keyChars=' + key.length.toString() + ' locationSource=' + locationSource + ' keyword=' + keyword);
     const response = await requestText(buildQueryUrl(
@@ -10033,7 +10113,8 @@ class TencentMapFoodProvider implements FoodProviderAdapter {
 class BaiduMapFoodProvider implements FoodProviderAdapter {
   name: string = '百度地图';
 
-  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult> {
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string,
+    radiusMeters: string): Promise<FoodProviderResult> {
     const ak = localProviderConfig.baiduMapAk;
     if (ak.length === 0) {
       return emptyProviderResult(this.name, '未配置 BAIDU_MAP_AK');
@@ -10051,7 +10132,7 @@ class BaiduMapFoodProvider implements FoodProviderAdapter {
     const response = await requestText(buildQueryUrl(
       localProviderConfig.baiduMapApiUrl,
       ['ak', 'query', 'location', 'radius', 'output', 'scope', 'coord_type', 'ret_coordtype', 'page_size', 'page_num'],
-      [ak, keyword, latitude + ',' + longitude, localProviderConfig.amapRadius, 'json', '2', '2', 'gcj02ll', '10', '0']
+      [ak, keyword, latitude + ',' + longitude, radiusMeters, 'json', '2', '2', 'gcj02ll', '10', '0']
     ), userAgentHeaders());
     if (response.code < 200 || response.code >= 300) {
       return emptyProviderResult(this.name, 'HTTP ' + response.code.toString() + '：' + response.text.substring(0, 300), true);
@@ -10084,8 +10165,9 @@ class BaiduMapFoodProvider implements FoodProviderAdapter {
 class GoogleMapsFoodProvider implements FoodProviderAdapter {
   name: string = 'Google Maps';
 
-  async search(prompt: string, query: FoodQuery, keyword: string, _location: string, _locationSource: string): Promise<FoodProviderResult> {
-    const searchQuery = query.place.length > 0 ? query.place + '附近的' + keyword : prompt;
+  async search(prompt: string, query: FoodQuery, keyword: string, _location: string, _locationSource: string,
+    _radiusMeters: string): Promise<FoodProviderResult> {
+    const searchQuery = foodGoogleSearchQueryForTest(prompt, query.place, keyword);
     const results = await callMapsPlaceSearch(searchQuery, localProviderConfig.googleMapsApiKey);
     const foods: A2uiFoodData[] = [];
     let providerError = '';
@@ -10116,10 +10198,23 @@ class GoogleMapsFoodProvider implements FoodProviderAdapter {
   }
 }
 
+export function foodGoogleSearchQueryForTest(prompt: string, place: string, keyword: string): string {
+  const normalizedPlace = place.trim();
+  const normalizedKeyword = keyword.trim();
+  if (normalizedPlace.length > 0 && normalizedKeyword.length > 0) {
+    return normalizedPlace + '附近的' + normalizedKeyword;
+  }
+  if (normalizedPlace.length > 0) {
+    return normalizedPlace + '附近的餐饮';
+  }
+  return prompt;
+}
+
 class MeituanUnionFoodProvider implements FoodProviderAdapter {
   name: string = '美团';
 
-  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, _locationSource: string): Promise<FoodProviderResult> {
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, _locationSource: string,
+    _radiusMeters: string): Promise<FoodProviderResult> {
     const appKey = localProviderConfig.meituanUnionAppKey;
     const appSecret = localProviderConfig.meituanUnionAppSecret;
     if (appKey.length === 0 || appSecret.length === 0) {
@@ -10185,7 +10280,8 @@ class MeituanUnionFoodProvider implements FoodProviderAdapter {
 class TaobaoFlashFoodProvider implements FoodProviderAdapter {
   name: string = '淘宝闪购';
 
-  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, _locationSource: string): Promise<FoodProviderResult> {
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, _locationSource: string,
+    _radiusMeters: string): Promise<FoodProviderResult> {
     const appKey = localProviderConfig.taobaoAppKey;
     const appSecret = localProviderConfig.taobaoAppSecret;
     const pid = localProviderConfig.taobaoFlashPid;
@@ -10303,7 +10399,8 @@ function wantsBrandMenu(prompt: string, keyword: string): boolean {
 class McDonaldsMcpFoodProvider implements FoodProviderAdapter {
   name: string = '麦当劳';
 
-  async search(prompt: string, query: FoodQuery, keyword: string, _location: string, _locationSource: string): Promise<FoodProviderResult> {
+  async search(prompt: string, query: FoodQuery, keyword: string, _location: string, _locationSource: string,
+    _radiusMeters: string): Promise<FoodProviderResult> {
     const token = localProviderConfig.mcdMcpToken;
     if (token.length === 0) {
       return emptyProviderResult(this.name, '未配置 MCD_MCP_TOKEN');
@@ -10344,7 +10441,8 @@ class McDonaldsMcpFoodProvider implements FoodProviderAdapter {
 class LuckinMcpFoodProvider implements FoodProviderAdapter {
   name: string = '瑞幸';
 
-  async search(prompt: string, _query: FoodQuery, keyword: string, location: string, _locationSource: string): Promise<FoodProviderResult> {
+  async search(prompt: string, _query: FoodQuery, keyword: string, location: string, _locationSource: string,
+    _radiusMeters: string): Promise<FoodProviderResult> {
     const token = localProviderConfig.luckinMcpToken;
     if (token.length === 0) {
       return emptyProviderResult(this.name, '未配置 LUCKIN_MCP_TOKEN');
@@ -10441,25 +10539,49 @@ async function callStructuredFoodTool(
 ): Promise<DataResult> {
   const key = localProviderConfig.amapKey;
   const preferences = foodPreferenceArgs(args);
+  const structuredArgs = foodSearchArgs(args);
+  const requestedArea = structuredFoodSearchArea(structuredArgs);
+  const rawSearchArea = structuredArgs.searchArea;
+  const rawLongitude = rawSearchArea === undefined ? '' : textOf(rawSearchArea.longitude).trim();
+  const rawLatitude = rawSearchArea === undefined ? '' : textOf(rawSearchArea.latitude).trim();
+  const rawRadiusMeters = rawSearchArea === undefined ? '' : textOf(rawSearchArea.radiusMeters).trim();
+  const rawName = rawSearchArea === undefined ? '' : textOf(rawSearchArea.name).trim();
+  const rawAddress = rawSearchArea === undefined ? '' : textOf(rawSearchArea.address).trim();
+  aiLogInfo('[AIPhone][FoodSearchStructuredArgs] areaPresent=' +
+    (rawSearchArea === undefined ? 'false' : 'true') +
+    ' longitudeRaw=' + rawLongitude +
+    ' latitudeRaw=' + rawLatitude +
+    ' radiusMetersRaw=' + rawRadiusMeters +
+    ' centerValid=' + (requestedArea === null ? 'false' : 'true') +
+    ' nameChars=' + rawName.length.toString() +
+    ' addressChars=' + rawAddress.length.toString());
+  const effectivePrompt = textOf(structuredArgs.query).trim().length > 0 ?
+    textOf(structuredArgs.query).trim() : prompt;
 
-  const query = extractFoodQuery(prompt);
+  const query = extractFoodQuery(effectivePrompt);
   const preflightResults: FoodProviderResult[] = [];
   const provenanceResults: FoodProviderResult[] = [];
   let locationSource = 'none';
-  let location = parseCoordinatePair(prompt);
-  if (location.length > 0) {
-    locationSource = 'prompt_coords';
-  } else if (query.place.length > 0 && key.length > 0) {
-    try {
-      const resolved = await resolveFoodSearchLocation(query.place, key);
-      location = resolved.location;
-      locationSource = resolved.locationSource;
-      provenanceResults.push({
-        provider: '高德', foods: [], error: '', attempted: true, succeeded: true, operation: 'geocode'
-      });
-    } catch (error) {
-      preflightResults.push(emptyProviderResult('高德', '地点解析失败：' + describeThrown(error), true, 'geocode'));
-      locationSource = 'geocode_error';
+  let location = requestedArea === null ? '' :
+    requestedArea.longitude.toString() + ',' + requestedArea.latitude.toString();
+  if (requestedArea !== null) {
+    locationSource = 'structured_search_area';
+  } else {
+    location = parseCoordinatePair(effectivePrompt);
+    if (location.length > 0) {
+      locationSource = 'prompt_coords';
+    } else if (query.place.length > 0 && key.length > 0) {
+      try {
+        const resolved = await resolveFoodSearchLocation(query.place, key);
+        location = resolved.location;
+        locationSource = resolved.locationSource;
+        provenanceResults.push({
+          provider: '高德', foods: [], error: '', attempted: true, succeeded: true, operation: 'geocode'
+        });
+      } catch (error) {
+        preflightResults.push(emptyProviderResult('高德', '地点解析失败：' + describeThrown(error), true, 'geocode'));
+        locationSource = 'geocode_error';
+      }
     }
   }
   if (location.length === 0) {
@@ -10468,7 +10590,19 @@ async function callStructuredFoodTool(
       locationSource = 'rawfile_default';
     }
   }
-  const keyword = extractFoodKeyword(prompt);
+  const structuredKeyword = textOf(structuredArgs.keyword).trim();
+  const keyword = structuredKeyword.length > 0 ? structuredKeyword : extractFoodKeyword(effectivePrompt);
+  const selectedPlace = requestedArea === null ? '' : firstText([requestedArea.name, requestedArea.address]);
+  const providerQuery: FoodQuery = {
+    place: selectedPlace.length > 0 ? selectedPlace : query.place,
+    keyword: query.keyword
+  };
+  const radiusMeters = (requestedArea === null ? normalizedFoodRadius(undefined) : requestedArea.radiusMeters).toString();
+  aiLogInfo('[AIPhone][FoodSearchResolvedArea] locationSource=' + locationSource +
+    ' longitude=' + locationLongitude(location) +
+    ' latitude=' + locationLatitude(location) +
+    ' radiusMeters=' + radiusMeters +
+    ' structuredCenterAccepted=' + (requestedArea === null ? 'false' : 'true'));
 
   const adapters: FoodProviderAdapter[] = [
     new AmapFoodProvider(),
@@ -10480,10 +10614,10 @@ async function callStructuredFoodTool(
   if (localProviderConfig.googleMapsApiKey.length > 0) {
     adapters.push(new GoogleMapsFoodProvider());
   }
-  if (shouldQueryMcDonalds(prompt, keyword)) {
+  if (shouldQueryMcDonalds(effectivePrompt, keyword)) {
     adapters.push(new McDonaldsMcpFoodProvider());
   }
-  if (shouldQueryLuckin(prompt, keyword)) {
+  if (shouldQueryLuckin(effectivePrompt, keyword)) {
     adapters.push(new LuckinMcpFoodProvider());
   }
   const providerNames: string[] = [];
@@ -10507,7 +10641,9 @@ async function callStructuredFoodTool(
   }
   const tasks: Promise<FoodProviderResult>[] = [];
   for (let index = 0; index < adapters.length; index++) {
-    tasks.push(safeFoodProviderSearch(adapters[index], prompt, query, keyword, location, locationSource));
+    tasks.push(safeFoodProviderSearch(
+      adapters[index], effectivePrompt, providerQuery, keyword, location, locationSource, radiusMeters
+    ));
   }
   const streamed = await streamFoodProviderResultsWithPartials(tasks, providerResults, (snapshot: FoodProviderPartialSnapshot) => {
     aiLogInfo('[AIPhone][LocalToolFoodPartial] provider=' + snapshot.provider +
@@ -10525,9 +10661,33 @@ async function callStructuredFoodTool(
   aiLogInfo('[AIPhone][LocalToolFoodAggregate] keyword=' + keyword +
     ' locationSource=' + locationSource +
     ' locationPresent=' + (location.length > 0 ? 'true' : 'false') +
+    ' radiusMeters=' + radiusMeters +
     ' foods=' + aggregated.foods.length.toString() +
     ' issues=' + rows.length.toString());
 
+  const locationLongitudeValue = Number(locationLongitude(location));
+  const locationLatitudeValue = Number(locationLatitude(location));
+  const searchArea: A2uiFoodSearchArea = {
+    longitude: Number.isFinite(locationLongitudeValue) ? locationLongitudeValue : 0,
+    latitude: Number.isFinite(locationLatitudeValue) ? locationLatitudeValue : 0,
+    radiusMeters: Number(radiusMeters),
+    name: requestedArea === null ? query.place : requestedArea.name,
+    address: requestedArea === null ? query.place : requestedArea.address
+  };
+  const searchContext: A2uiFoodSearchContext = {
+    query: effectivePrompt,
+    keyword: keyword,
+    searchArea: searchArea
+  };
+  if (preferences.brandPreference !== undefined) {
+    searchContext.brandPreference = preferences.brandPreference;
+  }
+  if (preferences.brandStrict !== undefined) {
+    searchContext.brandStrict = preferences.brandStrict;
+  }
+  if (preferences.sweetness !== undefined) {
+    searchContext.sweetness = preferences.sweetness;
+  }
   const data: FoodStructuredData = {
     title: '外卖聚合搜索',
     body: '以下结果来自高德、腾讯地图、百度地图、Google Maps、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。' + preferenceNote,
@@ -10535,7 +10695,8 @@ async function callStructuredFoodTool(
       '已聚合 ' + aggregated.foods.length.toString() + ' 个可展示结果；' + rows.length.toString() + ' 个来源状态见下方。' :
       '所有来源都没有可展示外卖结果；下面只列出真实 provider 状态。',
     foods: aggregated.foods,
-    rows: rows
+    rows: rows,
+    foodSearchContext: searchContext
   };
   return foodStructuredDataResultFromProviders(data, provenanceResults.concat(streamed.results));
 }
@@ -10558,7 +10719,7 @@ async function callLocalFoodSearch(prompt: string, surfaceId: string, emitJsonl:
     return foodStructuredDataA2ui(surfaceId, data);
   }
   const finalState = foodA2uiRenderState(
-    surfaceId, data.title, data.body, data.summary, data.foods, data.rows, 'ready'
+    surfaceId, data.title, data.body, data.summary, data.foods, data.rows, 'ready', data.foodSearchContext
   );
   const planned = planA2uiPartialUpdate(foodPartialCache, finalState);
   aiLogInfo('[AIPhone][LocalToolFoodFinalEmit] envelopes=' + planned.emittedEnvelopeCount.toString() +

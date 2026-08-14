@@ -73,21 +73,32 @@ function canonicalNode(component: A2uiComponent): UiCanonicalNode {
   };
 }
 
-function legacyComponent(node: UiCanonicalNode): A2uiComponent {
+function cloneLegacyComponent(component: A2uiComponent): A2uiComponent {
+  return JSON.parse(JSON.stringify(component)) as A2uiComponent;
+}
+
+function legacyComponent(node: UiCanonicalNode, base?: A2uiComponent): A2uiComponent {
   const props = node.props as Record<string, Object | string | number | boolean | null | undefined>;
   const legacyNames: string[] = ['SurfaceRoot', 'Column', 'Row', 'Text', 'ActionBar', 'MetricGrid'];
-  const component: A2uiComponent = {
+  const component: A2uiComponent = base === undefined ? {
     id: node.nodeKey,
-    component: legacyNames.indexOf(node.catalogRef.name) >= 0 ? node.catalogRef.name : node.component,
-    children: node.children.slice(),
-    actions: node.actionRefs.map((actionId: string): A2uiAction => ({
+    component: node.component
+  } : cloneLegacyComponent(base);
+  component.id = node.nodeKey;
+  component.component = legacyNames.indexOf(node.catalogRef.name) >= 0 ? node.catalogRef.name : node.component;
+  component.children = node.children.slice();
+  component.child = undefined;
+  const baseActions = base === undefined || base.actions === undefined ? [] : base.actions;
+  component.actions = node.actionRefs.map((actionId: string): A2uiAction => {
+    const preserved = baseActions.find((action: A2uiAction): boolean => action.id === actionId);
+    return preserved === undefined ? {
       id: actionId,
       label: '',
       prompt: '',
       variant: '',
       kind: ''
-    })
-  };
+    } : JSON.parse(JSON.stringify(preserved)) as A2uiAction;
+  });
   if (typeof props['title'] === 'string') component.title = props['title'] as string;
   if (typeof props['text'] === 'string') component.text = props['text'] as string;
   if (typeof props['body'] === 'string') component.body = props['body'] as string;
@@ -122,11 +133,16 @@ export class LegacyA2uiSurfaceAdapter {
 
   toLegacy(surface: UiCanonicalSurface, base?: A2uiSurfaceState): A2uiSurfaceState {
     const result = base === undefined ? emptyA2uiSurface(surface.surfaceId) : JSON.parse(JSON.stringify(base)) as A2uiSurfaceState;
+    const baseComponents: Map<string, A2uiComponent> = new Map<string, A2uiComponent>();
+    result.components.forEach((component: A2uiComponent): void => {
+      baseComponents.set(component.id, component);
+    });
     result.surfaceId = surface.surfaceId;
     result.rootId = surface.rootNodeKey;
     result.title = surface.title;
     result.intent = surface.intent;
-    result.components = surface.nodes.map((node: UiCanonicalNode): A2uiComponent => legacyComponent(node));
+    result.components = surface.nodes.map((node: UiCanonicalNode): A2uiComponent =>
+      legacyComponent(node, baseComponents.get(node.nodeKey)));
     result.sequence = surface.revision.layout;
     return result;
   }

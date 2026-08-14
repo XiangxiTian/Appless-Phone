@@ -62,7 +62,7 @@ function valueAt(root: Object, path: string): Object | string | number | boolean
       current = array[arrayIndex];
     } else {
       const record = current as Record<string, Object | string | number | boolean | null | undefined>;
-      if (!Object.prototype.hasOwnProperty.call(record, key)) return undefined;
+      if (Object.keys(record).indexOf(key) < 0) return undefined;
       current = record[key];
     }
   }

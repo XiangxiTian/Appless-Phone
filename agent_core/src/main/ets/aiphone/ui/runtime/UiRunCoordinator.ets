@@ -2,7 +2,7 @@ import { UiPresentationAdapterRegistry } from '../presentation/UiPresentationAda
 import { UiPresentationContext, UiPresentationSource } from '../presentation/UiPresentationTypes';
 import { UiRuntimeHostPorts } from '../host/UiRuntimeHostPorts';
 import { A2uiJsonOutputAdapter } from '../compiler/A2uiJsonOutputAdapter';
-import { UiCompileContext } from '../compiler/UiModelOutputAdapter';
+import { UiCompileContext, UiCompileError } from '../compiler/UiModelOutputAdapter';
 import { UiCatalogRegistry } from '../catalog/UiCatalogRegistry';
 import { createDefaultUiCatalogRegistry } from '../catalog/DefaultUiCatalog';
 import { UiCanonicalSurface } from '../ir/UiCanonicalTypes';
@@ -26,6 +26,16 @@ interface UiRunState {
   toolResultIds: string[];
   lastEventId: string;
   jsonAdapter: A2uiJsonOutputAdapter;
+}
+
+function cloneSession(session: UiSurfaceSession): UiSurfaceSession {
+  return {
+    runId: session.runId,
+    surfaceId: session.surfaceId,
+    epoch: session.epoch,
+    startedAtMs: session.startedAtMs,
+    status: session.status
+  };
 }
 
 export class UiRunCoordinator {
@@ -57,7 +67,7 @@ export class UiRunCoordinator {
       if (existing.session.surfaceId !== request.surfaceId || existing.session.epoch !== request.epoch) {
         throw new Error('UI_SURFACE_REPLAY_MISMATCH');
       }
-      return { ...existing.session };
+      return cloneSession(existing.session);
     }
     const session: UiSurfaceSession = {
       runId: request.runId,
@@ -169,7 +179,7 @@ export class UiRunCoordinator {
 
   session(runId: string): UiSurfaceSession | null {
     const state = this.runs.get(runId);
-    return state === undefined ? null : { ...state.session };
+    return state === undefined ? null : cloneSession(state.session);
   }
 
   private stateFor(runId: string, surfaceId: string, epoch: number): UiRunState | null {
@@ -203,7 +213,7 @@ export class UiRunCoordinator {
     this.host.publishSurface(next);
   }
 
-  private compileErrorSummary(errors: { code: string; message: string }[]): string {
+  private compileErrorSummary(errors: UiCompileError[]): string {
     if (errors.length === 0) return 'unknown compiler error';
     return errors.map((error): string => error.code + ':' + error.message).join('|');
   }
@@ -211,6 +221,6 @@ export class UiRunCoordinator {
   private updateStatus(state: UiRunState, status: 'completed' | 'error' | 'canceled'): void {
     if (state.session.status !== 'active') return;
     state.session.status = status;
-    this.host.onSessionChanged({ ...state.session });
+    this.host.onSessionChanged(cloneSession(state.session));
   }
 }

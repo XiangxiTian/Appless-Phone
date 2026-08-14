@@ -38,6 +38,20 @@ function result(
   return { accepted, reason, revision: cloneUiRevision(revision) };
 }
 
+function domainRevision(revision: UiRevisionVector, domain: UiRevisionDomain): number {
+  if (domain === 'layout') return revision.layout;
+  if (domain === 'data') return revision.data;
+  if (domain === 'runtime') return revision.runtime;
+  return revision.user;
+}
+
+function setDomainRevision(revision: UiRevisionVector, domain: UiRevisionDomain, value: number): void {
+  if (domain === 'layout') revision.layout = value;
+  else if (domain === 'data') revision.data = value;
+  else if (domain === 'runtime') revision.runtime = value;
+  else revision.user = value;
+}
+
 /**
  * Serializes per-surface mutation admission. It intentionally gates one
  * revision domain at a time so data hydration can race layout without
@@ -87,15 +101,15 @@ export class UiRevisionGate {
     if (state.mutationIdSet.has(meta.mutationId)) {
       return result(false, 'DUPLICATE_MUTATION', state.revision);
     }
-    if (meta.baseRevision[domain] !== state.revision[domain]) {
+    if (domainRevision(meta.baseRevision, domain) !== domainRevision(state.revision, domain)) {
       return result(false, 'BASE_REVISION_MISMATCH', state.revision);
     }
-    const next = meta.nextRevision[domain];
-    const current = state.revision[domain];
+    const next = domainRevision(meta.nextRevision, domain);
+    const current = domainRevision(state.revision, domain);
     if (next <= current) return result(false, 'REVISION_REGRESSION', state.revision);
     if (next !== current + 1) return result(false, 'REVISION_GAP', state.revision);
 
-    state.revision[domain] = next;
+    setDomainRevision(state.revision, domain, next);
     state.acceptedMutationIds.push(meta.mutationId);
     state.mutationIdSet.add(meta.mutationId);
     while (state.acceptedMutationIds.length > this.mutationCapacity) {
@@ -123,7 +137,9 @@ export class UiRevisionGate {
       this.openSurface(surfaceId, runId, epoch, initialUiRevision(epoch));
       state = this.states.get(surfaceId);
     }
-    if (state !== undefined && revision > state.revision[domain]) state.revision[domain] = revision;
+    if (state !== undefined && revision > domainRevision(state.revision, domain)) {
+      setDomainRevision(state.revision, domain, revision);
+    }
   }
 
   snapshot(surfaceId: string): UiRevisionGateSnapshot | null {

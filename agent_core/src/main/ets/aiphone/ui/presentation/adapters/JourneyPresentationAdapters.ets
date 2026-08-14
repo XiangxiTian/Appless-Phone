@@ -85,7 +85,22 @@ class MappedJourneyAdapter implements UiPresentationAdapter {
 }
 
 export function createJourneyPresentationAdapters(): UiPresentationAdapter[] {
-  const common = {
+  return [
+    new MappedJourneyAdapter(journeyMapping('train-search-result.v1', 'train-journey-adapter', 'train')),
+    new MappedJourneyAdapter(journeyMapping('flight-search-result.v1', 'flight-journey-adapter', 'flight')),
+    new MappedJourneyAdapter(journeyMapping('travel-search-result.v1', 'travel-journey-adapter', 'mixed'))
+  ];
+}
+
+function journeyMapping(
+  sourceSchemaRef: string,
+  adapterId: string,
+  kind: 'train' | 'flight' | 'bus' | 'mixed'
+): JourneyMapping {
+  return {
+    sourceSchemaRef,
+    adapterId,
+    kind,
     itemsPath: '/items',
     idPath: '/id',
     titlePath: '/title',
@@ -97,9 +112,4 @@ export function createJourneyPresentationAdapters(): UiPresentationAdapter[] {
     pricePath: '/price',
     currencyPath: '/currency'
   };
-  return [
-    new MappedJourneyAdapter({ ...common, sourceSchemaRef: 'train-search-result.v1', adapterId: 'train-journey-adapter', kind: 'train' }),
-    new MappedJourneyAdapter({ ...common, sourceSchemaRef: 'flight-search-result.v1', adapterId: 'flight-journey-adapter', kind: 'flight' }),
-    new MappedJourneyAdapter({ ...common, sourceSchemaRef: 'travel-search-result.v1', adapterId: 'travel-journey-adapter', kind: 'mixed' })
-  ];
 }

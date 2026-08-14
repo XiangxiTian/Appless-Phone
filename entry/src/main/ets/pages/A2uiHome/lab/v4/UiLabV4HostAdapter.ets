@@ -18,6 +18,22 @@ export interface UiLabV4HostCallbacks {
   onDiagnostic: (code: string, detail: string) => void;
 }
 
+export interface UiLabV4AgentEventConsumer {
+  onAgentEvent(event: AgentUiEvent): void;
+}
+
+export interface UiLabV4ToolResultConsumer {
+  onToolResult(result: UiHostToolResult): void;
+}
+
+export interface UiLabV4ModelDeltaConsumer {
+  onModelDelta(delta: UiModelDelta): void;
+}
+
+export interface UiLabV4ModelResultConsumer {
+  onModelCompleted(result: UiModelResult): void;
+}
+
 export class UiLabV4HostAdapter implements UiRuntimeHostPorts {
   private readonly callbacks: UiLabV4HostCallbacks;
 
@@ -45,19 +61,19 @@ export class UiLabV4HostAdapter implements UiRuntimeHostPorts {
     this.callbacks.onDiagnostic(code, detail);
   }
 
-  acceptAgentEvent(coordinator: { onAgentEvent: (event: AgentUiEvent) => void }, event: AgentUiEvent): void {
+  acceptAgentEvent(coordinator: UiLabV4AgentEventConsumer, event: AgentUiEvent): void {
     coordinator.onAgentEvent(event);
   }
 
-  acceptToolResult(coordinator: { onToolResult: (result: UiHostToolResult) => void }, result: UiHostToolResult): void {
+  acceptToolResult(coordinator: UiLabV4ToolResultConsumer, result: UiHostToolResult): void {
     coordinator.onToolResult(result);
   }
 
-  acceptModelDelta(coordinator: { onModelDelta: (delta: UiModelDelta) => void }, delta: UiModelDelta): void {
+  acceptModelDelta(coordinator: UiLabV4ModelDeltaConsumer, delta: UiModelDelta): void {
     coordinator.onModelDelta(delta);
   }
 
-  acceptModelCompleted(coordinator: { onModelCompleted: (result: UiModelResult) => void }, result: UiModelResult): void {
+  acceptModelCompleted(coordinator: UiLabV4ModelResultConsumer, result: UiModelResult): void {
     coordinator.onModelCompleted(result);
   }
 }

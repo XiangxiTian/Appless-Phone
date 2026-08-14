@@ -4,7 +4,7 @@
 方案文档：`docs/ui-gen-refactor-plan-v4.md`
 当前实施记录：`docs/ui-gen-landing-checklist.md`
 
-本轮执行状态：PR-V4-1～PR-V4-4 已完成若干首版代码切片，但这些 PR 的完整退出门槛尚未全部满足；主 UI 未接入。Hypium、真机和完整 ArkTS 构建待设备/IDE 环境执行。
+本轮执行状态：PR-V4-1～PR-V4-4 已完成若干首版代码切片，但这些 PR 的完整退出门槛尚未全部满足；主 UI 未接入。2026-08-14 已用 DevEco SDK 完成严格 ArkTS 编译并成功生成签名 HAP；Hypium 与真机场景验收仍待执行。
 
 ### 本轮实现进度记录
 
@@ -31,7 +31,8 @@
 - 已补齐 UiRunCoordinator 同请求重放幂等、Tool Result `resultId` 去重、Compiler metadata、binding schema gate、cycle/orphan/unknown-root 测试。
 - 已补齐 UI Lab `UiLabV4ShadowMirror`：legacy data/runtime/user 字段迁移到四 Store，并输出 canonical/data/phase/user-overlay/revision 分类；可见投影仍由显式 mode 控制。
 - 已增加 `scripts/ui-v4-dependency-check.mjs`，当前通过；它只检查 `agent_core/.../ui` 的宿主反向依赖，不替代 ArkTS/设备构建。
-- 仍未完成：真实 UI Lab 页面回调与 `A2uiSurfaceStore.apply()` double-write、20 个 golden、完整旧 Hypium/真机验收、generation/lease 对接、Extension 评审和主 UI 接入。
+- 2026-08-14 已修复 v4 的 ArkTS 严格语法缺口（动态索引、匿名对象类型、对象展开、`delete` 等），`assembleHap -p product=default -p module=entry@default --no-daemon` 构建成功并生成 `entry-default-signed.hap`。
+- 仍未完成：真实 UI Lab 页面回调与 double-write、20 个 golden、完整旧 Hypium/真机验收、generation/lease 对接、Extension 评审和主 UI 接入。
 
 ---
 
@@ -411,7 +412,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 退出门槛
 
-- [x] v4 Core 通过无 UI Lab/无页面依赖静态依赖检查；完整 ArkTS 构建仍待 IDE/设备环境。
+- [x] v4 Core 通过无 UI Lab/无页面依赖静态依赖检查，并通过 DevEco 严格 ArkTS `assembleHap` 构建。
 - [ ] UI Lab 能独立选择 legacy 或 v4 shadow。
 - [ ] 主 UI 无 v4 新调用点，行为和指标无变化。
 - 状态：待设计评审确认 UiRunCoordinator 没有复制 MultiAgent Runtime 职责。

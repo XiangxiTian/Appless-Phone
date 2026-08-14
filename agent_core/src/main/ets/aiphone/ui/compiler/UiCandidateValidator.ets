@@ -61,7 +61,9 @@ function validateProps(candidate: UiComponentCandidate, item: UiCatalogItem, err
 
 function validateCycles(components: UiComponentCandidate[], errors: UiCompileError[]): void {
   const byId: Map<string, UiComponentCandidate> = new Map<string, UiComponentCandidate>();
-  components.forEach((candidate: UiComponentCandidate): void => byId.set(candidate.id, candidate));
+  components.forEach((candidate: UiComponentCandidate): void => {
+    byId.set(candidate.id, candidate);
+  });
   const visiting: Set<string> = new Set<string>();
   const visited: Set<string> = new Set<string>();
   const visit = (id: string): void => {

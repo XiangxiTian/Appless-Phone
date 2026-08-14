@@ -1,5 +1,5 @@
-import { parseJsonl } from '../../a2ui/A2uiProtocol';
-import { A2uiStreamComponentBatch, A2uiUpdateComponentsStreamScanner } from '../../a2ui/A2uiUpdateComponentsStreamScanner';
+import { parseJsonl } from '../../../a2ui/A2uiProtocol';
+import { A2uiStreamComponentBatch, A2uiUpdateComponentsStreamScanner } from '../../../a2ui/A2uiUpdateComponentsStreamScanner';
 import { UiBinding } from '../ir/UiBindingTypes';
 import { UiCandidateValidator } from './UiCandidateValidator';
 import { UiCanonicalizer } from './UiCanonicalizer';
@@ -245,11 +245,12 @@ export class A2uiJsonOutputAdapter implements UiModelOutputAdapter {
       if (update !== null) {
         const updateSurfaceId = stringValue(update, 'surfaceId');
         if (updateSurfaceId !== null) surfaceId = updateSurfaceId;
-        const rawComponents = update['components'];
-        if (!Array.isArray(rawComponents)) continue;
+        const rawComponentsValue = update['components'];
+        if (!Array.isArray(rawComponentsValue)) continue;
+        const rawComponents = rawComponentsValue as Object[];
         const next: UiComponentCandidate[] = [];
         for (let componentIndex = 0; componentIndex < rawComponents.length; componentIndex++) {
-          const value = rawComponents[componentIndex];
+          const value: Object = rawComponents[componentIndex];
           if (value === null || typeof value !== 'object' || Array.isArray(value)) continue;
           const parsedComponent = componentFromJson(value as Object);
           if ((parsedComponent as UiCompileError).code !== undefined) return null;

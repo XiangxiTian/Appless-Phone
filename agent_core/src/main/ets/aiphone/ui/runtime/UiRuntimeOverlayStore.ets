@@ -16,6 +16,14 @@ function cloneRecord<T>(value: Record<string, T>): Record<string, T> {
   return result;
 }
 
+function recordWithout<T>(value: Record<string, T>, omittedKey: string): Record<string, T> {
+  const result: Record<string, T> = {};
+  Object.keys(value).forEach((key: string): void => {
+    if (key !== omittedKey) result[key] = value[key];
+  });
+  return result;
+}
+
 function emptyOverlay(surfaceId: string): UiRuntimeOverlaySnapshot {
   return {
     surfaceId,
@@ -45,7 +53,7 @@ export class UiRuntimeOverlayStore {
     if (phase === 'error' && error.length > 0) {
       current.nodeErrors[nodeKey] = error;
     } else {
-      delete current.nodeErrors[nodeKey];
+      current.nodeErrors = recordWithout(current.nodeErrors, nodeKey);
     }
     this.overlays.set(surfaceId, current);
   }
@@ -71,9 +79,9 @@ export class UiRuntimeOverlayStore {
 
   clearNode(surfaceId: string, nodeKey: string, revision: number): void {
     const current = this.ensure(surfaceId);
-    delete current.nodePhases[nodeKey];
-    delete current.nodeErrors[nodeKey];
-    delete current.provenance[nodeKey];
+    current.nodePhases = recordWithout(current.nodePhases, nodeKey);
+    current.nodeErrors = recordWithout(current.nodeErrors, nodeKey);
+    current.provenance = recordWithout(current.provenance, nodeKey);
     current.revision = revision;
     this.overlays.set(surfaceId, current);
   }

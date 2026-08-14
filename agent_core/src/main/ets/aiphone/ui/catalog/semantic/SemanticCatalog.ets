@@ -1,4 +1,4 @@
-import { UiCatalogItem } from '../UiCatalogItem';
+import { UiCatalogItem, UiCatalogPropsSchema } from '../UiCatalogItem';
 
 function semantic(
   name: string,
@@ -6,9 +6,9 @@ function semantic(
   props: string[] = [],
   events: string[] = []
 ): UiCatalogItem {
-  const schema: Object = {};
+  const schema: UiCatalogPropsSchema = {};
   props.forEach((prop: string): void => {
-    (schema as Record<string, Object>)[prop] = { type: 'value-or-binding' };
+    schema[prop] = { type: 'value-or-binding' };
   });
   return {
     name,

@@ -1,12 +1,13 @@
-import { UiCatalogItem } from '../UiCatalogItem';
+import { UiCatalogItem, UiCatalogPropsSchema } from '../UiCatalogItem';
 
 function extension(name: string, group: string, viewModel: string, events: string[] = []): UiCatalogItem {
+  const propsSchema: UiCatalogPropsSchema = {};
   return {
     name,
     layer: 'extension',
     version: 1,
     groups: ['extension', group],
-    propsSchema: {},
+    propsSchema,
     positionalFields: [],
     childPolicy: 'leaf',
     rendererKey: name,

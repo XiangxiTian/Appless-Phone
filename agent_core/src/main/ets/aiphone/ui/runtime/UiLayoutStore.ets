@@ -1,4 +1,5 @@
 import { canonicalSurfaceFingerprint, UiCanonicalNode, UiCanonicalSurface } from '../ir/UiCanonicalTypes';
+import { UiBindingSet } from '../ir/UiBindingTypes';
 
 function cloneSurface(surface: UiCanonicalSurface): UiCanonicalSurface {
   return {
@@ -10,7 +11,7 @@ function cloneSurface(surface: UiCanonicalSurface): UiCanonicalSurface {
     title: surface.title,
     intent: surface.intent,
     catalogVersion: surface.catalogVersion,
-    nodes: surface.nodes.map((node: UiCanonicalNode) => ({
+    nodes: surface.nodes.map((node: UiCanonicalNode): UiCanonicalNode => ({
       nodeKey: node.nodeKey,
       component: node.component,
       catalogRef: {
@@ -19,7 +20,7 @@ function cloneSurface(surface: UiCanonicalSurface): UiCanonicalSurface {
         layer: node.catalogRef.layer
       },
       props: JSON.parse(JSON.stringify(node.props)) as Object,
-      bindings: JSON.parse(JSON.stringify(node.bindings)) as Object,
+      bindings: JSON.parse(JSON.stringify(node.bindings)) as UiBindingSet,
       actionRefs: node.actionRefs.slice(),
       children: node.children.slice()
     })),

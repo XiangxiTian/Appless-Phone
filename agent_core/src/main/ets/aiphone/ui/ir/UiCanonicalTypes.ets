@@ -32,6 +32,25 @@ export interface UiCanonicalSurface {
   revision: UiRevisionVector;
 }
 
+interface UiCanonicalNodeFingerprint {
+  nodeKey: string;
+  component: string;
+  catalogRef: UiCatalogRef;
+  props: Object;
+  bindings: UiBindingSet;
+  actionRefs: string[];
+  children: string[];
+}
+
+interface UiCanonicalSurfaceFingerprint {
+  schemaVersion: number;
+  rootNodeKey: string;
+  title: string;
+  intent: string;
+  catalogVersion: string;
+  nodes: UiCanonicalNodeFingerprint[];
+}
+
 export function canonicalNodeIndex(surface: UiCanonicalSurface): Map<string, UiCanonicalNode> {
   const result: Map<string, UiCanonicalNode> = new Map<string, UiCanonicalNode>();
   surface.nodes.forEach((node: UiCanonicalNode): void => {
@@ -43,7 +62,7 @@ export function canonicalNodeIndex(surface: UiCanonicalSurface): Map<string, UiC
 export function canonicalSurfaceFingerprint(surface: UiCanonicalSurface): string {
   const nodes = surface.nodes.slice().sort((left: UiCanonicalNode, right: UiCanonicalNode): number => {
     return left.nodeKey < right.nodeKey ? -1 : (left.nodeKey > right.nodeKey ? 1 : 0);
-  }).map((node: UiCanonicalNode): Object => ({
+  }).map((node: UiCanonicalNode): UiCanonicalNodeFingerprint => ({
     nodeKey: node.nodeKey,
     component: node.component,
     catalogRef: node.catalogRef,
@@ -52,12 +71,13 @@ export function canonicalSurfaceFingerprint(surface: UiCanonicalSurface): string
     actionRefs: node.actionRefs,
     children: node.children
   }));
-  return JSON.stringify({
+  const fingerprint: UiCanonicalSurfaceFingerprint = {
     schemaVersion: surface.schemaVersion,
     rootNodeKey: surface.rootNodeKey,
     title: surface.title,
     intent: surface.intent,
     catalogVersion: surface.catalogVersion,
     nodes
-  });
+  };
+  return JSON.stringify(fingerprint);
 }

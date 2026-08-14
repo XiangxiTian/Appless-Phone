@@ -12,7 +12,7 @@ export default function googleOAuthClientTest() {
       const url = buildGoogleOAuthAuthorizationUrl({
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
         clientId: 'client-123.apps.googleusercontent.com',
-        redirectUri: 'com.example.aiphonedemo:/oauth/google',
+        redirectUri: 'com.jiuwen.appless:/oauth/google',
         state: 'state-123',
         codeChallenge: 'challenge-456',
         scopes: 'https://www.googleapis.com/auth/youtube.readonly',
@@ -30,13 +30,13 @@ export default function googleOAuthClientTest() {
       const exchange = buildGoogleTokenExchangeBody({
         clientId: 'client-123',
         clientSecret: 'secret-456',
-        redirectUri: 'com.example.aiphonedemo:/oauth/google',
+        redirectUri: 'com.jiuwen.appless:/oauth/google',
         resource: ''
       }, 'auth-code', 'verifier-789');
       const refresh = buildGoogleRefreshTokenBody({
         clientId: 'client-123',
         clientSecret: '',
-        redirectUri: 'com.example.aiphonedemo:/oauth/google',
+        redirectUri: 'com.jiuwen.appless:/oauth/google',
         resource: ''
       }, 'refresh-token');
 
@@ -49,8 +49,8 @@ export default function googleOAuthClientTest() {
     });
 
     it('parses OAuth redirects', 0, () => {
-      const success = parseGoogleOAuthRedirect('com.example.aiphonedemo:/oauth/google?code=auth-code&state=state-123');
-      const denied = parseGoogleOAuthRedirect('com.example.aiphonedemo:/oauth/google?error=access_denied&state=state-123');
+      const success = parseGoogleOAuthRedirect('com.jiuwen.appless:/oauth/google?code=auth-code&state=state-123');
+      const denied = parseGoogleOAuthRedirect('com.jiuwen.appless:/oauth/google?error=access_denied&state=state-123');
 
       expect(success.ok).assertTrue();
       expect(success.code).assertEqual('auth-code');

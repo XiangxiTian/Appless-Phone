@@ -3218,7 +3218,7 @@ export default function toolGatewayClientTest() {
           YOUTUBE_API_KEY: 'youtube-key',
           GOOGLE_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
           GOOGLE_OAUTH_CLIENT_SECRET: 'secret-456',
-          GOOGLE_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google',
+          GOOGLE_OAUTH_REDIRECT_URI: 'com.jiuwen.appless:/oauth/google',
           GOOGLE_CLOUD_PROJECT: 'aiphone-cloud'
         }));
 
@@ -4132,8 +4132,8 @@ export default function toolGatewayClientTest() {
 
     it('builds system map food destination search', 0, () => {
       expect(foodMapsLatLng('116.397470,39.908823')).assertEqual('39.908823,116.397470');
-      expect(buildSystemFoodNavigationUri('116.397470,39.908823', '')).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E7%9B%AE%E7%9A%84%E5%9C%B0&utm_source=com.example.aiphonedemo');
-      expect(buildSystemFoodNavigationUri('116.397470,39.908823', '116.398470,39.909823', '喜茶(深圳坂田华创里店)')).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E5%96%9C%E8%8C%B6%28%E6%B7%B1%E5%9C%B3%E5%9D%82%E7%94%B0%E5%8D%8E%E5%88%9B%E9%87%8C%E5%BA%97%29&utm_source=com.example.aiphonedemo');
+      expect(buildSystemFoodNavigationUri('116.397470,39.908823', '')).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E7%9B%AE%E7%9A%84%E5%9C%B0&utm_source=com.jiuwen.appless');
+      expect(buildSystemFoodNavigationUri('116.397470,39.908823', '116.398470,39.909823', '喜茶(深圳坂田华创里店)')).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E5%96%9C%E8%8C%B6%28%E6%B7%B1%E5%9C%B3%E5%9D%82%E7%94%B0%E5%8D%8E%E5%88%9B%E9%87%8C%E5%BA%97%29&utm_source=com.jiuwen.appless');
     });
 
     it('sorts unified travel options by departure time', 0, () => {

@@ -455,14 +455,14 @@ export function foregroundBundleFromAbilityDump(output) {
 export function isExpectedHotelSystemBundle(actionId, bundleName) {
   if (typeof bundleName !== 'string' ||
     bundleName.length === 0 ||
-    bundleName === 'com.example.aiphonedemo') {
+    bundleName === 'com.jiuwen.appless') {
     return false;
   }
   return actionId === 'hotel.navigate' && /(?:^|[._-])maps?(?:[._-]|$)/i.test(bundleName);
 }
 
 export function shouldRetryHotelReturnToApp(bundleName, backPressCount, maxBackPresses = 3) {
-  return bundleName !== 'com.example.aiphonedemo' &&
+  return bundleName !== 'com.jiuwen.appless' &&
     Number.isInteger(backPressCount) &&
     Number.isInteger(maxBackPresses) &&
     backPressCount >= 0 &&

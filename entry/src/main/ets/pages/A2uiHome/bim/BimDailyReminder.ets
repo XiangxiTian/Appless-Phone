@@ -1,6 +1,6 @@
 import { reminderAgentManager } from '@kit.BackgroundTasksKit';
 
-const BUNDLE_NAME: string = 'com.example.aiphonedemo';
+const BUNDLE_NAME: string = 'com.jiuwen.appless';
 const ABILITY_NAME: string = 'EntryAbility';
 export const BIM_SENTINEL_MOCK_EVENT: string = 'bimSentinelMockRequested';
 let bimSentinelMockPending: boolean = false;

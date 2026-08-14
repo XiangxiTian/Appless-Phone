@@ -140,7 +140,7 @@ export default function navigationCardSnapshotTest() {
         expect(result.snapshot.location).assertEqual('116.397470,39.908823');
         expect(result.snapshot.targetName).assertEqual('喜茶(深圳坂田华创里店)');
         expect(result.snapshot.sourceTags.join('/')).assertEqual('高德/腾讯地图');
-        expect(result.snapshot.mapUri).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E5%96%9C%E8%8C%B6%28%E6%B7%B1%E5%9C%B3%E5%9D%82%E7%94%B0%E5%8D%8E%E5%88%9B%E9%87%8C%E5%BA%97%29&utm_source=com.example.aiphonedemo');
+        expect(result.snapshot.mapUri).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E5%96%9C%E8%8C%B6%28%E6%B7%B1%E5%9C%B3%E5%9D%82%E7%94%B0%E5%8D%8E%E5%88%9B%E9%87%8C%E5%BA%97%29&utm_source=com.jiuwen.appless');
       }
     });
 
@@ -229,7 +229,7 @@ export default function navigationCardSnapshotTest() {
         expect(result.snapshot.location).assertEqual('116.37639,39.86583');
         expect(result.snapshot.departureTime).assertEqual('10:00');
         expect(result.snapshot.serviceText).assertEqual('高铁 · 12306');
-        expect(result.snapshot.mapUri).assertEqual('petalmaps://poidetail?center=39.86583,116.37639&z=16&marker=39.86583,116.37639&name=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&utm_source=com.example.aiphonedemo');
+        expect(result.snapshot.mapUri).assertEqual('petalmaps://poidetail?center=39.86583,116.37639&z=16&marker=39.86583,116.37639&name=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&utm_source=com.jiuwen.appless');
       }
     });
 
@@ -247,7 +247,7 @@ export default function navigationCardSnapshotTest() {
         expect(result.snapshot.cardStyle).assertEqual('travel');
         expect(result.snapshot.transport).assertEqual('train');
         expect(result.snapshot.sourceTags.join('/')).assertEqual('高铁 · 12306');
-        expect(result.snapshot.mapUri).assertEqual('petalmaps://poidetail?center=39.86583,116.37639&z=16&marker=39.86583,116.37639&name=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&utm_source=com.example.aiphonedemo');
+        expect(result.snapshot.mapUri).assertEqual('petalmaps://poidetail?center=39.86583,116.37639&z=16&marker=39.86583,116.37639&name=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&utm_source=com.jiuwen.appless');
       }
     });
 
@@ -266,7 +266,7 @@ export default function navigationCardSnapshotTest() {
         expect(readyFlight.snapshot.targetName).assertEqual('北京首都机场');
         expect(readyFlight.snapshot.location).assertEqual('116.58444,40.08000');
         expect(readyFlight.snapshot.departureTime).assertEqual('2026-06-25 08:30:00');
-        expect(readyFlight.snapshot.mapUri).assertEqual('petalmaps://poidetail?center=40.08000,116.58444&z=16&marker=40.08000,116.58444&name=%E5%8C%97%E4%BA%AC%E9%A6%96%E9%83%BD%E6%9C%BA%E5%9C%BA&utm_source=com.example.aiphonedemo');
+        expect(readyFlight.snapshot.mapUri).assertEqual('petalmaps://poidetail?center=40.08000,116.58444&z=16&marker=40.08000,116.58444&name=%E5%8C%97%E4%BA%AC%E9%A6%96%E9%83%BD%E6%9C%BA%E5%9C%BA&utm_source=com.jiuwen.appless');
       }
 
       const codeOnly = flightOptionWithAirport();
@@ -313,7 +313,7 @@ export default function navigationCardSnapshotTest() {
         expect(binding.targetName).assertEqual('北京南站');
         expect(binding.departureTime).assertEqual('10:00');
         expect(binding.sourceText).assertEqual('');
-        expect(binding.destinationUri).assertEqual('petalmaps://poidetail?center=39.86583,116.37639&z=16&marker=39.86583,116.37639&name=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&utm_source=com.example.aiphonedemo');
+        expect(binding.destinationUri).assertEqual('petalmaps://poidetail?center=39.86583,116.37639&z=16&marker=39.86583,116.37639&name=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&utm_source=com.jiuwen.appless');
         expect(binding.primaryAction).assertEqual('open_map');
       }
     });
@@ -326,10 +326,10 @@ export default function navigationCardSnapshotTest() {
       legacy.address = '北京南站';
       legacy.location = '北京南站';
       legacy.targetName = '北京南站';
-      legacy.mapUri = 'petalmaps://navigation?daddr=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&language=zh&type=drive&utm_source=com.example.aiphonedemo';
+      legacy.mapUri = 'petalmaps://navigation?daddr=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&language=zh&type=drive&utm_source=com.jiuwen.appless';
 
       const binding = buildNavigationCardBindingData(legacy, 1770000100000);
-      const expected = 'petalmaps://poidetail?center=39.86583,116.37639&z=16&marker=39.86583,116.37639&name=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&utm_source=com.example.aiphonedemo';
+      const expected = 'petalmaps://poidetail?center=39.86583,116.37639&z=16&marker=39.86583,116.37639&name=%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&utm_source=com.jiuwen.appless';
       expect(binding.destinationUri).assertEqual(expected);
       expect(resolveNavigationCardMapUri('travel', 'train', '北京南站', '北京南站', legacy.mapUri)).assertEqual(expected);
     });

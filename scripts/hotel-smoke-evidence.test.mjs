@@ -74,30 +74,30 @@ const realC20DetailLog = `
 `;
 
 const realPostActionC20DetailHilog = `
-07-26 17:48:44.179 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentActionRun] conversation=c75cafde7 turn=t921f1276 task=k4 surface=loop_surface_1785059300279 plan=p5 run=r6 action=hotel.detail source=hotel.search
-07-26 17:48:44.179 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MultiAgentActionRun] conversation=c75cafde7 turn=t921f1276 task=k4 surface=loop_surface_1785059300279 plan=p5 run=r6 action=hotel.detail source=hotel.search
-07-26 17:48:44.184 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentUiTask] conversation=c75cafde7 turn=t975a1f01 task=k7 dataTasks=k8
-07-26 17:48:44.184 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MultiAgentUiTask] conversation=c75cafde7 turn=t975a1f01 task=k7 dataTasks=k8
-07-26 17:48:44.184 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentDataTask] conversation=c75cafde7 turn=t975a1f01 task=k8 round=1 tool=hotel.detail predecessor=none path=none target=none binding=false
-07-26 17:48:44.184 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MultiAgentDataTask] conversation=c75cafde7 turn=t975a1f01 task=k8 round=1 tool=hotel.detail predecessor=none path=none target=none binding=false
-07-26 17:48:44.187 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentActionResult] conversation=c75cafde7 turn=t921f1276 task=k4 surface=loop_surface_1785059300279 plan=p5 run=r6 status=success
-07-26 17:48:44.187 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MultiAgentActionResult] conversation=c75cafde7 turn=t921f1276 task=k4 surface=loop_surface_1785059300279 plan=p5 run=r6 status=success
-07-26 17:48:44.188 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=loop_surface_1785059324184 intent=structured_results status=calling_tool components=2 dataChars=1397 sequence=2 renderTick=4 multiTaskTick=0
-07-26 17:48:44.188 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=loop_surface_1785059324184 intent=structured_results status=calling_tool components=2 dataChars=1397 sequence=2 renderTick=4 multiTaskTick=0
-07-26 17:48:44.190 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentUiResult] conversation=c75cafde7 turn=t975a1f01 task=k7 surface=loop_surface_1785059324184 state=skeleton
-07-26 17:48:44.190 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MultiAgentUiResult] conversation=c75cafde7 turn=t975a1f01 task=k7 surface=loop_surface_1785059324184 state=skeleton
-07-26 17:48:46.645 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][RollingGoHotelRequest] operation=getHotelDetail
-07-26 17:48:46.645 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][RollingGoHotelRequest] operation=getHotelDetail
-07-26 17:48:47.859 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][RollingGoHotelResponse] operation=getHotelDetail provider=RollingGo status=success sources=1
-07-26 17:48:47.859 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][RollingGoHotelResponse] operation=getHotelDetail provider=RollingGo status=success sources=1
-07-26 17:48:47.859 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentDataResult] conversation=c75cafde7 turn=t975a1f01 task=k8 tool=hotel.detail status=success sources=1 error=false
-07-26 17:48:47.859 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MultiAgentDataResult] conversation=c75cafde7 turn=t975a1f01 task=k8 tool=hotel.detail status=success sources=1 error=false
-07-26 17:48:50.371 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][HtmlHomeDocument] source=tool kind=hotel chars=82880 blocks=64 renderTick=5
-07-26 17:48:50.371 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][HtmlHomeDocument] source=tool kind=hotel chars=82880 blocks=64 renderTick=5
-07-26 17:48:50.371 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=loop_surface_1785059324184 intent=hotel status=ready components=2 dataChars=42269 sequence=6 renderTick=5 multiTaskTick=0
-07-26 17:48:50.371 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=loop_surface_1785059324184 intent=hotel status=ready components=2 dataChars=42269 sequence=6 renderTick=5 multiTaskTick=0
-07-26 17:48:50.372 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentUiResult] conversation=c75cafde7 turn=t975a1f01 task=k7 surface=loop_surface_1785059324184 state=result
-07-26 17:48:50.372 62439 62439 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MultiAgentUiResult] conversation=c75cafde7 turn=t975a1f01 task=k7 surface=loop_surface_1785059324184 state=result
+07-26 17:48:44.179 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentActionRun] conversation=c75cafde7 turn=t921f1276 task=k4 surface=loop_surface_1785059300279 plan=p5 run=r6 action=hotel.detail source=hotel.search
+07-26 17:48:44.179 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MultiAgentActionRun] conversation=c75cafde7 turn=t921f1276 task=k4 surface=loop_surface_1785059300279 plan=p5 run=r6 action=hotel.detail source=hotel.search
+07-26 17:48:44.184 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentUiTask] conversation=c75cafde7 turn=t975a1f01 task=k7 dataTasks=k8
+07-26 17:48:44.184 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MultiAgentUiTask] conversation=c75cafde7 turn=t975a1f01 task=k7 dataTasks=k8
+07-26 17:48:44.184 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentDataTask] conversation=c75cafde7 turn=t975a1f01 task=k8 round=1 tool=hotel.detail predecessor=none path=none target=none binding=false
+07-26 17:48:44.184 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MultiAgentDataTask] conversation=c75cafde7 turn=t975a1f01 task=k8 round=1 tool=hotel.detail predecessor=none path=none target=none binding=false
+07-26 17:48:44.187 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentActionResult] conversation=c75cafde7 turn=t921f1276 task=k4 surface=loop_surface_1785059300279 plan=p5 run=r6 status=success
+07-26 17:48:44.187 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MultiAgentActionResult] conversation=c75cafde7 turn=t921f1276 task=k4 surface=loop_surface_1785059300279 plan=p5 run=r6 status=success
+07-26 17:48:44.188 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=loop_surface_1785059324184 intent=structured_results status=calling_tool components=2 dataChars=1397 sequence=2 renderTick=4 multiTaskTick=0
+07-26 17:48:44.188 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=loop_surface_1785059324184 intent=structured_results status=calling_tool components=2 dataChars=1397 sequence=2 renderTick=4 multiTaskTick=0
+07-26 17:48:44.190 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentUiResult] conversation=c75cafde7 turn=t975a1f01 task=k7 surface=loop_surface_1785059324184 state=skeleton
+07-26 17:48:44.190 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MultiAgentUiResult] conversation=c75cafde7 turn=t975a1f01 task=k7 surface=loop_surface_1785059324184 state=skeleton
+07-26 17:48:46.645 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][RollingGoHotelRequest] operation=getHotelDetail
+07-26 17:48:46.645 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][RollingGoHotelRequest] operation=getHotelDetail
+07-26 17:48:47.859 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][RollingGoHotelResponse] operation=getHotelDetail provider=RollingGo status=success sources=1
+07-26 17:48:47.859 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][RollingGoHotelResponse] operation=getHotelDetail provider=RollingGo status=success sources=1
+07-26 17:48:47.859 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentDataResult] conversation=c75cafde7 turn=t975a1f01 task=k8 tool=hotel.detail status=success sources=1 error=false
+07-26 17:48:47.859 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MultiAgentDataResult] conversation=c75cafde7 turn=t975a1f01 task=k8 tool=hotel.detail status=success sources=1 error=false
+07-26 17:48:50.371 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][HtmlHomeDocument] source=tool kind=hotel chars=82880 blocks=64 renderTick=5
+07-26 17:48:50.371 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][HtmlHomeDocument] source=tool kind=hotel chars=82880 blocks=64 renderTick=5
+07-26 17:48:50.371 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=loop_surface_1785059324184 intent=hotel status=ready components=2 dataChars=42269 sequence=6 renderTick=5 multiTaskTick=0
+07-26 17:48:50.371 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=loop_surface_1785059324184 intent=hotel status=ready components=2 dataChars=42269 sequence=6 renderTick=5 multiTaskTick=0
+07-26 17:48:50.372 62439 62439 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentUiResult] conversation=c75cafde7 turn=t975a1f01 task=k7 surface=loop_surface_1785059324184 state=result
+07-26 17:48:50.372 62439 62439 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MultiAgentUiResult] conversation=c75cafde7 turn=t975a1f01 task=k7 surface=loop_surface_1785059324184 state=result
 `;
 
 const realC20SearchDataFirstLog = `
@@ -117,8 +117,8 @@ const realC20SearchDataFirstLog = `
 
 function pairedHilog(logText) {
   return String(logText).split('\n').filter((line) => line.trim().startsWith('[AIPhone]')).flatMap((line) => [
-    `07-26 14:24:54.663 41710 41710 I A00000/com.example.aiphonedemo/AIPhone: ${line.trim()}`,
-    `07-26 14:24:54.663 41710 41710 I A03D00/com.example.aiphonedemo/JSAPP: ${line.trim()}`
+    `07-26 14:24:54.663 41710 41710 I A00000/com.jiuwen.appless/AIPhone: ${line.trim()}`,
+    `07-26 14:24:54.663 41710 41710 I A03D00/com.jiuwen.appless/JSAPP: ${line.trim()}`
   ]).join('\n');
 }
 
@@ -149,13 +149,13 @@ test('rejects ambiguous, failed, late, or cross-surface post-action detail evide
     currentSurfaceId: 'loop_surface_1785059300279'
   };
   const requestLine =
-    '07-26 17:48:46.645 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+    '07-26 17:48:46.645 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
     '[AIPhone][RollingGoHotelRequest] operation=getHotelDetail';
   const responseLine =
-    '07-26 17:48:47.859 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+    '07-26 17:48:47.859 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
     '[AIPhone][RollingGoHotelResponse] operation=getHotelDetail provider=RollingGo status=success sources=1';
   const documentLine =
-    '07-26 17:48:50.371 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+    '07-26 17:48:50.371 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
     '[AIPhone][HtmlHomeDocument] source=tool kind=hotel chars=82880 blocks=64 renderTick=5';
   const insertBefore = (source, anchor, line) => source.replace(anchor, `${line}\n${anchor}`);
   const lateData = realPostActionC20DetailHilog.split('\n');
@@ -166,33 +166,33 @@ test('rejects ambiguous, failed, late, or cross-surface post-action detail evide
   const corruptions = [{
     name: 'failed data result beside a success',
     log: insertBefore(realPostActionC20DetailHilog, requestLine,
-      '07-26 17:48:45.000 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+      '07-26 17:48:45.000 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
       '[AIPhone][MultiAgentDataResult] conversation=c75cafde7 turn=t975a1f01 task=k8 ' +
       'tool=hotel.detail status=error sources=0 error=true')
   }, {
     name: 'correlated task error',
     log: insertBefore(realPostActionC20DetailHilog, requestLine,
-      '07-26 17:48:45.001 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+      '07-26 17:48:45.001 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
       '[AIPhone][MultiAgentTaskError] conversation=c75cafde7 turn=t975a1f01 task=k8 code=PROVIDER_FAILED')
   }, {
     name: 'late duplicate UI task',
     log: insertBefore(realPostActionC20DetailHilog, requestLine,
-      '07-26 17:48:45.002 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+      '07-26 17:48:45.002 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
       '[AIPhone][MultiAgentUiTask] conversation=c75cafde7 turn=t975a1f01 task=k7 dataTasks=k8')
   }, {
     name: 'UI task after the follow-up terminal',
     log: realPostActionC20DetailHilog +
-      '07-26 17:48:51.000 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+      '07-26 17:48:51.000 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
       '[AIPhone][MultiAgentUiTask] conversation=c75cafde7 turn=t975a1f01 task=k7 dataTasks=k8\n'
   }, {
     name: 'failed provider response beside a success',
     log: insertBefore(realPostActionC20DetailHilog, responseLine,
-      '07-26 17:48:47.000 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+      '07-26 17:48:47.000 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
       '[AIPhone][RollingGoHotelResponse] operation=getHotelDetail provider=RollingGo status=error sources=0')
   }, {
     name: 'invalid hotel document beside a valid document',
     log: insertBefore(realPostActionC20DetailHilog, documentLine,
-      '07-26 17:48:49.000 62439 62439 I A00000/com.example.aiphonedemo/AIPhone: ' +
+      '07-26 17:48:49.000 62439 62439 I A00000/com.jiuwen.appless/AIPhone: ' +
       '[AIPhone][HtmlHomeDocument] source=tool kind=hotel chars=0 blocks=0 renderTick=5')
   }, {
     name: 'data result after the UI terminal',
@@ -373,7 +373,7 @@ test('requires one hotel surface to progress from calling_tool through real bloc
   assert.equal(complete.blocks, 64);
   assert.equal(hotelDetailLifecycleFromLogs(`
     [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=hotel-detail-2 status=calling_tool components=2
-    com.example.aiphonedemo/NETSTACK RespCode:200 method:POST
+    com.jiuwen.appless/NETSTACK RespCode:200 method:POST
     [AIPhone][HtmlHomeDocument] source=tool kind=hotel chars=94242 blocks=64
     [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=hotel-detail-2 status=ready components=3
   `).ok, false);
@@ -419,7 +419,7 @@ test('combines generic turn correlation with specialized hotel provider evidence
     [AIPhone][MultiAgentDataTask] conversation=c1 turn=t1 task=data-1 round=1 tool=hotel.search predecessor=none path=none target=none binding=false
     [AIPhone][MultiAgentUiTask] conversation=c1 turn=t1 task=ui-1 dataTasks=data-1
     [AIPhone][A2uiHomeSurfaceUpdate] surfaceId=hotel-search-1 status=calling_tool components=2
-    com.example.aiphonedemo/NETSTACK RespCode:200 method:POST
+    com.jiuwen.appless/NETSTACK RespCode:200 method:POST
     [AIPhone][MultiAgentDataResult] conversation=c1 turn=t1 task=data-1 tool=hotel.search status=success sources=1 error=false
     [AIPhone][HtmlHomeDocument] source=tool kind=hotel chars=94242 blocks=64
     [AIPhone][MultiAgentUiResult] conversation=c1 turn=t1 task=ui-1 surface=hotel-search-1 state=result
@@ -491,7 +491,7 @@ test('rejects uncorrelated, duplicate, missing, and raw-http C20 hotel search ev
     duplicateDocument,
     withoutProvider.replace(
       '  [AIPhone][MultiAgentDataResult]',
-      '  com.example.aiphonedemo/NETSTACK RespCode:200 method:POST\n  [AIPhone][MultiAgentDataResult]'
+      '  com.jiuwen.appless/NETSTACK RespCode:200 method:POST\n  [AIPhone][MultiAgentDataResult]'
     )
   ].forEach((logs) => assert.equal(hotelMultiAgentSearchEvidence(logs).ok, false));
 });
@@ -639,7 +639,7 @@ test('requires captured map surface and verified return, with no dialer state', 
 test('recognizes only the foreground system map bundle', () => {
   const dump = `
     Mission ID #1
-      bundle name [com.example.aiphonedemo]
+      bundle name [com.jiuwen.appless]
       state #BACKGROUND
     Mission ID #2
       bundle name [com.huawei.hmos.maps.app]
@@ -653,6 +653,6 @@ test('recognizes only the foreground system map bundle', () => {
 test('retries only bounded Back navigation until AIPhone is foreground', () => {
   assert.equal(shouldRetryHotelReturnToApp('com.huawei.hmos.maps.app', 1), true);
   assert.equal(shouldRetryHotelReturnToApp('com.huawei.hmos.maps.app', 3), false);
-  assert.equal(shouldRetryHotelReturnToApp('com.example.aiphonedemo', 1), false);
+  assert.equal(shouldRetryHotelReturnToApp('com.jiuwen.appless', 1), false);
   assert.equal(shouldRetryHotelReturnToApp('', 1), true);
 });

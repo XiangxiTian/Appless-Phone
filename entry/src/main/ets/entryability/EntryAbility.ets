@@ -49,8 +49,8 @@ const PERSONA_SKILL_PATHS: Record<string, string[]> = {
 };
 const GMAIL_REVERSED_CLIENT_SCHEME = 'com.googleusercontent.apps.358078200829-covuu6l8dgvs7kaejua7mrkke7e8833b:/oauth2redirect';
 const GMAIL_OAUTH_URI_HINTS: string[] = [
-  'com.example.aiphonedemo:/oauth/google',
-  'com.example.aiphonedemo://oauth/google',
+  'com.jiuwen.appless:/oauth/google',
+  'com.jiuwen.appless://oauth/google',
   'aiphone://oauth/google',
   GMAIL_REVERSED_CLIENT_SCHEME
 ];

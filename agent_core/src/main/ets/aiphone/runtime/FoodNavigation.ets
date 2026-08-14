@@ -56,7 +56,7 @@ export function describeSystemFoodNavigationUri(destinationLocation: string, ori
   const name = cleanDestinationName(destinationName);
   return {
     uri: 'petalmaps://poidetail?center=' + destination + '&z=16&marker=' + destination +
-      '&name=' + encodeMapParam(name) + '&utm_source=com.example.aiphonedemo',
+      '&name=' + encodeMapParam(name) + '&utm_source=com.jiuwen.appless',
     mode: 'destination_poi_detail',
     destination: destination,
     origin: origin,
@@ -75,5 +75,5 @@ export function buildSystemPlaceNavigationUri(destinationName: string): string {
     return '';
   }
   return 'petalmaps://navigation?daddr=' + encodeMapParam(name) +
-    '&language=zh&type=drive&utm_source=com.example.aiphonedemo';
+    '&language=zh&type=drive&utm_source=com.jiuwen.appless';
 }

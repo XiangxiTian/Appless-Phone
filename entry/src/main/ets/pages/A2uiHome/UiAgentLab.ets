@@ -13,13 +13,21 @@ import {
   UiAgentLabStatusPayload,
   uiAgentLabDecisionScript,
   uiAgentLabSurfaceScript,
-  uiAgentLabStatusScript
+  uiAgentLabStatusScript,
+  uiAgentLabV4ModeScript
 } from './lab/UiAgentLabHtml';
 import {
   UiAgentLabTheme,
   uiAgentLabThemeForToggle,
   uiAgentLabThemeScript
 } from './lab/UiAgentLabTheme';
+import {
+  defaultUiLabV4FeatureFlags,
+  UiLabV4Mode,
+  uiLabV4WithMode
+} from './lab/v4/UiLabV4FeatureFlags';
+import { UiLabV4RuntimeBundle, createUiLabV4Runtime } from './lab/v4/UiLabV4RuntimeFactory';
+import { UiLabV4ShadowMirror } from './lab/v4/UiLabV4ShadowMirror';
 
 type UiAgentLabBridgeValue = Object | string | number | boolean | null | undefined;
 type UiAgentLabBridgeMessage = Record<string, UiAgentLabBridgeValue>;
@@ -31,6 +39,7 @@ class UiAgentLabBridge {
     (_componentId: string, _actionIndex: number): void => {};
   onToggleDecisionNotes: (enabled: boolean) => void = (_enabled: boolean): void => {};
   onToggleTheme: (enabled: boolean) => void = (_enabled: boolean): void => {};
+  onSetV4Mode: (mode: UiLabV4Mode) => void = (_mode: UiLabV4Mode): void => {};
 
   postMessage(raw: string): void {
     try {
@@ -68,6 +77,12 @@ class UiAgentLabBridge {
       if (keys === 'enabled,type' && parsed['type'] === 'toggleTheme' &&
         typeof parsed['enabled'] === 'boolean') {
         this.onToggleTheme(parsed['enabled'] as boolean);
+        return;
+      }
+      if (keys === 'mode,type' && parsed['type'] === 'setV4Mode' &&
+        (parsed['mode'] === 'ui_lab_legacy' || parsed['mode'] === 'ui_lab_v4_shadow' ||
+          parsed['mode'] === 'ui_lab_v4_visible')) {
+        this.onSetV4Mode(parsed['mode'] as UiLabV4Mode);
       }
     } catch (_error) {
     }
@@ -96,6 +111,11 @@ struct UiAgentLab {
   // Theme application extends this same chain so it cannot race surface pushes.
   private surfacePushChain: Promise<void> = Promise.resolve();
   private currentSurface: A2uiSurfaceState | null = null;
+  private currentSurfaceGeneration: number = 0;
+  private v4Mode: UiLabV4Mode = 'ui_lab_legacy';
+  private v4Runtime: UiLabV4RuntimeBundle | null = null;
+  private v4Mirror: UiLabV4ShadowMirror | null = null;
+  private v4MismatchCount: number = 0;
   private pendingStatus: UiAgentLabStatusPayload = {
     state: 'ready',
     message: 'UI Agent 已就绪',
@@ -110,6 +130,22 @@ struct UiAgentLab {
     this.settings = uiLabModelSettings();
     this.decisionNotesEnabled = false;
     this.theme = 'warm';
+    this.v4Mode = 'ui_lab_legacy';
+    this.v4MismatchCount = 0;
+    this.v4Runtime = createUiLabV4Runtime(
+      uiLabV4WithMode(defaultUiLabV4FeatureFlags(), this.v4Mode),
+      {
+        onLayoutRequest: (): void => {},
+        onActionEvent: (): void => {},
+        onCanonicalSurface: (): void => {},
+        onSession: (): void => {},
+        onDiagnostic: (code: string, detail: string): void => {
+          aiLogError('[AIPhone][UiAgentLabV4Diagnostic] code=' + code.substring(0, 80) +
+            ' detail=' + detail.substring(0, 160));
+        }
+      }
+    );
+    this.v4Mirror = new UiLabV4ShadowMirror(this.v4Runtime.surfaceController);
     this.pendingDecision = { enabled: false, text: '' };
     const lifecycleGeneration = this.generation;
     this.harness = new UiAgentLabHarness(this.settings, (event: UiAgentLabSurfaceEvent): void => {
@@ -134,6 +170,9 @@ struct UiAgentLab {
     this.bridge.onToggleTheme = (enabled: boolean): void => {
       this.toggleTheme(enabled);
     };
+    this.bridge.onSetV4Mode = (mode: UiLabV4Mode): void => {
+      this.setV4Mode(mode);
+    };
     aiLogInfo('[AIPhone][UiAgentLabAppear] model=' + this.settings.model +
       ' baseUrlChars=' + this.settings.baseUrl.length.toString());
   }
@@ -154,6 +193,11 @@ struct UiAgentLab {
     this.pendingSurfaceJson = '';
     this.pendingSurfaceRevision = 0;
     this.currentSurface = null;
+    this.currentSurfaceGeneration = 0;
+    this.v4Runtime = null;
+    this.v4Mirror = null;
+    this.v4Mode = 'ui_lab_legacy';
+    this.v4MismatchCount = 0;
     clearUiLabModelSettings();
     aiLogInfo('[AIPhone][UiAgentLabDisappear]');
   }
@@ -164,6 +208,7 @@ struct UiAgentLab {
       this.pushStatus(this.pendingStatus);
       this.pushDecision(this.pendingDecision);
       this.pushTheme();
+      this.pushV4Mode();
       this.pushPendingSurface();
       return;
     }
@@ -217,6 +262,45 @@ struct UiAgentLab {
     aiLogInfo('[AIPhone][UiAgentLabThemeToggle] theme=' + this.theme);
   }
 
+  private pushV4Mode(): void {
+    if (!this.shellReady) return;
+    this.enqueueShellScript(
+      uiAgentLabV4ModeScript({ mode: this.v4Mode, mismatchCount: this.v4MismatchCount }),
+      '[AIPhone][UiAgentLabV4ModePushFailed] mode=' + this.v4Mode
+    );
+  }
+
+  private setV4Mode(mode: UiLabV4Mode): void {
+    if (this.busy) {
+      this.pushV4Mode();
+      return;
+    }
+    this.v4Mode = mode;
+    const surface = this.currentSurface;
+    if (surface !== null) {
+      this.pendingSurfaceJson = JSON.stringify(this.surfaceForCurrentMode(
+        surface,
+        'ui-agent-lab-' + this.currentSurfaceGeneration.toString(),
+        this.currentSurfaceGeneration
+      ));
+      this.nextSurfaceRevision++;
+      this.pendingSurfaceRevision = this.nextSurfaceRevision;
+      this.pushPendingSurface();
+    }
+    this.pushV4Mode();
+    aiLogInfo('[AIPhone][UiAgentLabV4Mode] mode=' + mode);
+  }
+
+  private surfaceForCurrentMode(surface: A2uiSurfaceState, runId: string, epoch: number): A2uiSurfaceState {
+    if (this.v4Mode === 'ui_lab_legacy' || this.v4Mirror === null) return surface;
+    const comparison = this.v4Mirror.apply(surface, runId, epoch, this.v4Mode === 'ui_lab_v4_visible');
+    if (!comparison.match) {
+      this.v4MismatchCount++;
+      aiLogError('[AIPhone][UiAgentLabV4Mismatch] categories=' + comparison.categories.join(',').substring(0, 160));
+    }
+    return this.v4Mode === 'ui_lab_v4_visible' ? comparison.projected : surface;
+  }
+
   private enqueueShellScript(script: string, failureLog: string): void {
     const lifecycleGeneration = this.generation;
     this.surfacePushChain = this.surfacePushChain.then(async (): Promise<void> => {
@@ -256,10 +340,16 @@ struct UiAgentLab {
   private applySurfaceEvent(event: UiAgentLabSurfaceEvent): void {
     const surface: A2uiSurfaceState = event.surface;
     this.currentSurface = surface;
-    this.pendingSurfaceJson = JSON.stringify(surface);
+    this.currentSurfaceGeneration = event.generation;
+    this.pendingSurfaceJson = JSON.stringify(this.surfaceForCurrentMode(
+      surface,
+      event.turnId,
+      event.generation
+    ));
     this.nextSurfaceRevision++;
     this.pendingSurfaceRevision = this.nextSurfaceRevision;
     this.pushPendingSurface();
+    this.pushV4Mode();
     if (surface.status === 'ready') {
       this.busy = false;
       const notes = event.decisionNotes;

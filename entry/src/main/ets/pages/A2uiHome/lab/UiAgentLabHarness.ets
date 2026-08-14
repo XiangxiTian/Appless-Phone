@@ -213,6 +213,7 @@ interface UiLabPromptOffer {
 
 export interface UiAgentLabSurfaceEvent {
   turnId: string;
+  generation: number;
   surface: A2uiSurfaceState;
   decisionNotes?: string;
   layoutDiagnostic?: A2uiLayoutMergeDiagnostic;
@@ -1300,6 +1301,7 @@ export class UiAgentLabHarness {
         this.currentSurface = cloneSurface(surface);
         const event: UiAgentLabSurfaceEvent = {
           turnId: 'ui-agent-lab-' + generation.toString(),
+          generation,
           surface: cloneSurface(surface)
         };
         const decisionNotes = this.decisionNotesState.read(surface.surfaceId);

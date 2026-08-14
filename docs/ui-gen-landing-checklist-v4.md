@@ -13,10 +13,10 @@
 | PR-V4-0 | 四组 Node 回归测试通过 | 部分完成 | Hypium、真机、FMP/confirm precision、基线 tag |
 | PR-V4-1 | Canonical IR、稳定 fingerprint、Binding、Mutation、Revision；Legacy Surface Adapter 首版 | 部分完成 | 20 个 golden、完整旧测试/生产接线 |
 | PR-V4-1A | 三层 Catalog、稳定 Prompt、全首批 View Model 类型、Food/Hotel/Product/旅程/消息/Generic Adapter | 部分完成 | Extension 评审、Renderer golden、生产接线 |
-| PR-V4-1B | Host Ports、幂等 UiRunCoordinator、UI Lab 接入骨架、依赖边界检查 | 部分完成 | 真实 MultiAgent 事件流、页面级选择与端到端验收 |
-| PR-V4-2 | 四 Store、SurfaceController、Reconciler、Tool Result shadow、UI Lab ShadowMirror | 部分完成 | legacy double-write、真实 snapshot compare、Hypium |
-| PR-V4-3 | Revision Gate、mutationId ring、baseRevision、Snapshot、tool-before-node/重放专项 | 部分完成 | generation/lease 对接、legacy sequence 共存、设备交错验收 |
-| PR-V4-4 | A2UI JSON Compiler、binding schema gate、metadata、Legacy Adapter、Reconciler/Projection Bridge 接口 | 部分完成 | 页面 callback、现有 golden、完整迁移和 feature flag 回退 |
+| PR-V4-1B | Host Ports、幂等 UiRunCoordinator、UI Lab 三档页面选择、依赖边界检查 | 部分完成 | 原生 Host Event 全量映射与端到端真机验收 |
+| PR-V4-2 | 四 Store、SurfaceController、Reconciler、UI Lab 页面 shadow double-write 与分类 compare | 部分完成 | 全自动场景 mismatch 收口、Presentation VM 迁移、Hypium 执行 |
+| PR-V4-3 | Revision Gate、mutationId ring、baseRevision、Snapshot、UI Lab generation→epoch 接线 | 部分完成 | 全设备交错验收与完整重放证据 |
+| PR-V4-4 | A2UI JSON Compiler、binding schema gate、Legacy Adapter、UI Lab 页面 feature flag/fallback | 部分完成 | 旧职责迁移、Compiler 可见链路和 golden |
 
 这里的“部分完成”只表示对应代码切片已经提交并通过静态/结构检查；只有该阶段所有条目和“退出门槛”全部勾选，才能称为 PR 完成。
 
@@ -32,7 +32,10 @@
 - 已补齐 UI Lab `UiLabV4ShadowMirror`：legacy data/runtime/user 字段迁移到四 Store，并输出 canonical/data/phase/user-overlay/revision 分类；可见投影仍由显式 mode 控制。
 - 已增加 `scripts/ui-v4-dependency-check.mjs`，当前通过；它只检查 `agent_core/.../ui` 的宿主反向依赖，不替代 ArkTS/设备构建。
 - 2026-08-14 已修复 v4 的 ArkTS 严格语法缺口（动态索引、匿名对象类型、对象展开、`delete` 等），`assembleHap -p product=default -p module=entry@default --no-daemon` 构建成功并生成 `entry-default-signed.hap`。
-- 仍未完成：真实 UI Lab 页面回调与 double-write、20 个 golden、完整旧 Hypium/真机验收、generation/lease 对接、Extension 评审和主 UI 接入。
+- 2026-08-14 UI Lab 页面已接入 `legacy/shadow/visible` 三档选择；通过现有 MultiAgent host `onSurface` generation gate 后，shadow 写入 v4 四 Store、回投影并按五类 mismatch 记录，默认仍为 legacy，主 UI 无 v4 调用点。
+- 2026-08-14 `UiLabV4Integration` 已注册到 Hypium，严格测试编译通过；本机 Previewer command pipe 连接失败且未生成 `test_result.txt`，因此“Hypium 全量无新增失败”仍不勾选。
+- 2026-08-14 签名 HAP 已安装到 USB 真机；设备安全锁阻止 Ability 启动，页面级真机验收等待人工解锁后继续。
+- 仍未完成：20 个 golden、完整旧 Hypium/真机验收、Presentation VM 接入 legacy data shadow、Extension 评审和主 UI 接入。
 
 ---
 
@@ -407,14 +410,14 @@ entry/src/test/UiLabV4Integration.test.ets
 - [x] Tool Result 先到节点时结果保持确定；带 `resultId` 的 Tool Result 重放去重，Agent Event 重放按 `eventId` 去重。
 - [x] UiEvent 只经 host action sink 返回，不在 UiRunCoordinator 内执行 Tool。
 - [x] UI Lab `legacy` 模式默认保持不变，v4 只由显式 mode 选择。
-- [x] UI Lab `v4_shadow` 当前只建立接入骨架，不改变可见 Surface。
+- [x] UI Lab `v4_shadow` 对 host accepted Surface 做 v4 double-write/compare，但不改变可见 Surface。
 - [ ] 主 UI golden、工具调用次数和 Action 执行次数保持不变（待 UI Lab 真实接线验收）。
 
 ### 退出门槛
 
 - [x] v4 Core 通过无 UI Lab/无页面依赖静态依赖检查，并通过 DevEco 严格 ArkTS `assembleHap` 构建。
-- [ ] UI Lab 能独立选择 legacy 或 v4 shadow。
-- [ ] 主 UI 无 v4 新调用点，行为和指标无变化。
+- [x] UI Lab 页面可独立选择 legacy、v4 shadow 或 v4 visible，默认 legacy。
+- [x] 主 UI 无 v4 新调用点；静态接线检查确认其继续使用旧 Store/Renderer。
 - 状态：待设计评审确认 UiRunCoordinator 没有复制 MultiAgent Runtime 职责。
 
 ---
@@ -434,10 +437,10 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 接线
 
-- [ ] UI Lab legacy `A2uiSurfaceStore.apply()` 成功后，通过 Host Adapter shadow 写入新 SurfaceController（真实 legacy double-write 待下一步）。
-- [ ] 新 Controller materialize legacy view，与当前 UI Lab Surface 做 snapshot compare。
-- 约束：mismatch 只记录，不影响用户界面；页面级 shadow 接线仍未完成。
-- [x] `UiLabV4ShadowMirror` 对 mismatch 分类：canonical、data、phase、user overlay、revision（页面级 compare 尚未接线）。
+- [x] UI Lab 的现有 MultiAgent host `onSurface` 在 generation gate 成功后，shadow 写入新 SurfaceController；主 UI 的 `A2uiSurfaceStore` 不参与本接线。
+- [x] 新 Controller materialize legacy view，与当前 UI Lab accepted Surface 做 snapshot compare。
+- 约束：mismatch 只增加计数并写诊断日志；shadow 模式不改变用户可见 Surface。
+- [x] `UiLabV4ShadowMirror` 对页面 compare 分类：canonical、data、phase、user overlay、revision。
 - [x] 不修改主 UI `A2uiSurfaceStore.apply()` 调用点。
 - [x] UI Lab v4 runtime 的 Tool Result 已经过 Presentation Adapter 写入 DataModelStore；原始 Tool payload 不保存在 v4 Surface 状态中。
 
@@ -463,13 +466,13 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过，v4 core 未出现 `entry/`、ArkUI、WebView 或 `MultiAgentCanaryRuntime` 反向依赖。
-- 状态：专项 Hypium 测试已建立，但尚未在设备/IDE 环境执行。
+- 状态：专项 Hypium 已注册且通过严格测试编译；本机 Previewer command pipe 失败，尚无运行结果汇总。
 
 ### 退出门槛
 
 - [ ] UI Lab shadow compare 在全部现有自动场景中 100% 可解释。
 - [ ] 不允许存在未分类 mismatch。
-- [ ] 主 UI 未产生 v4 mutation、Store 或日志事件。
+- [x] 主 UI 未产生 v4 mutation、Store 或日志事件（静态接线检查通过；真机指标仍待总体验收）。
 
 ---
 
@@ -487,9 +490,9 @@ entry/src/test/UiLabV4Integration.test.ets
 
 ### 与现有 gate 对接
 
-- [ ] UI Lab Host Adapter 将现有 `runtimeGeneration` 映射为 epoch，兼容期不删除。
-- [ ] UI Lab host generation/lease 校验后再进入 revision gate。
-- [ ] UI Lab legacy `applySurface()` sequence gate 保留到 `ui_lab_v4_visible` 稳定。
+- [x] UI Lab Harness 将现有 host `generation` 映射为 v4 epoch，兼容期保留原 generation。
+- [x] UI Lab host generation 校验通过后才触发 shadow mirror，并由 SurfaceController 同步 revision gate。
+- [x] UI Lab legacy host 的 generation/sequence 准入继续保留；v4 visible 只切换已准入 Surface 的投影结果。
 - [x] 主 UI 的 generation/lease/sequence gate 在本阶段保持不变。
 - [x] layout/data/runtime/user mutations 分别比较对应 revision；当前 `UiSurfaceController.applyMutation()` 先接 data/runtime/user，layout mutation 等 Compiler/Reconciler 入口。
 
@@ -507,7 +510,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过；revision gate/snapshot 代码仍位于 `agent_core`，无宿主反向依赖。
-- 状态：专项 Hypium 测试已建立，但尚未在设备/IDE 环境执行。
+- 状态：专项 Hypium 已注册且通过严格测试编译；本机 Previewer command pipe 失败，设备交错运行仍待执行。
 
 ### 退出门槛
 
@@ -558,7 +561,7 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 当前已接通 `model delta/completed → A2uiJsonOutputAdapter → Canonicalizer → SurfaceController` 的 shadow 路径。
 - [x] `SurfaceController → UiReconciler → Host Port → UiLabV4ProjectionBridge → LegacyA2uiSurfaceAdapter` 的转换接口已建立。
-- [ ] 实际 UI Lab 页面回调、legacy `A2uiSurfaceStore.apply()` double-write 和 snapshot compare 仍待接线。
+- [x] 实际 UI Lab 页面 callback 已接 legacy Surface → v4 Store double-write/snapshot compare；该兼容入口不绕过现有模型 JSON 生成链路。
 
 ### 测试
 
@@ -574,12 +577,12 @@ entry/src/test/UiLabV4Integration.test.ets
 
 - [x] 四组既有 Node 回归测试继续全绿：9/9、6/6、3/3、6/6。
 - [x] `git diff --check` 通过，Compiler 仅位于 `agent_core`。
-- 状态：专项 Hypium 测试已建立，但尚未在设备/IDE 环境执行。
+- 状态：专项 Hypium 已注册且通过严格测试编译；本机 Previewer command pipe 失败，尚无运行结果汇总。
 
 ### 退出门槛
 
 - [ ] UI Lab JSON 路径可切 feature flag 到 v4 Compiler。
-- [ ] 关闭 UI Lab flag 可完整回退旧 Lab 路径。
+- [x] 切回 `ui_lab_legacy` 可完整回退旧 Lab 可见路径，且该模式为页面默认值。
 - 约束：主 UI 仍不得增加 v4 Compiler feature flag；当前保持旧链路。
 
 ---

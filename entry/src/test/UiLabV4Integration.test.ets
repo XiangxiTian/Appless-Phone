@@ -1,6 +1,11 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  A2uiAction,
+  A2uiComponent,
+  A2uiSurfaceState,
+  UiCanonicalSurface,
   UiEvent,
+  UiHostToolResult,
   UiSurfaceRequest,
   UiSurfaceSession
 } from '@loop/agent-core';
@@ -22,6 +27,19 @@ import {
 import { UiLabV4ShadowMirror } from '../main/ets/pages/A2uiHome/lab/v4/UiLabV4ShadowMirror';
 import { UiSurfaceController } from '@loop/agent-core';
 
+interface UiLabV4TestRestaurantItem {
+  shop_id: string;
+  shop_name: string;
+}
+
+interface UiLabV4TestRestaurantData {
+  items: UiLabV4TestRestaurantItem[];
+}
+
+interface UiLabV4TestActionArgs {
+  cardId: string;
+}
+
 export default function uiLabV4IntegrationTest(): void {
   describe('UiLabV4Integration', (): void => {
     it('defaults to legacy and makes shadow/visible explicit', 0, (): void => {
@@ -41,11 +59,11 @@ export default function uiLabV4IntegrationTest(): void {
       const surfaces: string[] = [];
       const diagnostics: string[] = [];
       const callbacks: UiLabV4HostCallbacks = {
-        onLayoutRequest: (request: UiSurfaceRequest): void => requests.push(request),
-        onActionEvent: (event: UiEvent): void => actions.push(event),
-        onCanonicalSurface: (surface): void => surfaces.push(surface.surfaceId),
-        onSession: (session: UiSurfaceSession): void => sessions.push(session),
-        onDiagnostic: (code: string, detail: string): void => diagnostics.push(code + detail)
+        onLayoutRequest: (request: UiSurfaceRequest): void => { requests.push(request); },
+        onActionEvent: (event: UiEvent): void => { actions.push(event); },
+        onCanonicalSurface: (surface: UiCanonicalSurface): void => { surfaces.push(surface.surfaceId); },
+        onSession: (session: UiSurfaceSession): void => { sessions.push(session); },
+        onDiagnostic: (code: string, detail: string): void => { diagnostics.push(code + detail); }
       };
       const bundle = createUiLabV4Runtime(
         uiLabV4WithMode(defaultUiLabV4FeatureFlags(), 'ui_lab_v4_shadow'), callbacks
@@ -58,12 +76,16 @@ export default function uiLabV4IntegrationTest(): void {
         eventId: 'event-1', runId: 'lab-run', surfaceId: 'lab-surface', epoch: 1,
         nodeKey: 'action', eventType: 'activate', offerId: 'offer-1'
       });
-      bundle.coordinator.onToolResult({
+      const toolData: UiLabV4TestRestaurantData = {
+        items: [{ shop_id: 'r-1', shop_name: 'Test Kitchen' }]
+      };
+      const toolResult: UiHostToolResult = {
         runId: 'lab-run', surfaceId: 'lab-surface', epoch: 1,
         toolId: 'restaurant.search', outputSchemaRef: 'restaurant-search-result.v1',
         provider: 'test-provider', status: 'ok',
-        data: { items: [{ shop_id: 'r-1', shop_name: 'Test Kitchen' }] }
-      });
+        data: toolData
+      };
+      bundle.coordinator.onToolResult(toolResult);
       bundle.coordinator.onModelCompleted({
         runId: 'lab-run', surfaceId: 'lab-surface', format: 'a2ui-json', accepted: true,
         text: '{"updateComponents":{"surfaceId":"lab-surface","components":[{"id":"root","component":"Surface"}]}}'
@@ -89,7 +111,7 @@ export default function uiLabV4IntegrationTest(): void {
           pushed.push(json);
           revisions.push(revision);
         },
-        pushDiagnostic: (code: string, detail: string): void => diagnostics.push(code + detail)
+        pushDiagnostic: (code: string, detail: string): void => { diagnostics.push(code + detail); }
       };
       const bridge = new UiLabV4ProjectionBridge(callbacks);
       expect(bridge.pushSurfaceJson('')).assertEqual(0);
@@ -100,27 +122,37 @@ export default function uiLabV4IntegrationTest(): void {
       expect(diagnostics.length).assertEqual(1);
     });
 
-    it('migrates legacy data and overlays while classifying shadow differences', 0, (): void => {
+    it('migrates legacy data, overlays and trusted actions without shadow differences', 0, (): void => {
       const pushed: string[] = [];
-      const bridge = new UiLabV4ProjectionBridge({
-        pushSurfaceJson: (json: string): void => pushed.push(json),
+      const bridgeCallbacks: UiLabV4ProjectionCallbacks = {
+        pushSurfaceJson: (json: string): void => { pushed.push(json); },
         pushDiagnostic: (): void => undefined
-      });
+      };
+      const bridge = new UiLabV4ProjectionBridge(bridgeCallbacks);
       const controller = new UiSurfaceController();
       const mirror = new UiLabV4ShadowMirror(controller, bridge);
-      const result = mirror.apply({
+      const actionArgs: UiLabV4TestActionArgs = { cardId: 'card-1' };
+      const action: A2uiAction = {
+        id: 'open-card', label: 'Open', prompt: 'Open card', variant: 'primary', kind: 'tool', args: actionArgs
+      };
+      const components: A2uiComponent[] = [
+        { id: 'root', component: 'SurfaceRoot', children: ['card'], renderState: 'ready' },
+        { id: 'card', component: 'Text', text: 'Card', pinned: true, actions: [action] }
+      ];
+      const legacy: A2uiSurfaceState = {
         surfaceId: 'mirror-surface', rootId: 'root', title: 'Mirror', intent: 'test', status: 'ok',
         sequence: 2, dataModelJson: '{"items":[{"id":"item-1"}]}', error: '',
-        components: [
-          { id: 'root', component: 'SurfaceRoot', children: ['card'], renderState: 'ready' },
-          { id: 'card', component: 'Text', text: 'Card', pinned: true }
-        ]
-      }, 'mirror-run', 1, true);
-      expect(result.categories).assertContain('phase');
-      expect(result.categories).assertContain('user-overlay');
+        components
+      };
+      const result = mirror.apply(legacy, 'mirror-run', 1, true);
+      expect(result.match).assertTrue();
+      expect(result.categories.length).assertEqual(0);
       expect(controller.snapshot('mirror-surface').data?.viewModelType).assertEqual('legacy-a2ui-data');
       expect(controller.snapshot('mirror-surface').runtime?.nodePhases['root']).assertEqual('confirmed');
       expect(controller.snapshot('mirror-surface').user?.pinnedNodeKeys).assertContain('card');
+      expect(result.projected.components[1].actions?.[0].prompt).assertEqual('Open card');
+      const projectedArgs = result.projected.components[1].actions?.[0].args as UiLabV4TestActionArgs;
+      expect(projectedArgs.cardId).assertEqual('card-1');
       expect(pushed.length).assertEqual(1);
     });
   });

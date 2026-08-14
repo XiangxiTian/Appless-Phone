@@ -17,6 +17,13 @@ export interface UiAgentLabDecisionPayload {
   text: string;
 }
 
+export type UiAgentLabV4Mode = 'ui_lab_legacy' | 'ui_lab_v4_shadow' | 'ui_lab_v4_visible';
+
+export interface UiAgentLabV4ModePayload {
+  mode: UiAgentLabV4Mode;
+  mismatchCount: number;
+}
+
 interface UiAgentLabSurfacePayload {
   surface: Object;
   revision: number;
@@ -88,6 +95,11 @@ function boundedUiAgentLabDecisionPayload(payload: UiAgentLabDecisionPayload): U
 export function uiAgentLabDecisionScript(payload: UiAgentLabDecisionPayload): string {
   const serialized = JSON.stringify(boundedUiAgentLabDecisionPayload(payload));
   return 'window.__applyUiAgentLabDecision(JSON.parse(' + scriptString(serialized) + '));';
+}
+
+export function uiAgentLabV4ModeScript(payload: UiAgentLabV4ModePayload): string {
+  return 'window.__applyUiAgentLabV4Mode(JSON.parse(' +
+    scriptString(JSON.stringify(payload)) + '));';
 }
 
 export function uiAgentLabSurfaceScript(
@@ -269,6 +281,8 @@ export function createUiAgentLabHtmlShell(): string {
     .title { flex:1 1 auto; margin-left:12px; min-width:0; }
     .title h1 { margin:0; font-size:21px; letter-spacing:-.02em; }
     .title p { margin:3px 0 0; color:var(--muted); font-size:12px; }
+    .runtime-mode { max-width:112px; height:38px; margin-left:8px; padding:0 10px; border:0; border-radius:19px; color:var(--text); background:var(--control-fill); box-shadow:inset 0 0 0 1px var(--edge-medium); font:600 11px/1.1 inherit; }
+    .runtime-mode[data-mismatch="true"] { color:#9b2c2c; box-shadow:inset 0 0 0 1px rgba(155,44,44,.35); }
     .decision-toggle,.theme-toggle { width:38px; height:38px; flex:0 0 38px; margin-left:8px; border:0; border-radius:50%; background:var(--control-fill); color:var(--text); cursor:pointer; box-shadow:inset 0 0 0 1px var(--edge-medium); display:flex; align-items:center; justify-content:center; }
     .decision-toggle svg,.theme-toggle svg,.send svg { width:19px; height:19px; display:block; fill:currentColor; }
     .decision-toggle[aria-pressed="true"] { color:var(--on-accent); background:linear-gradient(145deg,var(--cobalt),var(--cobalt-deep)); box-shadow:var(--button-shadow),inset 0 1px 0 var(--glass-highlight); }
@@ -435,6 +449,11 @@ export function createUiAgentLabHtmlShell(): string {
     <header class="lab-header glass">
       <button id="back" class="back" type="button" aria-label="返回设置">&#8249;</button>
       <div class="title"><h1>UI Lab</h1><p>POCKETAGENT</p></div>
+      <select id="runtimeMode" class="runtime-mode" aria-label="UI Runtime 模式" title="UI Runtime 模式">
+        <option value="ui_lab_legacy">Legacy</option>
+        <option value="ui_lab_v4_shadow">V4 Shadow</option>
+        <option value="ui_lab_v4_visible">V4 Visible</option>
+      </select>
       <button id="decisionToggle" class="decision-toggle" type="button" aria-label="显示 UI 决策说明" aria-pressed="false" title="UI 决策说明"><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z" /></svg></button>
       <button id="themeToggle" class="theme-toggle" type="button" aria-label="启用现代冷色主题" aria-pressed="false" title="切换界面主题"><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M48,64a8,8,0,0,1,8-8H72V40a8,8,0,0,1,16,0V56h16a8,8,0,0,1,0,16H88V88a8,8,0,0,1-16,0V72H56A8,8,0,0,1,48,64ZM184,192h-8v-8a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16h8v8a8,8,0,0,0,16,0v-8h8a8,8,0,0,0,0-16Zm56-48H224V128a8,8,0,0,0-16,0v16H192a8,8,0,0,0,0,16h16v16a8,8,0,0,0,16,0V160h16a8,8,0,0,0,0-16ZM219.31,80,80,219.31a16,16,0,0,1-22.62,0L36.68,198.63a16,16,0,0,1,0-22.63L176,36.69a16,16,0,0,1,22.63,0l20.68,20.68A16,16,0,0,1,219.31,80Zm-54.63,32L144,91.31l-96,96L68.68,208ZM208,68.69,187.31,48l-32,32L176,100.69Z" /></svg></button>
     </header>
@@ -460,7 +479,7 @@ export function createUiAgentLabHtmlShell(): string {
       });
       var UI_AGENT_LAB_RESERVED_FIELDS = ${JSON.stringify(A2UI_CATALOG_RESERVED_COMPONENT_FIELDS)};
       var shell=document.querySelector('.shell'),surfaceHost=document.getElementById('surface');
-      var decisionToggle=document.getElementById('decisionToggle'),themeToggle=document.getElementById('themeToggle'),decisionPanel=document.getElementById('decisionPanel');
+      var runtimeMode=document.getElementById('runtimeMode'),decisionToggle=document.getElementById('decisionToggle'),themeToggle=document.getElementById('themeToggle'),decisionPanel=document.getElementById('decisionPanel');
       var decisionText=document.getElementById('decisionText');
       var toast=document.getElementById('toast'),toastTimer=0;
       var bridge=function(message){
@@ -1054,6 +1073,12 @@ export function createUiAgentLabHtmlShell(): string {
         decisionPanel.hidden=!enabled;shell.classList.toggle('decision-notes-visible',enabled);
         decisionText.textContent=enabled&&typeof source.text==='string'?source.text.substring(0,2400):'';
       };
+      window.__applyUiAgentLabV4Mode=function(next){
+        var source=record(next),mode=source?source.mode:undefined,mismatchCount=source?source.mismatchCount:undefined;
+        if(!source||['ui_lab_legacy','ui_lab_v4_shadow','ui_lab_v4_visible'].indexOf(mode)<0||!Number.isSafeInteger(mismatchCount)||mismatchCount<0)return;
+        runtimeMode.value=mode;runtimeMode.dataset.mismatch=mismatchCount>0?'true':'false';
+        runtimeMode.title=(mode==='ui_lab_legacy'?'Legacy':(mode==='ui_lab_v4_shadow'?'V4 Shadow':'V4 Visible'))+(mismatchCount>0?' · '+String(mismatchCount)+' mismatch':'');
+      };
       var status=document.getElementById('status'),statusText=document.getElementById('statusText'),responseMeta=document.getElementById('responseMeta');
       var prompt=document.getElementById('prompt'),send=document.getElementById('send');
       window.__applyUiAgentLabStatus=function(next){
@@ -1061,7 +1086,7 @@ export function createUiAgentLabHtmlShell(): string {
         status.dataset.state=next.state;
         statusText.textContent=typeof next.message==='string'?next.message:'';
         responseMeta.textContent=Number(next.responseChars)>0?String(next.responseChars)+' chars':'';
-        send.disabled=next.state==='loading';prompt.disabled=next.state==='loading';decisionToggle.disabled=next.state==='loading';
+        send.disabled=next.state==='loading';prompt.disabled=next.state==='loading';decisionToggle.disabled=next.state==='loading';runtimeMode.disabled=next.state==='loading';
       };
       document.getElementById('back').addEventListener('click',function(){bridge({type:'back'});});
       decisionToggle.addEventListener('click',function(){
@@ -1073,6 +1098,7 @@ export function createUiAgentLabHtmlShell(): string {
         applyTheme(enabled?'cool':'warm');
         bridge({type:'toggleTheme',enabled:enabled});
       });
+      runtimeMode.addEventListener('change',function(){bridge({type:'setV4Mode',mode:runtimeMode.value});});
       document.getElementById('composer').addEventListener('submit',function(event){
         event.preventDefault();var value=prompt.value.trim();if(!value||send.disabled)return;
         window.__applyUiAgentLabStatus({state:'loading',message:'模型正在响应…',responseChars:0});

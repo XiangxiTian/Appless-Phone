@@ -17,6 +17,20 @@ export interface UiLabV4ShadowCompareResult {
   projected: A2uiSurfaceState;
 }
 
+interface UiLabV4LegacyProvenance {
+  source: string;
+}
+
+function jsonEqual(left: Object, right: Object): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function legacyPhaseFor(value: 'predicted' | 'confirmed' | 'hydrated' | 'error'): 'shimmer' | 'ready' | 'data' {
+  if (value === 'predicted') return 'shimmer';
+  if (value === 'hydrated') return 'data';
+  return 'ready';
+}
+
 function phaseFor(value: 'shimmer' | 'ready' | 'data'): 'predicted' | 'confirmed' | 'hydrated' {
   if (value === 'shimmer') return 'predicted';
   if (value === 'data') return 'hydrated';
@@ -40,25 +54,22 @@ export class UiLabV4ShadowMirror {
 
   apply(legacy: A2uiSurfaceState, runId: string, epoch: number, visible: boolean = false): UiLabV4ShadowCompareResult {
     const canonical = this.adapter.toCanonical(legacy, runId, epoch);
+    this.controller.dataModelStore.remove(canonical.surfaceId);
+    this.controller.runtimeOverlayStore.remove(canonical.surfaceId);
+    this.controller.userOverlayStore.remove(canonical.surfaceId);
     this.controller.commitLayout(canonical);
     this.migrateData(legacy, canonical);
     this.migrateOverlays(legacy, canonical);
     const projected = this.adapter.toLegacy(canonical, legacy);
+    this.materializeOverlays(projected);
     const categories: UiLabV4ShadowMismatchCategory[] = [];
     if (canonicalSurfaceFingerprint(canonical) !==
       canonicalSurfaceFingerprint(this.adapter.toCanonical(projected, runId, epoch))) {
       categories.push('canonical');
     }
-    if (legacy.dataModelJson.length > 0 && legacy.dataModelJson !== '{}') {
-      try {
-        JSON.parse(legacy.dataModelJson);
-      } catch (_error) {
-        categories.push('data');
-      }
-    }
-    if (legacy.components.some((component): boolean => component.renderState !== undefined)) categories.push('phase');
-    if (legacy.components.some((component): boolean => component.pinned === true || component.hidden === true ||
-      component.orderHint !== undefined)) categories.push('user-overlay');
+    if (!this.dataMatches(legacy)) categories.push('data');
+    if (!this.phaseMatches(legacy, projected)) categories.push('phase');
+    if (!this.userOverlayMatches(legacy, projected)) categories.push('user-overlay');
     if (projected.sequence !== legacy.sequence) categories.push('revision');
     if (visible && this.bridge !== null) this.bridge.pushCanonicalSurface(canonical);
     return {
@@ -70,12 +81,10 @@ export class UiLabV4ShadowMirror {
   }
 
   private migrateData(legacy: A2uiSurfaceState, canonical: UiCanonicalSurface): void {
-    if (legacy.dataModelJson.length === 0) return;
     try {
-      const data = JSON.parse(legacy.dataModelJson) as Object;
-      this.controller.setDataModel(canonical.surfaceId, data, 1, 'legacy-a2ui-data', 1, {
-        source: 'legacy-a2ui-shadow'
-      });
+      const data = JSON.parse(legacy.dataModelJson.length === 0 ? '{}' : legacy.dataModelJson) as Object;
+      const provenance: UiLabV4LegacyProvenance = { source: 'legacy-a2ui-shadow' };
+      this.controller.setDataModel(canonical.surfaceId, data, 1, 'legacy-a2ui-data', 1, provenance);
     } catch (_error) {
       return;
     }
@@ -106,6 +115,63 @@ export class UiLabV4ShadowMirror {
         afterNodeKey
       }, ++userRevision);
       afterNodeKey = component.id;
+    });
+  }
+
+  private materializeOverlays(projected: A2uiSurfaceState): void {
+    const runtime = this.controller.snapshot(projected.surfaceId).runtime;
+    const user = this.controller.snapshot(projected.surfaceId).user;
+    const order: Map<string, number> = new Map<string, number>();
+    if (user !== null) {
+      user.orderedNodeKeys.forEach((nodeKey: string, index: number): void => {
+        order.set(nodeKey, index);
+      });
+    }
+    projected.components.forEach((component: A2uiComponent): void => {
+      const phase = runtime === null ? undefined : runtime.nodePhases[component.id];
+      if (phase !== undefined) component.renderState = legacyPhaseFor(phase);
+      if (user !== null) {
+        if (user.pinnedNodeKeys.indexOf(component.id) >= 0) component.pinned = true;
+        else component.pinned = undefined;
+        if (user.hiddenNodeKeys.indexOf(component.id) >= 0) component.hidden = true;
+        else component.hidden = undefined;
+        const orderHint = order.get(component.id);
+        if (orderHint === undefined) component.orderHint = undefined;
+        else component.orderHint = orderHint;
+      }
+    });
+  }
+
+  private dataMatches(legacy: A2uiSurfaceState): boolean {
+    try {
+      const expected = JSON.parse(legacy.dataModelJson.length === 0 ? '{}' : legacy.dataModelJson) as Object;
+      const actual = this.controller.snapshot(legacy.surfaceId).data;
+      return actual !== null && jsonEqual(expected, actual.root);
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  private phaseMatches(legacy: A2uiSurfaceState, projected: A2uiSurfaceState): boolean {
+    const projectedById: Map<string, A2uiComponent> = new Map<string, A2uiComponent>();
+    projected.components.forEach((component: A2uiComponent): void => {
+      projectedById.set(component.id, component);
+    });
+    return legacy.components.every((component: A2uiComponent): boolean => {
+      const next = projectedById.get(component.id);
+      return next !== undefined && next.renderState === component.renderState;
+    });
+  }
+
+  private userOverlayMatches(legacy: A2uiSurfaceState, projected: A2uiSurfaceState): boolean {
+    const projectedById: Map<string, A2uiComponent> = new Map<string, A2uiComponent>();
+    projected.components.forEach((component: A2uiComponent): void => {
+      projectedById.set(component.id, component);
+    });
+    return legacy.components.every((component: A2uiComponent): boolean => {
+      const next = projectedById.get(component.id);
+      return next !== undefined && next.pinned === component.pinned && next.hidden === component.hidden &&
+        next.orderHint === component.orderHint;
     });
   }
 }

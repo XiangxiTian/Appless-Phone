@@ -23,6 +23,7 @@ import { HistoryPanelView } from './HistoryPanelView';
 import { HtmlHomeSurfaceView } from './HtmlHomeSurfaceView';
 import { A2uiSurfaceView } from './A2uiSurfaceView';
 import { CheckoutWebKind, CheckoutWebOverlay } from './CheckoutWebOverlay';
+import { DeepSearchPanel } from './DeepSearchPanel';
 import {
   emptyTrainPresaleTrip,
   TrainPresalePanel,
@@ -112,6 +113,10 @@ export struct HomePage {
   @Prop bimRememberState: BimRememberState = 'ready';
   @Prop bimRememberError: string = '';
   @Prop reduceMotion: boolean = false;
+  @Prop showDeepSearch: boolean = false;
+  @Prop deepSearchQuery: string = '';
+  @Prop deepSearchSettingsJson: string = '';
+  @Prop deepSearchContextJson: string = '';
   @State sendSpinnerRotation: number = 0;
   @State voicePulseTick: number = 0;
   @State waterfallFullscreen: boolean = false;
@@ -125,6 +130,7 @@ export struct HomePage {
   onStartVoiceInput: () => void = () => {};
   onStopVoiceInput: () => void = () => {};
   onResetSession: () => void = () => {};
+  onCloseDeepSearch: () => void = () => {};
   onCloseCheckoutWeb: (taskId: string) => void = (_taskId: string): void => {};
   onCheckoutWebReturn: (url: string) => void = (_url: string): void => {};
   onTrainPresaleConfirm: (submission: TrainPresalePanelSubmission) => void =
@@ -473,7 +479,16 @@ export struct HomePage {
         .animation({ duration: A2UI_MOTION_NORMAL_MS, curve: A2UI_MOTION_MOVE_CURVE })
       }
 
-      if (this.showTrainPresalePanel) {
+      if (this.showDeepSearch) {
+        DeepSearchPanel({
+          query: this.deepSearchQuery,
+          settingsJson: this.deepSearchSettingsJson,
+          contextJson: this.deepSearchContextJson,
+          onClose: this.onCloseDeepSearch
+        })
+          .layoutWeight(1)
+          .margin({ top: A2UI_HOME_SECTION_GAP })
+      } else if (this.showTrainPresalePanel) {
         TrainPresalePanel({
           trip: this.trainPresaleTrip,
           task: this.trainPresaleTask,

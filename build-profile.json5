@@ -29,13 +29,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "/Users/luoyige/.ohos/config/default_AIPhoneDemo_dlY6wKHLZdqwaFWlwxgsEVDDzY3RBlRpidOe7L6pX_M=.cer",
+          "certpath": "C:\\Users\\lin\\.ohos\\config\\default_Appless-Phone_WPY2O4g4A_Ij7vn_0BjE31LJEVzRTFRuPkGr5T959eM=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001BD1CC2C110B45CD78BE5C9E0B1A011E7090077DF9E9D8406DB1B951F420FF1C2C0F263878776BA1",
-          "profile": "/Users/luoyige/.ohos/config/default_AIPhoneDemo_dlY6wKHLZdqwaFWlwxgsEVDDzY3RBlRpidOe7L6pX_M=.p7b",
+          "keyPassword": "0000001BE526B4C1D70A78045C1B0DE671774E3DC3FB6BF79213D6AC2141171076BE3ED9CAEECC2E5D7826",
+          "profile": "C:\\Users\\lin\\.ohos\\config\\default_Appless-Phone_WPY2O4g4A_Ij7vn_0BjE31LJEVzRTFRuPkGr5T959eM=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "/Users/luoyige/.ohos/config/default_AIPhoneDemo_dlY6wKHLZdqwaFWlwxgsEVDDzY3RBlRpidOe7L6pX_M=.p12",
-          "storePassword": "0000001BEA2EE200E7453EC62354E64B05785A654ECC7D76DD0F49D61D9A1E1D254ADE051869DB4494CE7E"
+          "storeFile": "C:\\Users\\lin\\.ohos\\config\\default_Appless-Phone_WPY2O4g4A_Ij7vn_0BjE31LJEVzRTFRuPkGr5T959eM=.p12",
+          "storePassword": "0000001B3C7DBA878960BBB1C0F95B60A251A44B281E848DF924C62EB1CBE37C94973F0AC3C6C3CF146565"
         }
       }
     ]

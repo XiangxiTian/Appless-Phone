@@ -158,6 +158,7 @@ import {
   copyPersonaData,
   leaderPersonaSurfaceUpdate
 } from '../../model/PersonaA2ui';
+import { DEEP_SEARCH_ROUTE_URL, DeepSearchRouteParams } from './deepsearch/DeepSearchEngine';
 import {
   isStableWaterfallContentPreference,
   mergePersonaStablePreference,
@@ -344,6 +345,8 @@ import {
   shouldShowFirecrawlPendingSurface,
   shouldShowQueryPendingSurface,
   shouldShowWelcome,
+  shouldRouteDeepSearch,
+  shouldAutoRouteDeepSearch,
   updateConnectionPanelState,
   voiceInputTextAfterRecognition
 } from './state/A2uiHomeState';
@@ -838,6 +841,10 @@ struct Index {
   @State checkoutWebUrl: string = '';
   @State trainPresaleCheckoutTaskId: string = '';
   @State showTrainPresalePanel: boolean = false;
+  @State showDeepSearch: boolean = false;
+  @State deepSearchQuery: string = '';
+  @State deepSearchSettingsJson: string = '';
+  @State deepSearchContextJson: string = '';
   @State trainPresaleTrip: TrainPresaleTrip = emptyTrainPresaleTrip();
   @State trainPresaleTaskState: string = '';
   @State trainPresaleError: string = '';
@@ -4396,6 +4403,79 @@ struct Index {
     }
   }
 
+  private openDeepSearch(query: string, contextJson: string): void {
+    const settings = this.getSettings();
+    this.deepSearchQuery = query;
+    this.deepSearchSettingsJson = JSON.stringify({
+      provider: settings.provider,
+      baseUrl: settings.baseUrl,
+      model: settings.model,
+      apiKey: settings.apiKey,
+      customParametersJson: settings.customParametersJson,
+      ignoreToolSurfaceUpdates: true
+    });
+    // 先写入 context 再打开面板，确保面板 aboutToAppear 读到完整位置/日期。
+    this.deepSearchContextJson = contextJson;
+    this.showDeepSearch = true;
+    aiLogInfo('[AIPhone][DeepSearchPanelOpened] queryChars=' + query.length.toString() +
+      ' context=' + contextJson.length.toString() + 'chars');
+  }
+
+  private deepSearchDateLabel(): string {
+    const now = new Date();
+    const weekdays: string[] = ['日', '一', '二', '三', '四', '五', '六'];
+    return now.getFullYear().toString() + '年' +
+      (now.getMonth() + 1).toString() + '月' +
+      now.getDate().toString() + '日 星期' +
+      weekdays[now.getDay()];
+  }
+
+  private async buildDeepSearchContext(): Promise<string> {
+    const dateLabel = this.deepSearchDateLabel();
+    try {
+      const coordinate = await this.currentDeviceLocation();
+      let locationLabel = '';
+      try {
+        const request: geoLocationManager.ReverseGeoCodeRequest = {
+          latitude: Number.parseFloat(coordinate.split(',')[1]),
+          longitude: Number.parseFloat(coordinate.split(',')[0]),
+          maxItems: 1
+        };
+        const addresses = await geoLocationManager.getAddressesFromLocation(request);
+        if (addresses.length > 0) {
+          const address = addresses[0];
+          const locality = address.locality === undefined ? '' : address.locality;
+          const subArea = address.subAdministrativeArea === undefined ? '' : address.subAdministrativeArea;
+          const adminArea = address.administrativeArea === undefined ? '' : address.administrativeArea;
+          locationLabel = locality.length > 0 ? locality :
+            (subArea.length > 0 ? subArea : adminArea);
+        }
+      } catch (_geoError) {
+        locationLabel = '';
+      }
+      this.deepSearchContextJson = JSON.stringify({
+        locationLabel: locationLabel,
+        dateLabel: dateLabel,
+        coordinateLabel: coordinate
+      });
+    } catch (_locationError) {
+      // 定位不可用时降级：仅注入日期。
+      this.deepSearchContextJson = JSON.stringify({
+        locationLabel: '',
+        dateLabel: dateLabel,
+        coordinateLabel: ''
+      });
+    }
+    return this.deepSearchContextJson;
+  }
+
+  private closeDeepSearch(): void {
+    this.showDeepSearch = false;
+    this.deepSearchQuery = '';
+    this.deepSearchSettingsJson = '';
+    this.deepSearchContextJson = '';
+  }
+
   private openAnythingDemo(): Promise<boolean> {
     return new Promise<boolean>((resolve: (value: boolean) => void): void => {
       router.pushUrl({ url: ANYTHING_DEMO_ROUTE_URL }, (error) => {
@@ -4482,6 +4562,21 @@ struct Index {
       return;
     }
     const directDailyBriefRequest = resolveA2uiHomeSubmitToolRequest(trimmed);
+    const autoDeep = directDailyBriefRequest === null &&
+      sourceBimId.length === 0 && shouldAutoRouteDeepSearch(trimmed, actionId);
+    if (autoDeep && trimmed.length > 0) {
+      this.inputText = inputTextAfterPromptSubmit(this.inputText);
+      this.appendMessage('user', visibleText);
+      const contextJson = await this.buildDeepSearchContext();
+      this.openDeepSearch(trimmed, contextJson);
+      aiLogInfo('[AIPhone][DeepSearchAutoRouted] queryChars=' + trimmed.length.toString() +
+        ' context=' + contextJson.length.toString() + 'chars');
+      return;
+    }
+    // 非 DeepSearch 内容：若面板开着则收起，回到主内容展示 multi-agent 结果。
+    if (this.showDeepSearch) {
+      this.closeDeepSearch();
+    }
     if (directDailyBriefRequest !== null) {
       this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
       this.appendMessage('user', visibleText);
@@ -7783,6 +7878,10 @@ struct Index {
         checkoutWebUrl: this.checkoutWebUrl,
         checkoutWebTaskId: this.trainPresaleCheckoutTaskId,
         showTrainPresalePanel: this.showTrainPresalePanel,
+        showDeepSearch: this.showDeepSearch,
+        deepSearchQuery: this.deepSearchQuery,
+        deepSearchSettingsJson: this.deepSearchSettingsJson,
+        deepSearchContextJson: this.deepSearchContextJson,
         trainPresaleTrip: this.trainPresaleTrip,
         trainPresaleTask: this.trainPresaleTask,
         trainPresaleTaskState: this.trainPresaleTaskState,
@@ -7873,6 +7972,9 @@ struct Index {
           if (!this.trainPresaleWorking) {
             this.showTrainPresalePanel = false;
           }
+        },
+        onCloseDeepSearch: () => {
+          this.closeDeepSearch();
         },
         onCancelTrainPresaleTask: () => {
           void this.cancelTrainPresaleTask();

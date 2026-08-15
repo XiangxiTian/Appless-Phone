@@ -1,10 +1,12 @@
 import { common, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import promptAction from '@ohos.promptAction';
 import { formBindingData, formProvider } from '@kit.FormKit';
+import { call } from '@kit.TelephonyKit';
 import { A2uiAction, A2uiComponent, A2uiSurfaceState, emptyA2uiSurface } from '@loop/agent-core';
 import { actionsOf, foodOptions, foodVisualSourceTag, uniqueFoodSourceTags, A2uiFoodOption } from '@loop/agent-core';
 import { aiLogError, aiLogInfo } from '@loop/agent-core';
-import { buildSystemFoodNavigationUri, describeSystemFoodNavigationUri } from '@loop/agent-core';
+import { buildFoodPhoneUri, buildSystemFoodNavigationUri, describeSystemFoodNavigationUri } from '@loop/agent-core';
 import {
   NavigationCardSnapshot,
   PreferencesNavigationCardSnapshotStore,
@@ -94,6 +96,8 @@ export struct FoodChoicesView {
   @State filterMode: FoodFilterMode = 'all';
   @State expandedFoodKey: string = '';
   @State foodNavigationStatus: string = '';
+  @State foodPhoneStatus: string = '';
+  private foodHoursLogSignature: string = '';
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onPinNavigationCard: (item: A2uiFoodOption) => void = (_item: A2uiFoodOption) => {};
 
@@ -103,10 +107,29 @@ export struct FoodChoicesView {
 
   private visibleFoods(): A2uiFoodOption[] {
     let rows = this.foods();
+    this.logFoodHoursUi(rows);
     if (this.filterMode === 'within_1km') {
       rows = rows.filter((item: A2uiFoodOption) => foodDistanceMeters(item.distance) <= 1000);
     }
     return rows;
+  }
+
+
+  private logFoodHoursUi(foods: A2uiFoodOption[]): void {
+    let hoursHits = 0;
+    for (let index = 0; index < foods.length; index++) {
+      if (this.businessHoursText(foods[index]).length > 0) {
+        hoursHits += 1;
+      }
+    }
+    const signature = foods.length.toString() + '|' + hoursHits.toString();
+    if (signature === this.foodHoursLogSignature) {
+      return;
+    }
+    this.foodHoursLogSignature = signature;
+    aiLogInfo('[AIPhone][FoodHoursUiModel] foods=' + foods.length.toString() +
+      ' hoursHits=' + hoursHits.toString() +
+      ' filterMode=' + this.filterMode);
   }
 
   private foodRowKey(item: A2uiFoodOption): string {
@@ -284,6 +307,99 @@ export struct FoodChoicesView {
       return '缺少真实坐标，不能打开地图';
     }
     return '';
+  }
+
+  private phoneText(item: A2uiFoodOption): string {
+    return item.phone === undefined || item.phone === null ? '' : item.phone.trim();
+  }
+
+  private businessHoursText(item: A2uiFoodOption): string {
+    const today = item.openHoursToday === undefined || item.openHoursToday === null ? '' : item.openHoursToday.trim();
+    if (today.length > 0) {
+      return today;
+    }
+    return item.openHoursWeek === undefined || item.openHoursWeek === null ? '' : item.openHoursWeek.trim();
+  }
+
+
+  private priceText(item: A2uiFoodOption): string {
+    if (item.priceText !== undefined && item.priceText !== null && item.priceText.trim().length > 0) { return item.priceText.trim(); }
+    return item.pricePerPerson === undefined ? '' : '人均¥' + item.pricePerPerson.toString();
+  }
+
+  private ratingText(item: A2uiFoodOption): string {
+    if (item.ratingText !== undefined && item.ratingText !== null && item.ratingText.trim().length > 0) { return item.ratingText.trim(); }
+    return item.rating === undefined ? '' : item.rating.toString() + '分';
+  }
+
+  private businessStatusText(item: A2uiFoodOption): string {
+    return item.businessStatusLabel === undefined || item.businessStatusLabel === null ? '' : item.businessStatusLabel.trim();
+  }
+
+  private phoneUri(item: A2uiFoodOption): string {
+    return buildFoodPhoneUri(this.phoneText(item));
+  }
+
+  private canCall(item: A2uiFoodOption): boolean {
+    return this.phoneUri(item).length > 0;
+  }
+
+  private async callFood(item: A2uiFoodOption): Promise<void> {
+    const uri = this.phoneUri(item);
+    if (uri.length === 0) {
+      this.foodPhoneStatus = '暂无可用联系电话';
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=validation result=blocked name=' + item.name);
+      return;
+    }
+    const buttons: [promptAction.Button, promptAction.Button] = [
+      { text: '取消', color: '#6B7280' },
+      { text: '拨打电话', color: COLOR_ACCENT_DARK }
+    ];
+    let selectedIndex = 0;
+    try {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=shown name=' + item.name);
+      const selected = await this.getUIContext().getPromptAction().showActionMenu({
+        title: '确认打开拨号器？\n' + item.name + '\n' + this.phoneText(item),
+        buttons: buttons
+      });
+      selectedIndex = selected.index;
+    } catch (_menuError) {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=dismissed name=' + item.name);
+      return;
+    }
+    if (selectedIndex < 0) {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=dismissed name=' + item.name);
+      return;
+    }
+    if (selectedIndex !== 1) {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=cancelled name=' + item.name);
+      return;
+    }
+    aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=confirmed name=' + item.name);
+    if (!call.hasVoiceCapability()) {
+      this.foodPhoneStatus = '当前设备不支持语音通话';
+      aiLogInfo('[AIPhone][FoodPhoneLaunch] stage=capability result=unsupported');
+      return;
+    }
+    const verifiedPhone = uri.substring(4);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        call.makeCall(verifiedPhone, (error: BusinessError) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+      this.foodPhoneStatus = '已打开系统拨号器，请由你确认拨号';
+      aiLogInfo('[AIPhone][FoodPhoneLaunch] stage=makeCall result=success code=0');
+    } catch (error) {
+      const businessError = error as BusinessError;
+      this.foodPhoneStatus = '系统拨号器打开失败，请稍后重试。';
+      const code = businessError.code === undefined || businessError.code === null ? 'unknown' : businessError.code.toString();
+      aiLogError('[AIPhone][FoodPhoneLaunch] stage=makeCall result=failed code=' + code);
+    }
   }
 
   private navigationWant(uri: string): Want {
@@ -486,8 +602,21 @@ export struct FoodChoicesView {
       if (item.distance.length > 0) {
         this.DetailRow('距离', item.distance)
       }
+      if (this.ratingText(item).length > 0) { this.DetailRow('评分', this.ratingText(item)) }
+      if (this.priceText(item).length > 0) { this.DetailRow('人均价格', this.priceText(item)) }
+      if (this.businessStatusText(item).length > 0) { this.DetailRow('营业状态', this.businessStatusText(item)) }
+      if (this.businessHoursText(item).length > 0) {
+        this.DetailRow('今日营业', this.businessHoursText(item))
+      }
+      if (item.openHoursWeek !== undefined && item.openHoursWeek.length > 0 && item.openHoursWeek !== item.openHoursToday) {
+        this.DetailRow('营业时间', item.openHoursWeek)
+      }
       this.DetailRow('地址', item.address.length > 0 ? item.address : '暂无地址')
       this.DetailRow('坐标', this.locationText(item).length > 0 ? this.locationText(item) : 'provider 未返回')
+      if (this.canCall(item)) {
+        this.DetailRow('联系电话', this.phoneText(item))
+        this.DetailRow('电话来源', item.phoneSource === undefined || item.phoneSource.length === 0 ? 'provider' : item.phoneSource)
+      }
       if (this.navigationUnavailableText(item).length > 0) {
         Text(this.navigationUnavailableText(item))
           .fontSize(12)
@@ -499,6 +628,13 @@ export struct FoodChoicesView {
         Text(this.foodNavigationStatus)
           .fontSize(12)
           .fontColor(this.foodNavigationStatus.indexOf('失败') >= 0 || this.foodNavigationStatus.indexOf('缺少') >= 0 ? COLOR_ERROR : COLOR_ACCENT_DARK)
+          .lineHeight(18)
+          .margin({ top: 8 })
+      }
+      if (this.foodPhoneStatus.length > 0) {
+        Text(this.foodPhoneStatus)
+          .fontSize(12)
+          .fontColor(this.foodPhoneStatus.indexOf('失败') >= 0 ? COLOR_ERROR : COLOR_ACCENT_DARK)
           .lineHeight(18)
           .margin({ top: 8 })
       }
@@ -515,6 +651,21 @@ export struct FoodChoicesView {
         .onClick(() => {
           this.openFoodNavigation(item);
         })
+      if (this.canCall(item)) {
+        Button('拨打电话')
+          .enabled(!this.isBusy)
+          .height(38)
+          .width('100%')
+          .fontSize(13)
+          .fontColor(COLOR_BUTTON_TEXT)
+          .backgroundColor(COLOR_ACCENT_DARK)
+          .borderRadius(10)
+          .border({ width: 1, color: COLOR_ACCENT })
+          .margin({ top: 8 })
+          .onClick(() => {
+            this.callFood(item);
+          })
+      }
       Button(navigationCardPinActionFromFoodOption(item).label.length > 0 ? navigationCardPinActionFromFoodOption(item).label : '不能固定为卡片')
         .enabled(canCreateNavigationCardFromFoodOption(item) && !this.isBusy)
         .height(38)
@@ -641,6 +792,22 @@ export struct FoodChoicesView {
                   .fontColor(COLOR_MUTED)
                   .lineHeight(18)
                   .margin({ top: 6 })
+              }
+
+              if (this.ratingText(item).length > 0 || this.priceText(item).length > 0 || this.businessStatusText(item).length > 0) {
+                Text([this.ratingText(item), this.priceText(item), this.businessStatusText(item)].filter((value: string) => value.length > 0).join(' · '))
+                  .fontSize(12)
+                  .fontColor(COLOR_MUTED)
+                  .lineHeight(18)
+                  .margin({ top: 5 })
+              }
+
+              if (this.businessHoursText(item).length > 0) {
+                Text('营业时间 ' + this.businessHoursText(item))
+                  .fontSize(12)
+                  .fontColor(COLOR_MUTED)
+                  .lineHeight(18)
+                  .margin({ top: 5 })
               }
 
               Text(item.address.length > 0 ? item.address : '暂无地址')

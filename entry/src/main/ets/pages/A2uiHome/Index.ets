@@ -52,6 +52,7 @@ import { preferences } from '@kit.ArkData';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { formBindingData, formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
+import { call } from '@kit.TelephonyKit';
 import { mapCommon, petalMaps } from '@kit.MapKit';
 import promptAction from '@ohos.promptAction';
 import fs from '@ohos.file.fs';
@@ -79,7 +80,7 @@ import {
   A2uiTrainData,
   A2uiTravelOptionData
 } from '@loop/agent-core';
-import { stripeReceivingAccount } from '@loop/agent-core';
+import { buildFoodPhoneUri, stripeReceivingAccount } from '@loop/agent-core';
 import {
   callDirectModel,
   DirectModelCallResult
@@ -122,6 +123,7 @@ import {
   prepareGoogleOAuthAuthorizationUrl,
   recheck12306TrainAvailability,
   resolveMultiTaskSlotId,
+  resolveLuckinActionPrompt,
   rideDidiMcpSandboxEnabledForRuntime,
   select12306DebugTrain,
   sendLocalSocialHubReply,
@@ -696,6 +698,13 @@ interface InlineLuckinPaymentStatusPlan {
   slotId: string;
 }
 
+interface LuckinOptionSwitchPending {
+  prompt: string;
+  args: Object | null;
+  actionId: string;
+  runtimeOwner: RuntimeOwner;
+}
+
 interface MultiTaskToolCallContext {
   slotId: string;
   childSurfaceId: string;
@@ -971,6 +980,8 @@ struct Index {
   @State luckinInlinePatchJson: string = '';
   @State luckinInlinePatchTick: number = 0;
   private luckinOptionSwitchInFlight: boolean = false;
+  private luckinOptionSwitchSeq: number = 0;
+  private luckinOptionSwitchPending: LuckinOptionSwitchPending | null = null;
   private trainPresaleTask: TrainPresaleTask | null = null;
   private trainPresaleResumeDrain: TrainPresaleResumeDrain | null = null;
   private trainPresaleHandoffSubscribed: boolean = false;
@@ -989,6 +1000,32 @@ struct Index {
     }
     const raw = args as Record<string, Object | string | number | boolean | null | undefined>;
     return this.actionText(raw.attrGroup).length > 0 && this.actionText(raw.attrChoice).length > 0;
+  }
+
+  private isLuckinStoreSelectArgs(args: Object | null): boolean {
+    if (args === null) {
+      return false;
+    }
+    const raw = args as Record<string, Object | string | number | boolean | null | undefined>;
+    return this.actionText(raw.deptId).length > 0;
+  }
+
+  private shouldBypassRegisteredPageForLuckinAction(action: A2uiAction): boolean {
+    if (action.id === 'luckin.order.create' || action.id === 'luckin.order.status') {
+      return true;
+    }
+    if (action.id !== 'luckin.order.preview') {
+      return false;
+    }
+    const args: Object | null = action.args === undefined ? null : action.args;
+    if (this.isLuckinOptionSwitchArgs(args) || this.isLuckinStoreSelectArgs(args)) {
+      return true;
+    }
+    if (!isMultiTaskSurface(this.currentSurface)) {
+      return false;
+    }
+    const sectionId: string = action.sourceSectionId === undefined ? '' : action.sourceSectionId.trim();
+    return sectionId.length > 0;
   }
 
   private luckinConfirmBlockJson(document: HtmlHomeDocument): string {
@@ -1322,6 +1359,27 @@ struct Index {
 
   private finishLuckinOptionSwitch(inFlight: boolean = false): void {
     this.luckinOptionSwitchInFlight = inFlight;
+    if (inFlight) {
+      return;
+    }
+    const pending = this.luckinOptionSwitchPending;
+    if (pending === null) {
+      return;
+    }
+    this.luckinOptionSwitchPending = null;
+    void this.callToolById(
+      'luckin.order.preview',
+      pending.prompt,
+      pending.actionId,
+      pending.args,
+      undefined,
+      pending.runtimeOwner
+    );
+  }
+
+  private clearLuckinOptionSwitchQueue(): void {
+    this.luckinOptionSwitchPending = null;
+    this.luckinOptionSwitchInFlight = false;
   }
 
   private syncFoodLocationOwner(surface: A2uiSurfaceState): void {
@@ -2050,7 +2108,7 @@ struct Index {
 
   private clearLuckinInlinePatchState(): void {
     this.luckinInlinePatchJson = '';
-    this.finishLuckinOptionSwitch(false);
+    this.clearLuckinOptionSwitchQueue();
   }
 
   aboutToAppear(): void {
@@ -5232,6 +5290,102 @@ struct Index {
     return true;
   }
 
+  private updateHtmlFoodPhoneState(ok: boolean, message: string): void {
+    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+      ok: ok,
+      status: ok ? 'ready' : 'error',
+      message: message,
+      requestDebug: this.lastModelRequest,
+      assistantDebug: this.lastModelOutput,
+      error: ''
+    }));
+  }
+
+  private foodPhoneErrorCode(error: Object | null | undefined): string {
+    if (error === null || error === undefined) {
+      return 'unknown';
+    }
+    const businessError = error as BusinessError;
+    const code = businessError.code;
+    return code === undefined || code === null ? 'unknown' : code.toString();
+  }
+
+  private async handleHtmlFoodCallAction(action: A2uiAction): Promise<boolean> {
+    if (action.id !== 'html_call_food') {
+      return false;
+    }
+    const model = this.parsedDataModel();
+    const payload = this.htmlPinPayload(action);
+    const index = this.htmlActionIndex(action, payload);
+    if (model === null) {
+      this.updateHtmlFoodPhoneState(false, '当前餐厅数据不可用，无法拨号。');
+      this.logHtmlHomeActionError(action, 'invalid_model');
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=validation result=blocked reason=invalid_model');
+      return true;
+    }
+    const row = this.htmlPinFoodRow(model, payload, index);
+    if (row === null) {
+      this.updateHtmlFoodPhoneState(false, '未找到当前餐厅，无法拨号。');
+      this.logHtmlHomeActionError(action, 'missing_food_row');
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=validation result=blocked reason=missing_food_row');
+      return true;
+    }
+    const displayPhone = this.actionText(row.phone).trim();
+    const uri = buildFoodPhoneUri(displayPhone);
+    if (uri.length === 0) {
+      this.updateHtmlFoodPhoneState(false, '餐厅电话号码无效，无法打开拨号器。');
+      this.logHtmlHomeActionError(action, 'invalid_food_phone');
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=validation result=blocked reason=invalid_phone nameChars=' +
+        row.name.length.toString());
+      return true;
+    }
+    const buttons: [promptAction.Button, promptAction.Button] = [
+      { text: '取消', color: '#6B7280' },
+      { text: '拨打电话', color: '#995F4C' }
+    ];
+    let selectedIndex = 0;
+    try {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=shown nameChars=' + row.name.length.toString());
+      const selected = await this.getUIContext().getPromptAction().showActionMenu({
+        title: row.name + ' · ' + displayPhone,
+        buttons: buttons
+      });
+      selectedIndex = selected.index;
+    } catch (_error) {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=dismissed nameChars=' + row.name.length.toString());
+      return true;
+    }
+    if (selectedIndex !== 1) {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=cancelled nameChars=' + row.name.length.toString());
+      return true;
+    }
+    aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=confirmed nameChars=' + row.name.length.toString());
+    if (!call.hasVoiceCapability()) {
+      this.updateHtmlFoodPhoneState(false, '当前设备不支持语音通话');
+      aiLogInfo('[AIPhone][FoodPhoneLaunch] stage=capability result=unsupported');
+      return true;
+    }
+    const verifiedPhone = uri.substring(4);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        call.makeCall(verifiedPhone, (error: BusinessError) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+      this.updateHtmlFoodPhoneState(true, '已打开系统拨号器，请由你确认拨号');
+      aiLogInfo('[AIPhone][FoodPhoneLaunch] stage=makeCall result=success code=0');
+    } catch (error) {
+      const code = this.foodPhoneErrorCode(error as Object);
+      this.updateHtmlFoodPhoneState(false, '系统拨号器打开失败，请稍后重试。');
+      aiLogError('[AIPhone][FoodPhoneLaunch] stage=makeCall result=failed code=' + code);
+    }
+    return true;
+  }
+
   private actionText(value: HtmlActionValue): string {
     if (value === undefined || value === null) {
       return '';
@@ -6757,6 +6911,9 @@ struct Index {
     if (await this.handleHtmlFoodMapAction(action)) {
       return;
     }
+    if (await this.handleHtmlFoodCallAction(action)) {
+      return;
+    }
     if (await this.handleHtmlPinAction(action)) {
       return;
     }
@@ -7308,10 +7465,32 @@ struct Index {
     if (this.isLuckinPaymentActionId(action.id)) {
       this.logLuckinPaymentAction(action, 'dispatch');
     }
+    if (this.shouldBypassRegisteredPageForLuckinAction(action)) {
+      await this.callLuckinToolDirect(action);
+      return;
+    }
     await dispatchRegisteredPageActionCandidate(
       action,
       (clicked: A2uiAction): Promise<boolean> => this.runRegisteredPageAction(clicked),
       (legacy: A2uiAction): Promise<void> => this.sendLegacyAction(legacy, document)
+    );
+  }
+
+  private currentToolRuntimeOwner(): RuntimeOwner {
+    return this.activeRuntimeOwner === 'multi_agent' ? 'multi_agent' : 'legacy';
+  }
+
+  private async callLuckinToolDirect(action: A2uiAction): Promise<boolean> {
+    const args: Object | null = action.args === undefined ? null : action.args;
+    const rawPrompt: string = action.prompt.length > 0 ? action.prompt : action.label;
+    const prompt: string = resolveLuckinActionPrompt(rawPrompt, args);
+    return await this.callToolById(
+      action.id,
+      prompt,
+      action.id,
+      args,
+      undefined,
+      this.currentToolRuntimeOwner()
     );
   }
 
@@ -7327,7 +7506,8 @@ struct Index {
       return false;
     }
     const runtime = this.canaryRuntime();
-    const usesPageBusy = registeredPageActionUsesPageBusy(action.id);
+    const usesPageBusy = registeredPageActionUsesPageBusy(action.id) &&
+      !this.isLuckinOptionSwitchArgs(action.args === undefined ? null : action.args);
     if (usesPageBusy) {
       this.isBusy = true;
     }
@@ -7413,6 +7593,8 @@ struct Index {
         await this.handleClientAction(action);
       } else if (kind === 'input') {
         this.focusEditQuery(action.id);
+      } else if (action.id === 'luckin.order.create' || action.id === 'luckin.order.status') {
+        await this.callLuckinToolDirect(action);
       } else {
         this.logHtmlHomeActionError(action, 'runtime_owner_mismatch');
       }
@@ -7454,12 +7636,7 @@ struct Index {
       return;
     }
     if (action.id === 'luckin.order.preview' || action.id === 'luckin.order.create' || action.id === 'luckin.order.status') {
-      await this.callToolById(
-        action.id,
-        action.prompt.length > 0 ? action.prompt : action.label,
-        action.id,
-        action.args === undefined ? null : action.args
-      );
+      await this.callLuckinToolDirect(action);
       return;
     }
     if (kind === 'client') {
@@ -7639,6 +7816,12 @@ struct Index {
     if (runtimeOwner !== this.activeRuntimeOwner) {
       return false;
     }
+    if (toolId === 'luckin.order.preview' || toolId === 'luckin.order.create' || toolId === 'luckin.order.status') {
+      aiLogInfo('[AIPhone][LuckinOrderTrace] stage=dispatch result=received toolId=' + toolId +
+        ' actionId=' + actionId +
+        ' runtimeOwner=' + runtimeOwner +
+        ' promptChars=' + prompt.length.toString());
+    }
     const directDetailBimAction = false;
     if (!isRegisteredToolId(toolId)) {
       const message = '模型请求了未注册工具：' + toolId;
@@ -7765,11 +7948,21 @@ struct Index {
     const inlineLuckinPaymentStatus = inlinePaymentStatusPlan !== null;
     if (inlineLuckinSwitch) {
       if (this.luckinOptionSwitchInFlight) {
-        aiLogInfo('[AIPhone][A2uiHomeLuckinSwitchIgnored] reason=in_flight');
+        this.luckinOptionSwitchPending = {
+          prompt: prompt,
+          args: args,
+          actionId: actionId,
+          runtimeOwner: runtimeOwner
+        };
+        this.luckinOptionSwitchSeq = this.luckinOptionSwitchSeq + 1;
+        aiLogInfo('[AIPhone][A2uiHomeLuckinSwitchQueued] reason=in_flight seq=' +
+          this.luckinOptionSwitchSeq.toString());
         return false;
       }
+      this.luckinOptionSwitchSeq = this.luckinOptionSwitchSeq + 1;
       this.finishLuckinOptionSwitch(true);
     }
+    const luckinSwitchSeq = this.luckinOptionSwitchSeq;
     if (!directDetailBimAction && !inlineLuckinSwitch && !inlineLuckinPaymentStatus) {
       this.markChecking('正在调用工具：' + toolId);
     }
@@ -7777,6 +7970,9 @@ struct Index {
     if (!runtimeCallbackIsCurrent(
       this.activeRuntimeOwner, this.runtimeGeneration, runtimeOwner, toolGeneration
     )) {
+      if (inlineLuckinSwitch) {
+        this.finishLuckinOptionSwitch(false);
+      }
       return false;
     }
     const firecrawlPending = !directDetailBimAction && isFirecrawlToolId(toolId);
@@ -7922,6 +8118,12 @@ struct Index {
         ' rebasedSequence=' + resultSurface.sequence.toString());
     }
     if (inlineLuckinSwitch) {
+      if (luckinSwitchSeq !== this.luckinOptionSwitchSeq) {
+        aiLogInfo('[AIPhone][A2uiHomeLuckinSwitchStale] seq=' + luckinSwitchSeq.toString() +
+          ' current=' + this.luckinOptionSwitchSeq.toString());
+        this.finishLuckinOptionSwitch(false);
+        return false;
+      }
       if (result.ok && this.applyLuckinInlineConfirmPatch(resultSurface)) {
         this.finishLuckinOptionSwitch(false);
         this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {

@@ -198,6 +198,7 @@ import {
   AggregateSearchSourceBatch,
   AggregateSearchSourceStatus
 } from './AggregateSearchTypes';
+import { normalizeFoodPhoneNumber } from './FoodNavigation';
 import {
   WaterfallCandidate,
   WaterfallInterestRecallRequest,
@@ -813,7 +814,7 @@ interface FlightProviderPayload extends FlightProviderData {
   status?: string | number;
 }
 
-interface AmapPoi {
+export interface AmapPoi {
   name?: string;
   type?: string;
   address?: string;
@@ -822,6 +823,18 @@ interface AmapPoi {
   pname?: string;
   cityname?: string;
   adname?: string;
+  tel?: string;
+  business?: AmapPoiBusiness;
+}
+
+interface AmapPoiBusiness {
+  business_area?: string;
+  opentime_today?: string;
+  opentime_week?: string;
+  rating?: string | number;
+  cost?: string | number;
+  tag?: string;
+  tel?: string;
 }
 
 interface AmapGeocode {
@@ -892,6 +905,8 @@ export interface TencentMapPlace {
   _distance?: string | number;
   distance?: string | number;
   location?: FoodMapPoint;
+  tel?: string;
+  telephone?: string;
 }
 
 interface TencentMapPayload {
@@ -904,6 +919,10 @@ export interface BaiduPlaceDetailInfo {
   tag?: string;
   distance?: string | number;
   overall_rating?: string | number;
+  taste_rating?: string | number;
+  service_rating?: string | number;
+  environment_rating?: string | number;
+  shop_hours?: string;
   price?: string | number;
 }
 
@@ -912,6 +931,7 @@ export interface BaiduPlace {
   address?: string;
   location?: FoodMapPoint;
   detail_info?: BaiduPlaceDetailInfo;
+  telephone?: string;
 }
 
 interface BaiduPlacePayload {
@@ -1331,7 +1351,7 @@ interface LuckinProductAttr {
 interface LuckinProductSubAttr {
   attributeId?: number;
   attributeName?: string;
-  selected?: boolean | null;
+  selected?: boolean | number | string | null;
   canSelected?: number | null;
   price?: number | null;
 }
@@ -6246,6 +6266,13 @@ function foodDataSignature(foods: A2uiFoodData[]): string {
   return JSON.stringify(foods);
 }
 
+function foodHoursHitCount(foods: A2uiFoodData[]): number {
+  return foods.filter((food: A2uiFoodData): boolean =>
+    (food.openHoursToday !== undefined && food.openHoursToday.trim().length > 0) ||
+    (food.openHoursWeek !== undefined && food.openHoursWeek.trim().length > 0)
+  ).length;
+}
+
 function foodRowsSignature(rows: A2uiLabelValueData[]): string {
   return JSON.stringify(rows);
 }
@@ -6266,6 +6293,10 @@ function foodSummarySignature(summary: A2uiSummaryData): string {
 export function foodA2uiRenderState(surfaceId: string, title: string, body: string, summaryText: string,
   foods: A2uiFoodData[], rows: A2uiLabelValueData[] = [], status: string = 'ready',
   foodSearchContext?: A2uiFoodSearchContext): A2uiPartialRenderState {
+  aiLogInfo('[AIPhone][FoodHoursA2uiModel] surfaceId=' + surfaceId +
+    ' foods=' + foods.length.toString() +
+    ' hoursHits=' + foodHoursHitCount(foods).toString() +
+    ' status=' + status);
   const components: A2uiComponent[] = [];
   components.push({
     id: 'root',
@@ -7283,15 +7314,33 @@ async function resolveFoodSearchLocation(place: string, key: string): Promise<Am
   return emptyAmapLocationResolution();
 }
 
-function foodRecordForA2ui(item: AmapPoi): A2uiFoodData {
+export function foodRecordFromAmapPoi(item: AmapPoi): A2uiFoodData {
   const distance = textOf(item.distance);
+  const business = item.business;
+  const price = safeFoodPrice(business === undefined ? undefined : business.cost);
+  const rating = safeFoodRating(business === undefined ? undefined : business.rating);
+  const openHoursToday = business === undefined ? '' : textOf(business.opentime_today);
+  const status = foodBusinessStatus(openHoursToday);
+  const phone = normalizeFoodPhoneNumber(firstText([item.tel, business === undefined ? '' : business.tel]));
   return {
     name: textOf(item.name),
     category: textOf(item.type),
     address: textOf(item.address),
     distance: distance.length > 0 ? distance + '米' : '',
     location: textOf(item.location),
-    sourceTags: ['高德']
+    sourceTags: ['高德'],
+    phone: phone,
+    phoneSource: phone.length > 0 ? '高德' : undefined,
+    openHoursToday: openHoursToday,
+    openHoursWeek: business === undefined ? undefined : textOf(business.opentime_week),
+    pricePerPerson: price,
+    priceText: price === undefined ? undefined : '人均¥' + formatFoodNumber(price),
+    priceSource: price === undefined ? undefined : '高德',
+    rating: rating,
+    ratingText: rating === undefined ? undefined : formatFoodNumber(rating) + '分',
+    ratingSource: rating === undefined ? undefined : '高德',
+    businessStatus: status,
+    businessStatusLabel: foodBusinessStatusLabel(status)
   };
 }
 
@@ -7308,32 +7357,114 @@ function mapPointLocation(point: FoodMapPoint | undefined): string {
 }
 
 export function foodRecordFromTencentMapPlace(item: TencentMapPlace): A2uiFoodData {
+  const phone = normalizeFoodPhoneNumber(firstText([item.tel, item.telephone]));
   return {
     name: textOf(item.title),
     category: textOf(item.category),
     address: textOf(item.address),
     distance: meterDistanceText(firstText([item._distance, item.distance])),
     location: mapPointLocation(item.location),
-    sourceTags: ['腾讯地图']
+    sourceTags: ['腾讯地图'],
+    phone: phone,
+    phoneSource: phone.length > 0 ? '腾讯地图' : undefined
   };
 }
 
 export function foodRecordFromBaiduPlace(item: BaiduPlace): A2uiFoodData {
   const detail = item.detail_info === undefined ? null : item.detail_info;
-  const rating = detail === null ? '' : textOf(detail.overall_rating);
-  const price = detail === null ? '' : textOf(detail.price);
+  const rating = safeFoodRating(detail === null ? undefined : detail.overall_rating);
+  const price = safeFoodPrice(detail === null ? undefined : detail.price);
+  const openHoursToday = detail === null ? '' : textOf(detail.shop_hours);
+  const status = foodBusinessStatus(openHoursToday);
+  const phone = normalizeFoodPhoneNumber(textOf(item.telephone));
   return {
     name: textOf(item.name),
     category: detail === null ? '' : textOf(detail.tag),
     address: joinFoodParts([
       textOf(item.address),
-      rating.length > 0 ? '评分' + rating : '',
-      price.length > 0 ? '人均¥' + price : ''
+      rating === undefined ? '' : '评分' + formatFoodNumber(rating),
+      price === undefined ? '' : '人均¥' + formatFoodNumber(price)
     ]),
+    openHoursToday: openHoursToday,
+    openHoursWeek: openHoursToday,
     distance: meterDistanceText(detail === null ? '' : detail.distance),
     location: mapPointLocation(item.location),
-    sourceTags: ['百度地图']
+    sourceTags: ['百度地图'],
+    phone: phone,
+    phoneSource: phone.length > 0 ? '百度地图' : undefined,
+    pricePerPerson: price,
+    priceText: price === undefined ? undefined : '人均¥' + formatFoodNumber(price),
+    priceSource: price === undefined ? undefined : '百度地图',
+    rating: rating,
+    ratingText: rating === undefined ? undefined : formatFoodNumber(rating) + '分',
+    ratingSource: rating === undefined ? undefined : '百度地图',
+    businessStatus: status,
+    businessStatusLabel: foodBusinessStatusLabel(status)
   };
+}
+
+function safeFoodNumber(value: string | number | undefined): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const normalized = textOf(value).trim().replace(/,/g, '').replace(/^人均/, '').replace(/^¥/, '').replace(/元$/, '').replace(/分$/, '').trim();
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) {
+    return undefined;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function safeFoodPrice(value: string | number | undefined): number | undefined {
+  const parsed = safeFoodNumber(value);
+  return parsed !== undefined && parsed > 0 ? parsed : undefined;
+}
+
+function safeFoodRating(value: string | number | undefined): number | undefined {
+  const parsed = safeFoodNumber(value);
+  return parsed !== undefined && parsed >= 0 && parsed <= 5 ? parsed : undefined;
+}
+
+function formatFoodNumber(value: number): string {
+  return value.toString();
+}
+
+function foodBusinessStatusLabel(status: string): string {
+  if (status === 'open') { return '营业中'; }
+  if (status === 'closed') { return '休息中'; }
+  return '营业状态未知';
+}
+
+function foodBusinessStatus(openHoursToday: string): string {
+  const hours = openHoursToday.trim();
+  if (hours.length === 0) { return 'unknown'; }
+  if (/休息|停业|歇业|暂停营业/.test(hours)) { return 'closed'; }
+  if (/24\s*小时|全天营业|全天开放/.test(hours)) { return 'open'; }
+  if (/周|星期|礼拜/.test(hours)) { return 'unknown'; }
+  const normalized = hours.replace(/：/g, ':');
+  const pattern = /([01]?\d|2[0-3]):([0-5]\d)\s*[-~至—–]\s*([01]?\d|2[0-3]):([0-5]\d)/g;
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  let matched = false;
+  let match: RegExpExecArray | null = pattern.exec(normalized);
+  while (match !== null) {
+    matched = true;
+    const start = Number(match[1]) * 60 + Number(match[2]);
+    const end = Number(match[3]) * 60 + Number(match[4]);
+    let isOpen = false;
+    if (start === end) {
+      isOpen = true;
+    } else if (start < end) {
+      if (currentMinutes >= start && currentMinutes < end) {
+        isOpen = true;
+      }
+    } else if (currentMinutes >= start || currentMinutes < end) {
+      isOpen = true;
+    }
+    if (isOpen) { return 'open'; }
+    match = pattern.exec(normalized);
+  }
+  return matched ? 'closed' : 'unknown';
 }
 
 function joinFoodParts(parts: string[]): string {
@@ -7879,12 +8010,23 @@ function selectedLuckinAttrs(attrs: LuckinProductAttr[] | undefined): string {
     const children = attr.productSubAttrs === undefined ? [] : attr.productSubAttrs;
     for (let childIndex = 0; childIndex < children.length; childIndex++) {
       const child = children[childIndex];
-      if (child.selected === true) {
+      if (luckinAttrIsSelected(child.selected)) {
         appendUniqueText(parts, textOf(attr.attributeName) + ':' + textOf(child.attributeName));
       }
     }
   }
   return parts.join(' · ');
+}
+
+function luckinAttrIsSelected(value: boolean | number | string | null | undefined): boolean {
+  if (value === true || value === 1) {
+    return true;
+  }
+  if (value === false || value === 0 || value === null || value === undefined) {
+    return false;
+  }
+  const text = textOf(value).trim().toLowerCase();
+  return text === '1' || text === 'true' || text === 'yes';
 }
 
 function luckinAttrSelectionsMapFromProduct(product: LuckinProductRecord): Record<string, string> {
@@ -7899,7 +8041,7 @@ function luckinAttrSelectionsMapFromProduct(product: LuckinProductRecord): Recor
     const children = attr.productSubAttrs === undefined ? [] : attr.productSubAttrs;
     for (let childIndex = 0; childIndex < children.length; childIndex += 1) {
       const child = children[childIndex];
-      if (child.selected === true) {
+      if (luckinAttrIsSelected(child.selected)) {
         const choiceName = textOf(child.attributeName).trim();
         if (choiceName.length > 0) {
           result[groupName] = choiceName;
@@ -7943,7 +8085,7 @@ function luckinAttrOptionRows(product: LuckinProductRecord): A2uiLabelValueData[
       if (canSelected !== undefined && canSelected !== null && Number(canSelected) === 0) {
         continue;
       }
-      parts.push(choiceName + ':' + (child.selected === true ? '1' : '0'));
+      parts.push(choiceName + ':' + (luckinAttrIsSelected(child.selected) ? '1' : '0'));
     }
     if (parts.length > 0) {
       rows.push({ label: '选项·' + groupName, value: parts.join('|') });
@@ -7967,7 +8109,7 @@ function luckinApplySelectedChoices(
       const children = searchAttr.productSubAttrs === undefined ? [] : searchAttr.productSubAttrs;
       for (let childIndex = 0; childIndex < children.length; childIndex++) {
         const child = children[childIndex];
-        if (child.selected === true) {
+        if (luckinAttrIsSelected(child.selected)) {
           selectedByGroup.push(groupName + '|' + textOf(child.attributeName));
         }
       }
@@ -7991,7 +8133,7 @@ function luckinApplySelectedChoices(
       const choiceName = textOf(child.attributeName);
       const selected = selectedChoice.length > 0 ?
         choiceName === selectedChoice :
-        child.selected === true;
+        luckinAttrIsSelected(child.selected);
       mergedChildren.push({
         attributeName: child.attributeName,
         selected: selected,
@@ -8047,7 +8189,7 @@ function luckinApplyAttrChoice(
     for (let childIndex = 0; childIndex < children.length; childIndex += 1) {
       const child = children[childIndex];
       const childName = textOf(child.attributeName);
-      const selected = name === groupName ? childName === choiceName : child.selected === true;
+      const selected = name === groupName ? childName === choiceName : luckinAttrIsSelected(child.selected);
       mergedChildren.push({
         attributeId: child.attributeId,
         attributeName: child.attributeName,
@@ -8357,7 +8499,12 @@ async function luckinLoadProductForOptionSwitch(
     if (switched !== null) {
       product = luckinFinalizeSwitchedProduct(detailProduct, switched, selections, groupName, choiceName);
     } else {
+      // Keep UI selection even when MCP switchProduct fails; previewOrder still
+      // revalidates price against the locally applied attrs/sku.
+      aiLogInfo('[AIPhone][LuckinSwitchProduct] local_attr_fallback group=' + groupName +
+        ' choice=' + choiceName);
       product = luckinApplyAttrSelections(product, selections, '');
+      product = luckinApplyAttrChoice(product, groupName, choiceName);
     }
   }
   const pinnedPicture = luckinPinnedProductPicture(request, product, detailProduct);
@@ -8390,8 +8537,8 @@ async function luckinLoadProductForPreview(
     const detailProduct = detailProducts.length > 0 ? detailProducts[0] : null;
     return luckinProductForPreview(searchProduct, detailProduct);
   } catch (error) {
-    const message = error instanceof Error ? error.message : JSON.stringify(error);
-    aiLogInfo('[AIPhone][LuckinProductDetail] fallback=search reason=' + message);
+    const reasonChars = describeThrown(error).length;
+    aiLogInfo('[AIPhone][LuckinProductDetail] fallback=search reasonChars=' + reasonChars.toString());
     return searchProduct;
   }
 }
@@ -8408,7 +8555,7 @@ function luckinPreviewPromptFromProduct(prompt: string, product: LuckinProductRe
     const children = attr.productSubAttrs === undefined ? [] : attr.productSubAttrs;
     for (let childIndex = 0; childIndex < children.length; childIndex++) {
       const child = children[childIndex];
-      if (child.selected === true) {
+      if (luckinAttrIsSelected(child.selected)) {
         const choiceName = textOf(child.attributeName);
         if (choiceName.length > 0) {
           parts.push(choiceName);
@@ -8416,7 +8563,7 @@ function luckinPreviewPromptFromProduct(prompt: string, product: LuckinProductRe
       }
     }
   }
-  const remark = luckinRemarkFromPrompt(prompt);
+  const remark = luckinRemarkFromPrompt(prompt, parts);
   if (remark.length > 0) {
     parts.push(remark);
   }
@@ -8510,6 +8657,7 @@ interface LuckinOrderActionArgs {
   productName?: string;
   skuCode?: string;
   pictureUrl?: string;
+  originalQuery?: string;
   previewPrompt?: string;
   attrGroup?: string;
   attrChoice?: string;
@@ -8536,16 +8684,23 @@ function luckinMoney(value: Object | string | number | boolean | null | undefine
 }
 
 function luckinPromptKeyword(prompt: string): string {
-  const preset = /(生椰拿铁|冰美式|拿铁|美式|葡萄冰萃|澳瑞白|厚乳拿铁|橙C美式|椰云拿铁|丝绒拿铁)/u.exec(prompt);
+  const trimmed = prompt.trim();
+  if (trimmed.length === 0 || /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(trimmed)) {
+    return '生椰拿铁';
+  }
+  const preset = /(生椰拿铁|冰美式|拿铁|美式|葡萄冰萃|澳瑞白|厚乳拿铁|橙C美式|椰云拿铁|丝绒拿铁)/u.exec(trimmed);
   if (preset !== null) {
     return preset[0];
   }
-  const cleaned = prompt
+  const cleaned = trimmed
     .replace(/瑞幸|luckin|ruixing/ig, '')
     .replace(/帮我|请|来|点|下一杯|下单|咖啡|饮品|一杯|两杯|2杯|杯|自取|外送|配送|附近|门店|使用优惠券|用优惠券/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return cleaned.length > 0 ? cleaned : '生椰拿铁';
+  if (cleaned.length === 0 || /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(cleaned) || cleaned.charAt(0) === '.') {
+    return '生椰拿铁';
+  }
+  return cleaned;
 }
 
 function luckinQuantityFromPrompt(prompt: string): number {
@@ -8560,14 +8715,203 @@ function luckinQuantityFromPrompt(prompt: string): number {
   return 1;
 }
 
-function luckinRemarkFromPrompt(prompt: string): string {
+const LUCKIN_PROMPT_PREFERENCE_WORDS: string[] = [
+  '少少甜', '标准甜', '正常冰', '热饮', '冰饮',
+  '无糖', '少甜', '半糖', '全糖', '少糖',
+  '少冰', '去冰', '多冰', '少奶', '加奶',
+  '热', '冰'
+];
+
+function luckinPreferenceWordsFromPrompt(prompt: string): string[] {
+  const found: string[] = [];
+  let remaining = prompt;
+  for (let index = 0; index < LUCKIN_PROMPT_PREFERENCE_WORDS.length; index += 1) {
+    const word = LUCKIN_PROMPT_PREFERENCE_WORDS[index];
+    if (remaining.indexOf(word) < 0) {
+      continue;
+    }
+    found.push(word);
+    remaining = remaining.split(word).join(' ');
+  }
+  return found;
+}
+
+function luckinPreferenceChoiceAliases(word: string): string[] {
+  if (word === '少糖') {
+    return ['少糖', '少甜'];
+  }
+  if (word === '热') {
+    return ['热', '热饮'];
+  }
+  if (word === '冰') {
+    return ['冰', '冰饮'];
+  }
+  if (word === '热饮') {
+    return ['热饮', '热'];
+  }
+  if (word === '冰饮') {
+    return ['冰饮', '冰'];
+  }
+  return [word];
+}
+
+function luckinChoiceMatchesPreference(choiceName: string, word: string): boolean {
+  const aliases = luckinPreferenceChoiceAliases(word);
+  for (let index = 0; index < aliases.length; index += 1) {
+    if (choiceName === aliases[index]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function luckinAttrChoiceAlreadySelected(
+  product: LuckinProductRecord,
+  groupName: string,
+  choiceName: string
+): boolean {
+  const attrs = product.productAttrs === undefined ? [] : product.productAttrs;
+  for (let index = 0; index < attrs.length; index += 1) {
+    const attr = attrs[index];
+    if (textOf(attr.attributeName) !== groupName) {
+      continue;
+    }
+    const children = attr.productSubAttrs === undefined ? [] : attr.productSubAttrs;
+    for (let childIndex = 0; childIndex < children.length; childIndex += 1) {
+      const child = children[childIndex];
+      if (textOf(child.attributeName) === choiceName) {
+        return luckinAttrIsSelected(child.selected);
+      }
+    }
+  }
+  return false;
+}
+
+function luckinMatchPromptPreferences(product: LuckinProductRecord, prompt: string): string[][] {
+  const words = luckinPreferenceWordsFromPrompt(prompt);
+  if (words.length === 0) {
+    return [];
+  }
+  const attrs = product.productAttrs === undefined ? [] : product.productAttrs;
+  const selections: string[][] = [];
+  const usedGroups: string[] = [];
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+    const word = words[wordIndex];
+    let matched = false;
+    for (let attrIndex = 0; attrIndex < attrs.length && !matched; attrIndex += 1) {
+      const attr = attrs[attrIndex];
+      const groupName = textOf(attr.attributeName).trim();
+      if (groupName.length === 0 || usedGroups.indexOf(groupName) >= 0) {
+        continue;
+      }
+      const children = attr.productSubAttrs === undefined ? [] : attr.productSubAttrs;
+      for (let childIndex = 0; childIndex < children.length; childIndex += 1) {
+        const child = children[childIndex];
+        const choiceName = textOf(child.attributeName).trim();
+        if (choiceName.length === 0 || !luckinChoiceMatchesPreference(choiceName, word)) {
+          continue;
+        }
+        const canSelected = child.canSelected;
+        if (canSelected !== undefined && canSelected !== null && Number(canSelected) === 0) {
+          continue;
+        }
+        selections.push([groupName, choiceName]);
+        usedGroups.push(groupName);
+        matched = true;
+        break;
+      }
+    }
+  }
+  return selections;
+}
+
+function luckinRemarkFromPrompt(prompt: string, appliedChoices: string[] = []): string {
   const remarks: string[] = [];
-  ['无糖', '少少甜', '少甜', '半糖', '标准甜', '热饮', '热', '少冰', '去冰', '正常冰', '多冰', '少奶', '加奶'].forEach((word: string) => {
-    if (prompt.indexOf(word) >= 0 && remarks.indexOf(word) < 0) {
+  const words = luckinPreferenceWordsFromPrompt(prompt);
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    let applied = false;
+    for (let choiceIndex = 0; choiceIndex < appliedChoices.length; choiceIndex += 1) {
+      if (luckinChoiceMatchesPreference(appliedChoices[choiceIndex], word) ||
+        luckinChoiceMatchesPreference(word, appliedChoices[choiceIndex])) {
+        applied = true;
+        break;
+      }
+    }
+    if (!applied && remarks.indexOf(word) < 0) {
       remarks.push(word);
     }
-  });
+  }
   return remarks.join('，');
+}
+
+async function luckinApplyPromptPreferences(
+  shop: LuckinShopRecord,
+  product: LuckinProductRecord,
+  prompt: string,
+  quantity: number,
+  token: string
+): Promise<LuckinProductRecord> {
+  const preferred = luckinMatchPromptPreferences(product, prompt);
+  if (preferred.length === 0) {
+    return product;
+  }
+  const detailProduct = product;
+  let current = product;
+  const applied: string[][] = [];
+  for (let index = 0; index < preferred.length; index += 1) {
+    const groupName = preferred[index][0];
+    const choiceName = preferred[index][1];
+    if (luckinAttrChoiceAlreadySelected(current, groupName, choiceName)) {
+      applied.push([groupName, choiceName]);
+      continue;
+    }
+    const switched = await luckinTrySwitchProduct(shop, current, groupName, choiceName, quantity, token);
+    applied.push([groupName, choiceName]);
+    if (switched !== null) {
+      current = luckinFinalizeSwitchedProduct(detailProduct, switched, applied, groupName, choiceName);
+    } else {
+      current = luckinApplyAttrSelections(current, applied, '');
+      aiLogInfo('[AIPhone][LuckinPromptPreference] local_attr group=' + groupName +
+        ' choice=' + choiceName);
+    }
+  }
+  aiLogInfo('[AIPhone][LuckinPromptPreference] applied=' + applied.map((pair: string[]): string => {
+    return pair[0] + ':' + pair[1];
+  }).join('|'));
+  return current;
+}
+
+export function luckinMatchPromptPreferencesForTest(
+  prompt: string,
+  groups: string[][]
+): string[][] {
+  const attrs: LuckinProductAttr[] = [];
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index];
+    if (group.length < 2) {
+      continue;
+    }
+    const children: LuckinProductSubAttr[] = [];
+    for (let childIndex = 1; childIndex < group.length; childIndex += 1) {
+      children.push({
+        attributeId: childIndex,
+        attributeName: group[childIndex],
+        selected: childIndex === 1,
+        canSelected: 1
+      });
+    }
+    attrs.push({
+      attributeId: index + 1,
+      attributeName: group[0],
+      productSubAttrs: children
+    });
+  }
+  return luckinMatchPromptPreferences({ productAttrs: attrs }, prompt);
+}
+
+export function luckinRemarkFromPromptForTest(prompt: string, appliedChoices: string[] = []): string {
+  return luckinRemarkFromPrompt(prompt, appliedChoices);
 }
 
 function luckinProductName(item: LuckinProductRecord): string {
@@ -8771,7 +9115,7 @@ function luckinPayDiagnosticsLog(tag: string, orderId: string, payOrderUrl: stri
   const hasPayOrderUrl = payOrderUrl.length > 0;
   const hasPayOrderQrCodeUrl = payOrderQrCodeUrl.length > 0;
   const hasPay = hasPayOrderUrl || hasPayOrderQrCodeUrl;
-  aiLogInfo('[AIPhone][' + tag + '] orderId=' + orderId +
+  aiLogInfo('[AIPhone][' + tag + '] orderIdChars=' + orderId.length.toString() +
     ' hasPayOrderUrl=' + (hasPayOrderUrl ? 'true' : 'false') +
     ' payOrderUrlChars=' + payOrderUrl.length.toString() +
     ' hasPayOrderQrCodeUrl=' + (hasPayOrderQrCodeUrl ? 'true' : 'false') +
@@ -8849,8 +9193,63 @@ export function resolveLuckinLocationForTest(requestLocation: string, prompt: st
   return parseCoordinatePair(defaultLocation);
 }
 
+export function resolveLuckinUserPromptForTest(
+  rawPrompt: string,
+  originalQuery: string = '',
+  previewPrompt: string = ''
+): string {
+  const request: LuckinOrderActionArgs = {};
+  if (originalQuery.length > 0) {
+    request.originalQuery = originalQuery;
+  }
+  if (previewPrompt.length > 0) {
+    request.previewPrompt = previewPrompt;
+  }
+  return resolveLuckinUserPrompt(rawPrompt, request);
+}
+
+export function luckinPromptKeywordForTest(prompt: string): string {
+  return luckinPromptKeyword(prompt);
+}
+
 function resolveLuckinLocation(request: LuckinOrderActionArgs, prompt: string): string {
   return resolveLuckinLocationForTest(textOf(request.location), prompt, localProviderConfig.amapDefaultLocation);
+}
+
+function looksLikeRegisteredToolIdPrompt(value: string): boolean {
+  return /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(value.trim());
+}
+
+function looksLikeLuckinPlannerGoalPrompt(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.indexOf('查询附近') >= 0 && trimmed.indexOf('门店') >= 0 &&
+    trimmed.indexOf('商品') >= 0;
+}
+
+function isUsableLuckinUserPrompt(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && !looksLikeRegisteredToolIdPrompt(trimmed) &&
+    !looksLikeLuckinPlannerGoalPrompt(trimmed);
+}
+
+function resolveLuckinUserPrompt(rawPrompt: string, request: LuckinOrderActionArgs): string {
+  const fromOriginal = textOf(request.originalQuery).trim();
+  if (isUsableLuckinUserPrompt(fromOriginal)) {
+    return fromOriginal;
+  }
+  const trimmed = rawPrompt.trim();
+  if (isUsableLuckinUserPrompt(trimmed)) {
+    return trimmed;
+  }
+  const fromPreview = textOf(request.previewPrompt).trim();
+  if (isUsableLuckinUserPrompt(fromPreview)) {
+    return fromPreview;
+  }
+  return '';
+}
+
+export function resolveLuckinActionPrompt(rawPrompt: string, args: Object | null = null): string {
+  return resolveLuckinUserPrompt(rawPrompt, luckinActionArgs(args));
 }
 
 function luckinShopSelectActions(shops: LuckinShopRecord[], location: string, prompt: string): A2uiAction[] {
@@ -8864,7 +9263,8 @@ function luckinShopSelectActions(shops: LuckinShopRecord[], location: string, pr
       address: luckinShopAddress(shop),
       distance: kmNumberDistanceText(firstText([shop.distanceDesc, shop.distance])),
       location: luckinShopLocation(shop, location),
-      status: luckinShopStatus(shop)
+      status: luckinShopStatus(shop),
+      originalQuery: prompt
     };
     actions.push({
       id: 'luckin.order.preview',
@@ -8984,7 +9384,21 @@ function luckinDynamicResultA2ui(surfaceId: string, result: DynamicGenericToolRe
   return a2uiJsonl(envelopes);
 }
 
+const LUCKIN_ORDER_TRACE_TAG: string = '[AIPhone][LuckinOrderTrace]';
+
+function luckinTrace(stage: string, result: string, toolId: string, fields: string = ''): void {
+  aiLogInfo(LUCKIN_ORDER_TRACE_TAG + ' stage=' + stage + ' result=' + result + ' toolId=' + toolId +
+    (fields.length > 0 ? ' ' + fields : ''));
+}
+
+function luckinSafeKeyword(value: string): string {
+  const token = localProviderConfig.luckinMcpToken;
+  const withoutToken = token.length > 0 ? value.split(token).join('[redacted]') : value;
+  return withoutToken.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 60);
+}
+
 function luckinErrorA2ui(surfaceId: string, toolId: string, title: string, message: string): string {
+  luckinTrace('error', 'failed', toolId, 'title=' + title + ' messageChars=' + message.length.toString());
   return luckinDynamicResultA2ui(surfaceId, {
     sourceTag: '瑞幸',
     toolName: toolId,
@@ -8996,13 +9410,24 @@ function luckinErrorA2ui(surfaceId: string, toolId: string, title: string, messa
   });
 }
 
-async function callLocalLuckinPreview(prompt: string, surfaceId: string, args: Object | null = null): Promise<string> {
+async function callLocalLuckinPreview(rawPrompt: string, surfaceId: string, args: Object | null = null): Promise<string> {
   const token = localProviderConfig.luckinMcpToken;
   const request = luckinActionArgs(args);
+  const prompt = resolveLuckinUserPrompt(rawPrompt, request);
+  const requestedDeptId = textOf(request.deptId);
+  const optionSwitch = textOf(request.attrGroup).length > 0 && textOf(request.attrChoice).length > 0 &&
+    textOf(request.productId).length > 0;
+  luckinTrace('preview_start', 'started', 'luckin.order.preview',
+    'tokenConfigured=' + (token.length > 0 ? 'true' : 'false') +
+    ' resolvedPromptChars=' + prompt.length.toString() +
+    ' hasDeptId=' + (requestedDeptId.length > 0 ? 'true' : 'false') +
+    ' optionSwitch=' + (optionSwitch ? 'true' : 'false'));
   if (token.length === 0) {
     return luckinErrorA2ui(surfaceId, 'luckin.order.preview', '瑞幸点单需要登录', '未配置 LUCKIN_MCP_TOKEN。请在瑞幸 AI 开放平台登录复制 Token 后同步到 HAP rawfile。');
   }
   const location = resolveLuckinLocation(request, prompt);
+  luckinTrace('location_validation', location.length > 0 ? 'valid' : 'invalid', 'luckin.order.preview',
+    'hasLocation=' + (location.length > 0 ? 'true' : 'false'));
   if (location.length === 0) {
     return luckinErrorA2ui(surfaceId, 'luckin.order.preview', '瑞幸点单缺少位置', '瑞幸下单需要当前经纬度。请允许定位权限后重试。');
   }
@@ -9013,10 +9438,14 @@ async function callLocalLuckinPreview(prompt: string, surfaceId: string, args: O
   };
   const shopPayload = await callReadonlyBrandMcpTool('瑞幸', localProviderConfig.luckinMcpUrl, token, 'queryShopList', shopArgs);
   const shops = luckinShopsFromData(mcpPayloadData(shopPayload as LuckinPayload) as LuckinShopRecord[] | LuckinShopContainer | undefined);
+  luckinTrace('shop_query', shops.length > 0 ? 'found' : 'empty', 'luckin.order.preview',
+    'count=' + shops.length.toString());
   if (shops.length === 0) {
     return luckinErrorA2ui(surfaceId, 'luckin.order.preview', '没有找到可下单门店', '瑞幸 MCP 没有返回可用门店。请换一个地点或门店名称。');
   }
   if (textOf(request.deptId).length === 0) {
+    luckinTrace('awaiting_shop_selection', 'needs_input', 'luckin.order.preview',
+      'count=' + shops.length.toString());
     const shopRows: A2uiLabelValueData[] = [];
     const previewCount = shops.length > 5 ? 5 : shops.length;
     for (let index = 0; index < previewCount; index++) {
@@ -9032,6 +9461,8 @@ async function callLocalLuckinPreview(prompt: string, surfaceId: string, args: O
   if (shop === null || textOf(shop.deptId).length === 0) {
     return luckinErrorA2ui(surfaceId, 'luckin.order.preview', '没有找到可下单门店', '瑞幸 MCP 没有返回可用门店。请换一个地点或门店名称。');
   }
+  luckinTrace('selected_shop', 'selected', 'luckin.order.preview',
+    'hasDeptId=true shopNameChars=' + luckinShopName(shop).length.toString());
   const quantity = luckinQuantityFromPrompt(prompt);
   const groupName = textOf(request.attrGroup);
   const choiceName = textOf(request.attrChoice);
@@ -9043,29 +9474,54 @@ async function callLocalLuckinPreview(prompt: string, surfaceId: string, args: O
       return luckinErrorA2ui(surfaceId, 'luckin.order.preview', '规格切换失败', '暂时无法切换「' + groupName + '」到「' + choiceName + '」。请稍后重试。');
     }
     product = switchedProduct;
+    luckinTrace('prompt_preferences', 'applied', 'luckin.order.preview',
+      'selectionCount=' + luckinAttrSelectionsFromRequest(request).length.toString());
   } else {
     const keyword = luckinProductSearchQuery(prompt, request);
+    luckinTrace('product_search_query', 'started', 'luckin.order.preview',
+      'keyword=' + luckinSafeKeyword(keyword));
     const productSearchArgs: LuckinProductSearchArgs = {
       deptId: Number(textOf(shop.deptId)),
       query: keyword
     };
     const productPayload = await callReadonlyBrandMcpTool('瑞幸', localProviderConfig.luckinMcpUrl, token, 'searchProductForMcp', productSearchArgs);
     const products = luckinProductsFromPayload(productPayload);
-    if (products.length === 0 || textOf(products[0].productId).length === 0 || luckinProductSku(products[0]).length === 0) {
+    const hasProductId = products.length > 0 && textOf(products[0].productId).length > 0;
+    const hasSku = products.length > 0 && luckinProductSku(products[0]).length > 0;
+    luckinTrace('product_query', products.length > 0 ? 'found' : 'empty', 'luckin.order.preview',
+      'count=' + products.length.toString() +
+      ' hasProductId=' + (hasProductId ? 'true' : 'false') +
+      ' hasSku=' + (hasSku ? 'true' : 'false'));
+    if (products.length === 0 || !hasProductId || !hasSku) {
       return luckinErrorA2ui(surfaceId, 'luckin.order.preview', '没有找到可下单商品', '瑞幸 MCP 没有返回可创建订单的商品或 skuCode。关键词：' + keyword);
     }
     const searchProduct = products[0];
     product = await luckinLoadProductForPreview(shop, searchProduct, token);
+    const preferenceCount = luckinMatchPromptPreferences(product, prompt).length;
+    product = await luckinApplyPromptPreferences(shop, product, prompt, quantity, token);
+    luckinTrace('prompt_preferences', 'applied', 'luckin.order.preview',
+      'selectionCount=' + preferenceCount.toString());
+  }
+  const appliedChoiceNames: string[] = [];
+  const selectedMap = luckinAttrSelectionsMapFromProduct(product);
+  const selectedKeys = Object.keys(selectedMap);
+  for (let keyIndex = 0; keyIndex < selectedKeys.length; keyIndex += 1) {
+    appliedChoiceNames.push(selectedMap[selectedKeys[keyIndex]]);
   }
   const previewArgs: LuckinOrderRequestArgs = {
     deptId: Number(textOf(shop.deptId)),
     productList: [luckinOrderProduct(product, quantity)],
     longitude: Number(locationLongitude(location)),
     latitude: Number(locationLatitude(location)),
-    remark: luckinRemarkFromPrompt(prompt)
+    remark: luckinRemarkFromPrompt(prompt, appliedChoiceNames)
   };
   const previewPayload = await callReadonlyBrandMcpTool('瑞幸', localProviderConfig.luckinMcpUrl, token, 'previewOrder', previewArgs);
   const preview = luckinOrderRecordFromPayload(previewPayload);
+  luckinTrace('preview_order', 'completed', 'luckin.order.preview',
+    'hasInitialPrice=' + (textOf(preview.totalInitialPrice).length > 0 ? 'true' : 'false') +
+    ' hasDiscountPrice=' + (textOf(preview.discountPrice).length > 0 ? 'true' : 'false') +
+    ' hasPrivilegeMoney=' + (textOf(preview.privilegeMoney).length > 0 ? 'true' : 'false') +
+    ' actionCount=1');
   const productPictureUrl = isOptionSwitch ?
     luckinPinnedProductPicture(request, product) :
     luckinProductPictureUrl(product);
@@ -9108,6 +9564,7 @@ async function callLocalLuckinPreview(prompt: string, surfaceId: string, args: O
     kind: 'prompt',
     args: createArgs as Object
   };
+  luckinTrace('preview_ready', 'ready', 'luckin.order.preview', 'actionCount=1');
   return luckinGenericResultA2ui(surfaceId, 'luckin.order.preview', '确认瑞幸订单', '请确认后再创建真实瑞幸订单。', rows, JSON.stringify(previewPayload).substring(0, 1200), [action]);
 }
 
@@ -9166,7 +9623,15 @@ async function callLocalLuckinCreate(surfaceId: string, args: Object | null): Pr
   const token = localProviderConfig.luckinMcpToken;
   const request = luckinActionArgs(args);
   const location = resolveLuckinLocation(request, '');
-  if (token.length === 0 || textOf(request.deptId).length === 0 || textOf(request.productId).length === 0 || textOf(request.skuCode).length === 0) {
+  const createValid = token.length > 0 && textOf(request.deptId).length > 0 &&
+    textOf(request.productId).length > 0 && textOf(request.skuCode).length > 0;
+  luckinTrace('create_start', 'started', 'luckin.order.create',
+    'tokenConfigured=' + (token.length > 0 ? 'true' : 'false') +
+    ' hasDeptId=' + (textOf(request.deptId).length > 0 ? 'true' : 'false') +
+    ' hasProductId=' + (textOf(request.productId).length > 0 ? 'true' : 'false') +
+    ' hasSku=' + (textOf(request.skuCode).length > 0 ? 'true' : 'false'));
+  luckinTrace('create_validation', createValid ? 'valid' : 'invalid', 'luckin.order.create');
+  if (!createValid) {
     return luckinErrorA2ui(surfaceId, 'luckin.order.create', '瑞幸订单参数不足', '创建订单需要登录 Token、门店、商品和 skuCode。请先重新预览订单。');
   }
   const createArgs: LuckinOrderRequestArgs = {
@@ -9186,7 +9651,13 @@ async function callLocalLuckinCreate(surfaceId: string, args: Object | null): Pr
   }
   const createPayload = await callReadonlyBrandMcpTool('瑞幸', localProviderConfig.luckinMcpUrl, token, 'createOrder', createArgs);
   const createError = luckinPayloadErrorMessage(createPayload);
-  if (!luckinOrderCreateSucceededForTest(createPayload)) {
+  const createSucceeded = luckinOrderCreateSucceededForTest(createPayload);
+  const providerCreated = luckinOrderRecordFromPayload(createPayload);
+  const providerOrderId = firstText([providerCreated.orderIdStr, providerCreated.orderId]);
+  luckinTrace('create_order', createSucceeded ? 'success' : 'failed', 'luckin.order.create',
+    'hasOrderId=' + (providerOrderId.length > 0 ? 'true' : 'false') +
+    ' orderIdChars=' + providerOrderId.length.toString());
+  if (!createSucceeded) {
     const failure = createError.length > 0 ? createError : 'Provider 未返回订单号，本次不能视为创建成功。';
     return luckinErrorA2ui(surfaceId, 'luckin.order.create', '瑞幸订单创建失败', failure);
   }
@@ -9212,11 +9683,11 @@ async function callLocalLuckinCreate(surfaceId: string, args: Object | null): Pr
         payOrderUrl: payOrderUrl,
         payOrderQrCodeUrl: payOrderQrCodeUrl
       };
-      aiLogInfo('[AIPhone][LuckinOrderCreateDetailFallback] orderId=' + orderId +
+      aiLogInfo('[AIPhone][LuckinOrderCreateDetailFallback] orderIdChars=' + orderId.length.toString() +
         ' payOrderUrlChars=' + payOrderUrl.length.toString() +
         ' payOrderQrCodeUrlChars=' + payOrderQrCodeUrl.length.toString());
     } catch (error) {
-      aiLogInfo('[AIPhone][LuckinOrderCreateDetailFallbackError] ' + textOf(error));
+      aiLogInfo('[AIPhone][LuckinOrderCreateDetailFallbackError] reasonChars=' + describeThrown(error).length.toString());
     }
   }
   const rows: A2uiLabelValueData[] = [
@@ -9256,9 +9727,10 @@ async function callLocalLuckinCreate(surfaceId: string, args: Object | null): Pr
   };
   const createActions: A2uiAction[] = [payAction, luckinDemoAlipayAction(orderId), luckinDemoGooglePayAction(orderId), statusAction];
   luckinPayDiagnosticsLog('LuckinOrderCreate', orderId, payOrderUrl, payOrderQrCodeUrl, createActions.length);
+  luckinTrace('create_ready', 'ready', 'luckin.order.create',
+    'orderIdChars=' + orderId.length.toString() + ' actionCount=' + createActions.length.toString());
   if (payOrderUrl.length === 0 && payOrderQrCodeUrl.length === 0) {
-    aiLogInfo('[AIPhone][LuckinOrderCreateMissingPay] mcpDataKeys=' + luckinMcpPayFieldKeys(createPayload) +
-      ' payloadPreview=' + JSON.stringify(createPayload).substring(0, 400));
+    aiLogInfo('[AIPhone][LuckinOrderCreateMissingPay] mcpDataKeys=' + luckinMcpPayFieldKeys(createPayload));
   }
   return luckinGenericResultA2ui(
     surfaceId, 'luckin.order.create', '瑞幸订单已创建',
@@ -9271,7 +9743,12 @@ async function callStructuredLuckinStatusResult(args: Object | null): Promise<Dy
   const token = localProviderConfig.luckinMcpToken;
   const request = luckinActionArgs(args);
   const orderId = textOf(request.orderId);
-  if (token.length === 0 || orderId.length === 0) {
+  const statusValid = token.length > 0 && orderId.length > 0;
+  luckinTrace('status_start', 'started', 'luckin.order.status',
+    'tokenConfigured=' + (token.length > 0 ? 'true' : 'false') +
+    ' orderIdChars=' + orderId.length.toString());
+  luckinTrace('status_validation', statusValid ? 'valid' : 'invalid', 'luckin.order.status');
+  if (!statusValid) {
     const message = token.length === 0 ? '未配置 LUCKIN_MCP_TOKEN。' : '缺少订单号。';
     return {
       sourceTag: '瑞幸',
@@ -9290,6 +9767,8 @@ async function callStructuredLuckinStatusResult(args: Object | null): Promise<Dy
   try {
     payload = await callReadonlyBrandMcpTool('瑞幸', localProviderConfig.luckinMcpUrl, token, 'queryOrderDetailInfo', detailArgs);
   } catch (error) {
+    luckinTrace('error', 'failed', 'luckin.order.status',
+      'title=瑞幸订单状态查询失败 messageChars=' + describeThrown(error).length.toString());
     return {
       sourceTag: '瑞幸',
       toolName: 'luckin.order.status',
@@ -9302,6 +9781,10 @@ async function callStructuredLuckinStatusResult(args: Object | null): Promise<Dy
     };
   }
   const detail = luckinOrderRecordFromPayload(payload);
+  const providerStatus = firstText([detail.orderStatusName, detail.orderStatus]);
+  luckinTrace('status_provider', providerStatus.length > 0 ? 'success' : 'empty', 'luckin.order.status',
+    'hasStatus=' + (providerStatus.length > 0 ? 'true' : 'false') +
+    ' orderIdChars=' + orderId.length.toString());
   const traceId = rideOrderPayloadText(payload, ['traceId', 'trace_id', 'requestId', 'request_id']);
   const rows: A2uiLabelValueData[] = [
     { label: '订单号', value: firstText([detail.orderIdStr, detail.orderId, orderId]) },
@@ -9357,6 +9840,9 @@ async function callStructuredLuckinStatusResult(args: Object | null): Promise<Dy
     aiLogInfo('[AIPhone][LuckinOrderStatusMissingPay] mcpDataKeys=' + luckinMcpPayFieldKeys(payload));
   }
   const providerError = luckinPayloadErrorMessage(payload);
+  luckinTrace('status_ready', providerError.length > 0 ? 'failed' : 'ready', 'luckin.order.status',
+    'hasStatus=' + (providerStatus.length > 0 ? 'true' : 'false') +
+    ' actionCount=' + statusActions.length.toString());
   return {
     sourceTag: '瑞幸',
     toolName: 'luckin.order.status',
@@ -9383,8 +9869,11 @@ async function callLocalLuckinTool(
   actionId: string,
   args: Object | null = null
 ): Promise<string> {
+  luckinTrace('gateway_dispatch', 'received', toolId,
+    'actionId=' + actionId + ' promptChars=' + prompt.length.toString());
   if (toolId === 'luckin.order.create') {
     if (actionId !== 'luckin.order.create') {
+      luckinTrace('blocked', 'blocked', toolId, 'reason=unsafe_action_id');
       return luckinErrorA2ui(
         surfaceId, toolId, '需要当前瑞幸订单确认', '请从当前订单预览点击确认下单。'
       );
@@ -9529,13 +10018,26 @@ function foodTags(item: A2uiFoodData, fallbackProvider: string): string[] {
 }
 
 function cloneFood(item: A2uiFoodData, fallbackProvider: string): A2uiFoodData {
+  const phone = normalizeFoodPhoneNumber(item.phone === undefined ? '' : item.phone);
   return {
     name: item.name,
     category: item.category,
     address: item.address,
     distance: item.distance,
     location: item.location,
-    sourceTags: foodTags(item, fallbackProvider)
+    sourceTags: foodTags(item, fallbackProvider),
+    phone: phone,
+    phoneSource: phone.length > 0 ? (item.phoneSource === undefined || item.phoneSource.length === 0 ? fallbackProvider : item.phoneSource) : undefined,
+    openHoursToday: item.openHoursToday,
+    openHoursWeek: item.openHoursWeek,
+    pricePerPerson: item.pricePerPerson,
+    priceText: item.priceText,
+    priceSource: item.priceSource,
+    rating: item.rating,
+    ratingText: item.ratingText,
+    ratingSource: item.ratingSource,
+    businessStatus: item.businessStatus,
+    businessStatusLabel: item.businessStatusLabel
   };
 }
 
@@ -9548,6 +10050,32 @@ function mergeFoodInto(target: A2uiFoodData, item: A2uiFoodData, fallbackProvide
     }
   }
   target.sourceTags = targetTags;
+  const itemPhone = normalizeFoodPhoneNumber(item.phone === undefined ? '' : item.phone);
+  const targetPhone = normalizeFoodPhoneNumber(target.phone === undefined ? '' : target.phone);
+  if (targetPhone.length === 0 && itemPhone.length > 0) {
+    target.phone = itemPhone;
+    target.phoneSource = item.phoneSource === undefined || item.phoneSource.length === 0 ? fallbackProvider : item.phoneSource;
+  } else if (targetPhone.length > 0) {
+    target.phone = targetPhone;
+  }
+  if ((target.openHoursToday === undefined || target.openHoursToday.length === 0) && item.openHoursToday !== undefined && item.openHoursToday.length > 0) {
+    target.openHoursToday = item.openHoursToday;
+  }
+  if ((target.openHoursWeek === undefined || target.openHoursWeek.length === 0) && item.openHoursWeek !== undefined && item.openHoursWeek.length > 0) {
+    target.openHoursWeek = item.openHoursWeek;
+  }
+  if (target.pricePerPerson === undefined && item.pricePerPerson !== undefined) { target.pricePerPerson = item.pricePerPerson; }
+  if ((target.priceText === undefined || target.priceText.length === 0) && item.priceText !== undefined && item.priceText.length > 0) { target.priceText = item.priceText; }
+  if ((target.priceSource === undefined || target.priceSource.length === 0) && item.priceSource !== undefined && item.priceSource.length > 0) { target.priceSource = item.priceSource; }
+  if (target.rating === undefined && item.rating !== undefined) { target.rating = item.rating; }
+  if ((target.ratingText === undefined || target.ratingText.length === 0) && item.ratingText !== undefined && item.ratingText.length > 0) { target.ratingText = item.ratingText; }
+  if ((target.ratingSource === undefined || target.ratingSource.length === 0) && item.ratingSource !== undefined && item.ratingSource.length > 0) { target.ratingSource = item.ratingSource; }
+  if ((target.businessStatus === undefined || target.businessStatus.length === 0 || target.businessStatus === 'unknown') && item.businessStatus !== undefined && item.businessStatus.length > 0 && item.businessStatus !== 'unknown') {
+    target.businessStatus = item.businessStatus;
+    target.businessStatusLabel = item.businessStatusLabel;
+  } else if ((target.businessStatusLabel === undefined || target.businessStatusLabel.length === 0) && item.businessStatusLabel !== undefined && item.businessStatusLabel.length > 0) {
+    target.businessStatusLabel = item.businessStatusLabel;
+  }
   if (target.category.length === 0 && item.category.length > 0) {
     target.category = item.category;
   }
@@ -9785,8 +10313,14 @@ export function aggregateFoodProviderResults(results: FoodProviderResult[], pref
       }
     }
   }
+  const mergedFoods = selectVisibleFoodResults(foods, preferences);
+  const foodsWithPhone = mergedFoods.filter((food: A2uiFoodData) =>
+    normalizeFoodPhoneNumber(food.phone === undefined ? '' : food.phone).length > 0).length;
+  aiLogInfo('[AIPhone][FoodPhoneAggregation] providerResults=' + results.length.toString() +
+    ' mergedFoods=' + mergedFoods.length.toString() + ' foodsWithPhone=' + foodsWithPhone.toString() +
+    ' issues=' + issues.length.toString());
   return {
-    foods: selectVisibleFoodResults(foods, preferences),
+    foods: mergedFoods,
     issues: issues
   };
 }
@@ -10018,12 +10552,12 @@ class AmapFoodProvider implements FoodProviderAdapter {
     const keywords = splitFoodSearchKeywords(keyword);
     for (let keywordIndex = 0; keywordIndex < keywords.length && keywordIndex < 4 && foods.length < FOOD_PROVIDER_RESULT_LIMIT; keywordIndex++) {
       const currentKeyword = keywords[keywordIndex];
-      aiLogInfo('[AIPhone][LocalToolAmapRequest] keyChars=' + key.length.toString() +
+      aiLogInfo('[AIPhone][LocalToolAmapRequest] provider=高德 endpoint=v5/place/around showFields=business keyChars=' + key.length.toString() +
         ' locationSource=' + locationSource + ' locationPresent=true keyword=' + currentKeyword);
       const payload = await amapJsonGet(buildQueryUrl(
-        'https://restapi.amap.com/v3/place/around',
-        ['key', 'location', 'types', 'keywords', 'radius', 'offset', 'page', 'extensions'],
-        [key, location, '050000', currentKeyword, radiusMeters, '10', '1', 'all']
+        'https://restapi.amap.com/v5/place/around',
+        ['key', 'location', 'types', 'keywords', 'radius', 'page_size', 'page_num', 'show_fields'],
+        [key, location, '050000', currentKeyword, radiusMeters, '10', '1', 'business']
       ));
       if (textOf(payload.status) !== '1') {
         const providerMessage = firstText([payload.info, payload.infocode, payload.message]);
@@ -10036,7 +10570,7 @@ class AmapFoodProvider implements FoodProviderAdapter {
       const pois = payload.pois === undefined ? [] : payload.pois;
       totalPois += pois.length;
       for (let index = 0; index < pois.length && foods.length < FOOD_PROVIDER_RESULT_LIMIT; index++) {
-        const food = foodRecordForA2ui(pois[index]);
+        const food = foodRecordFromAmapPoi(pois[index]);
         const normalized = normalizeFoodName(food.name);
         if (food.name.length === 0 || names.indexOf(normalized) >= 0) {
           continue;
@@ -10045,7 +10579,11 @@ class AmapFoodProvider implements FoodProviderAdapter {
         foods.push(food);
       }
     }
-    aiLogInfo('[AIPhone][LocalToolAmapResult] pois=' + totalPois.toString() + ' returned=' + foods.length.toString());
+    const foodsWithPhone = foods.filter((food: A2uiFoodData) =>
+      normalizeFoodPhoneNumber(food.phone === undefined ? '' : food.phone).length > 0).length;
+    aiLogInfo('[AIPhone][LocalToolAmapResult] endpoint=v5/place/around pois=' + totalPois.toString() +
+      ' returned=' + foods.length.toString() + ' foodsWithPhone=' + foodsWithPhone.toString() +
+      ' hoursHits=' + foodHoursHitCount(foods).toString());
     return {
       provider: this.name,
       foods: foods,
@@ -10098,7 +10636,10 @@ class TencentMapFoodProvider implements FoodProviderAdapter {
         foods.push(food);
       }
     }
-    aiLogInfo('[AIPhone][LocalToolTencentMapResult] rows=' + places.length.toString() + ' returned=' + foods.length.toString());
+    const foodsWithPhone = foods.filter((food: A2uiFoodData) =>
+      normalizeFoodPhoneNumber(food.phone === undefined ? '' : food.phone).length > 0).length;
+    aiLogInfo('[AIPhone][LocalToolTencentMapResult] rows=' + places.length.toString() + ' returned=' + foods.length.toString() +
+      ' foodsWithPhone=' + foodsWithPhone.toString());
     return {
       provider: this.name,
       foods: foods,
@@ -10127,7 +10668,7 @@ class BaiduMapFoodProvider implements FoodProviderAdapter {
     if (longitude.length === 0 || latitude.length === 0) {
       return emptyProviderResult(this.name, '经纬度格式无效：' + location);
     }
-    aiLogInfo('[AIPhone][LocalToolBaiduMapRequest] endpoint=' + localProviderConfig.baiduMapApiUrl +
+    aiLogInfo('[AIPhone][LocalToolBaiduMapRequest] provider=百度地图 scope=2 endpoint=' + localProviderConfig.baiduMapApiUrl +
       ' akChars=' + ak.length.toString() + ' locationSource=' + locationSource + ' keyword=' + keyword);
     const response = await requestText(buildQueryUrl(
       localProviderConfig.baiduMapApiUrl,
@@ -10150,7 +10691,11 @@ class BaiduMapFoodProvider implements FoodProviderAdapter {
         foods.push(food);
       }
     }
-    aiLogInfo('[AIPhone][LocalToolBaiduMapResult] rows=' + places.length.toString() + ' returned=' + foods.length.toString());
+    const foodsWithPhone = foods.filter((food: A2uiFoodData) =>
+      normalizeFoodPhoneNumber(food.phone === undefined ? '' : food.phone).length > 0).length;
+    aiLogInfo('[AIPhone][LocalToolBaiduMapResult] endpoint=' + localProviderConfig.baiduMapApiUrl +
+      ' scope=2 rows=' + places.length.toString() + ' returned=' + foods.length.toString() +
+      ' foodsWithPhone=' + foodsWithPhone.toString() + ' hoursHits=' + foodHoursHitCount(foods).toString());
     return {
       provider: this.name,
       foods: foods,
@@ -10663,6 +11208,7 @@ async function callStructuredFoodTool(
     ' locationPresent=' + (location.length > 0 ? 'true' : 'false') +
     ' radiusMeters=' + radiusMeters +
     ' foods=' + aggregated.foods.length.toString() +
+    ' hoursHits=' + foodHoursHitCount(aggregated.foods).toString() +
     ' issues=' + rows.length.toString());
 
   const locationLongitudeValue = Number(locationLongitude(location));
@@ -11636,12 +12182,16 @@ function dynamicHttpApiResultFromJson(registration: DynamicToolRegistration, res
     };
   }
 
+  let httpSucceeded = false;
+  if (response.code >= 200 && response.code < 300) {
+    httpSucceeded = true;
+  }
   return {
     sourceTag: registration.displayName,
     toolName: registration.mcpToolName,
     title: '动态 HTTP API 返回',
-    status: response.code >= 200 && response.code < 300 ? 'success' : 'error',
-    summary: response.code >= 200 && response.code < 300 ? '已收到远程 HTTP API 返回。' : '远程 HTTP API 返回 HTTP ' + response.code.toString(),
+    status: httpSucceeded ? 'success' : 'error',
+    summary: httpSucceeded ? '已收到远程 HTTP API 返回。' : '远程 HTTP API 返回 HTTP ' + response.code.toString(),
     rows: [{ label: 'HTTP', value: response.code.toString() }],
     rawPreview: response.text.substring(0, 1200)
   };

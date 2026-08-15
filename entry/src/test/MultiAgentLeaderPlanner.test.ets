@@ -11,7 +11,8 @@ import {
   LocalModel,
   ObservationDigest,
   ToolDefinition,
-  actionAgentToolDefinitions
+  actionAgentToolDefinitions,
+  toolPlanningDescriptionForToolId
 } from '@loop/agent-core';
 import { MultiAgentLeaderPlanner } from '../main/ets/pages/A2uiHome/agent/MultiAgentLeaderPlanner';
 
@@ -915,7 +916,8 @@ function actionOwnerContext(): LeaderPlanningContext {
       registeredBackends: definition.backendPriority.slice(),
       inputSchema: definition.inputSchema,
       outputSchema: definition.outputSchema,
-      actions: []
+      actions: [],
+      planningHint: toolPlanningDescriptionForToolId(definition.toolId)
     });
   }
   for (let index = 0; index < context.tools.length; index++) {
@@ -2135,6 +2137,26 @@ export default function multiAgentLeaderPlannerTest() {
       expect(luckinOrder.dataTasks.length).assertEqual(0);
       expect(luckinOrder.actionIntent!.allowedActionIds.join(',')).assertEqual('luckin.order.preview');
       expect(model.prompts[0].indexOf('C10/C11 selection contract:')).assertLarger(-1);
+    });
+
+    it('accepts the Leader model Luckin preview selection with tool guidance in the prompt', 0,
+      async () => {
+      const model = new QueueLocalModel([actionDecision('luckin.order.preview')]);
+      const planner = new MultiAgentLeaderPlanner(model);
+      const decision = await planner.plan(
+        inputMessage(),
+        { text: '帮我点一杯瑞幸生椰拿铁，少甜热' },
+        c10C11Context(),
+        1
+      );
+
+      expect(decision.requestedCapabilityIds.join(',')).assertEqual('luckin.order.preview');
+      expect(decision.roundAction).assertEqual('execute');
+      expect(decision.actionIntent!.allowedActionIds.join(',')).assertEqual('luckin.order.preview');
+      expect(model.prompts.length).assertEqual(1);
+      expect(model.prompts[0].indexOf('luckin.order.preview')).assertLarger(-1);
+      expect(model.prompts[0].indexOf('Use only when the current user message itself explicitly names Luckin/Ruixing')).assertLarger(-1);
+      expect(model.prompts[0].indexOf('user explicitly confirms creating the order')).assertLarger(-1);
     });
 
     it('asks the Leader model once to correct an explicit Google Maps selection without host rewriting', 0,

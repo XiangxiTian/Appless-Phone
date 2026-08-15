@@ -323,6 +323,19 @@ button:disabled { cursor: default; opacity: 0.5; }
   box-shadow: 0 12px 24px rgba(37, 24, 13, 0.18);
 }
 .editorial-tab:active { transform: translateY(1px); }
+.food-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 14px 6px;
+}
+.food-control { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 760; }
+.food-control select {
+  width: 100%; min-height: 38px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px;
+  background: rgba(255, 250, 241, 0.94); color: var(--ink); font: inherit; font-size: 12px;
+}
+.food-filters > button { align-self: end; }
+@media (min-width: 620px) { .food-filters { grid-template-columns: repeat(5, minmax(0, 1fr)); padding-left: 22px; padding-right: 22px; } }
 .editorial-feature {
   --source-accent: var(--food-local);
   margin: 10px 14px 18px;
@@ -604,7 +617,7 @@ const FOOD_HOME_JS: string = `
   try { data = JSON.parse(node && node.textContent ? node.textContent : '{}') || {}; } catch (error) { data = {}; }
   var app = document.getElementById('app');
   if (!app) { return; }
-  var state = { filter: 'all', expandedKey: '' };
+  var state = { filter: 'all', price: 'all', rating: 'all', business: 'all', sort: 'smart', expandedKey: '' };
   var AVATAR_MCDONALDS = '${APP_LOGO_MCDONALDS}';
   var AVATAR_KFC = '${APP_LOGO_KFC}';
   var AVATAR_TAOBAO = '${APP_LOGO_TAOBAO}';
@@ -734,37 +747,70 @@ const FOOD_HOME_JS: string = `
       if (button) { button.textContent = expanded ? '收起' : '展开'; }
     });
   }
+  function numericAttribute(node, name) {
+    var raw = text(node.getAttribute(name)).trim();
+    if (raw.length === 0) { return Number.NaN; }
+    var value = Number(raw);
+    return Number.isFinite(value) ? value : Number.NaN;
+  }
   function matchesFilter(node, filter) {
     var activeFilter = filter || state.filter;
     var haystack = text(node.getAttribute('data-search')).toLowerCase();
-    if (activeFilter === 'featured') { return node.getAttribute('data-featured') === 'true'; }
-    if (activeFilter === 'within_1km') { return distanceMeters(node.getAttribute('data-distance')) <= 1000; }
-    if (activeFilter === 'source') { return text(node.getAttribute('data-sources')).length > 0; }
-    if (activeFilter === 'coffee') { return haystack.indexOf('咖啡') >= 0 || haystack.indexOf('coffee') >= 0 || haystack.indexOf('瑞幸') >= 0 || haystack.indexOf('luckin') >= 0; }
-    if (activeFilter === 'late') { return haystack.indexOf('深夜') >= 0 || haystack.indexOf('夜') >= 0 || haystack.indexOf('宵夜') >= 0; }
-    if (activeFilter === 'group') { return haystack.indexOf('聚餐') >= 0 || haystack.indexOf('火锅') >= 0 || haystack.indexOf('烧烤') >= 0; }
-    if (activeFilter === 'light') { return haystack.indexOf('轻食') >= 0 || haystack.indexOf('沙拉') >= 0 || haystack.indexOf('简餐') >= 0; }
+    if (activeFilter === 'featured' && node.getAttribute('data-featured') !== 'true') { return false; }
+    if (activeFilter === 'within_1km' && distanceMeters(node.getAttribute('data-distance')) > 1000) { return false; }
+    if (activeFilter === 'source' && text(node.getAttribute('data-sources')).length === 0) { return false; }
+    if (activeFilter === 'coffee' && haystack.indexOf('咖啡') < 0 && haystack.indexOf('coffee') < 0 && haystack.indexOf('瑞幸') < 0 && haystack.indexOf('luckin') < 0) { return false; }
+    if (activeFilter === 'late' && haystack.indexOf('深夜') < 0 && haystack.indexOf('夜') < 0 && haystack.indexOf('宵夜') < 0) { return false; }
+    if (activeFilter === 'group' && haystack.indexOf('聚餐') < 0 && haystack.indexOf('火锅') < 0 && haystack.indexOf('烧烤') < 0) { return false; }
+    if (activeFilter === 'light' && haystack.indexOf('轻食') < 0 && haystack.indexOf('沙拉') < 0 && haystack.indexOf('简餐') < 0) { return false; }
+    var price = numericAttribute(node, 'data-price');
+    if (state.price !== 'all' && !Number.isFinite(price)) { return false; }
+    if (state.price === '0_50' && !(price >= 0 && price < 50)) { return false; }
+    if (state.price === '50_100' && !(price >= 50 && price < 100)) { return false; }
+    if (state.price === '100_200' && !(price >= 100 && price < 200)) { return false; }
+    if (state.price === '200_plus' && !(price >= 200)) { return false; }
+    var rating = numericAttribute(node, 'data-rating');
+    if (state.rating !== 'all' && !Number.isFinite(rating)) { return false; }
+    if (state.rating === '4' && rating < 4) { return false; }
+    if (state.rating === '4_5' && rating < 4.5) { return false; }
+    if (state.rating === '4_8' && rating < 4.8) { return false; }
+    if (state.business === 'open' && node.getAttribute('data-business-status') !== 'open') { return false; }
     return true;
+  }
+  function sortCards(cards) {
+    var sort = state.sort;
+    cards.sort(function (a, b) {
+      var av = sort === 'distance' ? distanceMeters(a.getAttribute('data-distance')) : (sort === 'rating' ? numericAttribute(a, 'data-rating') : (sort === 'price' ? numericAttribute(a, 'data-price') : Number(a.getAttribute('data-order'))));
+      var bv = sort === 'distance' ? distanceMeters(b.getAttribute('data-distance')) : (sort === 'rating' ? numericAttribute(b, 'data-rating') : (sort === 'price' ? numericAttribute(b, 'data-price') : Number(b.getAttribute('data-order'))));
+      if (!Number.isFinite(av)) { av = Number.POSITIVE_INFINITY; }
+      if (!Number.isFinite(bv)) { bv = Number.POSITIVE_INFINITY; }
+      if (av !== bv) { return sort === 'rating' ? bv - av : av - bv; }
+      return Number(a.getAttribute('data-order')) - Number(b.getAttribute('data-order'));
+    });
   }
   function applyFilter() {
     var cards = Array.prototype.slice.call(document.querySelectorAll('.editorial-card'));
     var feature = document.querySelector('.editorial-feature');
     if (feature) { feature.style.display = matchesFilter(feature) ? '' : 'none'; }
+    sortCards(cards);
+    var list = document.querySelector('.editorial-list');
+    cards.forEach(function (card) { if (list) { list.appendChild(card); } });
     var visible = 0;
-    cards.forEach(function (card) {
-      var keep = matchesFilter(card);
-      if (keep) { visible += 1; }
-      card.style.display = keep ? '' : 'none';
-    });
+    cards.forEach(function (card) { var keep = matchesFilter(card); if (keep) { visible += 1; } card.style.display = keep ? '' : 'none'; });
     var count = document.getElementById('editorial-count');
     if (count) { count.textContent = String(visible) + ' / ' + String(cards.length) + ' 条'; }
     var empty = document.getElementById('editorial-filter-empty');
     if (empty) { empty.style.display = cards.length > 0 && visible === 0 ? '' : 'none'; }
-    Array.prototype.slice.call(document.querySelectorAll('.editorial-tab')).forEach(function (button) {
-      var active = button.getAttribute('data-filter') === state.filter;
-      button.classList.toggle('active', active);
-    });
+    Array.prototype.slice.call(document.querySelectorAll('.editorial-tab')).forEach(function (button) { button.classList.toggle('active', button.getAttribute('data-filter') === state.filter); });
   }
+  function selectValue(label, values, current, setter) {
+    var wrap = add(filters, 'label', 'food-control');
+    add(wrap, 'span', '', label);
+    var select = add(wrap, 'select');
+    values.forEach(function (item) { var option = add(select, 'option', '', item[1]); option.value = item[0]; option.selected = item[0] === current; });
+    select.addEventListener('change', function () { setter(select.value); applyFilter(); });
+  }
+  function clearFilters() { state.price = 'all'; state.rating = 'all'; state.business = 'all'; state.sort = 'smart'; state.filter = 'all'; Array.prototype.slice.call(filters.querySelectorAll('select')).forEach(function (select) { select.selectedIndex = 0; }); applyFilter(); }
   function handleFilter(action) {
     var id = text(action && action.id);
     if (id === 'food_filter_featured') { state.filter = 'featured'; applyFilter(); return true; }
@@ -1043,6 +1089,7 @@ const FOOD_HOME_JS: string = `
   count.id = 'editorial-count';
   add(stats, 'span', 'cover-stat', String(blocks.filter(hasLocation).length) + ' 家可导航');
   var tabs = add(shell, 'nav', 'editorial-tabs');
+  var filters = add(shell, 'section', 'food-filters');
   var filterItems = [
     ['food_show_all', '全部', 'all'],
     ['food_filter_featured', '精选', 'featured'],
@@ -1053,12 +1100,20 @@ const FOOD_HOME_JS: string = `
     ['food_filter_group', '聚餐', 'group'],
     ['food_filter_light', '轻食', 'light']
   ];
+  selectValue('价格', [['all', '不限'], ['0_50', '¥0-50'], ['50_100', '¥50-100'], ['100_200', '¥100-200'], ['200_plus', '¥200+']], state.price, function (value) { state.price = value; });
+  selectValue('评分', [['all', '不限'], ['4', '4.0+'], ['4_5', '4.5+'], ['4_8', '4.8+']], state.rating, function (value) { state.rating = value; });
+  selectValue('营业', [['all', '不限'], ['open', '营业中']], state.business, function (value) { state.business = value; });
+  selectValue('排序', [['smart', '智能排序'], ['distance', '距离最近'], ['rating', '评分最高'], ['price', '价格最低']], state.sort, function (value) { state.sort = value; });
+  var clear = add(filters, 'button', 'editorial-tab', '清除筛选'); clear.type = 'button'; clear.addEventListener('click', clearFilters);
   if (blocks.length > 0) {
     var featureBlock = blocks[0];
     var feature = add(shell, 'section', 'editorial-feature');
     feature.setAttribute('data-card-key', text(featureBlock.id) || '0');
     feature.setAttribute('data-source-key', sourceKey(featureBlock));
     feature.setAttribute('data-distance', metric(featureBlock, ['distance']));
+    feature.setAttribute('data-price', metric(featureBlock, ['pricePerPerson']));
+    feature.setAttribute('data-rating', metric(featureBlock, ['rating']));
+    feature.setAttribute('data-business-status', metric(featureBlock, ['businessStatus']));
     feature.setAttribute('data-featured', 'true');
     feature.setAttribute('data-sources', sourceParts(featureBlock).join(' / '));
     feature.setAttribute('data-search', [text(featureBlock.title), text(featureBlock.subtitle), metric(featureBlock, ['category']), metric(featureBlock, ['address']), sourceParts(featureBlock).join(' ')].join(' '));
@@ -1078,6 +1133,10 @@ const FOOD_HOME_JS: string = `
     card.setAttribute('data-card-key', key);
     card.setAttribute('data-source-key', sourceKey(block));
     card.setAttribute('data-distance', metric(block, ['distance']));
+    card.setAttribute('data-price', metric(block, ['pricePerPerson']));
+    card.setAttribute('data-rating', metric(block, ['rating']));
+    card.setAttribute('data-business-status', metric(block, ['businessStatus']));
+    card.setAttribute('data-order', String(index));
     card.setAttribute('data-featured', index === 0 ? 'true' : 'false');
     card.setAttribute('data-sources', sourceParts(block).join(' / '));
     card.setAttribute('data-search', [text(block.title), text(block.subtitle), metric(block, ['category']), metric(block, ['address']), sourceParts(block).join(' ')].join(' '));
@@ -1086,7 +1145,8 @@ const FOOD_HOME_JS: string = `
     addAvatar(head, block);
     var title = add(head, 'div', 'editorial-title');
     add(title, 'h2', '', text(block.title) || '餐饮结果');
-    add(title, 'div', 'editorial-meta', [metric(block, ['distance']), metric(block, ['address'])].filter(Boolean).join(' · '));
+    add(title, 'div', 'editorial-meta', [metric(block, ['distance']), metric(block, ['address']), metric(block, ['ratingText', 'rating']), metric(block, ['priceText', 'pricePerPerson']), metric(block, ['businessStatusLabel']),
+      metric(block, ['openHoursToday']) || metric(block, ['openHoursWeek'])].filter(Boolean).join(' · '));
     var expand = add(head, 'button', 'editorial-expand', '展开');
     expand.type = 'button';
     expand.addEventListener('click', function (event) { event.stopPropagation(); setExpanded(key); });
@@ -1101,13 +1161,20 @@ const FOOD_HOME_JS: string = `
     detailRow(grid, '地址', metric(block, ['address']));
     detailRow(grid, '分类', metric(block, ['category']) || text(block.subtitle));
     detailRow(grid, '距离', metric(block, ['distance']));
+    detailRow(grid, '评分', metric(block, ['ratingText', 'rating']));
+    detailRow(grid, '人均价格', metric(block, ['priceText', 'pricePerPerson']));
+    detailRow(grid, '营业状态', metric(block, ['businessStatusLabel']));
+    detailRow(grid, '今日营业', metric(block, ['openHoursToday']) || metric(block, ['openHoursWeek']));
+    detailRow(grid, '营业时间', metric(block, ['openHoursWeek']));
     detailRow(grid, '坐标', metric(block, ['location']));
     detailRow(grid, '来源', sourceParts(block).join(' / '));
+    detailRow(grid, '电话', metric(block, ['phone']));
+    detailRow(grid, '电话来源', metric(block, ['phoneSource']));
     var canNavigate = hasLocation(block);
     var availableActions = list(block.actions).filter(function (action) {
       var id = text(action && action.id);
-      if (id !== 'html_open_food_map' && id !== 'html_pin_food') { return false; }
-      if (!canNavigate) { return false; }
+      if (id !== 'html_open_food_map' && id !== 'html_pin_food' && id !== 'html_call_food') { return false; }
+      if (id !== 'html_call_food' && !canNavigate) { return false; }
       return true;
     });
     if (availableActions.length > 0) {
@@ -1115,7 +1182,7 @@ const FOOD_HOME_JS: string = `
       availableActions.forEach(function (action) {
         var id = text(action && action.id);
         var button = add(row, 'button', id === 'html_open_food_map' ? 'editorial-action' : 'editorial-action secondary',
-          id === 'html_open_food_map' ? '导航去' : '固定到桌面');
+          id === 'html_open_food_map' ? '导航去' : (id === 'html_call_food' ? '拨打电话' : '固定到桌面'));
         button.type = 'button';
         button.disabled = isBusy;
         button.addEventListener('click', function (event) { event.stopPropagation(); postAction(action); });

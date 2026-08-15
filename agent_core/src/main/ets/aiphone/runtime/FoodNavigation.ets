@@ -77,3 +77,27 @@ export function buildSystemPlaceNavigationUri(destinationName: string): string {
   return 'petalmaps://navigation?daddr=' + encodeMapParam(name) +
     '&language=zh&type=drive&utm_source=com.jiuwen.appless';
 }
+
+export function normalizeFoodPhoneNumber(phone: string): string {
+  const value = phone.trim();
+  if (value.length === 0 || /[\u0000-\u001F\u007F]/.test(value)) {
+    return '';
+  }
+  if (value.indexOf(',') >= 0 || value.indexOf(';') >= 0 || value.indexOf('*') >= 0 || value.indexOf('#') >= 0) {
+    return '';
+  }
+  if (!/^\+?[0-9][0-9 ()-]*$/.test(value)) {
+    return '';
+  }
+  const normalized = value.replace(/[ ()-]/g, '');
+  const digits = normalized.charAt(0) === '+' ? normalized.substring(1) : normalized;
+  if (digits.length < 6 || digits.length > 15 || !/^[0-9]+$/.test(digits)) {
+    return '';
+  }
+  return (normalized.charAt(0) === '+' ? '+' : '') + digits;
+}
+
+export function buildFoodPhoneUri(phone: string): string {
+  const normalized = normalizeFoodPhoneNumber(phone);
+  return normalized.length > 0 ? 'tel:' + normalized : '';
+}

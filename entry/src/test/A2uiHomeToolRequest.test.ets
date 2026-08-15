@@ -462,16 +462,15 @@ export default function a2uiHomeToolRequestTest() {
       expect(argText(resolved.args, 'sweetness')).assertEqual('半糖');
     });
 
-    it('routes explicit Luckin ordering prompts to Luckin preview', 0, () => {
+    it('does not synthesize a Luckin tool when the model selected none', 0, () => {
       const resolved = resolveA2uiHomeToolRequest(
         surfaceWithToolRequest('', '', ''),
         '帮我点一杯瑞幸生椰拿铁，半糖少冰',
         ''
       );
 
-      expect(resolved.hasTool).assertTrue();
-      expect(resolved.toolId).assertEqual('luckin.order.preview');
-      expect(resolved.actionId).assertEqual('client_intent_fallback');
+      expect(resolved.hasTool).assertFalse();
+      expect(resolved.toolId).assertEqual('');
     });
 
     it('keeps Luckin discovery prompts on food search', 0, () => {
@@ -508,7 +507,7 @@ export default function a2uiHomeToolRequestTest() {
       expect(resolved.hasTool).assertFalse();
     });
 
-    it('reroutes model-selected food search to Luckin preview for ordering', 0, () => {
+    it('preserves the model-selected tool for a Luckin ordering prompt', 0, () => {
       const resolved = resolveA2uiHomeToolRequest(
         surfaceWithToolRequest('food.search', '点一杯瑞幸冰美式', 'model_tool_request'),
         '点一杯瑞幸冰美式',
@@ -516,8 +515,8 @@ export default function a2uiHomeToolRequestTest() {
       );
 
       expect(resolved.hasTool).assertTrue();
-      expect(resolved.toolId).assertEqual('luckin.order.preview');
-      expect(resolved.actionId).assertEqual('client_luckin_order_reroute');
+      expect(resolved.toolId).assertEqual('food.search');
+      expect(resolved.actionId).assertEqual('model_tool_request');
     });
 
     it('recognizes lowercase gmail as dedicated Gmail search', 0, () => {

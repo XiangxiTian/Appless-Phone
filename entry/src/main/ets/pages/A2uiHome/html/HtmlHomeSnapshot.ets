@@ -1,4 +1,4 @@
-import { aiLogInfo } from '@loop/agent-core';
+import { aiLogInfo, buildFoodPhoneUri } from '@loop/agent-core';
 import {
   A2UI_COMPONENT_ACTION_BAR,
   A2UI_COMPONENT_AGGREGATE_SEARCH,
@@ -803,6 +803,12 @@ function appendFlightBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
 
 function appendFoodBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState, component: A2uiComponent): void {
   const foods = foodOptions(surface, component);
+  const hoursHits = foods.filter((item: A2uiFoodData): boolean =>
+    (item.openHoursToday !== undefined && item.openHoursToday.trim().length > 0) ||
+    (item.openHoursWeek !== undefined && item.openHoursWeek.trim().length > 0)
+  ).length;
+  aiLogInfo('[AIPhone][FoodHoursHtmlProjection] foods=' + foods.length.toString() +
+    ' hoursHits=' + hoursHits.toString());
   foods.forEach((item: A2uiFoodData, index: number) => {
     const block = newBlock(component.id + '-' + index.toString(), 'food-result', firstText(item.name, component.id));
     block.subtitle = item.category;
@@ -811,7 +817,22 @@ function appendFoodBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState,
     appendMetric(block.metrics, 'address', item.address);
     appendMetric(block.metrics, 'distance', item.distance);
     appendMetric(block.metrics, 'location', item.location === undefined ? '' : item.location);
+    appendMetric(block.metrics, 'openHoursToday', item.openHoursToday);
+    appendMetric(block.metrics, 'openHoursWeek', item.openHoursWeek);
+    appendMetric(block.metrics, 'pricePerPerson', item.pricePerPerson);
+    appendMetric(block.metrics, 'priceText', item.priceText);
+    appendMetric(block.metrics, 'priceSource', item.priceSource);
+    appendMetric(block.metrics, 'rating', item.rating);
+    appendMetric(block.metrics, 'ratingText', item.ratingText);
+    appendMetric(block.metrics, 'ratingSource', item.ratingSource);
+    appendMetric(block.metrics, 'businessStatus', item.businessStatus);
+    appendMetric(block.metrics, 'businessStatusLabel', item.businessStatusLabel);
     appendMetric(block.metrics, 'source', block.source === undefined ? '' : block.source);
+    const phoneUri = buildFoodPhoneUri(textOf(item.phone));
+    if (phoneUri.length > 0) {
+      appendMetric(block.metrics, 'phone', item.phone);
+      appendMetric(block.metrics, 'phoneSource', item.phoneSource);
+    }
     const payload = JSON.stringify({
       index: index,
       name: textOf(item.name),
@@ -821,6 +842,9 @@ function appendFoodBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState,
     });
     block.actions.push(clientAction('html_pin_food', '固定到桌面', payload, component.id));
     block.actions.push(clientAction('html_open_food_map', '导航去', payload, component.id));
+    if (phoneUri.length > 0) {
+      block.actions.push(clientAction('html_call_food', '拨打电话', payload, component.id));
+    }
     document.blocks.push(block);
   });
 }

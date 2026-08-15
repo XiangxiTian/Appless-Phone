@@ -4518,6 +4518,9 @@ const HTML_HOME_JS: string = `
     if (!confirmAction) { return null; }
     return {
       deptId: actionArg(confirmAction, 'deptId'),
+      deptName: actionArg(confirmAction, 'deptName'),
+      address: actionArg(confirmAction, 'address'),
+      distance: actionArg(confirmAction, 'distance'),
       location: actionArg(confirmAction, 'location'),
       productId: actionArg(confirmAction, 'productId'),
       skuCode: actionArg(confirmAction, 'skuCode'),
@@ -4544,6 +4547,46 @@ const HTML_HOME_JS: string = `
       args: previewArgs
     });
   }
+  function applyOptimisticLuckinOptionSelect(groupName, choiceName) {
+    var panel = document.querySelector('.luckin-option-panel');
+    if (!panel) { return; }
+    var groups = panel.querySelectorAll('.luckin-option-group');
+    for (var groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+      var group = groups[groupIndex];
+      var labelNode = group.querySelector('.luckin-option-label');
+      if (!labelNode || text(labelNode.textContent) !== groupName) { continue; }
+      var chips = group.querySelectorAll('.luckin-option-chip');
+      for (var chipIndex = 0; chipIndex < chips.length; chipIndex += 1) {
+        var chip = chips[chipIndex];
+        var selected = text(chip.textContent) === choiceName;
+        chip.classList.toggle('is-selected', selected);
+        chip.classList.toggle('is-alt', !selected);
+        chip.disabled = isBusy || selected;
+        if (selected) {
+          chip.setAttribute('aria-pressed', 'true');
+        } else {
+          chip.removeAttribute('aria-pressed');
+        }
+      }
+      break;
+    }
+    var currentBlock = luckinConfirmBlockFromData(null);
+    if (!currentBlock) { return; }
+    var nextRows = list(currentBlock.rows).map(function (row) {
+      var label = text(row && row.label);
+      if (label !== ('选项·' + groupName)) { return row; }
+      var nextValue = luckinOptionChoices(text(row && row.value)).map(function (choice) {
+        return text(choice.name) + ':' + (text(choice.name) === choiceName ? '1' : '0');
+      }).join('|');
+      return { label: label, value: nextValue };
+    });
+    var nextBlock = {};
+    Object.keys(currentBlock).forEach(function (key) {
+      nextBlock[key] = currentBlock[key];
+    });
+    nextBlock.rows = nextRows;
+    syncLuckinConfirmData(nextBlock);
+  }
   function bindLuckinOptionChip(chip, block, groupName, choice) {
     var choiceName = text(choice.name);
     var onActivate = function (event) {
@@ -4554,6 +4597,7 @@ const HTML_HOME_JS: string = `
         event.stopPropagation();
       }
       if (isBusy || choice.selected) { return; }
+      applyOptimisticLuckinOptionSelect(groupName, choiceName);
       setLuckinOptionPanelUpdating(true);
       postLuckinOptionPreview(block, groupName, choiceName);
     };

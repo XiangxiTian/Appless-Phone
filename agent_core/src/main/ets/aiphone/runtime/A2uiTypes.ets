@@ -126,6 +126,18 @@ export interface A2uiFoodData {
   distance: string;
   location?: string;
   sourceTags?: string[];
+  phone?: string;
+  phoneSource?: string;
+  openHoursToday?: string;
+  openHoursWeek?: string;
+  pricePerPerson?: number;
+  priceText?: string;
+  priceSource?: string;
+  rating?: number;
+  ratingText?: string;
+  ratingSource?: string;
+  businessStatus?: string;
+  businessStatusLabel?: string;
 }
 
 export interface A2uiFoodSearchArea {

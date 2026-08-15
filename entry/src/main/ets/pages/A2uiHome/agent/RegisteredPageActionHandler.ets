@@ -323,13 +323,24 @@ function providerError(model: A2uiRuntimeDataModel): string {
   return '';
 }
 
+function looksLikeToolIdPrompt(value: string): boolean {
+  return /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(value.trim());
+}
+
 function promptFor(actionId: string, pageActionId: string, args: Object): string {
   const values = args as HandlerArgRecord;
   const originalQuery = values['originalQuery'];
   if (typeof originalQuery === 'string' && originalQuery.trim().length > 0) {
     return originalQuery.trim();
   }
-  return pageActionId.length > 0 ? pageActionId : actionId;
+  const previewPrompt = values['previewPrompt'];
+  if (typeof previewPrompt === 'string' && previewPrompt.trim().length > 0) {
+    return previewPrompt.trim();
+  }
+  if (pageActionId.length > 0 && !looksLikeToolIdPrompt(pageActionId)) {
+    return pageActionId;
+  }
+  return actionId;
 }
 
 export class RegisteredPageActionHandler {

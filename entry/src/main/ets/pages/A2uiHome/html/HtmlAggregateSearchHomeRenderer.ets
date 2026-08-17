@@ -1268,6 +1268,18 @@ const WATERFALL_JS: string = `
   var readerStartedAt = 0;
   var readerDurationMs = 0;
   var emittedBehavior = {};
+  window.__aiphoneApplyWaterfallUpdate = function (payload) {
+    var previousCurrentId = state ? text(state.currentId) : '';
+    mergePayload(payload);
+    render();
+    postAdvanceIfNeeded();
+    if (previousCurrentId !== text(state && state.currentId)) {
+      pauseCurrentBehavior(false);
+      behaviorCandidateId = '';
+      behaviorDurationMs = 0;
+    }
+    resumeCurrentBehavior();
+  };
   function text(value) { return value === null || value === undefined ? '' : String(value); }
   function escapeHtml(value) { return text(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
   function cleanSummary(value) {
@@ -1782,18 +1794,6 @@ const WATERFALL_JS: string = `
     if (mode === 'reading' && readerCandidateId) readerStartedAt = Date.now();
     else resumeCurrentBehavior();
   });
-  window.__aiphoneApplyWaterfallUpdate = function (payload) {
-    var previousCurrentId = state ? text(state.currentId) : '';
-    mergePayload(payload);
-    render();
-    postAdvanceIfNeeded();
-    if (previousCurrentId !== text(state && state.currentId)) {
-      pauseCurrentBehavior(false);
-      behaviorCandidateId = '';
-      behaviorDurationMs = 0;
-    }
-    resumeCurrentBehavior();
-  };
   if (state) {
     mergePayload(state);
     if (directDiscovery && overlay) {

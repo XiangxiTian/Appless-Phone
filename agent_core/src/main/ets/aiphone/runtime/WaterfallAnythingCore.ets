@@ -1372,14 +1372,15 @@ export function mergeWaterfallFeedSnapshot(
     (incoming.current === null ? [] : [incoming.current]).concat(
       incoming.stable, incoming.tail, incoming.reserve ?? [])
   );
-  incoming.sources.forEach((source: WaterfallSourceState): void => {
-    next = mergeWaterfallBatchState(
-      next,
-      candidates.filter((candidate: WaterfallCandidate): boolean => candidate.source === source.source),
-      source,
-      nowMs
-    );
-  });
+  if (incoming.sources.length > 0) {
+    next = mergeWaterfallBatchState(next, candidates, incoming.sources[0], nowMs);
+    incoming.sources.slice(1).forEach((source: WaterfallSourceState): void => {
+      const received = copySourceState(source);
+      received.inFlight = false;
+      received.reservedCount = 0;
+      replaceSource(next.sources, received);
+    });
+  }
   return planLoads ? finalizeUpdate(next) : { state: next, loadRequests: [] };
 }
 

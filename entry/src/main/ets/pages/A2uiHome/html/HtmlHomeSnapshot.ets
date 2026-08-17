@@ -73,6 +73,11 @@ import { gmailOpenDraftAction, gmailReplyDraftAction } from '@loop/agent-core';
 import { mailReplyDraftAction } from '@loop/agent-core';
 import { isMediaVideoResult, mediaVideoPlaybackAction, officialMediaVideoPlaybackUrl } from '@loop/agent-core';
 import {
+  travelCalendarActionForFlight,
+  travelCalendarActionForOption,
+  travelCalendarActionForTrain
+} from '../travel/TravelCalendarAction';
+import {
   SocialHubConnectionData,
   SocialHubDraftData,
   SocialHubItemData,
@@ -668,8 +673,12 @@ function appendTravelBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
   options.forEach((item: A2uiTravelOptionData, index: number) => {
     const block = newBlock(component.id + '-' + index.toString(), 'travel-option', firstText(item.title, item.id, component.id));
     block.subtitle = joinText([item.from, item.to], ' -> ');
-    block.status = item.status;
+    block.status = item.selected === true ? '已选择' :
+      (item.recommendationLabels !== undefined && item.recommendationLabels.length > 0 ?
+        item.recommendationLabels[0] : item.status);
     block.source = firstText(item.sourceTag, item.source);
+    block.calendarConflict = item.calendarConflict === true;
+    block.calendarConflictTitle = textOf(item.calendarConflictTitle);
     appendMetric(block.metrics, 'source', item.source);
     appendMetric(block.metrics, 'from', item.from);
     appendMetric(block.metrics, 'to', item.to);
@@ -679,6 +688,11 @@ function appendTravelBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
     appendMetric(block.metrics, 'price', item.price);
     appendMetric(block.metrics, 'price', item.price);
     appendMetric(block.metrics, 'availability', item.availability);
+    appendMetric(block.metrics, 'recommendation', item.recommendationLabels?.join(' · '));
+    appendMetric(block.metrics, 'doorToDoorDuration', item.doorToDoorDuration);
+    appendMetric(block.metrics, 'leaveOriginAt', item.leaveOriginAt);
+    appendMetric(block.metrics, 'finalArrivalAt', item.finalArrivalAt);
+    appendMetric(block.metrics, 'feasibilityReason', item.feasibilityReason);
     appendMetric(block.rows, 'detail', item.detail);
     if (item.source === 'train') {
       const trainCode = textOf(item.trainCode);
@@ -703,6 +717,36 @@ function appendTravelBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
         appendTrainBookingActions(block, component.id, item.bookingUrl);
       }
     }
+    if (item.source === 'flight') {
+      const flightActionPayload = JSON.stringify({
+        index: index,
+        id: textOf(item.id),
+        source: textOf(item.source),
+        flightNo: textOf(item.title),
+        depTime: textOf(item.depart),
+        dep: textOf(item.from),
+        arr: textOf(item.to),
+        depart: textOf(item.depart),
+        from: textOf(item.from),
+        to: textOf(item.to),
+        fromCode: textOf(item.fromCode),
+        toCode: textOf(item.toCode),
+        travelDate: textOf(item.travelDate)
+      });
+      const bookingAction = clientAction(
+        'flight.booking.ctrip.open', '去携程订票', flightActionPayload, component.id
+      );
+      bookingAction.variant = 'primary';
+      block.actions.push(bookingAction);
+    }
+    if (item.source === 'train' || item.source === 'flight') {
+      const calendarAction = travelCalendarActionForOption(item, component.id);
+      const htmlCalendarAction = clientAction(
+        calendarAction.id, calendarAction.label, calendarAction.prompt, component.id
+      );
+      htmlCalendarAction.variant = calendarAction.variant;
+      block.actions.push(htmlCalendarAction);
+    }
     block.actions.push(clientAction('html_pin_travel', '固定到桌面', JSON.stringify({
       index: index,
       id: textOf(item.id),
@@ -725,6 +769,8 @@ function appendTrainBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState
     const block = newBlock(component.id + '-' + index.toString(), 'train-option', firstText(item.trainCode, component.id));
     block.subtitle = joinText([item.from, item.to], ' -> ');
     block.status = item.status;
+    block.calendarConflict = item.calendarConflict === true;
+    block.calendarConflictTitle = textOf(item.calendarConflictTitle);
     appendMetric(block.metrics, 'from', item.from);
     appendMetric(block.metrics, 'to', item.to);
     appendMetric(block.metrics, 'depart', item.depart);
@@ -753,6 +799,12 @@ function appendTrainBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState
     } else {
       appendTrainBookingActions(block, component.id, item.bookingUrl);
     }
+    const calendarAction = travelCalendarActionForTrain(item, component.id);
+    const htmlCalendarAction = clientAction(
+      calendarAction.id, calendarAction.label, calendarAction.prompt, component.id
+    );
+    htmlCalendarAction.variant = calendarAction.variant;
+    block.actions.push(htmlCalendarAction);
     block.actions.push(clientAction('html_pin_train', '固定到桌面', JSON.stringify({
       index: index,
       trainCode: textOf(item.trainCode),
@@ -774,6 +826,8 @@ function appendFlightBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
     const block = newBlock(component.id + '-' + index.toString(), 'flight-option', firstText(item.flightNo, item.airline, component.id));
     block.subtitle = joinText([item.dep, item.arr], ' -> ');
     block.status = item.status;
+    block.calendarConflict = item.calendarConflict === true;
+    block.calendarConflictTitle = textOf(item.calendarConflictTitle);
     const retryDate = firstDateText(
       componentTitleOf(component),
       componentBodyOf(component),
@@ -790,13 +844,26 @@ function appendFlightBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
     appendMetric(block.metrics, 'depTime', item.depTime);
     appendMetric(block.metrics, 'arrTime', item.arrTime);
     appendMetric(block.metrics, 'price', item.price);
-    block.actions.push(clientAction('html_pin_flight', '固定到桌面', JSON.stringify({
+    const actionPayload = JSON.stringify({
       index: index,
       flightNo: textOf(item.flightNo),
       depTime: textOf(item.depTime),
       dep: textOf(item.dep),
-      arr: textOf(item.arr)
-    }), component.id));
+      arr: textOf(item.arr),
+      fromCode: textOf(item.depCode),
+      toCode: textOf(item.arrCode),
+      travelDate: textOf(item.travelDate)
+    });
+    const bookingAction = clientAction('flight.booking.ctrip.open', '去携程订票', actionPayload, component.id);
+    bookingAction.variant = 'primary';
+    block.actions.push(bookingAction);
+    const calendarAction = travelCalendarActionForFlight(item, component.id);
+    const htmlCalendarAction = clientAction(
+      calendarAction.id, calendarAction.label, calendarAction.prompt, component.id
+    );
+    htmlCalendarAction.variant = calendarAction.variant;
+    block.actions.push(htmlCalendarAction);
+    block.actions.push(clientAction('html_pin_flight', '固定到桌面', actionPayload, component.id));
     document.blocks.push(block);
   });
 }

@@ -100,6 +100,7 @@ export struct HomePage {
   @Prop checkoutWebKind: CheckoutWebKind = 'payment';
   @Prop checkoutWebUrl: string = '';
   @Prop checkoutWebTaskId: string = '';
+  @Prop checkoutWebContext: string = '';
   @Prop showTrainPresalePanel: boolean = false;
   @Prop trainPresaleTrip: TrainPresaleTrip = emptyTrainPresaleTrip();
   @Prop trainPresaleTask: TrainPresaleTask | null = null;
@@ -507,6 +508,7 @@ export struct HomePage {
           kind: this.checkoutWebKind,
           url: this.checkoutWebUrl,
           taskId: this.checkoutWebTaskId,
+          contextText: this.checkoutWebContext,
           onClose: this.onCloseCheckoutWeb,
           onReturnUrl: this.onCheckoutWebReturn
         })

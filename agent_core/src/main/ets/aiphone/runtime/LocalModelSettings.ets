@@ -10,10 +10,11 @@ export interface LocalModelSettings {
 interface LocalModelRawConfig {
   DASHSCOPE_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
+  DEEPSEEK_BASE_URL?: string;
 }
 
 const DEEPSEEK_PROVIDER: string = 'CSI.AI';
-const DEEPSEEK_BASE_URL: string = 'https://39.96.220.235/v1/chat/completions';
+const DEFAULT_DEEPSEEK_BASE_URL: string = 'https://39.96.220.235/v1/chat/completions';
 const DEEPSEEK_MODEL: string = 'Deepseek-V4-Flash-0731';
 const DASHSCOPE_PROVIDER: string = 'DashScope';
 const DASHSCOPE_BASE_URL: string = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
@@ -22,6 +23,7 @@ const DEFAULT_CUSTOM_PARAMETERS_JSON: string = '{"enable_thinking":false}';
 
 let dashScopeApiKey: string = '';
 let deepSeekApiKey: string = '';
+let deepSeekBaseUrl: string = DEFAULT_DEEPSEEK_BASE_URL;
 
 function textOf(value: Object | string | number | boolean | null | undefined): string {
   if (value === undefined || value === null) {
@@ -40,6 +42,8 @@ export function configureLocalModelSettingsFromRawJson(rawJson: string): void {
   const parsed = JSON.parse(rawJson) as LocalModelRawConfig;
   dashScopeApiKey = textOf(parsed.DASHSCOPE_API_KEY).trim();
   deepSeekApiKey = textOf(parsed.DEEPSEEK_API_KEY).trim();
+  const configuredBaseUrl = textOf(parsed.DEEPSEEK_BASE_URL).trim();
+  deepSeekBaseUrl = configuredBaseUrl.startsWith('https://') ? configuredBaseUrl : DEFAULT_DEEPSEEK_BASE_URL;
 }
 
 export function localModelSettingsDebugSummary(): string {
@@ -52,7 +56,7 @@ export function localModelSettingsDebugSummary(): string {
 export function deepSeekModelSettings(): LocalModelSettings {
   return {
     provider: DEEPSEEK_PROVIDER,
-    baseUrl: DEEPSEEK_BASE_URL,
+    baseUrl: deepSeekBaseUrl,
     model: DEEPSEEK_MODEL,
     apiKey: deepSeekApiKey,
     customParametersJson: DEFAULT_CUSTOM_PARAMETERS_JSON,

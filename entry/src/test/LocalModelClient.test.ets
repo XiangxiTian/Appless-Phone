@@ -29,10 +29,11 @@ export default function localModelClientTest() {
     });
 
     it('defaults to CSI DeepSeek V4 Flash and preserves the DashScope DeepSeek fallback preset', 0, () => {
-      configureLocalModelSettingsFromRawJson('{"DASHSCOPE_API_KEY":"old-key","DEEPSEEK_API_KEY":"new-key"}');
+      configureLocalModelSettingsFromRawJson('{"DASHSCOPE_API_KEY":"old-key","DEEPSEEK_API_KEY":"new-key",' +
+        '"DEEPSEEK_BASE_URL":"https://model.example.test/v1/chat/completions"}');
       const settings = defaultLocalModelSettings();
       expect(settings.provider).assertEqual('CSI.AI');
-      expect(settings.baseUrl).assertEqual('https://39.96.220.235/v1/chat/completions');
+      expect(settings.baseUrl).assertEqual('https://model.example.test/v1/chat/completions');
       expect(settings.model).assertEqual('Deepseek-V4-Flash-0731');
       expect(settings.apiKey).assertEqual('new-key');
       expect(settings.customParametersJson).assertEqual('{"enable_thinking":false}');
@@ -44,6 +45,9 @@ export default function localModelClientTest() {
       expect(dashScope.apiKey).assertEqual('old-key');
       expect(cloudModelSettingsForPreset('qwen')?.model).assertEqual('deepseek-v4-flash-0731');
       expect(cloudModelSettingsForPreset('unknown')).assertNull();
+      configureLocalModelSettingsFromRawJson('{"DEEPSEEK_API_KEY":"new-key",' +
+        '"DEEPSEEK_BASE_URL":"javascript:alert(1)"}');
+      expect(defaultLocalModelSettings().baseUrl).assertEqual('https://39.96.220.235/v1/chat/completions');
       configureLocalModelSettingsFromRawJson('{}');
     });
   });

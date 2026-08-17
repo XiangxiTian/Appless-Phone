@@ -728,13 +728,13 @@ export function toolPlanningDescriptionForToolId(
   let description = definition.intent + ' risk=' + definition.riskLevel +
     ' inputSchema=' + definition.inputSchema + ' outputSchema=' + definition.outputSchema;
   if (definition.toolId === 'travel.search') {
-    description += '. Use for general train/flight travel options. Do not use for ferry or boat tickets; use dynamic.search for those unsupported transport domains.';
+    description += '. Use for general train/flight travel options. Before selecting execute, the query must contain an exact departure date, origin, and destination grounded in the current message or standard conversation context. If any is missing or ambiguous, select clarify and ask the user in your own words instead of calling the tool. Do not use for ferry or boat tickets; use dynamic.search for those unsupported transport domains.';
   } else if (definition.toolId === 'time') {
     description += '. Use only when the current device date or time is explicitly required. Input must be {}. It reads the device clock and never calls a network provider.';
   } else if (definition.toolId === 'train.search') {
-    description += '. Use for railway, high-speed rail, bullet train, station-to-station, 12306, or train schedule requests.';
+    description += '. Use for railway, high-speed rail, bullet train, station-to-station, 12306, or train schedule requests. Before selecting execute, require an exact departure date, origin, and destination grounded in the standard conversation context; otherwise select clarify and ask naturally.';
   } else if (definition.toolId === 'flight.search') {
-    description += '. Use for flight, airline, airport, or flight-board requests.';
+    description += '. Use for flight, airline, airport, or flight-board requests. Before selecting execute, require an exact departure date, origin, and destination grounded in the standard conversation context; otherwise select clarify and ask naturally.';
   } else if (definition.toolId === 'hotel.search') {
     description += '. Use for real hotel discovery through RollingGo. Input must be JSON with originQuery, place, placeType, countryCode, checkInDate in YYYY-MM-DD, stayNights, adultCount, childCount, childAgeDetails, roomCount, currency, and optional size. Never omit place or dates: the provider otherwise defaults to unrelated inventory. This tool is read-only and does not create a reservation.';
   } else if (definition.toolId === 'hotel.detail') {

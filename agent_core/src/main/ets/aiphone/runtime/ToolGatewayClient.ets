@@ -1630,9 +1630,13 @@ interface RideRouteArgs {
   origin?: ToolArgValue;
   from?: ToolArgValue;
   start?: ToolArgValue;
+  originLocation?: ToolArgValue;
+  fromLocation?: ToolArgValue;
   destination?: ToolArgValue;
   to?: ToolArgValue;
   end?: ToolArgValue;
+  destinationLocation?: ToolArgValue;
+  toLocation?: ToolArgValue;
   city?: ToolArgValue;
 }
 
@@ -3047,6 +3051,8 @@ interface RideRoute {
   origin: string;
   destination: string;
   city: string;
+  originLocation: string;
+  destinationLocation: string;
 }
 
 interface RidePoint {
@@ -3086,10 +3092,14 @@ function rideRouteFromArgs(args: Object | null): RideRoute {
   const origin = rideArgText(parsed, ['origin', 'from', 'start']);
   const destination = rideArgText(parsed, ['destination', 'to', 'end']);
   const city = rideArgText(parsed, ['city']);
+  const originLocation = rideArgText(parsed, ['originLocation', 'fromLocation']);
+  const destinationLocation = rideArgText(parsed, ['destinationLocation', 'toLocation']);
   return {
     origin: origin,
     destination: destination,
-    city: city
+    city: city,
+    originLocation: originLocation,
+    destinationLocation: destinationLocation
   };
 }
 
@@ -3362,6 +3372,45 @@ function ridePointFromSearchPayload(name: string, payload: Object): RidePoint {
   };
 }
 
+function ridePointFromLocation(name: string, location: string, city: string): RidePoint | null {
+  const normalized = location.trim();
+  const parts = normalized.split(',');
+  if (parts.length !== 2) return null;
+  const longitude = Number(parts[0]);
+  const latitude = Number(parts[1]);
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude) ||
+    longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
+    return null;
+  }
+  return {
+    name,
+    lng: longitude.toString(),
+    lat: latitude.toString(),
+    location: longitude.toString() + ',' + latitude.toString(),
+    city: city
+  };
+}
+
+function rideAmapResolutionTargets(
+  originPoint: RidePoint | null,
+  destinationPoint: RidePoint | null
+): string[] {
+  const targets: string[] = [];
+  if (originPoint === null) targets.push('origin');
+  if (destinationPoint === null) targets.push('destination');
+  return targets;
+}
+
+export function rideAmapResolutionTargetsForTest(
+  originLocation: string,
+  destinationLocation: string
+): string[] {
+  return rideAmapResolutionTargets(
+    ridePointFromLocation('起点', originLocation, '深圳'),
+    ridePointFromLocation('终点', destinationLocation, '深圳')
+  );
+}
+
 function ridePointFromAmapResolution(name: string, resolution: AmapLocationResolution): RidePoint {
   const parts = resolution.location.split(',');
   return {
@@ -3401,8 +3450,9 @@ function rideKnownMockLocation(name: string, fallback: string): string {
   return fallback;
 }
 
-function rideMockPoint(name: string, fallbackLocation: string): RidePoint {
-  const location = rideKnownMockLocation(name, fallbackLocation);
+function rideMockPoint(name: string, fallbackLocation: string, preferredLocation: string = ''): RidePoint {
+  const direct = ridePointFromLocation(name, preferredLocation, '深圳');
+  const location = direct === null ? rideKnownMockLocation(name, fallbackLocation) : direct.location;
   const parts = location.split(',');
   return {
     name: name,
@@ -4250,8 +4300,8 @@ async function callMockRideEstimateResults(toolId: string, args: Object | null):
       rideErrorResult('模拟打车', toolId, '需要补充起点和终点', '请同时提供打车起点和终点；模拟数据也需要明确路线。')
     ];
   }
-  const originPoint = rideMockPoint(route.origin, '114.066231,22.657805');
-  const destinationPoint = rideMockPoint(route.destination, '114.060432,22.548829');
+  const originPoint = rideMockPoint(route.origin, '114.066231,22.657805', route.originLocation);
+  const destinationPoint = rideMockPoint(route.destination, '114.060432,22.548829', route.destinationLocation);
   const traceId = rideMockTraceId(originPoint, destinationPoint);
   const estimatePayload = rideMockEstimatePayload(traceId);
   const results: DynamicGenericToolResult[] = [
@@ -4340,10 +4390,19 @@ async function callStructuredRideReadResults(toolId: string, args: Object | null
   let amapLink = '';
   let didiUrl = '';
   let amapResolveError = '';
-  if (amapGeocodeKey.length > 0) {
+  originPoint = ridePointFromLocation(route.origin, route.originLocation, route.city);
+  destinationPoint = ridePointFromLocation(route.destination, route.destinationLocation, route.city);
+  amapOriginPoint = originPoint;
+  amapDestinationPoint = destinationPoint;
+  const amapResolutionTargets = rideAmapResolutionTargets(amapOriginPoint, amapDestinationPoint);
+  if (amapGeocodeKey.length > 0 && amapResolutionTargets.length > 0) {
     try {
-      amapOriginPoint = await resolveAmapRidePoint(route.origin, route.city, amapGeocodeKey);
-      amapDestinationPoint = await resolveAmapRidePoint(route.destination, route.city, amapGeocodeKey);
+      if (amapResolutionTargets.indexOf('origin') >= 0) {
+        amapOriginPoint = await resolveAmapRidePoint(route.origin, route.city, amapGeocodeKey);
+      }
+      if (amapResolutionTargets.indexOf('destination') >= 0) {
+        amapDestinationPoint = await resolveAmapRidePoint(route.destination, route.city, amapGeocodeKey);
+      }
     } catch (error) {
       amapResolveError = describeThrown(error);
     }
@@ -4362,8 +4421,12 @@ async function callStructuredRideReadResults(toolId: string, args: Object | null
   } else {
     try {
       didiUrl = rideDidiQueryMcpUrl();
-      originPoint = await resolveDidiRidePoint(didiUrl, route.origin, didiCity);
-      destinationPoint = await resolveDidiRidePoint(didiUrl, route.destination, didiCity);
+      if (originPoint === null) {
+        originPoint = await resolveDidiRidePoint(didiUrl, route.origin, didiCity);
+      }
+      if (destinationPoint === null) {
+        destinationPoint = await resolveDidiRidePoint(didiUrl, route.destination, didiCity);
+      }
     } catch (error) {
       results.push(rideErrorResult('滴滴', toolId, '滴滴 MCP 调用失败', describeThrown(error)));
     }
@@ -6168,7 +6231,10 @@ function flightToTravelOption(item: A2uiFlightData, index: number): A2uiTravelOp
     price: item.price,
     availability: '',
     status: item.status.length > 0 ? item.status : '计划',
-    detail: item.airline
+    detail: item.airline,
+    travelDate: item.travelDate,
+    fromCode: item.depCode,
+    toCode: item.arrCode
   };
 }
 
@@ -6532,6 +6598,9 @@ function parseFlightTextToA2ui(text: string): A2uiFlightData {
     airline: airline,
     dep: routeMatch === null ? '' : routeMatch[1],
     arr: routeMatch === null ? '' : routeMatch[2],
+    depCode: routeMatch !== null && routeMatch[1].length === 3 ? routeMatch[1] : '',
+    arrCode: routeMatch !== null && routeMatch[2].length === 3 ? routeMatch[2] : '',
+    travelDate: timeMatch === null ? '' : timeMatch[1].substring(0, 10),
     depTime: timeMatch === null ? '' : timeMatch[1],
     arrTime: timeMatch === null ? '' : timeMatch[2],
     status: statusMatch === null ? '计划' : statusMatch[1],
@@ -6552,12 +6621,19 @@ export function flightRecordForA2ui(item: FlightProviderRecord | string): A2uiFl
     return parseFlightTextToA2ui(trimmed);
   }
   const flightNo = firstText([item.FlightNo, item.flightNo, item.flight_no, item.fnum, item.Fnum, item.flightNumber, item.flight_number, item.flight]);
+  const departureTime = firstText([item.FlightDeptimePlanDate, item.FlightDeptimeReadyDate,
+    item.FlightDeptimeDate, item.FlightDepTime, item.depTime, item.dep_time, item.departureTime,
+    item.std, item.scheduleDepTime]);
+  const dateMatch = /\d{4}-\d{2}-\d{2}/.exec(departureTime);
   return {
     flightNo: flightNo,
     airline: firstText([item.FlightCompany, item.airline, item.airlineName, item.AirlineName, item.carrier, item.carrierName]),
     dep: firstText([item.FlightDepAirport, item.depAirportName, item.depAirport, item.departureAirport, item.departure, item.dep, item.dep_city, item.FlightDepcode]),
     arr: firstText([item.FlightArrAirport, item.arrAirportName, item.arrAirport, item.arrivalAirport, item.arrival, item.arr, item.arr_city, item.FlightArrcode]),
-    depTime: firstText([item.FlightDeptimePlanDate, item.FlightDeptimeReadyDate, item.FlightDeptimeDate, item.FlightDepTime, item.depTime, item.dep_time, item.departureTime, item.std, item.scheduleDepTime]),
+    depCode: firstText([item.FlightDepcode]).toUpperCase(),
+    arrCode: firstText([item.FlightArrcode]).toUpperCase(),
+    travelDate: dateMatch === null ? '' : dateMatch[0],
+    depTime: departureTime,
     arrTime: firstText([item.FlightArrtimePlanDate, item.FlightArrtimeReadyDate, item.FlightArrtimeDate, item.FlightArrTime, item.arrTime, item.arr_time, item.arrivalTime, item.sta, item.scheduleArrTime]),
     status: firstText([item.FlightState, item.FlightStatus, item.status, item.flightStatus, item.state]),
     price: firstText([item.price, item.Price, item.lowestPrice, item.LowestPrice, item.fare, item.amount])
@@ -6932,7 +7008,10 @@ export function flightDataResultFromProviderResponse(
   source: DataSource,
   wantsPrice: boolean,
   routeText: string,
-  requestDiagnostic: string = ''
+  requestDiagnostic: string = '',
+  fallbackDepCode: string = '',
+  fallbackArrCode: string = '',
+  fallbackTravelDate: string = ''
 ): DataResult {
   const sources: DataSource[] = [source];
   let payload: FlightProviderPayload = {};
@@ -6968,6 +7047,15 @@ export function flightDataResultFromProviderResponse(
   const count = results.length > 8 ? 8 : results.length;
   for (let index = 0; index < count; index++) {
     const record = flightRecordForA2ui(results[index]);
+    if ((record.depCode === undefined || record.depCode.length === 0) && fallbackDepCode.length > 0) {
+      record.depCode = fallbackDepCode;
+    }
+    if ((record.arrCode === undefined || record.arrCode.length === 0) && fallbackArrCode.length > 0) {
+      record.arrCode = fallbackArrCode;
+    }
+    if ((record.travelDate === undefined || record.travelDate.length === 0) && fallbackTravelDate.length > 0) {
+      record.travelDate = fallbackTravelDate;
+    }
     if (record.status.length === 0) {
       record.status = '计划';
     }
@@ -7068,7 +7156,10 @@ async function callStructuredFlightTool(prompt: string): Promise<DataResult> {
     localAdapterSource('飞常准', operation),
     wantsPrice,
     routeText,
-    requestBody
+    requestBody,
+    flightRoute.depCode,
+    flightRoute.arrCode,
+    date
   );
 }
 
@@ -11406,7 +11497,9 @@ async function callStructuredTrainTool(prompt: string): Promise<DataResult> {
   const top: A2uiTrainData[] = [];
   const count = parsed.length > TRAIN_RESULT_LIMIT ? TRAIN_RESULT_LIMIT : parsed.length;
   for (let index = 0; index < count; index++) {
-    top.push(normalizeTrainRecord(parsed[index], bookingUrl));
+    const train = parsed[index];
+    train.travelDate = date;
+    top.push(normalizeTrainRecord(train, bookingUrl));
   }
 
   const timeSummary = departAfter.length > 0 ? departAfter + ' 后' : '';

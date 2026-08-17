@@ -451,7 +451,9 @@ export class LeaderAgent extends MessageDrivenAgent {
       );
       return;
     }
-    if ((decision.roundAction === 'answer' || decision.roundAction === 'clarify') &&
+    const trustedPreflightClarify: boolean = decision.roundAction === 'clarify' &&
+      decision.reasonCode === 'host_preflight_clarify';
+    if ((decision.roundAction === 'answer' || decision.roundAction === 'clarify') && !trustedPreflightClarify &&
       state.turnObservations.length === 0 && decision.requestedCapabilityIds.length > 0) {
       this.publishError(
         message,

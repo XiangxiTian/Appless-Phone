@@ -118,6 +118,9 @@ import dailyBriefCoreTest from './DailyBriefCore.test';
 import dailyBriefStoreTest from './DailyBriefStore.test';
 import dailyBriefGeneratorTest from './DailyBriefGenerator.test';
 import dailyBriefSchedulerTest from './DailyBriefScheduler.test';
+import travelSearchPreflightTest from './TravelSearchPreflight.test';
+import travelBookingProviderTest from './TravelBookingProvider.test';
+import travelCalendarActionTest from './TravelCalendarAction.test';
 
 export default function testsuite() {
   movieDemoContractTest();
@@ -240,4 +243,7 @@ export default function testsuite() {
   dailyBriefStoreTest();
   dailyBriefGeneratorTest();
   dailyBriefSchedulerTest();
+  travelSearchPreflightTest();
+  travelBookingProviderTest();
+  travelCalendarActionTest();
 }

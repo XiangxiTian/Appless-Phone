@@ -5,6 +5,9 @@ import {
   COLOR_CARD_EDGE,
   COLOR_CARD_GLOW,
   COLOR_CARD_INSET,
+  COLOR_BUTTON_TEXT,
+  COLOR_ERROR,
+  COLOR_ERROR_SOFT,
   COLOR_INK,
   COLOR_MUTED,
   COLOR_TEXT,
@@ -22,22 +25,43 @@ import {
 } from '../style/A2uiHomeTheme';
 import { componentBodyOf, componentStatusOf, componentTitleOf } from '../render/A2uiRenderData';
 import { A2UI_PANEL_BACKGROUND_COLOR, A2UI_PANEL_BORDER_COLOR, A2UI_PANEL_CORNER_RADIUS } from '../style/A2uiPanelFrameStyle';
+import {
+  travelCalendarActionForOption,
+  travelCalendarEventFromOption
+} from '../travel/TravelCalendarAction';
 import { ActionBarView } from './ActionBarView';
 import { StatusBadgeView } from './StatusBadgeView';
 import { A2uiPanelAccentView } from './common/A2uiPanelAccentView';
 
 type TravelFilterMode = 'all' | 'train' | 'flight';
 
+interface TravelTrainBookingArgs {
+  bookingUrl: string;
+}
+
 @Component
 export struct TravelOptionsView {
   @Prop surface: A2uiSurfaceState = emptyA2uiSurface();
-  @Prop component: A2uiComponent = { id: '', component: 'TravelOptions' };
+  @Prop @Watch('onComponentChange') component: A2uiComponent = { id: '', component: 'TravelOptions' };
   @Prop renderTick: number = 0;
   @Prop isBusy: boolean = false;
   @State filterMode: TravelFilterMode = 'all';
   @State expandedTravelKey: string = '';
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onPinTravelNavigationCard: (item: A2uiTravelOption) => void = (_item: A2uiTravelOption) => {};
+
+  aboutToAppear(): void {
+    this.applyComponentFilter();
+  }
+
+  private onComponentChange(): void {
+    this.applyComponentFilter();
+  }
+
+  private applyComponentFilter(): void {
+    if (this.component.variant === 'train' || this.component.variant === 'flight' ||
+      this.component.variant === 'all') this.filterMode = this.component.variant;
+  }
 
   private options(): A2uiTravelOption[] {
     return travelOptions(this.surface, this.component);
@@ -166,6 +190,29 @@ export struct TravelOptionsView {
     return next;
   }
 
+  private trainBookingAction(item: A2uiTravelOption): A2uiAction | null {
+    if (item.source !== 'train' || item.bookingUrl === undefined || item.bookingUrl.trim().length === 0) return null;
+    const args: TravelTrainBookingArgs = { bookingUrl: item.bookingUrl.trim() };
+    return {
+      id: 'train.booking.open', label: '去12306购票', prompt: '',
+      kind: 'client', variant: 'primary', args
+    };
+  }
+
+  private canAddCalendarReminder(item: A2uiTravelOption): boolean {
+    return travelCalendarEventFromOption(item) !== null;
+  }
+
+  private calendarButtonLabel(item: A2uiTravelOption): string {
+    if (item.calendarConflict === true) return '时间冲突';
+    return this.canAddCalendarReminder(item) ? '加入日历' : '缺少日期或时间，暂不能加入日历';
+  }
+
+  private calendarConflictText(item: A2uiTravelOption): string {
+    const title = item.calendarConflictTitle === undefined ? '' : item.calendarConflictTitle.trim();
+    return title.length > 0 ? '时间冲突 · 与“' + title + '”重叠' : '时间冲突 · 与系统日历已有安排重叠';
+  }
+
   private handleAction(action: A2uiAction): void {
     if (!this.isLocalTravelAction(action)) {
       this.onAction(action);
@@ -235,11 +282,55 @@ export struct TravelOptionsView {
       if (item.detail.length > 0) {
         this.DetailRow('详情', item.detail)
       }
-      Text(item.source === 'flight' ? '以飞常准返回为准，不支持订票' : '以 12306 返回为准，不支持订票')
+      if (item.doorToDoorDuration !== undefined && item.doorToDoorDuration.length > 0) {
+        this.DetailRow('门到门', item.doorToDoorDuration)
+      }
+      if (item.leaveOriginAt !== undefined && item.leaveOriginAt.length > 0) {
+        this.DetailRow('建议出发', item.leaveOriginAt)
+      }
+      if (item.finalArrivalAt !== undefined && item.finalArrivalAt.length > 0) {
+        this.DetailRow('到最终目的地', item.finalArrivalAt)
+      }
+      if (item.feasibilityReason !== undefined && item.feasibilityReason.length > 0) {
+        this.DetailRow('会议判断', item.feasibilityReason)
+      }
+      Text(item.source === 'flight' ? '以飞常准返回为准；支持订票的结果会在系统浏览器打开携程。' :
+        (this.trainBookingAction(item) === null ? '以 12306 返回为准，当前结果未提供购票入口。' :
+          '以 12306 返回为准，可继续前往官方页面购票。'))
         .fontSize(12)
         .fontColor(COLOR_MUTED)
         .lineHeight(18)
         .margin({ top: 8 })
+      if (this.trainBookingAction(item) !== null) {
+        Button('去12306购票')
+          .enabled(!this.isBusy)
+          .height(38)
+          .width('100%')
+          .fontSize(13)
+          .fontColor('#FFFFFFFF')
+          .backgroundColor(this.sourceAccent(item.source))
+          .borderRadius(10)
+          .margin({ top: 10 })
+          .onClick(() => {
+            const booking = this.trainBookingAction(item);
+            if (booking !== null) this.onAction(booking);
+          })
+        Button('支付宝购票')
+          .enabled(!this.isBusy)
+          .height(38)
+          .width('100%')
+          .fontSize(13)
+          .fontColor(this.sourceAccent(item.source))
+          .backgroundColor(this.sourceSoft(item.source))
+          .borderRadius(10)
+          .margin({ top: 8 })
+          .onClick(() => {
+            this.onAction({
+              id: 'train.booking.alipay.open', label: '支付宝购票',
+              prompt: 'alipays://platformapi/startapp?appId=20000135', kind: 'client', variant: 'secondary'
+            });
+          })
+      }
       Button(canCreateNavigationCardFromTravelOption(item) ? '固定为导航卡片' : '缺少坐标，不能固定')
         .enabled(canCreateNavigationCardFromTravelOption(item) && !this.isBusy)
         .height(38)
@@ -348,6 +439,13 @@ export struct TravelOptionsView {
                     .fontSize(12)
                     .fontColor(statusColor(item.status.indexOf('失败') >= 0 || item.status.indexOf('取消') >= 0 ? 'error' : 'ready'))
                 }
+                if (item.selected === true) {
+                  Text('已选择')
+                    .fontSize(12)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(this.sourceAccent(item.source))
+                    .margin({ left: 10 })
+                }
                 Text(this.expandedTravelKey === this.rowKey(item) ? '收起' : '详情')
                   .fontSize(12)
                   .fontWeight(FontWeight.Medium)
@@ -408,12 +506,61 @@ export struct TravelOptionsView {
               }
               .width('100%')
               .margin({ top: 12 })
+
+              if (item.recommendationLabels !== undefined && item.recommendationLabels.length > 0) {
+                Flex({ wrap: FlexWrap.Wrap }) {
+                  ForEach(item.recommendationLabels, (label: string) => {
+                    Text(label)
+                      .fontSize(11)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor(this.sourceAccent(item.source))
+                      .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                      .backgroundColor(this.sourceSoft(item.source))
+                      .borderRadius(7)
+                      .margin({ right: 6, top: 6 })
+                  })
+                }
+                .width('100%')
+                  .margin({ top: 6 })
+              }
+
+              if (item.calendarConflict === true) {
+                Text(this.calendarConflictText(item))
+                  .fontSize(12)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(COLOR_ERROR)
+                  .padding({ left: 9, right: 9, top: 6, bottom: 6 })
+                  .backgroundColor(COLOR_ERROR_SOFT)
+                  .borderRadius(8)
+                  .margin({ top: 9 })
+              }
+
+              Button(this.calendarButtonLabel(item))
+                .enabled(this.canAddCalendarReminder(item) && !this.isBusy)
+                .height(38)
+                .width('100%')
+                .fontSize(13)
+                .fontColor(item.calendarConflict === true ? COLOR_BUTTON_TEXT :
+                  (this.canAddCalendarReminder(item) ? this.sourceAccent(item.source) : COLOR_MUTED))
+                .backgroundColor(item.calendarConflict === true ? COLOR_ERROR : this.sourceSoft(item.source))
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: item.calendarConflict === true ? COLOR_ERROR :
+                    (this.canAddCalendarReminder(item) ? this.sourceLine(item.source) : COLOR_CARD_EDGE)
+                })
+                .margin({ top: 10 })
+                .onClick(() => {
+                  this.onAction(travelCalendarActionForOption(item, this.component.id));
+                })
+
             }
             .width('100%')
             .padding(16)
             .backgroundColor(this.sourceCard(item.source))
             .borderRadius(16)
-            .border({ width: 1, color: this.sourceLine(item.source) })
+            .border({ width: item.calendarConflict === true || item.selected === true ? 2 : 1,
+              color: item.calendarConflict === true ? COLOR_ERROR : this.sourceLine(item.source) })
             .shadow({ radius: 20, color: this.sourceGlow(item.source), offsetX: 0, offsetY: 9 })
             .onClick(() => {
               const key = this.rowKey(item);

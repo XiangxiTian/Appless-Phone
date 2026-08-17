@@ -31,6 +31,17 @@ const TRAVEL_DECISION: string = '{"personaId":"travel_companion","skillId":"",' 
   '"query":"我明天要从北京去上海，帮我搜索出行方案"},"required":true}],' +
   '"uiIntent":{"purpose":"展示综合出行方案","preferredDensity":"comfortable",' +
   '"requiredSections":["travel"]},"reasonCode":"travel_search"}';
+const CONTEXTUAL_TRAVEL_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":["travel.search"],"roundAction":"execute","continuationMode":"complete",' +
+  '"dataTasks":[{"localId":"travel","goal":"查询深圳到上海的出行方案",' +
+  '"allowedToolIds":["travel.search"],"toolId":"travel.search",' +
+  '"input":{"query":"8月28从深圳出发去上海"},"required":true}],' +
+  '"uiIntent":{"purpose":"展示综合出行方案","preferredDensity":"comfortable",' +
+  '"requiredSections":["travel"]},"reasonCode":"travel_search"}';
+const TRAVEL_CLARIFY_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":[],"roundAction":"clarify","continuationMode":"complete","dataTasks":[],' +
+  '"uiIntent":{"purpose":"补充出行条件","preferredDensity":"comfortable",' +
+  '"requiredSections":[]},"answer":"你从哪座城市出发？另外，下周具体哪一天出发？"}';
 const FLIGHT_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
   '"requestedCapabilityIds":["flight.search"],"roundAction":"execute","continuationMode":"complete",' +
   '"dataTasks":[{"localId":"flight","goal":"帮我查明天北京到上海的航班",' +
@@ -531,6 +542,11 @@ const rejectedHotelInputNormalizer: LeaderDataTaskInputNormalizer = (
   }
   return task.input;
 };
+
+const passthroughInputNormalizer: LeaderDataTaskInputNormalizer = (
+  _input: InputUserPayload,
+  task: LeaderDecisionDataTask
+): Object => task.input;
 
 class TravelPromptAwareModel implements LocalModel {
   prompts: string[] = [];
@@ -1059,6 +1075,67 @@ async function failsAtRound(output: string, round: number): Promise<boolean> {
 
 export default function multiAgentLeaderPlannerTest() {
   describe('multiAgentLeaderPlanner', () => {
+    it('uses standard recent messages to preflight a travel follow-up', 0, async () => {
+      const model = new QueueLocalModel([CONTEXTUAL_TRAVEL_DECISION]);
+      const input: InputUserPayload = {
+        text: '8月28从深圳出发',
+        recentMessages: [{ role: 'user', content: '我下周要去上海出差' }]
+      };
+
+      const decision = await new MultiAgentLeaderPlanner(
+        model, undefined, passthroughInputNormalizer
+      ).plan(
+        inputMessage(), input, planningContext(), 1, undefined, '2026-08-12'
+      );
+
+      expect(decision.roundAction).assertEqual('execute');
+      expect(decision.dataTasks.length).assertEqual(1);
+      expect(model.conversations.length).assertEqual(1);
+      expect(model.conversations[0][0]).assertEqual('user:我下周要去上海出差');
+    });
+
+    it('preserves a model-authored travel clarification', 0, async () => {
+      const model = new QueueLocalModel([TRAVEL_CLARIFY_DECISION]);
+      const decision = await new MultiAgentLeaderPlanner(
+        model, undefined, passthroughInputNormalizer
+      ).plan(
+        inputMessage(),
+        { text: '我下周要去上海出差' },
+        planningContext(),
+        1,
+        undefined,
+        '2026-08-12'
+      );
+
+      expect(decision.roundAction).assertEqual('clarify');
+      expect(decision.reasonCode).assertEqual('host_clarify');
+      expect(decision.requestedCapabilityIds.length).assertEqual(0);
+      expect(decision.dataTasks.length).assertEqual(0);
+      expect(decision.answer)
+        .assertEqual('你从哪座城市出发？另外，下周具体哪一天出发？');
+      expect(model.prompts.length).assertEqual(1);
+    });
+
+    it('keeps complete model-selected travel execution without rewriting its task input', 0, async () => {
+      const model = new QueueLocalModel([TRAVEL_DECISION]);
+      const decision = await new MultiAgentLeaderPlanner(
+        model, undefined, passthroughInputNormalizer
+      ).plan(
+        inputMessage(),
+        { text: '我下周五从深圳到上海出差' },
+        planningContext(),
+        1,
+        undefined,
+        '2026-08-12'
+      );
+      const taskInput = decision.dataTasks[0].input as Record<string, Object | string | number | boolean | null>;
+
+      expect(decision.roundAction).assertEqual('execute');
+      expect(decision.dataTasks.length).assertEqual(1);
+      expect(taskInput['query'])
+        .assertEqual('我明天要从北京去上海，帮我搜索出行方案');
+    });
+
     it('passes prior conversation messages to the Leader model', 0, async () => {
       const model = new QueueLocalModel([LIVE_ANSWER_WITHOUT_REASON_CODE]);
       await new MultiAgentLeaderPlanner(model).plan(

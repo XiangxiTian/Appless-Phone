@@ -90,6 +90,7 @@ import {
   partialDataResult,
   rideAmapGeocodePointForTest,
   rideAmapGeocodeKeyForTest,
+  rideAmapResolutionTargetsForTest,
   rideAmapRequestArgsForTest,
   rideDidiCityFromAmapGeocodeForTest,
   socialHubDraft,
@@ -2786,6 +2787,18 @@ export default function toolGatewayClientTest() {
       }
     });
 
+    it('geocodes only the missing ride endpoint when one coordinate is already supplied', 0, () => {
+      expect(rideAmapResolutionTargetsForTest(
+        '114.060000,22.540000', ''
+      ).join(',')).assertEqual('destination');
+      expect(rideAmapResolutionTargetsForTest(
+        '', '114.070000,22.550000'
+      ).join(',')).assertEqual('origin');
+      expect(rideAmapResolutionTargetsForTest(
+        '114.060000,22.540000', '114.070000,22.550000'
+      ).length).assertEqual(0);
+    });
+
     it('extracts Amap ride links from plain MCP text content', 0, () => {
       const response = '{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"高德打车唤端链接：https://uri.amap.com/taxi?sourceApplication=aiphone"}]}}';
 
@@ -4272,6 +4285,9 @@ export default function toolGatewayClientTest() {
 
       expect(record.dep).assertEqual('深圳宝安国际机场');
       expect(record.arr).assertEqual('上海虹桥机场');
+      expect(record.depCode).assertEqual('SZX');
+      expect(record.arrCode).assertEqual('SHA');
+      expect(record.travelDate).assertEqual('2026-06-24');
     });
 
     it('maps Meituan union delivery coupon results to food records', 0, () => {

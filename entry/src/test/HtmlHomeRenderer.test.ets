@@ -3421,9 +3421,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('data-waterfall-empty-sources')).assertLarger(-1);
       expect(html.indexOf('打开内容来源')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-reason')).assertLarger(-1);
-      expect(html.indexOf('data-waterfall-media-fallback')).assertEqual(-1);
-      expect(html.indexOf('class="waterfall-icon"')).assertLarger(-1);
-      expect(html.indexOf('scroll-snap-align: center')).assertLarger(-1);
+      expect(html.indexOf('data-waterfall-media-fallback')).assertLarger(-1);
       expect(shouldShowHomeChrome(false)).assertTrue();
       expect(shouldShowHomeChrome(true)).assertFalse();
       expect(html.indexOf('聚合搜索')).assertLarger(-1);

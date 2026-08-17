@@ -1048,6 +1048,151 @@ const WATERFALL_CSS: string = `
   min-height: 100dvh; display: grid; place-items: center; scroll-snap-align: start;
   color: var(--muted); font-size: 14px; line-height: 1.5; padding: 24px; text-align: center;
 }
+/* Light single-card discovery presentation. */
+.waterfall-card-shell {
+  position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom)); left: 14px;
+  display: flex; min-height: 0; flex-direction: column; overflow: hidden; padding: 14px;
+  border: 1px solid rgba(33, 27, 23, 0.08); border-radius: 24px; background: #fff;
+  box-shadow: 0 12px 34px rgba(44, 34, 26, 0.09); cursor: pointer;
+  transition: transform 140ms var(--ease-out), box-shadow 180ms ease-out;
+}
+.waterfall-card-shell:active { transform: scale(0.992); }
+.waterfall-card-shell:focus-visible,
+.waterfall-source-action:focus-visible,
+.waterfall-reader-head a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+.waterfall-track.video-open { overflow: hidden; scroll-snap-type: none; }
+.waterfall-card--video-fullscreen .waterfall-card-shell {
+  position: fixed; z-index: 40; inset: 0; width: 100%; height: 100dvh; padding: 0;
+  border: 0; border-radius: 0; background: #171716; box-shadow: none; transform: none;
+}
+.waterfall-cinema-stage {
+  position: relative; top: auto; right: auto; left: auto; flex: 0 0 auto;
+  height: min(46dvh, 400px); border: 0; border-radius: 16px;
+  background: #ece9e5; box-shadow: none;
+}
+.waterfall-card--video.waterfall-card--landscape .waterfall-cinema-stage {
+  width: 100%; height: auto; max-height: min(38dvh, 330px); aspect-ratio: 16 / 9;
+}
+.waterfall-card--video.waterfall-card--portrait .waterfall-cinema-stage {
+  right: auto; left: auto; width: min(72%, 290px); height: auto; max-height: min(56dvh, 500px);
+  aspect-ratio: 9 / 16; align-self: center;
+}
+.waterfall-card--video.waterfall-card--portrait .waterfall-media-cover { object-fit: contain; }
+.waterfall-card--image-text .waterfall-cinema-stage { height: min(49dvh, 420px); }
+.waterfall-cinema-stage::after { display: none; }
+.waterfall-cinema-copy {
+  position: relative; z-index: 4; top: auto; right: auto; bottom: auto; left: auto;
+  display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden;
+  padding: 16px 4px 4px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+.waterfall-card--video.waterfall-card--landscape .waterfall-cinema-copy,
+.waterfall-card--video.waterfall-card--portrait .waterfall-cinema-copy,
+.waterfall-card--image-text .waterfall-cinema-copy,
+.waterfall-card--text .waterfall-cinema-copy {
+  top: auto; bottom: auto; max-height: none; backdrop-filter: none;
+}
+.waterfall-card--text { background: var(--paper); }
+.waterfall-card--text .waterfall-card-shell { padding: 24px; }
+.waterfall-card--text .waterfall-cinema-copy { padding: 0; }
+.waterfall-cinema-meta { margin-bottom: 12px; }
+.waterfall-cinema-card h2 {
+  margin: 0; font-size: clamp(25px, 6.6vw, 34px); line-height: 1.12; letter-spacing: -0.025em;
+}
+.waterfall-card--text h2 { max-width: 14ch; font-size: clamp(32px, 8.5vw, 44px); }
+.waterfall-cinema-card p { margin-top: 10px; color: #645d56; font-size: 15px; line-height: 1.58; }
+.waterfall-card--text p { font-size: 17px; line-height: 1.72; }
+.waterfall-copy-actions {
+  align-items: center; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.waterfall-action-group { margin-left: auto; }
+.waterfall-source-action {
+  display: inline-grid; width: 44px !important; min-width: 44px; min-height: 44px;
+  place-items: center; border: 0 !important; border-radius: 999px !important;
+  background: var(--accent-soft) !important; color: var(--accent) !important;
+  padding: 0 !important; text-decoration: none; cursor: pointer;
+  transition: transform 140ms var(--ease-out), background-color 180ms ease;
+}
+.waterfall-source-action span { font-size: 22px; line-height: 1; }
+.waterfall-source-action:active { transform: scale(0.97); }
+.waterfall-video-fullscreen-toggle {
+  top: 26px; right: 26px; width: 44px; min-width: 44px; padding: 0;
+  background: rgba(20, 24, 28, 0.72); font-size: 0;
+}
+.waterfall-video-fullscreen-toggle::before { content: '⛶'; font-size: 20px; line-height: 1; }
+.waterfall-card--video-fullscreen .waterfall-video-fullscreen-toggle {
+  top: calc(12px + env(safe-area-inset-top)); right: 16px;
+}
+.waterfall-card--video-fullscreen .waterfall-video-fullscreen-toggle::before { content: '×'; font-size: 26px; }
+.waterfall-card--video-fullscreen .waterfall-cinema-stage {
+  position: absolute; inset: 0; width: 100%; height: 100dvh !important; border-radius: 0;
+  background: #171716;
+}
+.waterfall-card--video-fullscreen .waterfall-media-cover,
+.waterfall-card--video-fullscreen .waterfall-media-frame { object-fit: contain; }
+.waterfall-top-hotzone {
+  position: fixed; z-index: 5; top: 0; right: 0; left: 0; height: 72px;
+  border: 0; background: transparent; cursor: pointer;
+}
+.waterfall-toolbar {
+  opacity: 0; transform: translateY(-8px); visibility: hidden;
+  transition: opacity 160ms var(--ease-out), transform 200ms var(--ease-drawer), visibility 0s linear 200ms;
+}
+.waterfall-toolbar.revealed {
+  opacity: 1; transform: translateY(0); visibility: visible; transition-delay: 0s;
+}
+.waterfall-toolbar button,
+.waterfall-toolbar-title {
+  min-width: 44px; min-height: 44px; border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px; background: rgba(255, 255, 255, 0.68); color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 22px rgba(53,45,38,0.12);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+.waterfall-toolbar-primary { width: 44px; min-width: 44px; padding: 0 !important; font-size: 0 !important; }
+.waterfall-toolbar-primary span { font-size: 28px; line-height: 1; }
+.waterfall-toolbar-title {
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 16px;
+  font-size: 15px; font-weight: 780; pointer-events: none;
+}
+.waterfall-toolbar-secondary { border: 1px solid rgba(255, 255, 255, 0.72) !important; background: rgba(255, 255, 255, 0.68) !important; }
+.waterfall-source-control-icon {
+  width: 5px; height: 5px; border-radius: 999px; background: currentColor;
+  box-shadow: 9px 0 currentColor, 0 9px currentColor, 9px 9px currentColor;
+  transform: translate(-4px, -4px);
+}
+.waterfall-preferences .waterfall-toolbar {
+  opacity: 1; transform: none; visibility: visible; transition: none;
+}
+.waterfall-reader { background: #f8f6f2; }
+.waterfall-reader-head {
+  justify-content: space-between; opacity: 0; transform: translateY(-8px); visibility: hidden;
+  transition: opacity 160ms var(--ease-out), transform 200ms var(--ease-drawer), visibility 0s linear 200ms;
+}
+.waterfall-reader-head.revealed { opacity: 1; transform: translateY(0); visibility: visible; transition-delay: 0s; }
+.waterfall-reader-head button,
+.waterfall-reader-head a {
+  display: inline-grid; width: 44px; min-width: 44px; min-height: 44px; place-items: center;
+  border: 1px solid rgba(255,255,255,0.72); border-radius: 999px;
+  background: rgba(255,255,255,0.7); color: var(--ink); padding: 0; text-decoration: none;
+  box-shadow: 0 8px 22px rgba(53,45,38,0.12); backdrop-filter: blur(18px) saturate(145%);
+}
+.waterfall-reader-hotzone {
+  position: fixed; z-index: 1; top: 0; right: 0; left: 0; height: 72px; border: 0; background: transparent;
+}
+.waterfall-reader-body { padding: calc(82px + env(safe-area-inset-top)) 22px calc(48px + env(safe-area-inset-bottom)); }
+.waterfall-reader-layout { width: min(100%, 640px); margin: 0 auto; }
+.waterfall-reader-media {
+  height: min(44dvh, 390px); overflow: hidden; margin-bottom: 24px; border-radius: 22px;
+  background: #ebe8e3; box-shadow: 0 10px 28px rgba(53,45,38,0.10);
+}
+.waterfall-reader-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.waterfall-reader-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); }
+.waterfall-reader-source { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); text-transform: none; letter-spacing: 0; }
+.waterfall-reader h2 { max-width: 14ch; margin: 16px 0 20px; font-size: clamp(34px, 8.8vw, 50px); line-height: 1.08; }
+.waterfall-reader p { color: #423d38; font-size: 17px; line-height: 1.82; }
+.waterfall-reader--text h2 { max-width: 12ch; }
 @media (hover: hover) and (pointer: fine) {
   .waterfall-entry button:hover, .waterfall-toolbar button:hover, .waterfall-preferences label:hover {
     transform: translateY(-1px);
@@ -1066,17 +1211,24 @@ const WATERFALL_CSS: string = `
   .waterfall-reader.active,
   .waterfall-preferences.active { transition-delay: 0s !important; }
   .waterfall-video-fullscreen-toggle,
+  .waterfall-card-shell,
   .waterfall-cinema-card a,
   .waterfall-read-button,
-  .waterfall-reader-head button {
+  .waterfall-reader-head button,
+  .waterfall-reader-head a,
+  .waterfall-reader-head,
+  .waterfall-toolbar {
     transition: opacity 140ms var(--ease-out), background-color 140ms ease !important;
   }
   .waterfall-entry button:active, .waterfall-toolbar button:active, .waterfall-preferences button:active,
   .waterfall-preferences label:active, .waterfall-empty button:active { transform: none; }
   .waterfall-video-fullscreen-toggle:active,
+  .waterfall-card-shell:active,
   .waterfall-cinema-card a:active,
   .waterfall-read-button:active,
   .waterfall-reader-head button:active { transform: none; opacity: 0.82; }
+  .waterfall-reader-head,
+  .waterfall-toolbar { transform: none !important; }
 }
 `;
 
@@ -1086,6 +1238,7 @@ const WATERFALL_JS: string = `
   var track = document.getElementById('waterfall-track');
   var preferences = document.getElementById('waterfall-preferences');
   var reader = document.getElementById('waterfall-reader');
+  var toolbar = document.getElementById('waterfall-toolbar');
   var state = window.__aiphoneWaterfallInitial || null;
   var directDiscovery = window.__aiphoneWaterfallDirect === true;
   var mode = directDiscovery ? 'discovering' : 'entry';
@@ -1096,6 +1249,9 @@ const WATERFALL_JS: string = `
   var renderedCards = [];
   var alignToCurrent = false;
   var closeTimer = null;
+  var toolbarTimer = null;
+  var readerToolbarTimer = null;
+  var fullscreenVideoCard = null;
   var behaviorTimer = null;
   var behaviorCandidateId = '';
   var behaviorStartedAt = 0;
@@ -1146,6 +1302,26 @@ const WATERFALL_JS: string = `
     if (window.AIPhoneHome && typeof window.AIPhoneHome.setWaterfallFullscreen === 'function') {
       window.AIPhoneHome.setWaterfallFullscreen(active ? 'true' : 'false');
     }
+  }
+  function revealToolbar() {
+    if (!toolbar) return;
+    toolbar.classList.add('revealed');
+    if (toolbarTimer !== null) clearTimeout(toolbarTimer);
+    toolbarTimer = setTimeout(function () {
+      toolbar.classList.remove('revealed');
+      toolbarTimer = null;
+    }, 2600);
+  }
+  function revealReaderToolbar() {
+    if (!reader || typeof reader.querySelector !== 'function') return;
+    var head = reader.querySelector('.waterfall-reader-head');
+    if (!head) return;
+    head.classList.add('revealed');
+    if (readerToolbarTimer !== null) clearTimeout(readerToolbarTimer);
+    readerToolbarTimer = setTimeout(function () {
+      head.classList.remove('revealed');
+      readerToolbarTimer = null;
+    }, 2600);
   }
   function candidates(payload) {
     if (!payload) return [];
@@ -1256,6 +1432,8 @@ const WATERFALL_JS: string = `
     readerCandidateId = '';
     readerStartedAt = 0;
     readerDurationMs = 0;
+    if (readerToolbarTimer !== null) clearTimeout(readerToolbarTimer);
+    readerToolbarTimer = null;
     if (reader) reader.classList.remove('active');
     if (track) track.classList.remove('reader-open');
     if (mode === 'reading') mode = 'discovering';
@@ -1267,10 +1445,19 @@ const WATERFALL_JS: string = `
     if (!item) return;
     var summary = cleanSummary(item.summary);
     var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
-    reader.innerHTML = '<div class="waterfall-reader-head"><button type="button" data-waterfall-reader-close>关闭</button></div>' +
-      '<article class="waterfall-reader-body"><div class="waterfall-reader-source">' +
-      escapeHtml(sourceLabel(item.source) + (item.publishedAt ? ' · ' + item.publishedAt : '')) + '</div><h2>' +
-      escapeHtml(title) + '</h2>' + (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') + '</article>';
+    var readerClass = item.mediaType === 'image_text' ? 'waterfall-reader--image-text' : 'waterfall-reader--text';
+    var media = item.mediaType === 'image_text' && item.coverUrl ?
+      '<div class="waterfall-reader-media"><img src="' + escapeHtml(item.coverUrl) + '" alt="' +
+      escapeHtml(title) + '" /></div>' : '';
+    var sourceAction = item.url ? '<a href="' + escapeHtml(item.url) +
+      '" target="_self" rel="noopener noreferrer" aria-label="查看来源"><span aria-hidden="true">↗</span></a>' : '<span></span>';
+    reader.innerHTML = '<button type="button" class="waterfall-reader-hotzone" data-waterfall-reader-hotzone aria-label="显示阅读控件"></button>' +
+      '<div class="waterfall-reader-head revealed"><button type="button" data-waterfall-reader-close aria-label="关闭阅读"><span aria-hidden="true">⌄</span></button>' +
+      sourceAction + '</div><article class="waterfall-reader-body"><div class="waterfall-reader-layout ' +
+      readerClass + '">' + media + '<div class="waterfall-reader-context"><div class="waterfall-reader-source">' +
+      sourceLogoMarkup(item.source) + '<span>' + escapeHtml(sourceLabel(item.source)) + '</span></div><span>' +
+      escapeHtml(item.publishedAt || '') + '</span></div><h2>' + escapeHtml(title) + '</h2>' +
+      (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') + '</div></article>';
     reader.classList.add('active');
     track.classList.add('reader-open');
     pauseCurrentBehavior(false);
@@ -1278,6 +1465,26 @@ const WATERFALL_JS: string = `
     readerStartedAt = Date.now();
     readerDurationMs = 0;
     mode = 'reading';
+    revealReaderToolbar();
+  }
+  function toggleVideoFullscreen(videoCard) {
+    if (!videoCard) return;
+    var active = !videoCard.classList.contains('waterfall-card--video-fullscreen');
+    videoCard.classList.toggle('waterfall-card--video-fullscreen', active);
+    if (track) track.classList.toggle('video-open', active);
+    fullscreenVideoCard = active ? videoCard : null;
+    var button = typeof videoCard.querySelector === 'function' ?
+      videoCard.querySelector('[data-waterfall-video-fullscreen]') : null;
+    if (button && typeof button.setAttribute === 'function') {
+      button.setAttribute('aria-label', active ? '退出全屏' : '全屏播放');
+    }
+    if (active) {
+      pauseCurrentBehavior(false);
+      mode = 'video_fullscreen';
+    } else {
+      mode = 'discovering';
+      resumeCurrentBehavior();
+    }
   }
   function renderCandidate(item, index) {
     var embeds = state && state.mediaEmbeds ? state.mediaEmbeds : {};
@@ -1286,10 +1493,12 @@ const WATERFALL_JS: string = `
     var cover = item.coverUrl ? '<img class="waterfall-media-cover" src="' + escapeHtml(item.coverUrl) + '" alt="' + escapeHtml(item.title) +
       '" loading="lazy" decoding="async" onerror="this.hidden=true" />' : '';
     var summary = cleanSummary(item.summary);
-    var link = item.url ? '<a href="' + escapeHtml(item.url) + '" target="_self" rel="noopener noreferrer">查看来源</a>' : '';
+    var link = item.url ? '<a class="waterfall-source-action" href="' + escapeHtml(item.url) +
+      '" target="_self" rel="noopener noreferrer" aria-label="查看来源"><span aria-hidden="true">↗</span></a>' : '';
     var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
     var cardClass = item.mediaType === 'video' ?
-      'waterfall-card waterfall-cinema-card waterfall-card--video waterfall-card--landscape' :
+      'waterfall-card waterfall-cinema-card waterfall-card--video waterfall-card--' +
+        (candidateFormat(item) === 'portrait_video' ? 'portrait' : 'landscape') :
       (item.mediaType === 'image_text' ?
         'waterfall-card waterfall-cinema-card waterfall-card--image-text' :
         'waterfall-card waterfall-cinema-card waterfall-card--text');
@@ -1303,17 +1512,16 @@ const WATERFALL_JS: string = `
         (item.coverUrl ? ' poster="' + escapeHtml(item.coverUrl) + '"' : '') + '></video>' : '');
     var stage = item.mediaType === 'post' ? '' : '<div class="waterfall-cinema-stage">' + fallback + cover + frame + '</div>';
     var videoFullscreen = item.mediaType === 'video' ?
-      '<button type="button" class="waterfall-video-fullscreen-toggle" data-waterfall-video-fullscreen>全屏</button>' : '';
-    var read = item.mediaType !== 'video' ? '<button type="button" class="waterfall-read-button" data-waterfall-read="' +
-      escapeHtml(item.id) + '">阅读全文</button>' : '';
+      '<button type="button" class="waterfall-video-fullscreen-toggle" data-waterfall-video-fullscreen aria-label="全屏播放"></button>' : '';
     var reason = item.reason ? '<span class="waterfall-recommendation" aria-label="推荐理由" data-waterfall-reason>' +
       escapeHtml(item.reason) + '</span>' : '<span></span>';
     return '<article class="' + cardClass + '" data-waterfall-id="' + escapeHtml(item.id) + '" data-waterfall-media-type="' +
-      escapeHtml(item.mediaType) + '">' + stage + videoFullscreen + '<div class="waterfall-cinema-copy">' + meta + '<h2>' + escapeHtml(title) + '</h2>' +
+      escapeHtml(item.mediaType) + '"><div class="waterfall-card-shell" role="button" tabindex="0" data-waterfall-open="' + escapeHtml(item.id) + '">' +
+      stage + videoFullscreen + '<div class="waterfall-cinema-copy">' + meta + '<h2>' + escapeHtml(title) + '</h2>' +
       (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') +
       (item.publishedAt ? '<div class="waterfall-meta">' + escapeHtml(item.publishedAt) + '</div>' : '') +
       '<div class="waterfall-copy-actions">' + reason + '<div class="waterfall-action-group">' +
-      read + link + '</div></div></div></article>';
+      link + '</div></div></div></div></article>';
   }
   function renderPreferences() {
     if (!preferences || !state) return;
@@ -1432,24 +1640,40 @@ const WATERFALL_JS: string = `
     var fullscreen = target.closest('[data-waterfall-video-fullscreen]');
     if (fullscreen) {
       var videoCard = fullscreen.closest('.waterfall-card--video');
-      if (!videoCard) return;
-      var active = videoCard.classList.contains('waterfall-card--video-fullscreen');
-      if (active) videoCard.classList.remove('waterfall-card--video-fullscreen');
-      else videoCard.classList.add('waterfall-card--video-fullscreen');
-      fullscreen.textContent = active ? '全屏' : '退出全屏';
+      toggleVideoFullscreen(videoCard);
       return;
     }
-    var read = target.closest('[data-waterfall-read]');
-    if (read) {
-      openReader(read.getAttribute('data-waterfall-read'));
+    if (target.closest('.waterfall-source-action') || target.closest('.waterfall-media-frame')) return;
+    var open = target.closest('[data-waterfall-open]');
+    if (open) {
+      var item = candidateById(open.getAttribute('data-waterfall-open'));
+      if (!item) return;
+      if (item.mediaType === 'video') toggleVideoFullscreen(open.closest('.waterfall-card--video'));
+      else openReader(item.id);
       return;
     }
     if (target.closest('[data-waterfall-empty-sources]')) renderPreferences();
   });
+  track.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    var target = event.target;
+    if (!target || typeof target.closest !== 'function' ||
+      target.closest('.waterfall-source-action') || target.closest('.waterfall-media-frame') ||
+      target.closest('[data-waterfall-video-fullscreen]')) return;
+    var open = target.closest('[data-waterfall-open]');
+    if (!open) return;
+    if (typeof event.preventDefault === 'function') event.preventDefault();
+    var item = candidateById(open.getAttribute('data-waterfall-open'));
+    if (!item) return;
+    if (item.mediaType === 'video') toggleVideoFullscreen(open.closest('.waterfall-card--video'));
+    else openReader(item.id);
+  });
   if (reader) {
     reader.addEventListener('click', function (event) {
       var target = event.target;
-      if (target && typeof target.closest === 'function' && target.closest('[data-waterfall-reader-close]')) closeReader();
+      if (!target || typeof target.closest !== 'function') return;
+      if (target.closest('[data-waterfall-reader-close]')) closeReader();
+      else if (target.closest('[data-waterfall-reader-hotzone]')) revealReaderToolbar();
     });
   }
   document.addEventListener('click', function (event) {
@@ -1490,10 +1714,18 @@ const WATERFALL_JS: string = `
     });
   });
   document.querySelectorAll('[data-waterfall-preferences]').forEach(function (button) {
-    button.addEventListener('click', renderPreferences);
+    button.addEventListener('click', function () {
+      if (toolbar) toolbar.classList.remove('revealed');
+      renderPreferences();
+    });
+  });
+  document.querySelectorAll('[data-waterfall-top-hotzone]').forEach(function (button) {
+    button.addEventListener('click', revealToolbar);
   });
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && mode === 'reading') closeReader();
+    if (event.key !== 'Escape') return;
+    if (mode === 'reading') closeReader();
+    else if (fullscreenVideoCard) toggleVideoFullscreen(fullscreenVideoCard);
   });
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
@@ -1749,8 +1981,8 @@ export function renderAggregateSearchHomeDocument(
     '<main class="aggregate-shell">',
     waterfall === null ? renderAggregateMainContent(document, isBusy, false) : waterfall.aggregateHtml,
     '</main>', waterfall !== null ? '<section id="waterfall-discovery" class="waterfall-overlay' +
-      (startInDiscovery ? ' active' : '') + '"><div class="waterfall-toolbar"><button type="button" class="waterfall-toolbar-primary" aria-label="' +
-      (startInDiscovery ? '返回首页' : '返回聚合搜索') + '" data-waterfall-back><span aria-hidden="true">‹</span>&nbsp;返回</button><div class="waterfall-toolbar-tools"><button type="button" class="waterfall-toolbar-secondary" aria-label="内容来源" title="内容来源" data-waterfall-preferences><span class="waterfall-source-control-logos" aria-hidden="true"></span></button></div></div><div id="waterfall-track" class="waterfall-track">' + waterfallStatus + '</div><div id="waterfall-preferences" class="waterfall-preferences"></div><div id="waterfall-reader" class="waterfall-reader" aria-live="polite"></div></section>' : '',
+      (startInDiscovery ? ' active' : '') + '"><button type="button" class="waterfall-top-hotzone" data-waterfall-top-hotzone aria-label="显示顶部控件"></button><div id="waterfall-toolbar" class="waterfall-toolbar"><button type="button" class="waterfall-toolbar-primary" aria-label="' +
+      (startInDiscovery ? '返回首页' : '返回聚合搜索') + '" data-waterfall-back><span aria-hidden="true">‹</span></button><span class="waterfall-toolbar-title">发现</span><div class="waterfall-toolbar-tools"><button type="button" class="waterfall-toolbar-secondary" aria-label="内容来源" data-waterfall-preferences><span class="waterfall-source-control-icon" aria-hidden="true"></span></button></div></div><div id="waterfall-track" class="waterfall-track">' + waterfallStatus + '</div><div id="waterfall-preferences" class="waterfall-preferences"></div><div id="waterfall-reader" class="waterfall-reader" aria-live="polite"></div></section>' : '',
     '<script>', AGGREGATE_JS, waterfall !== null ? 'window.__aiphoneWaterfallDirect=' +
       (startInDiscovery ? 'true' : 'false') + ';window.__aiphoneWaterfallSourceLogos=' + sourceLogosJson +
       ';window.__aiphoneWaterfallInitial=' + waterfallJson + ';' + WATERFALL_JS : '', '</script></body></html>'

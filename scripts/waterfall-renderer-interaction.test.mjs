@@ -24,6 +24,7 @@ function template(name) {
 const aggregateCss = template('AGGREGATE_CSS');
 const aggregateJs = template('AGGREGATE_JS');
 const waterfallCss = template('WATERFALL_CSS');
+const waterfallJs = template('WATERFALL_JS');
 const reducedMotionCss = waterfallCss.slice(waterfallCss.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
 assert.match(aggregateCss, /\.aggregate-status-sheet-summary/);
 assert.match(aggregateCss, /\.aggregate-status-sheet/);
@@ -41,6 +42,15 @@ assert.match(waterfallCss, /\.waterfall-card--portrait/);
 assert.match(waterfallCss, /\.waterfall-card--image-text/);
 assert.match(waterfallCss, /\.waterfall-card--text/);
 assert.match(waterfallCss, /\.waterfall-card--video-fullscreen/);
+assert.match(waterfallCss, /\.waterfall-card-shell\s*\{/);
+assert.match(waterfallCss, /\.waterfall-top-hotzone\s*\{/);
+assert.match(waterfallCss, /\.waterfall-toolbar\s*\{[^}]*opacity:\s*0/s);
+assert.match(waterfallCss, /\.waterfall-toolbar\.revealed\s*\{[^}]*opacity:\s*1/s);
+assert.match(waterfallJs, /data-waterfall-open/);
+assert.doesNotMatch(waterfallJs, />阅读全文</);
+assert.match(waterfallJs, /class="waterfall-source-action"[^>]*aria-label="查看来源"/);
+assert.match(waterfallJs, /waterfall-reader--image-text/);
+assert.match(waterfallJs, /waterfall-reader--text/);
 assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*scroll-snap-stop:\s*normal/s);
 assert.match(waterfallCss, /\.waterfall-overlay\s*\{[^}]*display:\s*none[^}]*background:\s*var\(--paper\)[^}]*opacity:\s*0/s);
 assert.match(waterfallCss, /\.waterfall-overlay\.active\s*\{[^}]*display:\s*block[^}]*opacity:\s*1[^}]*animation:\s*waterfall-overlay-in 180ms var\(--ease-out\) both/s);
@@ -65,8 +75,8 @@ assert.match(waterfallCss, /\.waterfall-reader-head button\s*\{[^}]*transform 14
 assert.match(waterfallCss, /\.waterfall-video-fullscreen-toggle:active,[^}]*\.waterfall-reader-head button:active\s*\{[^}]*transform:\s*scale\(0\.97\)/s);
 assert.match(waterfallCss, /\.waterfall-video-fullscreen-toggle:focus-visible,[^}]*outline:\s*2px solid var\(--accent\)/s);
 assert.match(reducedMotionCss, /\.waterfall-reader,[^}]*\.waterfall-preferences\s*\{[^}]*transform:\s*none[^}]*opacity 140ms var\(--ease-out\)[^}]*visibility 0s linear 140ms !important/s);
-assert.match(reducedMotionCss, /\.waterfall-video-fullscreen-toggle,[^}]*\.waterfall-reader-head button\s*\{[^}]*opacity 140ms var\(--ease-out\)[^}]*background-color 140ms ease !important/s);
-assert.match(reducedMotionCss, /\.waterfall-video-fullscreen-toggle:active,[^}]*\.waterfall-reader-head button:active\s*\{[^}]*transform:\s*none[^}]*opacity:\s*0\.82/s);
+assert.match(reducedMotionCss, /\.waterfall-video-fullscreen-toggle,[^}]*\.waterfall-card-shell,[^}]*\{[^}]*opacity 140ms var\(--ease-out\)[^}]*background-color 140ms ease !important/s);
+assert.match(reducedMotionCss, /\.waterfall-video-fullscreen-toggle:active,[^}]*\.waterfall-card-shell:active,[^}]*\{[^}]*transform:\s*none[^}]*opacity:\s*0\.82/s);
 assert.match(reducedMotionCss, /\.waterfall-overlay\.active\s*\{[^}]*animation:\s*waterfall-overlay-in 140ms var\(--ease-out\) both !important/s);
 assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-card h2\s*\{[^}]*-webkit-line-clamp/s);
 assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-card p\s*\{[^}]*-webkit-line-clamp/s);
@@ -111,6 +121,10 @@ const overlay = element();
 const track = element();
 const preferences = element();
 const reader = element();
+const readerHead = element();
+reader.querySelector = (selector) => selector === '.waterfall-reader-head' ? readerHead : null;
+const toolbar = element();
+const topHotzone = element();
 const backButton = element();
 const preferencesButton = element();
 const documentListeners = {};
@@ -132,12 +146,14 @@ const document = {
     'waterfall-discovery': overlay,
     'waterfall-track': track,
     'waterfall-preferences': preferences,
-    'waterfall-reader': reader
+    'waterfall-reader': reader,
+    'waterfall-toolbar': toolbar
   })[id] ?? null,
   querySelector: () => null,
   querySelectorAll: (selector) => ({
     '[data-waterfall-back]': [backButton],
-    '[data-waterfall-preferences]': [preferencesButton]
+    '[data-waterfall-preferences]': [preferencesButton],
+    '[data-waterfall-top-hotzone]': [topHotzone]
   })[selector] ?? [],
   addEventListener: (type, listener) => {
     documentListeners[type] = listener;
@@ -167,13 +183,19 @@ const textCandidate = {
   summary: 'A long text summary for the dedicated reader',
   reason: '补充 HN 来源'
 };
+const portraitCandidate = {
+  ...candidate('portrait-current'),
+  format: 'portrait_video',
+  coverUrl: '',
+  url: 'https://example.test/portrait'
+};
 const window = {
   __aiphoneWaterfallInitial: {
     surfaceId: 'surface-1',
     currentId: 'current',
     enabledSources: ['youtube'],
     aggregateHtml: '',
-    candidates: [candidate('current'), imageCandidate, textCandidate],
+    candidates: [candidate('current'), imageCandidate, textCandidate, portraitCandidate],
     mediaEmbeds: {
       'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1'
     },
@@ -204,9 +226,13 @@ assert.equal(overlay.classList.contains('closing'), false);
 assert.match(track.innerHTML, /waterfall-card--video waterfall-card--landscape/);
 assert.match(track.innerHTML, /waterfall-card--image-text/);
 assert.match(track.innerHTML, /waterfall-card--text/);
+assert.match(track.innerHTML, /waterfall-card--video waterfall-card--portrait/);
 assert.doesNotMatch(track.innerHTML, /data-waterfall-play/);
-assert.match(track.innerHTML, /data-waterfall-read/);
-assert.match(track.innerHTML, /data-waterfall-read="image-current"/);
+assert.doesNotMatch(track.innerHTML, /data-waterfall-read/);
+assert.match(track.innerHTML, /data-waterfall-open="image-current"/);
+assert.match(track.innerHTML, /data-waterfall-open="text-current"/);
+assert.match(track.innerHTML, /class="waterfall-source-action"/);
+assert.doesNotMatch(track.innerHTML, />查看来源</);
 assert.match(track.innerHTML, /<iframe class="waterfall-media-frame"/);
 assert.match(track.innerHTML, /src="https:\/\/www\.youtube\.com\/embed\/abc123\?playsinline=1"/);
 assert.match(track.innerHTML, /current summary/);
@@ -217,6 +243,12 @@ assert.match(track.innerHTML, /标题命中查询/);
 assert.match(track.innerHTML, /data-waterfall-reason/);
 assert.match(track.innerHTML, /data-waterfall-media-fallback/);
 assert.match(track.innerHTML, /data-waterfall-video-fullscreen/);
+topHotzone.emit('click');
+assert.equal(toolbar.classList.contains('revealed'), true);
+const toolbarTimer = timers.find((timer) => timer.delay === 2600 && !timer.canceled);
+assert.ok(toolbarTimer, 'the hidden toolbar must schedule its dismissal after being revealed');
+toolbarTimer.callback();
+assert.equal(toolbar.classList.contains('revealed'), false);
 const dwellTimer = timers.find((timer) => timer.delay === 8000 && !timer.canceled);
 assert.ok(dwellTimer, 'the visible current card must schedule one dwell timer');
 now += 8000;
@@ -227,23 +259,56 @@ assert.equal(actions.at(-1)?.args?.candidateId, 'current');
 
 const videoCard = element();
 const videoFullscreenButton = {
-  textContent: '全屏',
+  ariaLabel: '全屏播放',
+  setAttribute: (name, value) => {
+    if (name === 'aria-label') videoFullscreenButton.ariaLabel = value;
+  },
   closest: (selector) => selector === '.waterfall-card--video' ? videoCard : null
 };
+videoCard.querySelector = (selector) => selector === '[data-waterfall-video-fullscreen]' ? videoFullscreenButton : null;
 track.emit('click', {
   target: {
     closest: (selector) => selector === '[data-waterfall-video-fullscreen]' ? videoFullscreenButton : null
   }
 });
 assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), true);
-assert.equal(videoFullscreenButton.textContent, '退出全屏');
+assert.equal(track.classList.contains('video-open'), true);
+assert.equal(videoFullscreenButton.ariaLabel, '退出全屏');
 track.emit('click', {
   target: {
     closest: (selector) => selector === '[data-waterfall-video-fullscreen]' ? videoFullscreenButton : null
   }
 });
 assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), false);
-assert.equal(videoFullscreenButton.textContent, '全屏');
+assert.equal(track.classList.contains('video-open'), false);
+assert.equal(videoFullscreenButton.ariaLabel, '全屏播放');
+
+const videoOpen = {
+  getAttribute: (name) => name === 'data-waterfall-open' ? 'current' : '',
+  closest: (selector) => selector === '.waterfall-card--video' ? videoCard : null
+};
+const sourceTarget = {
+  closest: (selector) => selector === '.waterfall-source-action' ? {} :
+    (selector === '[data-waterfall-open]' ? videoOpen : null)
+};
+track.emit('click', { target: sourceTarget });
+assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), false,
+  'source actions must not activate their parent card');
+const mediaTarget = {
+  closest: (selector) => selector === '.waterfall-media-frame' ? {} :
+    (selector === '[data-waterfall-open]' ? videoOpen : null)
+};
+track.emit('click', { target: mediaTarget });
+assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), false,
+  'embedded media must not activate its parent card');
+track.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-open]' ? videoOpen : null }
+});
+assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), true,
+  'the video card itself must open fullscreen');
+documentListeners.keydown({ key: 'Escape' });
+assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), false);
+assert.equal(track.classList.contains('video-open'), false);
 
 const portraitCard = element();
 portraitCard.classList.add('waterfall-card--landscape');
@@ -258,9 +323,10 @@ track.emit('load', {
 assert.equal(portraitCard.classList.contains('waterfall-card--portrait'), true);
 assert.equal(portraitCard.classList.contains('waterfall-card--landscape'), false);
 
-const readButton = { getAttribute: (name) => name === 'data-waterfall-read' ? 'text-current' : '' };
+track.scrollTop = 320;
+const textOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'text-current' : '' };
 track.emit('click', {
-  target: { closest: (selector) => selector === '[data-waterfall-read]' ? readButton : null }
+  target: { closest: (selector) => selector === '[data-waterfall-open]' ? textOpen : null }
 });
 now += 4000;
 document.hidden = true;
@@ -271,7 +337,14 @@ documentListeners.visibilitychange();
 now += 4000;
 assert.equal(reader.classList.contains('active'), true);
 assert.equal(track.classList.contains('reader-open'), true);
+assert.match(reader.innerHTML, /waterfall-reader--text/);
+assert.doesNotMatch(reader.innerHTML, /waterfall-reader-media/);
 assert.match(reader.innerHTML, /A long text summary for the dedicated reader/);
+assert.equal(track.scrollTop, 320, 'opening the reader must preserve the feed position');
+const readerToolbarTimer = timers.filter((timer) => timer.delay === 2600 && !timer.canceled).at(-1);
+assert.ok(readerToolbarTimer, 'the reader toolbar must dismiss after its reveal');
+readerToolbarTimer.callback();
+assert.equal(readerHead.classList.contains('revealed'), false);
 reader.emit('click', {
   target: { closest: (selector) => selector === '[data-waterfall-reader-close]' ? {} : null }
 });
@@ -279,6 +352,22 @@ assert.equal(reader.classList.contains('active'), false);
 assert.equal(track.classList.contains('reader-open'), false);
 assert.equal(actions.at(-1)?.args?.behavior, 'read_complete');
 assert.equal(actions.at(-1)?.args?.durationMs, 8000, 'hidden reader time must not count');
+
+const imageOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'image-current' : '' };
+let prevented = false;
+track.emit('keydown', {
+  key: 'Enter',
+  preventDefault: () => { prevented = true; },
+  target: { closest: (selector) => selector === '[data-waterfall-open]' ? imageOpen : null }
+});
+assert.equal(prevented, true);
+assert.equal(reader.classList.contains('active'), true);
+assert.match(reader.innerHTML, /waterfall-reader--image-text/);
+assert.match(reader.innerHTML, /class="waterfall-reader-media"/);
+assert.match(reader.innerHTML, /https:\/\/example\.test\/image\.jpg/);
+documentListeners.keydown({ key: 'Escape' });
+assert.equal(reader.classList.contains('active'), false);
+assert.equal(track.scrollTop, 320, 'closing the reader must restore the same feed position');
 
 const nativeVideoCard = { getAttribute: (name) => name === 'data-waterfall-id' ? 'current' : '' };
 track.emit('ended', {

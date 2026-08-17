@@ -1114,11 +1114,11 @@ const dualChannelTurn = `
 `;
 
 const cloudStreamTurn = `
-07-22 18:00:05.198 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3
-07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true
-07-22 18:00:12.700 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12
-07-22 18:00:12.798 44325 45467 I C015B0/com.example.aiphonedemo/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}
-07-22 18:00:12.801 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentTurnResult] conversation=c1 turn=t2 task=k3 status=success surface=none roundCount=1 messageChars=14
+07-22 18:00:05.198 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3
+07-22 18:00:05.199 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true
+07-22 18:00:12.700 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12
+07-22 18:00:12.798 44325 45467 I C015B0/com.jiuwen.appless/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}
+07-22 18:00:12.801 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentTurnResult] conversation=c1 turn=t2 task=k3 status=success surface=none roundCount=1 messageChars=14
 `;
 
 function textNode(type, text) {
@@ -1249,19 +1249,19 @@ test('rejects non-direct, failed, synthetic, and transport-free visible replies'
     { role: 'assistant', text: '你好！有什么可以帮助你的吗？' }
   ]);
   const beforeTerminal = (line) => cloudStreamTurn.replace(
-    '07-22 18:00:12.801 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentTurnResult]',
-    `${line}\n07-22 18:00:12.801 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentTurnResult]`
+    '07-22 18:00:12.801 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentTurnResult]',
+    `${line}\n07-22 18:00:12.801 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentTurnResult]`
   );
   const invalidLogs = [
     cloudStreamTurn.replace('status=success', 'status=error'),
     cloudStreamTurn.replace('surface=none', 'surface=surface-1'),
     cloudStreamTurn.replace(/[^\n]*\[AIPhone\]\[MultiAgentTurnResult\][^\n]*\n/, ''),
     cloudStreamTurn.replace(/[^\n]*\/NETSTACK:[^\n]*\n/, ''),
-    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentDataTask] conversation=c1 turn=t2 task=data-1 round=1 tool=travel.search predecessor=none path=none target=none binding=false'),
-    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentUiResult] conversation=c1 turn=t2 task=ui-1 surface=surface-1 state=result'),
-    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentActionRun] conversation=c1 turn=t2 task=a1 surface=s1 plan=p1 run=r1 action=payment.send source=payment.send'),
-    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ToolRequestByIntent] toolId=travel.search'),
-    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][SyntheticFallback] source=synthetic')
+    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentDataTask] conversation=c1 turn=t2 task=data-1 round=1 tool=travel.search predecessor=none path=none target=none binding=false'),
+    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentUiResult] conversation=c1 turn=t2 task=ui-1 surface=surface-1 state=result'),
+    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentActionRun] conversation=c1 turn=t2 task=a1 surface=s1 plan=p1 run=r1 action=payment.send source=payment.send'),
+    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ToolRequestByIntent] toolId=travel.search'),
+    beforeTerminal('07-22 18:00:12.750 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][SyntheticFallback] source=synthetic')
   ];
   invalidLogs.forEach((logs) => {
     assert.equal(directTextVisibleEvidence(logs, directTextLayout([]), layout, '你好').ok, false);
@@ -1284,21 +1284,21 @@ test('rejects forbidden work after terminal until the next distinct input', () =
   ];
   postTerminal.forEach((marker, index) => {
     const logs = cloudStreamTurn +
-      `07-22 18:00:13.00${index} 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: ${marker}\n`;
+      `07-22 18:00:13.00${index} 44325 44325 I A00000/com.jiuwen.appless/AIPhone: ${marker}\n`;
     assert.equal(directTextVisibleEvidence(logs, baseline, layout, '你好').ok, false);
   });
 
   const nextInputThenWork = cloudStreamTurn +
-    '07-22 18:00:13.010 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t3 task=k4\n' +
-    '07-22 18:00:13.020 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ToolRequestByIntent] toolId=travel.search\n';
+    '07-22 18:00:13.010 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t3 task=k4\n' +
+    '07-22 18:00:13.020 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ToolRequestByIntent] toolId=travel.search\n';
   assert.equal(directTextVisibleEvidence(nextInputThenWork, baseline, layout, '你好', {
     conversationId: 'c1', turnId: 't2', expectedToolIds: []
   }).ok, true);
 
   const dualChannelInput = cloudStreamTurn.replace(
-    '07-22 18:00:05.198 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3\n',
-    '07-22 18:00:05.198 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3\n' +
-    '07-22 18:00:05.198 44325 44325 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3\n'
+    '07-22 18:00:05.198 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3\n',
+    '07-22 18:00:05.198 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3\n' +
+    '07-22 18:00:05.198 44325 44325 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3\n'
   );
   assert.equal(directTextVisibleEvidence(dualChannelInput, baseline, layout, '你好').ok, true);
 });
@@ -1311,21 +1311,21 @@ test('accepts only a correlated app-owned cloud streaming model lifecycle', () =
     cloudStreamTurn.replace('[AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n', ''),
     cloudStreamTurn.replace(
       '[AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n' +
-        '07-22 18:00:12.700 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12',
+        '07-22 18:00:12.700 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12',
       '[AIPhone][ModelResponseChunk] seq=1 chars=12\n' +
-        '07-22 18:00:12.700 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true'
+        '07-22 18:00:12.700 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true'
     ),
     cloudStreamTurn.replace(
-      '07-22 18:00:12.798 44325 45467 I C015B0/com.example.aiphonedemo/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}\n',
+      '07-22 18:00:12.798 44325 45467 I C015B0/com.jiuwen.appless/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}\n',
       ''
     ) +
-      '07-22 18:00:12.900 44325 45467 I C015B0/com.example.aiphonedemo/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}\n',
+      '07-22 18:00:12.900 44325 45467 I C015B0/com.jiuwen.appless/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}\n',
     cloudStreamTurn.replace(
-      '44325 45467 I C015B0/com.example.aiphonedemo/NETSTACK',
-      '99999 45467 I C015B0/com.example.aiphonedemo/NETSTACK'
+      '44325 45467 I C015B0/com.jiuwen.appless/NETSTACK',
+      '99999 45467 I C015B0/com.jiuwen.appless/NETSTACK'
     ),
     cloudStreamTurn.replace(
-      'C015B0/com.example.aiphonedemo/NETSTACK',
+      'C015B0/com.jiuwen.appless/NETSTACK',
       'C015B0/com.example.other/NETSTACK'
     ),
     cloudStreamTurn.replace(
@@ -1339,10 +1339,10 @@ test('accepts only a correlated app-owned cloud streaming model lifecycle', () =
 
 test('keeps pending presentation markers inside the current model transport window', () => {
   const pendingPresentation = cloudStreamTurn.replace(
-    '07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n',
-    '07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n' +
-      '07-22 18:00:05.210 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][HtmlHomeDocument] source=pending kind=thinking chars=316983 blocks=0 renderTick=0\n' +
-      '07-22 18:00:05.211 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][A2uiHomeSurfaceUpdate] source=pending kind=thinking chars=316983 blocks=0\n'
+    '07-22 18:00:05.199 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n',
+    '07-22 18:00:05.199 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true\n' +
+      '07-22 18:00:05.210 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][HtmlHomeDocument] source=pending kind=thinking chars=316983 blocks=0 renderTick=0\n' +
+      '07-22 18:00:05.211 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][A2uiHomeSurfaceUpdate] source=pending kind=thinking chars=316983 blocks=0\n'
   );
 
   assert.equal(modelTransportEvidence(pendingPresentation), true);
@@ -1358,15 +1358,15 @@ test('does not treat an arbitrary app 443 response as streamed model evidence', 
 
 test('does not reuse a provider streaming response after tool planning', () => {
   const providerStream = `
-07-22 18:00:05.198 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3
-07-22 18:00:05.199 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true
-07-22 18:00:06.000 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12
-07-22 18:00:06.100 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentDataTask] conversation=c1 turn=t2 task=data-1 round=1 tool=travel.search predecessor=none path=none target=none binding=false
-07-22 18:00:06.101 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentUiTask] conversation=c1 turn=t2 task=ui-1 dataTasks=data-1
-07-22 18:00:07.000 44325 45467 I C015B0/com.example.aiphonedemo/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}
-07-22 18:00:07.100 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentDataResult] conversation=c1 turn=t2 task=data-1 tool=travel.search status=success sources=1 error=false
-07-22 18:00:07.200 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentUiResult] conversation=c1 turn=t2 task=ui-1 surface=surface-1 state=result
-07-22 18:00:07.300 44325 44325 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MultiAgentTurnResult] conversation=c1 turn=t2 task=k3 status=success surface=surface-1 roundCount=1 messageChars=14
+07-22 18:00:05.198 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentInput] conversation=c1 turn=t2 task=k3
+07-22 18:00:05.199 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ModelRequestStart] model=deepseek-v4-flash-0731 endpoint=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions stream=true
+07-22 18:00:06.000 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][ModelResponseChunk] seq=1 chars=12
+07-22 18:00:06.100 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentDataTask] conversation=c1 turn=t2 task=data-1 round=1 tool=travel.search predecessor=none path=none target=none binding=false
+07-22 18:00:06.101 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentUiTask] conversation=c1 turn=t2 task=ui-1 dataTasks=data-1
+07-22 18:00:07.000 44325 45467 I C015B0/com.jiuwen.appless/NETSTACK: LogHttpInfo: {HTTP_INFO:{"response_code":200,"content_type":"text/event-stream;charset=utf-8"},TCP_INFO:{"dst_port":443}}
+07-22 18:00:07.100 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentDataResult] conversation=c1 turn=t2 task=data-1 tool=travel.search status=success sources=1 error=false
+07-22 18:00:07.200 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentUiResult] conversation=c1 turn=t2 task=ui-1 surface=surface-1 state=result
+07-22 18:00:07.300 44325 44325 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MultiAgentTurnResult] conversation=c1 turn=t2 task=k3 status=success surface=surface-1 roundCount=1 messageChars=14
 `;
   assert.equal(modelTransportEvidence(providerStream), false);
 });
@@ -1441,7 +1441,7 @@ test('collapses adjacent identical lifecycle copies one millisecond apart across
 test('collapses a dual-channel lifecycle pair across intervening NETSTACK noise', () => {
   const withNetstackBetweenChannels = dualChannelTurn.replace(
     '07-22 09:41:13.009  4821  4821 I A03D00/JSAPP: [AIPhone][MultiAgentDataResult]',
-    '07-22 09:41:13.009  4821  4899 I C015B0/com.example.aiphonedemo/NETSTACK: ' +
+    '07-22 09:41:13.009  4821  4899 I C015B0/com.jiuwen.appless/NETSTACK: ' +
       'taskid=7 RespCode:200\n' +
       '07-22 09:41:13.010  4821  4821 I A03D00/JSAPP: [AIPhone][MultiAgentDataResult]'
   );
@@ -2002,8 +2002,8 @@ test('deduplicates one dual-channel mail detail terminal before viewport recover
     [AIPhone][MultiAgentDataTask] conversation=c1 turn=read-turn task=data1 round=1 tool=mail.thread.read predecessor=none path=none target=none binding=false provider=qq identity=qq-identity-1
     [AIPhone][MultiAgentActionResult] conversation=c1 turn=page-turn-1 task=a1 surface=s1 plan=p1 run=r1 status=success
     [AIPhone][MultiAgentDataResult] conversation=c1 turn=read-turn task=data1 tool=mail.thread.read status=success sources=1 error=false provider=qq identity=qq-identity-1
-    07-26 21:34:46.435 63634 63634 I A00000/com.example.aiphonedemo/AIPhone: [AIPhone][MailDetailInPlace] requestKeyChars=7 provider=qq identity=qq-identity-1 status=success bodyChars=701
-    07-26 21:34:46.435 63634 63634 I A03D00/com.example.aiphonedemo/JSAPP: [AIPhone][MailDetailInPlace] requestKeyChars=7 provider=qq identity=qq-identity-1 status=success bodyChars=701
+    07-26 21:34:46.435 63634 63634 I A00000/com.jiuwen.appless/AIPhone: [AIPhone][MailDetailInPlace] requestKeyChars=7 provider=qq identity=qq-identity-1 status=success bodyChars=701
+    07-26 21:34:46.435 63634 63634 I A03D00/com.jiuwen.appless/JSAPP: [AIPhone][MailDetailInPlace] requestKeyChars=7 provider=qq identity=qq-identity-1 status=success bodyChars=701
     [AIPhone][MultiAgentUiResult] conversation=c1 turn=read-turn task=ui1 surface=loop_surface_1 state=result
   `;
   const evidence = mailThreadReadEvidence(logs, {

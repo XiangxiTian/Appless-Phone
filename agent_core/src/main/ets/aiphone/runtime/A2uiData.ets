@@ -331,6 +331,7 @@ function parseModel(surface: A2uiSurfaceState): A2uiRuntimeDataModel {
       flights: Array.isArray(parsed.flights) ? parsed.flights : fallback.flights,
       travelOptions: Array.isArray(parsed.travelOptions) ? parsed.travelOptions : fallback.travelOptions,
       foods: Array.isArray(parsed.foods) ? parsed.foods : fallback.foods,
+      foodSearchContext: parsed.foodSearchContext,
       thoughts: Array.isArray(parsed.thoughts) ? parsed.thoughts : fallback.thoughts,
       summary: parsed.summary === undefined || parsed.summary === null ? fallback.summary : parsed.summary,
       trip: parsed.trip === undefined || parsed.trip === null ? fallback.trip : {

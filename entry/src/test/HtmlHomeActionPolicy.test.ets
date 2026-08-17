@@ -99,6 +99,10 @@ interface FirecrawlMonitorArgsFixture {
   confirmed?: boolean;
 }
 
+interface PhoneArgsFixture {
+  phone: string;
+}
+
 function action(id: string, prompt: string, kind: string = 'client', args: Object | null = null): A2uiAction {
   const next: A2uiAction = {
     id: id,
@@ -145,7 +149,10 @@ function documentFixture(): HtmlHomeDocument {
       source: 'amap',
       metrics: [],
       rows: [],
-      actions: [{ id: 'html_open_food_map', label: '打开地图', prompt: '{"index":0,"name":"Coffee"}', variant: 'primary', kind: 'client' }]
+      actions: [
+        { id: 'html_open_food_map', label: '打开地图', prompt: '{"index":0,"name":"Coffee"}', variant: 'primary', kind: 'client' },
+        { id: 'html_call_food', label: '拨打电话', prompt: '{"index":0,"name":"Coffee"}', variant: 'secondary', kind: 'client' }
+      ]
     }],
     actions: [{ id: 'gmail.open.web', label: 'Gmail Web', prompt: 'https://mail.google.com/', variant: 'secondary', kind: 'client' }],
     history: [],
@@ -252,11 +259,18 @@ export default function htmlHomeActionPolicyTest() {
     });
     it('allows only actions from the current HTML document snapshot', 0, () => {
       const doc = documentFixture();
+      const phoneArgs: PhoneArgsFixture = { phone: '075512345678' };
 
       expect(isHtmlHomeActionAllowed(doc, action('gmail.open.web', 'https://mail.google.com/'))).assertTrue();
       expect(isHtmlHomeActionAllowed(doc, action('gmail.open.web', 'https://evil.example/'))).assertFalse();
       expect(isHtmlHomeActionAllowed(doc, action('html_open_food_map', '{"index":0,"name":"Coffee"}'))).assertTrue();
       expect(isHtmlHomeActionAllowed(doc, action('html_open_food_map', '{"index":99,"name":"Other"}'))).assertFalse();
+      expect(isHtmlHomeActionAllowed(doc, action('html_call_food', '{"index":0,"name":"Coffee"}'))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc, action('html_call_food', '{"index":0,"name":"Other"}'))).assertFalse();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('html_call_food', '{"index":0,"name":"Coffee"}', 'client', phoneArgs))).assertFalse();
+      doc.blocks[1].actions = doc.blocks[1].actions.filter((item: HtmlHomeAction) => item.id !== 'html_call_food');
+      expect(isHtmlHomeActionAllowed(doc, action('html_call_food', '{"index":0,"name":"Coffee"}'))).assertFalse();
     });
 
     it('allows only visible Firecrawl source and monitor actions from the current document', 0, () => {

@@ -93,5 +93,25 @@ export default function a2uiSurfaceStoreTest() {
       const second = store.getSurface();
       expect(second.components[0].actions?.[0].sourceSectionId).assertEqual('tool.github');
     });
+
+    it('stores the replayable food search context from a data-model update', 0, () => {
+      const store = new A2uiSurfaceStore();
+      store.apply(parseA2uiEnvelope(
+        '{"createSurface":{"surfaceId":"food-context","root":"root","title":"Food","intent":"food"}}'
+      ));
+      store.apply(parseA2uiEnvelope(
+        '{"updateDataModel":{"surfaceId":"food-context","path":"/foodSearchContext","value":{' +
+        '"query":"附近的咖啡店","keyword":"咖啡店","searchArea":{' +
+        '"longitude":114.066,"latitude":22.636,"radiusMeters":3000,' +
+        '"name":"坂田华为基地","address":"深圳市龙岗区"}}}}'
+      ));
+
+      const model = JSON.parse(store.getSurface().dataModelJson) as Record<string, Object>;
+      const context = model['foodSearchContext'] as Record<string, Object>;
+      const area = context['searchArea'] as Record<string, Object>;
+      expect(context['keyword'] as string).assertEqual('咖啡店');
+      expect(area['name'] as string).assertEqual('坂田华为基地');
+      expect(area['radiusMeters'] as number).assertEqual(3000);
+    });
   });
 }

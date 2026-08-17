@@ -1,5 +1,6 @@
 import {
   A2uiComponent,
+  A2uiFoodSearchContext,
   WaterfallFeedState,
   WaterfallFormat,
   WaterfallRankedCandidate,
@@ -143,5 +144,6 @@ export interface HtmlHomeDocument {
   dailyBriefPreference?: DailyBriefPreference;
   activeSectionId?: string;
   executionMode?: 'parallel' | 'serial';
+  foodSearchContext?: A2uiFoodSearchContext;
   generatedAt: string;
 }

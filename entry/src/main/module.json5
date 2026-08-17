@@ -104,14 +104,14 @@
             ],
             "uris": [
               {
-                "scheme": "com.example.aiphonedemo"
+                "scheme": "com.jiuwen.appless"
               },
               {
-                "scheme": "com.example.aiphonedemo",
+                "scheme": "com.jiuwen.appless",
                 "pathStartWith": "oauth/google"
               },
               {
-                "scheme": "com.example.aiphonedemo",
+                "scheme": "com.jiuwen.appless",
                 "host": "oauth",
                 "pathStartWith": "google"
               },

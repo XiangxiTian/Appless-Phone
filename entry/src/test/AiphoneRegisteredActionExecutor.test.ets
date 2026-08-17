@@ -459,7 +459,7 @@ export default function aiphoneRegisteredActionExecutorTest() {
       expect(opener.uris[0]).assertEqual(
         'petalmaps://poidetail?center=22.5431,114.0579&z=16&marker=22.5431,114.0579&' +
         'name=%E6%B7%B1%E5%9C%B3%E6%B5%8B%E8%AF%95%E9%85%92%E5%BA%97&' +
-        'utm_source=com.example.aiphonedemo'
+        'utm_source=com.jiuwen.appless'
       );
     });
 

@@ -2547,50 +2547,32 @@ async function resolveFoodSearchLocation(place, key) {
   return { location: '', locationSource: 'none', locationLabel: '' };
 }
 
-function debugFoodSearchLog(payload) {
-  // #region agent log
-  fetch('http://127.0.0.1:7355/ingest/8ffaedf3-167e-4382-a899-3823430060c5', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '65c5d6' },
-    body: JSON.stringify({
-      sessionId: '65c5d6',
-      runId: payload.runId || 'pre-fix',
-      hypothesisId: payload.hypothesisId || 'C',
-      location: 'server.mjs:callAmapFoodSearch',
-      message: payload.message || 'food search params',
-      data: payload.data || {},
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-}
-
 async function callAmapFoodSearch(args) {
   const key = process.env.AMAP_KEY || '';
   if (key.length === 0) {
     return missingConfigResponse('food.search', args);
   }
 
-  const promptText = textOf(args.prompt);
+  const promptText = textOf(args.query) || textOf(args.prompt);
   const query = extractFoodQuery(promptText);
   let locationSource = 'none';
-  let location = parseCoordinatePair(promptText);
+  const structuredArea = args.searchArea && typeof args.searchArea === 'object' ? args.searchArea : null;
+  const structuredLongitude = structuredArea === null ? NaN : Number(structuredArea.longitude);
+  const structuredLatitude = structuredArea === null ? NaN : Number(structuredArea.latitude);
+  let location = Number.isFinite(structuredLongitude) && structuredLongitude >= -180 && structuredLongitude <= 180 &&
+    Number.isFinite(structuredLatitude) && structuredLatitude >= -90 && structuredLatitude <= 90 ?
+    `${structuredLongitude},${structuredLatitude}` : '';
   if (location.length > 0) {
+    locationSource = 'structured_search_area';
+  } else {
+    location = parseCoordinatePair(promptText);
+  }
+  if (locationSource !== 'structured_search_area' && location.length > 0) {
     locationSource = 'prompt_coords';
-  } else if (query.place.length > 0) {
+  } else if (location.length === 0 && query.place.length > 0) {
     const resolved = await resolveFoodSearchLocation(query.place, key);
     location = resolved.location;
     locationSource = resolved.locationSource;
-    debugFoodSearchLog({
-      hypothesisId: 'A',
-      message: 'food location resolved',
-      data: {
-        place: query.place,
-        locationSource: resolved.locationSource,
-        location: resolved.location,
-        locationLabel: resolved.locationLabel
-      }
-    });
   }
   if (location.length === 0) {
     location = defaultConfiguredLocation();
@@ -2599,18 +2581,10 @@ async function callAmapFoodSearch(args) {
     }
   }
 
-  const keyword = extractFoodKeyword(promptText);
-
-  debugFoodSearchLog({
-    hypothesisId: 'C',
-    data: {
-      place: query.place,
-      keyword,
-      locationSource,
-      locationPresent: location.length > 0,
-      promptChars: promptText.length
-    }
-  });
+  const keyword = textOf(args.keyword) || extractFoodKeyword(promptText);
+  const requestedRadius = structuredArea === null ? NaN : Number(structuredArea.radiusMeters);
+  const radius = Number.isFinite(requestedRadius) && requestedRadius > 0 ?
+    String(Math.max(100, Math.min(50000, Math.round(requestedRadius)))) : (process.env.AMAP_RADIUS || '3000');
 
   if (location.length === 0) {
     return generated(
@@ -2633,7 +2607,7 @@ async function callAmapFoodSearch(args) {
   url.searchParams.set('location', location);
   url.searchParams.set('types', '050000');
   url.searchParams.set('keywords', keyword);
-  url.searchParams.set('radius', process.env.AMAP_RADIUS || '3000');
+  url.searchParams.set('radius', radius);
   url.searchParams.set('offset', '10');
   url.searchParams.set('page', '1');
   url.searchParams.set('extensions', 'all');
@@ -2667,23 +2641,6 @@ async function callAmapFoodSearch(args) {
       return true;
     }).slice(0, 8)
     : [];
-
-  debugFoodSearchLog({
-    hypothesisId: 'A',
-    message: 'food poi results',
-    data: {
-      place: query.place,
-      keyword,
-      location,
-      locationSource,
-      radius: process.env.AMAP_RADIUS || '3000',
-      poiCount: pois.length,
-      poiPreview: pois.map(poi => ({
-        name: textOf(poi.name),
-        distance: textOf(poi.distance)
-      }))
-    }
-  });
 
   return generated(
     `已通过高德查询到附近餐饮 POI。`,

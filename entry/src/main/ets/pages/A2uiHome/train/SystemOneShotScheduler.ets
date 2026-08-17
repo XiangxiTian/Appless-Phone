@@ -1,7 +1,7 @@
 import { reminderAgentManager } from '@kit.BackgroundTasksKit';
 import { TrainPresaleTask } from './TrainPresaleTaskStore';
 
-const BUNDLE_NAME: string = 'com.example.aiphonedemo';
+const BUNDLE_NAME: string = 'com.jiuwen.appless';
 const ABILITY_NAME: string = 'EntryAbility';
 
 export interface ListedReminderRequest extends reminderAgentManager.ReminderRequest {

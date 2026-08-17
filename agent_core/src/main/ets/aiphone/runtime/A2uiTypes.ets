@@ -142,6 +142,35 @@ export interface A2uiFoodData {
   distance: string;
   location?: string;
   sourceTags?: string[];
+  phone?: string;
+  phoneSource?: string;
+  openHoursToday?: string;
+  openHoursWeek?: string;
+  pricePerPerson?: number;
+  priceText?: string;
+  priceSource?: string;
+  rating?: number;
+  ratingText?: string;
+  ratingSource?: string;
+  businessStatus?: string;
+  businessStatusLabel?: string;
+}
+
+export interface A2uiFoodSearchArea {
+  longitude: number;
+  latitude: number;
+  radiusMeters: number;
+  name: string;
+  address: string;
+}
+
+export interface A2uiFoodSearchContext {
+  query: string;
+  keyword: string;
+  brandPreference?: string;
+  brandStrict?: boolean;
+  sweetness?: string;
+  searchArea: A2uiFoodSearchArea;
 }
 
 export interface TravelStructuredData {
@@ -172,6 +201,7 @@ export interface FoodStructuredData {
   summary: string;
   foods: A2uiFoodData[];
   rows: A2uiLabelValueData[];
+  foodSearchContext?: A2uiFoodSearchContext;
 }
 
 export interface A2uiSummaryData {
@@ -298,6 +328,7 @@ export interface A2uiRuntimeDataModel {
   flights: A2uiFlightData[];
   travelOptions: A2uiTravelOptionData[];
   foods: A2uiFoodData[];
+  foodSearchContext?: A2uiFoodSearchContext;
   thoughts: string[];
   summary: A2uiSummaryData;
   trip: A2uiTripData;
@@ -323,6 +354,7 @@ export type A2uiDataValue =
   A2uiFlightData[] |
   A2uiTravelOptionData[] |
   A2uiFoodData[] |
+  A2uiFoodSearchContext |
   string[] |
   A2uiSummaryData |
   A2uiTripData |

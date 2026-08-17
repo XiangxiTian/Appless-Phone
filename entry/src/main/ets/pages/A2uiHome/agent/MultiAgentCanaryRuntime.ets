@@ -50,7 +50,6 @@ import {
   callStructuredTool,
   gmailDraftApplyAction,
   genericToolResultsA2ui,
-  isExplicitLuckinOrderPrompt,
   isMultiTaskSurface,
   appendMultiTaskSlot,
   mergeSurfaceIntoMultiTaskSurface,
@@ -1452,26 +1451,9 @@ interface MemorySurfaceOutput {
   surfaceId: string;
 }
 
-function isExplicitLuckinOrderStatusPrompt(prompt: string): boolean {
-  const text: string = prompt.trim();
-  return /瑞幸|luckin|ruixing/i.test(text) &&
-    /订单状态|订单进度|取餐码|取餐号|提货码|order status|pickup code/i.test(text);
-}
-
-function isLuckinOrderToolVisible(toolId: string, prompt: string): boolean {
-  const orderIntent: boolean = isExplicitLuckinOrderPrompt(prompt);
-  if (toolId === 'luckin.order.preview') {
-    return orderIntent;
-  }
-  if (toolId === 'luckin.order.create' || toolId === 'luckin.order.status') {
-    return orderIntent || isExplicitLuckinOrderStatusPrompt(prompt);
-  }
-  return true;
-}
-
 function canaryPlanningContext(
   previousPersonaId: string,
-  prompt: string = '',
+  _prompt: string = '',
   allowTrustedOperationTargets: boolean = false
 ): LeaderPlanningContext {
   const tools: LeaderToolMetadata[] = allToolDefinitions()
@@ -1479,8 +1461,7 @@ function canaryPlanningContext(
       definition.toolId !== 'gmail.message.send' &&
         definition.toolId !== 'social.reply.draft' &&
         definition.toolId !== 'hotel.navigate' &&
-        definition.toolId !== 'hotel.booking.open' &&
-        isLuckinOrderToolVisible(definition.toolId, prompt)
+        definition.toolId !== 'hotel.booking.open'
     )
     .map(
     (definition: ToolDefinition): LeaderToolMetadata => {

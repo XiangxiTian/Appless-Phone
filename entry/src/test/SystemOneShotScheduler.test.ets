@@ -44,12 +44,12 @@ export default function systemOneShotSchedulerTest() {
       expect(request.dateTime.second).assertEqual(expected.getSeconds());
       expect(request.wantAgent === undefined).assertFalse();
       if (request.wantAgent !== undefined) {
-        expect(request.wantAgent.pkgName).assertEqual('com.example.aiphonedemo');
+        expect(request.wantAgent.pkgName).assertEqual('com.jiuwen.appless');
         expect(request.wantAgent.abilityName).assertEqual('EntryAbility');
       }
       expect(request.maxScreenWantAgent === undefined).assertFalse();
       if (request.maxScreenWantAgent !== undefined) {
-        expect(request.maxScreenWantAgent.pkgName).assertEqual('com.example.aiphonedemo');
+        expect(request.maxScreenWantAgent.pkgName).assertEqual('com.jiuwen.appless');
         expect(request.maxScreenWantAgent.abilityName).assertEqual('EntryAbility');
       }
       expect(request.title).assertEqual('G1 开售提醒');

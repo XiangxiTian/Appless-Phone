@@ -1114,7 +1114,7 @@ const expectedDeviceLocalDate = queries.some((query) => isDailyBriefQuery(query)
 
 function appWindowRect() {
   const output = hdc(['shell', 'hidumper', '-s', 'WindowManagerService', '-a', '-a']);
-  const line = output.split('\n').find((value) => value.includes('aiphonedemo'));
+  const line = output.split('\n').find((value) => value.includes('com.jiuwen.appless'));
   if (line === undefined) {
     return null;
   }
@@ -1151,7 +1151,7 @@ function clearHilog() {
 
 function cleanBundleData() {
   try {
-    hdc(['shell', 'bm', 'clean', '-n', 'com.example.aiphonedemo', '-d']);
+    hdc(['shell', 'bm', 'clean', '-n', 'com.jiuwen.appless', '-d']);
     return true;
   } catch (error) {
     console.warn(`Could not clean bundle data: ${error instanceof Error ? error.message : String(error)}`);
@@ -1159,9 +1159,9 @@ function cleanBundleData() {
   }
 }
 
-const personaStorePath = '/data/app/el2/100/base/com.example.aiphonedemo/haps/entry/preferences/aiphone_persona_store';
+const personaStorePath = '/data/app/el2/100/base/com.jiuwen.appless/haps/entry/preferences/aiphone_persona_store';
 const personaBackupPath = `/data/local/tmp/aiphone-persona-store-${smokeRunId}`;
-const publicPersonaStorePath = '/data/app/el2/100/base/com.example.aiphonedemo/haps/entry/preferences/aiphone_public_persona';
+const publicPersonaStorePath = '/data/app/el2/100/base/com.jiuwen.appless/haps/entry/preferences/aiphone_public_persona';
 
 function publicPersonaSnapshotExists() {
   const output = hdc(['shell',
@@ -1174,7 +1174,7 @@ function publicPersonaSnapshotExists() {
 }
 
 function backupPersonaMemoryStore() {
-  hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+  hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
   const output = hdc(['shell',
     `if [ -f ${personaStorePath} ]; then cp ${personaStorePath} ${personaBackupPath} && echo PRESENT; else echo ABSENT; fi`
   ]).trim();
@@ -1188,7 +1188,7 @@ function backupPersonaMemoryStore() {
 }
 
 function restorePersonaMemoryStore(backup) {
-  hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+  hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
   const restoreCommand = backup.existed
     ? `cp ${backup.backupPath} ${personaStorePath} && cmp -s ${backup.backupPath} ${personaStorePath} && echo RESTORED`
     : `rm -f ${personaStorePath} && [ ! -f ${personaStorePath} ] && echo RESTORED`;
@@ -1344,7 +1344,7 @@ function redactPublicPersonaLayout(value) {
   return value;
 }
 
-function dumpLayout(localName = 'latest-layout.json', bundleName = 'com.example.aiphonedemo') {
+function dumpLayout(localName = 'latest-layout.json', bundleName = 'com.jiuwen.appless') {
   const remote = '/data/local/tmp/aiphone-smoke-layout.json';
   const local = join(outDir, localName);
   const redact = localName.startsWith('public-persona-');
@@ -2858,7 +2858,7 @@ async function exerciseHotelSystemAction(
       `query-${index + 1}-hotel-${actionName}-restored-ability-${backPressCount}.txt`
     );
   } while (shouldRetryHotelReturnToApp(restoredForeground.bundleName, backPressCount));
-  runtime.returnedToApp = restoredForeground.bundleName === 'com.example.aiphonedemo';
+  runtime.returnedToApp = restoredForeground.bundleName === 'com.jiuwen.appless';
   let restoredLayout = located.layout;
   let restoredLayoutPath = '';
   let restoredScreenPath = '';
@@ -2975,7 +2975,7 @@ async function verifyHotelBookingAction(layout, index, appPid, actionEvidence, a
   const bookingText = collectLayoutText(bookingLayout).join('\n');
   report.headerVisible = bookingText.includes('RollingGo 酒店预订');
   report.domainVisible = /rollinggo\.cn/i.test(bookingText) || /rollinggo\.cn/i.test(bookingLogs);
-  report.returnedToRoom = foreground.bundleName === 'com.example.aiphonedemo';
+  report.returnedToRoom = foreground.bundleName === 'com.jiuwen.appless';
 
   const loginCenter = findExactTextCenter(bookingLayout, '登录查看价格');
   if (loginCenter !== null) {
@@ -3505,15 +3505,15 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
   const expectedParallelDataToolIds = lifecycle.expectedParallelDataToolIds;
   clearHilog();
   if (!preserveAppSession) {
-    hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+    hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
     if (cleanData) {
       cleanBundleData();
     }
-    hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
+    hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.jiuwen.appless']);
   }
   await sleep(3000);
   moveAppWindowIntoScreenshot();
-  const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim().split(/\s+/)[0] || '';
+  const appPid = hdc(['shell', 'pidof', 'com.jiuwen.appless']).trim().split(/\s+/)[0] || '';
   const controls = await waitForControls();
   const directTextBaselineName = `query-${index + 1}-direct-text-baseline-layout.json`;
   let directTextBaselineLayout = null;
@@ -3982,11 +3982,11 @@ async function waitForComposioAuthEvidence() {
 
 async function runComposioAuthSmoke() {
   clearHilog();
-  hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+  hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
   if (cleanData) {
     cleanBundleData();
   }
-  hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
+  hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.jiuwen.appless']);
   await sleep(3000);
   moveAppWindowIntoScreenshot();
 
@@ -4081,7 +4081,7 @@ async function runComposioAuthSmoke() {
         );
       } while (shouldRetryHotelReturnToApp(restoredForeground.bundleName, backPressCount));
       return Object.assign(jump, {
-        returned: restoredForeground.bundleName === 'com.example.aiphonedemo',
+        returned: restoredForeground.bundleName === 'com.jiuwen.appless',
         backPressCount,
         returnAbilityPath: restoredForeground.path
       });
@@ -4160,7 +4160,7 @@ async function waitForBimLayout(prefix, predicate, attempts = 12) {
 
 async function submitBimPrompt(query, prefix) {
   clearHilog();
-  const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim().split(/\s+/)[0] || '';
+  const appPid = hdc(['shell', 'pidof', 'com.jiuwen.appless']).trim().split(/\s+/)[0] || '';
   const controls = await waitForControls(`${prefix}-controls-layout.json`);
   let typed = false;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -4212,7 +4212,7 @@ async function runBimSentinelMockSmoke() {
   if (testPoint === null) throw new Error('Sentinel debug action was not visible.');
 
   clearHilog();
-  const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim().split(/\s+/)[0] || '';
+  const appPid = hdc(['shell', 'pidof', 'com.jiuwen.appless']).trim().split(/\s+/)[0] || '';
   let reminderScreenPath = '';
   let reminderLayoutPath = '';
   let reminderMissing = false;
@@ -4338,8 +4338,8 @@ async function runBimDeviceSmoke() {
     if (queryArgs.length > 0) throw new Error('--bim does not accept query arguments.');
     if (target.length === 0) target = firstTarget();
     hdc(['shell', 'uitest', 'uiInput', 'keyEvent', 'Back']);
-    hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
-    hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
+    hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
+    hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.jiuwen.appless']);
     await sleep(3000);
     moveAppWindowIntoScreenshot();
 
@@ -4695,8 +4695,8 @@ async function runPublicPersonaSmoke() {
   let snapshotDeleted = false;
   try {
     clearHilog();
-    hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
-    hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
+    hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
+    hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.jiuwen.appless']);
     await sleep(3000);
     moveAppWindowIntoScreenshot();
     const cases = [];
@@ -4719,7 +4719,7 @@ async function runPublicPersonaSmoke() {
     let p01Terminal = { layout: null, text: '', attempts: 0, path: '' };
     let discoveryLogs = [];
     if (firstLaunch.ok) {
-      const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim();
+      const appPid = hdc(['shell', 'pidof', 'com.jiuwen.appless']).trim();
       discoveryLogs = await captureAppLogsFor(appPid, async () => {
         await sleep(250);
         const started = await startPublicPersonaDiscoveryOnDevice();
@@ -5048,7 +5048,7 @@ async function runPublicPersonaSmoke() {
     return summary;
   } finally {
     try {
-      hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+      hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
       clearHilog();
       hdc(['shell', 'rm', '-f', '/data/local/tmp/aiphone-smoke-layout.json', '/data/local/tmp/aiphone-smoke-screen.png']);
     } catch (error) {

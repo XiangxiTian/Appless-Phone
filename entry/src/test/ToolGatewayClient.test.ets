@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
+  A2uiAction,
   A2uiCallResult,
   A2uiFlightData,
   A2uiFoodData,
@@ -17,7 +18,7 @@ import {
 } from '@loop/agent-core';
 import { genericToolResults, dynamicToolConnect, summaryData } from '@loop/agent-core';
 import { planA2uiPartialUpdate, A2uiPartialUpdateResult } from '@loop/agent-core';
-import { buildSystemFoodNavigationUri, foodMapsLatLng } from '@loop/agent-core';
+import { buildFoodPhoneUri, buildSystemFoodNavigationUri, foodMapsLatLng, normalizeFoodPhoneNumber } from '@loop/agent-core';
 import { build12306BookingUrl, trainLowestAvailablePriceForTest } from '@loop/agent-core';
 import { DynamicGenericToolResult } from '@loop/agent-core';
 import { DynamicPreflightResult, DynamicToolRegistration, GenericMcpClient, McpToolCallResult, MemoryCredentialStore } from '@loop/agent-core';
@@ -62,7 +63,10 @@ import {
   foodStructuredDataResult,
   foodStructuredDataResultFromProviders,
   foodDistanceMeters,
+  foodCoordinateForTest,
+  foodGoogleSearchQueryForTest,
   foodProviderProgressRows,
+  foodRecordFromAmapPoi,
   foodRecordFromBaiduPlace,
   foodRecordsFromLuckinMcpTool,
   foodRecordsFromMcDonaldsMcpTool,
@@ -112,6 +116,11 @@ import {
   whatsAppSendConfirmedForTest,
   whatsAppProviderFailureSummaryForTest,
   resolveLuckinLocationForTest,
+  resolveLuckinActionPrompt,
+  resolveLuckinUserPromptForTest,
+  luckinPromptKeywordForTest,
+  luckinMatchPromptPreferencesForTest,
+  luckinRemarkFromPromptForTest,
   saveConfiguredMailDraft,
   sortTravelOptionsByDeparture,
   streamFoodProviderResultsWithPartials,
@@ -482,7 +491,7 @@ interface LuckinShopsPayloadFixture {
 
 interface LuckinProductSubAttributeFixture {
   attributeName: string;
-  selected: boolean;
+  selected: boolean | number | string | null;
 }
 
 interface LuckinProductAttributeFixture {
@@ -608,6 +617,35 @@ export default function toolGatewayClientTest() {
     it('falls back to the configured location for Luckin preview', 0, () => {
       expect(resolveLuckinLocationForTest('', '点一杯咖啡', '114.029506,22.609878'))
         .assertEqual('114.029506,22.609878');
+    });
+
+    it('preserves Luckin user wording across action prompt fallbacks', 0, () => {
+      expect(resolveLuckinUserPromptForTest(
+        'luckin.order.preview',
+        '',
+        '生椰拿铁，少甜，热'
+      )).assertEqual('生椰拿铁，少甜，热');
+      expect(resolveLuckinActionPrompt(
+        'luckin.order.preview',
+        JSON.parse('{"originalQuery":"帮我点一杯瑞幸生椰拿铁，少甜热"}') as Object
+      )).assertEqual('帮我点一杯瑞幸生椰拿铁，少甜热');
+      expect(luckinPromptKeywordForTest('luckin.order.preview')).assertEqual('生椰拿铁');
+    });
+
+    it('maps Luckin prompt preferences to real options without duplicate remarks', 0, () => {
+      const matched = luckinMatchPromptPreferencesForTest(
+        '帮我点一杯瑞幸生椰拿铁，少甜热',
+        [
+          ['甜度', '标准甜', '少甜', '半糖', '无糖'],
+          ['温度', '冰', '热']
+        ]
+      );
+      expect(matched.length).assertEqual(2);
+      expect(matched[0][0]).assertEqual('甜度');
+      expect(matched[0][1]).assertEqual('少甜');
+      expect(matched[1][0]).assertEqual('温度');
+      expect(matched[1][1]).assertEqual('热');
+      expect(luckinRemarkFromPromptForTest('少甜热', ['少甜', '热'])).assertEqual('');
     });
 
     it('defaults to the in-app local tool route', 0, () => {
@@ -3215,7 +3253,7 @@ export default function toolGatewayClientTest() {
           YOUTUBE_API_KEY: 'youtube-key',
           GOOGLE_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
           GOOGLE_OAUTH_CLIENT_SECRET: 'secret-456',
-          GOOGLE_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google',
+          GOOGLE_OAUTH_REDIRECT_URI: 'com.jiuwen.appless:/oauth/google',
           GOOGLE_CLOUD_PROJECT: 'aiphone-cloud'
         }));
 
@@ -4108,7 +4146,20 @@ export default function toolGatewayClientTest() {
             skuCode: 'SKU001',
             pictureUrl: 'https://img.luckincoffeecdn.com/example/latte.png',
             productAttrs: [
-              { attributeName: '温度', productSubAttrs: [{ attributeName: '冰', selected: true }, { attributeName: '热', selected: false }] }
+              {
+                attributeName: '温度',
+                productSubAttrs: [
+                  { attributeName: '冰', selected: 1 },
+                  { attributeName: '热', selected: 0 }
+                ]
+              },
+              {
+                attributeName: '糖度',
+                productSubAttrs: [
+                  { attributeName: '不另外加糖', selected: 'true' },
+                  { attributeName: '标准糖', selected: 'false' }
+                ]
+              }
             ],
             tags: ['人气']
           }
@@ -4125,12 +4176,15 @@ export default function toolGatewayClientTest() {
       expect(products[0].name).assertEqual('瑞幸 · 生椰拿铁');
       expect(products[0].category.indexOf('SKU001')).assertLarger(-1);
       expect(products[0].address.indexOf('温度:冰')).assertLarger(-1);
+      expect(products[0].address.indexOf('糖度:不另外加糖')).assertLarger(-1);
+      expect(products[0].address.indexOf('温度:热')).assertEqual(-1);
+      expect(products[0].address.indexOf('糖度:标准糖')).assertEqual(-1);
     });
 
     it('builds system map food destination search', 0, () => {
       expect(foodMapsLatLng('116.397470,39.908823')).assertEqual('39.908823,116.397470');
-      expect(buildSystemFoodNavigationUri('116.397470,39.908823', '')).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E7%9B%AE%E7%9A%84%E5%9C%B0&utm_source=com.example.aiphonedemo');
-      expect(buildSystemFoodNavigationUri('116.397470,39.908823', '116.398470,39.909823', '喜茶(深圳坂田华创里店)')).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E5%96%9C%E8%8C%B6%28%E6%B7%B1%E5%9C%B3%E5%9D%82%E7%94%B0%E5%8D%8E%E5%88%9B%E9%87%8C%E5%BA%97%29&utm_source=com.example.aiphonedemo');
+      expect(buildSystemFoodNavigationUri('116.397470,39.908823', '')).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E7%9B%AE%E7%9A%84%E5%9C%B0&utm_source=com.jiuwen.appless');
+      expect(buildSystemFoodNavigationUri('116.397470,39.908823', '116.398470,39.909823', '喜茶(深圳坂田华创里店)')).assertEqual('petalmaps://poidetail?center=39.908823,116.397470&z=16&marker=39.908823,116.397470&name=%E5%96%9C%E8%8C%B6%28%E6%B7%B1%E5%9C%B3%E5%9D%82%E7%94%B0%E5%8D%8E%E5%88%9B%E9%87%8C%E5%BA%97%29&utm_source=com.jiuwen.appless');
     });
 
     it('sorts unified travel options by departure time', 0, () => {
@@ -4275,12 +4329,40 @@ export default function toolGatewayClientTest() {
       expect(tags[0]).assertEqual('淘宝闪购');
     });
 
+    it('maps Amap tel to a normalized food phone', 0, () => {
+      const record = foodRecordFromAmapPoi({
+        name: '麦当劳 科技园店',
+        type: '餐饮服务',
+        address: '深圳市南山区科技园',
+        distance: '180',
+        location: '114.0579,22.5431',
+        tel: '400-851-7517',
+        business: {
+          cost: '42',
+          rating: '4.7',
+          opentime_today: '24小时营业',
+          opentime_week: '周一至周日:24小时营业',
+          tel: '400-851-7517'
+        }
+      });
+      expect(record.pricePerPerson).assertEqual(42);
+      expect(record.rating).assertEqual(4.7);
+      expect(record.businessStatus).assertEqual('open');
+      expect(record.businessStatusLabel).assertEqual('营业中');
+      expect(record.openHoursToday).assertEqual('24小时营业');
+      expect(record.openHoursWeek).assertEqual('周一至周日:24小时营业');
+      expect(record.phone).assertEqual('4008517517');
+      expect(record.phoneSource).assertEqual('高德');
+      expect(record.address).assertEqual('深圳市南山区科技园');
+    });
+
     it('maps Tencent map nearby POI results to food records', 0, () => {
       const record = foodRecordFromTencentMapPlace({
         title: '瑞幸咖啡 深圳科技园店',
         category: '美食:咖啡厅',
         address: '深圳市南山区科技园',
         _distance: 230,
+        telephone: '0755-1234 5678',
         location: {
           lat: 22.5431,
           lng: 114.0579
@@ -4292,6 +4374,8 @@ export default function toolGatewayClientTest() {
       expect(record.address).assertEqual('深圳市南山区科技园');
       expect(record.distance).assertEqual('230米');
       expect(record.location).assertEqual('114.0579,22.5431');
+      expect(record.phone).assertEqual('075512345678');
+      expect(record.phoneSource).assertEqual('腾讯地图');
       const tags = record.sourceTags === undefined ? [] : record.sourceTags;
       expect(tags[0]).assertEqual('腾讯地图');
     });
@@ -4300,6 +4384,7 @@ export default function toolGatewayClientTest() {
       const record = foodRecordFromBaiduPlace({
         name: '星巴克 深圳科技园店',
         address: '深圳市南山区科苑路',
+        telephone: '+86 (755) 8765-4321',
         location: {
           lat: 22.544,
           lng: 114.058
@@ -4307,23 +4392,106 @@ export default function toolGatewayClientTest() {
         detail_info: {
           tag: '美食;咖啡厅',
           distance: 410,
-          overall_rating: '4.5'
+          overall_rating: '4.5',
+          price: '68',
+          shop_hours: '周一至周五 10:30-14:00，16:30-22:00；周末营业时间请咨询门店'
         }
       });
 
+      expect(record.pricePerPerson).assertEqual(68);
+      expect(record.rating).assertEqual(4.5);
+      expect(record.businessStatus).assertEqual('unknown');
+      expect(record.openHoursToday).assertEqual('周一至周五 10:30-14:00，16:30-22:00；周末营业时间请咨询门店');
+      expect(record.openHoursWeek).assertEqual('周一至周五 10:30-14:00，16:30-22:00；周末营业时间请咨询门店');
       expect(record.name).assertEqual('星巴克 深圳科技园店');
       expect(record.category.indexOf('美食;咖啡厅')).assertLarger(-1);
       expect(record.address.indexOf('评分4.5')).assertLarger(-1);
       expect(record.distance).assertEqual('410米');
       expect(record.location).assertEqual('114.058,22.544');
+      expect(record.phone).assertEqual('+8675587654321');
+      expect(record.phoneSource).assertEqual('百度地图');
       const tags = record.sourceTags === undefined ? [] : record.sourceTags;
       expect(tags[0]).assertEqual('百度地图');
+    });
+
+    it('builds only safe single-number food phone URIs', 0, () => {
+      expect(normalizeFoodPhoneNumber(' 0755-1234 5678 ')).assertEqual('075512345678');
+      expect(buildFoodPhoneUri('+86 (755) 1234-5678')).assertEqual('tel:+8675512345678');
+      expect(buildFoodPhoneUri('tel:075512345678')).assertEqual('');
+      expect(buildFoodPhoneUri('0755-1234,5678')).assertEqual('');
+      expect(buildFoodPhoneUri('07551234;5678')).assertEqual('');
+      expect(buildFoodPhoneUri('*100#')).assertEqual('');
+      expect(buildFoodPhoneUri('07551234\n5678')).assertEqual('');
+      expect(buildFoodPhoneUri('12345')).assertEqual('');
+    });
+
+    it('keeps a valid provider phone and source when merging the same store', 0, () => {
+      const merged = aggregateFoodProviderResults([
+        {
+          provider: '高德',
+          foods: [{
+            name: '喜茶 深圳科技园店', category: '餐饮', address: '南山科技园', distance: '120米',
+            phone: 'bad:phone', sourceTags: ['高德']
+          }],
+          error: ''
+        },
+        {
+          provider: '腾讯地图',
+          foods: [{
+            name: '喜茶深圳科技园店', category: '美食', address: '南山科技园', distance: '125米',
+            phone: '0755-1234 5678', phoneSource: '腾讯地图', sourceTags: ['腾讯地图']
+          }],
+          error: ''
+        }
+      ]);
+      expect(merged.foods.length).assertEqual(1);
+      expect(merged.foods[0].phone).assertEqual('075512345678');
+      expect(merged.foods[0].phoneSource).assertEqual('腾讯地图');
+      expect(merged.foods[0].address.indexOf('0755')).assertEqual(-1);
     });
 
     it('parses food distance text for local range filters', 0, () => {
       expect(foodDistanceMeters('832米')).assertEqual(832);
       expect(foodDistanceMeters('1.2千米')).assertEqual(1200);
       expect(foodDistanceMeters('0.85公里')).assertEqual(850);
+    });
+
+    it('rejects missing food coordinates without turning empty text into zero', 0, () => {
+      expect(foodCoordinateForTest(undefined, -180, 180)).assertNull();
+      expect(foodCoordinateForTest(null, -180, 180)).assertNull();
+      expect(foodCoordinateForTest('', -180, 180)).assertNull();
+      expect(foodCoordinateForTest('   ', -90, 90)).assertNull();
+      expect(foodCoordinateForTest('not-a-coordinate', -180, 180)).assertNull();
+      expect(foodCoordinateForTest(0, -180, 180)).assertEqual(0);
+      expect(foodCoordinateForTest('0', -90, 90)).assertEqual(0);
+      expect(foodCoordinateForTest('114.0579', -180, 180)).assertEqual(114.0579);
+    });
+
+    it('rebuilds Google food text searches from the selected place instead of the stale prompt', 0, () => {
+      expect(foodGoogleSearchQueryForTest(
+        '帮我搜索深圳北站附近的咖啡店', '坂田华为基地', '咖啡店'
+      )).assertEqual('坂田华为基地附近的咖啡店');
+      expect(foodGoogleSearchQueryForTest(
+        '帮我搜索深圳北站附近的咖啡店', '', '咖啡店'
+      )).assertEqual('帮我搜索深圳北站附近的咖啡店');
+    });
+
+    it('keeps the native fallback location change promptable without structured args', 0, () => {
+      const state = foodA2uiRenderState(
+        'surface_food_fallback', '附近餐饮', '真实 provider 返回', '共 0 条', [], []
+      );
+      let locationActionKind = '';
+      for (let componentIndex = 0; componentIndex < state.components.length; componentIndex++) {
+        const actions = state.components[componentIndex].actions === undefined ?
+          [] : state.components[componentIndex].actions as A2uiAction[];
+        for (let actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+          if (actions[actionIndex].id === 'food_change_location') {
+            locationActionKind = actions[actionIndex].kind;
+          }
+        }
+      }
+
+      expect(locationActionKind).assertEqual('prompt');
     });
 
     it('deduplicates food results and merges source tags without fake rows', 0, () => {

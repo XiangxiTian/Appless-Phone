@@ -40,7 +40,7 @@ const PERSONA_IDS: string[] = [
 ];
 const PERSONA_SKILL_PATHS: Record<string, string[]> = {
   'default_companion': ['skills/default-general/SKILL.md'],
-  'food_companion': ['skills/food-search/SKILL.md', 'skills/coffee-order/SKILL.md', 'skills/milk-tea/SKILL.md'],
+  'food_companion': ['skills/food-search/SKILL.md', 'skills/milk-tea/SKILL.md'],
   'travel_companion': ['skills/travel-planning/SKILL.md', 'skills/train-planning/SKILL.md', 'skills/flight-planning/SKILL.md'],
   'work_companion': ['skills/work-assistant/SKILL.md', 'skills/mail-draft/SKILL.md', 'skills/calendar-planning/SKILL.md'],
   'entertainment_companion': ['skills/media-search/SKILL.md', 'skills/worldcup-night/SKILL.md', 'skills/youtube-search/SKILL.md'],
@@ -49,8 +49,8 @@ const PERSONA_SKILL_PATHS: Record<string, string[]> = {
 };
 const GMAIL_REVERSED_CLIENT_SCHEME = 'com.googleusercontent.apps.358078200829-covuu6l8dgvs7kaejua7mrkke7e8833b:/oauth2redirect';
 const GMAIL_OAUTH_URI_HINTS: string[] = [
-  'com.example.aiphonedemo:/oauth/google',
-  'com.example.aiphonedemo://oauth/google',
+  'com.jiuwen.appless:/oauth/google',
+  'com.jiuwen.appless://oauth/google',
   'aiphone://oauth/google',
   GMAIL_REVERSED_CLIENT_SCHEME
 ];

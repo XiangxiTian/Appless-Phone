@@ -753,7 +753,7 @@ export default function htmlHomeSnapshotTest() {
       expect(JSON.stringify(doc).length).assertLarger(0);
     });
 
-    it('adds food map block actions', 0, () => {
+    it('adds safe food map and call block actions', 0, () => {
       const food: A2uiComponent = {
         id: 'food',
         component: 'FoodChoices',
@@ -761,7 +761,7 @@ export default function htmlHomeSnapshotTest() {
       };
       const doc = createHtmlHomeDocument({
         surface: surface('food', 'ready', [root('food'), food],
-          '{"foods":[{"name":"Coffee","category":"Cafe","address":"Road","distance":"800m","location":"22,113"}]}'),
+          '{"foods":[{"name":"Coffee","category":"Cafe","address":"Road","distance":"800m","location":"22,113","phone":"0755-12345678","phoneSource":"高德","openHoursToday":"10:00-22:00","openHoursWeek":"周一至周日:10:00-22:00","pricePerPerson":42,"priceText":"人均¥42","priceSource":"高德","rating":4.7,"ratingText":"4.7分","ratingSource":"高德","businessStatus":"open","businessStatusLabel":"营业中"}]}'),
         messages: [],
         isBusy: false,
         isAwaitingFirstSurface: false
@@ -769,11 +769,31 @@ export default function htmlHomeSnapshotTest() {
       const serialized = JSON.stringify(doc.blocks);
 
       expect(serialized.indexOf('html_pin_food')).assertLarger(-1);
+      expect(serialized.indexOf('pricePerPerson')).assertLarger(-1);
+      expect(serialized.indexOf('businessStatusLabel')).assertLarger(-1);
       expect(serialized.indexOf('html_open_food_map')).assertLarger(-1);
       expect(doc.blocks[0].actions[0].prompt.indexOf('"name":"Coffee"')).assertLarger(-1);
       expect(doc.blocks[0].actions[0].prompt.indexOf('"address":"Road"')).assertLarger(-1);
       expect(doc.blocks[0].actions[0].prompt.indexOf('"location":"22,113"')).assertLarger(-1);
       expect(doc.blocks[0].actions[0].prompt.indexOf('"distance":"800m"')).assertLarger(-1);
+      expect(serialized.indexOf('"label":"phone","value":"0755-12345678"')).assertLarger(-1);
+      expect(serialized.indexOf('"label":"phoneSource","value":"高德"')).assertLarger(-1);
+      expect(serialized.indexOf('html_call_food')).assertLarger(-1);
+      const callAction = doc.blocks[0].actions.filter((item: A2uiAction) => item.id === 'html_call_food')[0];
+      expect(callAction.prompt.indexOf('phone')).assertEqual(-1);
+      expect(callAction.prompt.indexOf('tel:')).assertEqual(-1);
+      expect(callAction.args === undefined).assertTrue();
+    });
+
+    it('does not add food call actions for missing or invalid phones', 0, () => {
+      const food: A2uiComponent = { id: 'food', component: 'FoodChoices', dataPath: '/foods' };
+      const doc = createHtmlHomeDocument({
+        surface: surface('food', 'ready', [root('food'), food],
+          '{"foods":[{"name":"Missing"},{"name":"Invalid","phone":"tel:075512345678"}]}'),
+        messages: [], isBusy: false, isAwaitingFirstSurface: false
+      });
+
+      expect(JSON.stringify(doc.blocks).indexOf('html_call_food')).assertEqual(-1);
     });
 
     it('adds Gmail AI reply draft action to real thread result blocks', 0, () => {

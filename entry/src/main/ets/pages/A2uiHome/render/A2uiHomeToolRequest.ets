@@ -631,24 +631,6 @@ function inferredSocialHubToolIdForPrompt(prompt: string): string {
   return '';
 }
 
-function inferredLuckinOrderToolIdForPrompt(prompt: string): string {
-  const lowerPrompt = prompt.toLowerCase();
-  const hasLuckin = prompt.indexOf('瑞幸') >= 0 || lowerPrompt.indexOf('luckin') >= 0 || lowerPrompt.indexOf('ruixing') >= 0;
-  if (!hasLuckin) {
-    return '';
-  }
-  if (containsAny(prompt, ['只喝', '只买', '只点', '不喝', '不买', '不点', '偏好', '喜欢', '记住', '以后'])) {
-    return '';
-  }
-  if (containsAny(prompt, ['订单状态', '取餐码', '取餐号', '刷新订单', '查询订单'])) {
-    return 'luckin.order.status';
-  }
-  if (containsAny(prompt, ['点一杯', '点杯', '点个瑞幸', '点瑞幸', '帮我点', '我要点', '下单', '下一杯', '买一杯', '帮我买', '购买一杯', '购买瑞幸', '来一杯', '要一杯'])) {
-    return 'luckin.order.preview';
-  }
-  return '';
-}
-
 function hasHotVideoIntent(prompt: string): boolean {
   const lowerPrompt = prompt.toLowerCase();
   return containsAny(prompt, ['最火', '最热门', '热门', '播放量最高']) ||
@@ -757,10 +739,6 @@ function inferredToolIdForPrompt(prompt: string): string {
   const socialHubToolId = inferredSocialHubToolIdForPrompt(prompt);
   if (socialHubToolId.length > 0) {
     return socialHubToolId;
-  }
-  const luckinOrderToolId = inferredLuckinOrderToolIdForPrompt(prompt);
-  if (luckinOrderToolId.length > 0) {
-    return luckinOrderToolId;
   }
   if (containsAny(prompt, ['附近', '周边', '外卖', '咖啡', '奶茶', '餐饮', '美食', '肯德基']) &&
     containsAny(prompt, ['查', '查询', '搜索', '帮我搜', '附近', '周边'])) {
@@ -1033,7 +1011,6 @@ export function resolveA2uiHomeToolRequest(
   const forcedGmailToolId = forcedGmailToolIdForPrompt(fallbackPrompt.length > 0 ? fallbackPrompt : prompt);
   const forcedStripeReceivingToolId = inferredStripeReceivingAccountToolIdForPrompt(fallbackPrompt.length > 0 ? fallbackPrompt : prompt);
   const forcedPaymentToolId = inferredPaymentToolIdForPrompt(fallbackPrompt.length > 0 ? fallbackPrompt : prompt);
-  const forcedLuckinOrderToolId = inferredLuckinOrderToolIdForPrompt(fallbackPrompt.length > 0 ? fallbackPrompt : prompt);
   const forcedMapsToolId = inferredMapsToolIdForPrompt(prompt);
   const forcedFirecrawlRequest = explicitFirecrawlFallback(originalPrompt);
   const forcedFirecrawlToolId = forcedFirecrawlRequest !== null &&
@@ -1075,10 +1052,6 @@ export function resolveA2uiHomeToolRequest(
   } else if (forcedPaymentToolId.length > 0 && request.toolId !== forcedPaymentToolId) {
     actionId = request.toolId.length > 0 ? 'client_payment_explicit_reroute' : 'client_intent_fallback';
     toolId = forcedPaymentToolId;
-    prompt = originalPrompt;
-  } else if (forcedLuckinOrderToolId.length > 0 && request.toolId !== forcedLuckinOrderToolId) {
-    actionId = request.toolId.length > 0 ? 'client_luckin_order_reroute' : 'client_intent_fallback';
-    toolId = forcedLuckinOrderToolId;
     prompt = originalPrompt;
   } else if (actionToolId.length > 0) {
     if (actionId.length === 0) {

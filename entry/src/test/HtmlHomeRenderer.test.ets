@@ -54,6 +54,7 @@ import {
   shouldShowHomeChrome
 } from '../main/ets/pages/A2uiHome/components/HomePage';
 import { renderRideDriverMapHtml } from '../main/ets/pages/A2uiHome/html/RideDriverMapHtmlRenderer';
+import { renderFoodLocationPickerHtml } from '../main/ets/pages/A2uiHome/html/FoodLocationPickerHtmlRenderer';
 import {
   advanceWaterfallFeed,
   WaterfallFeedState,
@@ -810,7 +811,8 @@ function foodDocumentFixture(): HtmlHomeDocument {
   doc.actions = [
     { id: 'food_show_all', label: '全部', prompt: 'food_show_all', variant: 'activated', kind: 'client' },
     { id: 'food_filter_1km', label: '1公里内', prompt: 'food_filter_1km', variant: 'secondary', kind: 'client' },
-    { id: 'food_show_more', label: '展示更多', prompt: 'food_show_more', variant: 'secondary', kind: 'client' }
+    { id: 'food_show_more', label: '展示更多', prompt: 'food_show_more', variant: 'secondary', kind: 'client' },
+    { id: 'food_change_location', label: '换位置', prompt: 'food_change_location', variant: 'secondary', kind: 'client' }
   ];
   doc.blocks = [{
     id: 'food-0',
@@ -881,12 +883,15 @@ function foodDocumentFixture(): HtmlHomeDocument {
       { label: 'address', value: '坂田街道附近' },
       { label: 'distance', value: '900米' },
       { label: 'location', value: '' },
-      { label: 'source', value: '美团' }
+      { label: 'source', value: '美团' },
+      { label: 'phone', value: '0755-12345678' },
+      { label: 'phoneSource', value: '美团商家页' }
     ],
     rows: [],
     actions: [
       { id: 'html_pin_food', label: '固定到桌面', prompt: '{"index":3,"name":"未知坐标小吃档","address":"坂田街道附近","location":"","distance":"900米"}', variant: 'secondary', kind: 'client' },
-      { id: 'html_open_food_map', label: '导航去', prompt: '{"index":3,"name":"未知坐标小吃档","address":"坂田街道附近","location":"","distance":"900米"}', variant: 'secondary', kind: 'client' }
+      { id: 'html_open_food_map', label: '导航去', prompt: '{"index":3,"name":"未知坐标小吃档","address":"坂田街道附近","location":"","distance":"900米"}', variant: 'secondary', kind: 'client' },
+      { id: 'html_call_food', label: '拨打电话', prompt: '{"index":3,"name":"未知坐标小吃档","address":"坂田街道附近","location":"","distance":"900米"}', variant: 'secondary', kind: 'client' }
     ]
   }];
   doc.history = [];
@@ -2360,6 +2365,27 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('预计 6 分钟接驾')).assertLarger(-1);
     });
 
+    it('renders standalone Amap food location picker with search and bridge confirmation', 0, () => {
+      const html = renderFoodLocationPickerHtml({
+        amapKey: 'amap-js-key',
+        amapSecurityJsCode: '',
+        initialLongitude: 114.063873,
+        initialLatitude: 22.631273
+      });
+
+      expect(html.indexOf('webapi.amap.com/maps?v=2.0')).assertLarger(-1);
+      expect(html.indexOf('restapi.amap.com/v3/place/text')).assertLarger(-1);
+      expect(html.indexOf('restapi.amap.com/v3/geocode/regeo')).assertLarger(-1);
+      expect(html.indexOf('new AMap.Map')).assertLarger(-1);
+      expect(html.indexOf('new AMap.PlaceSearch')).assertEqual(-1);
+      expect(html.indexOf('function showResults')).assertLarger(-1);
+      expect(html.indexOf('function reverseGeocode')).assertLarger(-1);
+      expect(html.indexOf('AIPhoneFoodLocationPicker.postMessage')).assertLarger(-1);
+      expect(html.indexOf("type: 'confirm'")).assertLarger(-1);
+      expect(html.indexOf('114.063873')).assertLarger(-1);
+      expect(html.indexOf('22.631273')).assertLarger(-1);
+    });
+
     it('renders ride driver map with fullscreen control and eta detail row', 0, () => {
       const html = renderHtmlHomeDocument(rideDriverDocumentFixture());
 
@@ -2422,6 +2448,20 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('localState.trainShowMore = !localState.trainShowMore')).assertLarger(-1);
       expect(html.indexOf('data-train-index')).assertLarger(-1);
       expect(html.indexOf('trainVisibleCount > 6')).assertLarger(-1);
+    });
+
+    it('renders food filter controls and matching data attributes in food documents', 0, () => {
+      const html = renderHtmlHomeDocument(foodDocumentFixture());
+
+      expect(html.indexOf('¥0-50')).assertLarger(-1);
+      expect(html.indexOf('4.5+')).assertLarger(-1);
+      expect(html.indexOf('营业中')).assertLarger(-1);
+      expect(html.indexOf('距离最近')).assertLarger(-1);
+      expect(html.indexOf('data-price')).assertLarger(-1);
+      expect(html.indexOf('data-rating')).assertLarger(-1);
+      expect(html.indexOf('data-business-status')).assertLarger(-1);
+      expect(html.indexOf("if (raw.length === 0) { return Number.NaN; }")).assertLarger(-1);
+      expect(html.indexOf('清除筛选')).assertLarger(-1);
     });
 
     it('disables HTML actions and credential save while busy', 0, () => {
@@ -2585,10 +2625,22 @@ export default function htmlHomeRendererTest() {
     });
 
     it('renders food documents with the food scene template and preserves actions', 0, () => {
-      const html = renderHtmlHomeDocument(foodDocumentFixture());
+      const html = renderHtmlHomeDocument(foodDocumentFixture(), false, {
+        longitude: 114.063873,
+        latitude: 22.631273,
+        radiusMeters: 3000,
+        name: '坂田',
+        address: '深圳市龙岗区坂田街道'
+      });
 
       expect(html.indexOf('editorial-food-shell')).assertLarger(-1);
       expect(html.indexOf('editorial-cover')).assertLarger(-1);
+      expect(html.indexOf('food_change_location')).assertLarger(-1);
+      expect(html.indexOf('food_relocate_current')).assertLarger(-1);
+      expect(html.indexOf('food_address_book')).assertLarger(-1);
+      expect(html.indexOf('food_address_book_save')).assertLarger(-1);
+      expect(html.indexOf('food_address_book_delete')).assertLarger(-1);
+      expect(html.indexOf('AIPhoneFoodLocationPickerBridge')).assertLarger(-1);
       expect(html.indexOf('editorial-tabs')).assertLarger(-1);
       expect(html.indexOf('editorial-feature')).assertLarger(-1);
       expect(html.indexOf('photo-1552566626-52f8b828add9')).assertLarger(-1);
@@ -2608,10 +2660,6 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('function addAvatar(parent, block)')).assertLarger(-1);
       expect(html.indexOf('addAvatar(head, block)')).assertLarger(-1);
       expect(html.indexOf('border-radius: 999px')).assertLarger(-1);
-      expect(html.indexOf('今日附近值得吃')).assertLarger(-1);
-      expect(html.indexOf('附近餐饮 · 今日编辑')).assertLarger(-1);
-      expect(html.indexOf('今日编辑')).assertLarger(-1);
-      expect(html.indexOf('高德 / 腾讯地图')).assertLarger(-1);
       expect(html.indexOf('三津汤包 (深圳北站店)')).assertLarger(-1);
       expect(html.indexOf('N多寿司 (深圳北站店)')).assertLarger(-1);
       expect(html.indexOf('麦当劳 (深圳北站店)')).assertLarger(-1);
@@ -2625,7 +2673,11 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('food-google-maps')).assertLarger(-1);
       expect(html.indexOf('html_open_food_map')).assertLarger(-1);
       expect(html.indexOf('html_pin_food')).assertLarger(-1);
+      expect(html.indexOf('\"id\":\"html_call_food\"')).assertLarger(-1);
+      expect(html.indexOf('0755-12345678')).assertLarger(-1);
+      expect(html.indexOf('美团商家页')).assertLarger(-1);
       expect(html.indexOf('导航去')).assertLarger(-1);
+      expect(html.indexOf('拨打电话')).assertLarger(-1);
       expect(html.indexOf('固定到桌面')).assertLarger(-1);
       expect(html.indexOf('AIPhoneHome.postAction')).assertLarger(-1);
       expect(html.indexOf('food_filter_1km')).assertLarger(-1);
@@ -2644,15 +2696,23 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf("card.setAttribute('data-source-key', sourceKey(block))")).assertLarger(-1);
       expect(html.indexOf("raw.indexOf('美团')")).assertLarger(-1);
       expect(html.indexOf("raw.indexOf('麦当劳')")).assertLarger(-1);
-      expect(html.indexOf("id === 'html_open_food_map' ? '导航去' : '固定到桌面'")).assertLarger(-1);
+      expect(html.indexOf("id === 'html_call_food' ? '拨打电话' : '固定到桌面'")).assertLarger(-1);
       expect(html.indexOf('var canNavigate = hasLocation(block)')).assertLarger(-1);
-      expect(html.indexOf('if (!canNavigate) { return false; }')).assertLarger(-1);
+      expect(html.indexOf("if (id !== 'html_call_food' && !canNavigate) { return false; }")).assertLarger(-1);
       expect(html.indexOf('setExpanded(key)')).assertLarger(-1);
       expect(html.indexOf('Food Field')).assertEqual(-1);
       expect(html.indexOf('附近餐饮探索')).assertEqual(-1);
-      expect(html.indexOf('window.AMap')).assertEqual(-1);
-      expect(html.indexOf('webapi.amap.com')).assertEqual(-1);
       expect(html.indexOf('ReactDOM')).assertEqual(-1);
+    });
+
+    it('does not render a call action when the food document has none', 0, () => {
+      const doc = foodDocumentFixture();
+      doc.blocks.forEach((block: HtmlHomeBlock) => {
+        block.actions = block.actions.filter((item: HtmlHomeAction) => item.id !== 'html_call_food');
+      });
+      const html = renderHtmlHomeDocument(doc);
+
+      expect(html.indexOf('\"id\":\"html_call_food\"')).assertEqual(-1);
     });
 
     it('keeps the real one-kilometre filter when every card is nearby', 0, () => {
@@ -3647,6 +3707,14 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('social-whatsapp')).assertLarger(-1);
       expect(html.indexOf('social-instagram')).assertLarger(-1);
       expect(html.indexOf('social_select_message')).assertEqual(-1);
+    });
+
+    it('keeps Luckin store metadata and optimistic option interaction in the renderer', 0, () => {
+      const html = renderHtmlHomeDocument(luckinPaymentDocumentFixture());
+      expect(html.indexOf("deptName: actionArg(confirmAction, 'deptName')")).assertLarger(-1);
+      expect(html.indexOf("address: actionArg(confirmAction, 'address')")).assertLarger(-1);
+      expect(html.indexOf("distance: actionArg(confirmAction, 'distance')")).assertLarger(-1);
+      expect(html.indexOf('applyOptimisticLuckinOptionSelect(groupName, choiceName)')).assertLarger(-1);
     });
 
     it('renders Luckin payment checkout with countdown and method grid', 0, () => {

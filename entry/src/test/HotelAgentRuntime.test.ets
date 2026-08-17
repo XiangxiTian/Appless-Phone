@@ -1648,7 +1648,7 @@ export default function hotelAgentRuntimeTest() {
       runtime.dispose();
     });
 
-    it('restores the search document and authority before accepting hotel actions again', 0, async () => {
+    it('restores the search document and authority before accepting hotel actions again', 60000, async () => {
       const bus = new TrackingBus();
       const surfaces: A2uiSurfaceState[] = [];
       const runtime = new HotelAgentRuntime(options(

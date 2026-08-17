@@ -53,6 +53,7 @@ import { preferences } from '@kit.ArkData';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { formBindingData, formProvider } from '@kit.FormKit';
 import { notificationManager } from '@kit.NotificationKit';
+import { call } from '@kit.TelephonyKit';
 import { mapCommon, petalMaps } from '@kit.MapKit';
 import promptAction from '@ohos.promptAction';
 import fs from '@ohos.file.fs';
@@ -80,7 +81,7 @@ import {
   A2uiTrainData,
   A2uiTravelOptionData
 } from '@loop/agent-core';
-import { stripeReceivingAccount } from '@loop/agent-core';
+import { buildFoodPhoneUri, stripeReceivingAccount } from '@loop/agent-core';
 import {
   callDirectModel,
   DirectModelCallResult
@@ -124,6 +125,7 @@ import {
   prepareGoogleOAuthAuthorizationUrl,
   recheck12306TrainAvailability,
   resolveMultiTaskSlotId,
+  resolveLuckinActionPrompt,
   rideDidiMcpSandboxEnabledForRuntime,
   select12306DebugTrain,
   sendLocalSocialHubReply,
@@ -172,6 +174,7 @@ import {
   copyPersonaData,
   leaderPersonaSurfaceUpdate
 } from '../../model/PersonaA2ui';
+import { DEEP_SEARCH_ROUTE_URL, DeepSearchRouteParams } from './deepsearch/DeepSearchEngine';
 import {
   isStableWaterfallContentPreference,
   mergePersonaStablePreference,
@@ -320,6 +323,7 @@ import {
   waterfallEnabledSourcesFromAction
 } from './html/HtmlAggregateSearchHomeRenderer';
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
+import { FoodAddressBookStore, FoodSavedAddressViewModel } from './FoodAddressBookStore';
 import { isHtmlHomeActionAllowed } from './html/HtmlHomeActionPolicy';
 import {
   HtmlHomeAction,
@@ -364,6 +368,8 @@ import {
   shouldShowFirecrawlPendingSurface,
   shouldShowQueryPendingSurface,
   shouldShowWelcome,
+  shouldRouteDeepSearch,
+  shouldAutoRouteDeepSearch,
   updateConnectionPanelState,
   voiceInputTextAfterRecognition
 } from './state/A2uiHomeState';
@@ -718,6 +724,13 @@ interface InlineLuckinPaymentStatusPlan {
   slotId: string;
 }
 
+interface LuckinOptionSwitchPending {
+  prompt: string;
+  args: Object | null;
+  actionId: string;
+  runtimeOwner: RuntimeOwner;
+}
+
 interface MultiTaskToolCallContext {
   slotId: string;
   childSurfaceId: string;
@@ -726,6 +739,29 @@ interface MultiTaskToolCallContext {
 interface LocationPermissionResult {
   permissions: string[];
   authResults: number[];
+}
+
+interface DeviceCoordinates {
+  longitude: number;
+  latitude: number;
+}
+
+interface FoodDeviceLocation extends DeviceCoordinates {
+  name: string;
+  address: string;
+}
+
+interface FoodRelocateSearchArea {
+  longitude: number;
+  latitude: number;
+  radiusMeters: number;
+  name: string;
+  address: string;
+}
+
+interface FoodRelocateActionArgs {
+  surfaceId: string;
+  searchArea: FoodRelocateSearchArea;
 }
 
 function logSnippet(text: string): string {
@@ -865,6 +901,10 @@ struct Index {
   @State checkoutWebContext: string = '';
   @State trainPresaleCheckoutTaskId: string = '';
   @State showTrainPresalePanel: boolean = false;
+  @State showDeepSearch: boolean = false;
+  @State deepSearchQuery: string = '';
+  @State deepSearchSettingsJson: string = '';
+  @State deepSearchContextJson: string = '';
   @State trainPresaleTrip: TrainPresaleTrip = emptyTrainPresaleTrip();
   @State trainPresaleTaskState: string = '';
   @State trainPresaleError: string = '';
@@ -908,6 +948,14 @@ struct Index {
     new RegisteredPageSnapshotStore();
   private registeredPageRenderGeneration: number = 0;
   @State htmlHomeStableHtml: string = '';
+  @State foodLocationLongitude: number = 114.063873;
+  @State foodLocationLatitude: number = 22.631273;
+  @State foodLocationRadiusMeters: number = 3000;
+  @State foodLocationName: string = '坂田';
+  @State foodLocationAddress: string = '深圳市龙岗区坂田街道';
+  private foodLocationOwnerSurfaceId: string = '';
+  private foodSavedAddresses: FoodSavedAddressViewModel[] = [];
+  private foodAddressBookStoreInstance: FoodAddressBookStore | null = null;
   @State multiTaskPayloadJson: string = '';
   @State multiTaskShellHtml: string = '';
   @State multiTaskPayloadTick: number = 0;
@@ -960,6 +1008,8 @@ struct Index {
   @State luckinInlinePatchJson: string = '';
   @State luckinInlinePatchTick: number = 0;
   private luckinOptionSwitchInFlight: boolean = false;
+  private luckinOptionSwitchSeq: number = 0;
+  private luckinOptionSwitchPending: LuckinOptionSwitchPending | null = null;
   private trainPresaleTask: TrainPresaleTask | null = null;
   private trainPresaleResumeDrain: TrainPresaleResumeDrain | null = null;
   private trainPresaleHandoffSubscribed: boolean = false;
@@ -978,6 +1028,32 @@ struct Index {
     }
     const raw = args as Record<string, Object | string | number | boolean | null | undefined>;
     return this.actionText(raw.attrGroup).length > 0 && this.actionText(raw.attrChoice).length > 0;
+  }
+
+  private isLuckinStoreSelectArgs(args: Object | null): boolean {
+    if (args === null) {
+      return false;
+    }
+    const raw = args as Record<string, Object | string | number | boolean | null | undefined>;
+    return this.actionText(raw.deptId).length > 0;
+  }
+
+  private shouldBypassRegisteredPageForLuckinAction(action: A2uiAction): boolean {
+    if (action.id === 'luckin.order.create' || action.id === 'luckin.order.status') {
+      return true;
+    }
+    if (action.id !== 'luckin.order.preview') {
+      return false;
+    }
+    const args: Object | null = action.args === undefined ? null : action.args;
+    if (this.isLuckinOptionSwitchArgs(args) || this.isLuckinStoreSelectArgs(args)) {
+      return true;
+    }
+    if (!isMultiTaskSurface(this.currentSurface)) {
+      return false;
+    }
+    const sectionId: string = action.sourceSectionId === undefined ? '' : action.sourceSectionId.trim();
+    return sectionId.length > 0;
   }
 
   private luckinConfirmBlockJson(document: HtmlHomeDocument): string {
@@ -1311,10 +1387,68 @@ struct Index {
 
   private finishLuckinOptionSwitch(inFlight: boolean = false): void {
     this.luckinOptionSwitchInFlight = inFlight;
+    if (inFlight) {
+      return;
+    }
+    const pending = this.luckinOptionSwitchPending;
+    if (pending === null) {
+      return;
+    }
+    this.luckinOptionSwitchPending = null;
+    void this.callToolById(
+      'luckin.order.preview',
+      pending.prompt,
+      pending.actionId,
+      pending.args,
+      undefined,
+      pending.runtimeOwner
+    );
+  }
+
+  private clearLuckinOptionSwitchQueue(): void {
+    this.luckinOptionSwitchPending = null;
+    this.luckinOptionSwitchInFlight = false;
+  }
+
+  private syncFoodLocationOwner(surface: A2uiSurfaceState): void {
+    if (surface.intent !== 'food' || surface.surfaceId.length === 0) {
+      this.foodLocationOwnerSurfaceId = '';
+      return;
+    }
+    const sessionCreated = this.foodLocationOwnerSurfaceId !== surface.surfaceId;
+    this.foodLocationOwnerSurfaceId = surface.surfaceId;
+    let locationUpdated = false;
+    try {
+      const model = JSON.parse(surface.dataModelJson) as A2uiRuntimeDataModel;
+      if (model.foodSearchContext !== undefined) {
+        const area = model.foodSearchContext.searchArea;
+        locationUpdated = this.foodLocationLongitude !== area.longitude ||
+          this.foodLocationLatitude !== area.latitude ||
+          this.foodLocationRadiusMeters !== area.radiusMeters ||
+          this.foodLocationName !== area.name ||
+          this.foodLocationAddress !== area.address;
+        this.foodLocationLongitude = area.longitude;
+        this.foodLocationLatitude = area.latitude;
+        this.foodLocationRadiusMeters = area.radiusMeters;
+        this.foodLocationName = area.name;
+        this.foodLocationAddress = area.address;
+      }
+    } catch (_error) {
+    }
+    if (sessionCreated || locationUpdated) {
+      this.htmlHomeCacheKey = '';
+      this.htmlHomeCacheHtml = '';
+      aiLogInfo('[AIPhone][' + (sessionCreated ? 'FoodLocationSessionCreated' : 'FoodLocationSessionUpdated') +
+        '] surfaceId=' + surface.surfaceId +
+        ' longitude=' + this.foodLocationLongitude.toString() +
+        ' latitude=' + this.foodLocationLatitude.toString() +
+        ' radiusMeters=' + this.foodLocationRadiusMeters.toString());
+    }
   }
 
   private storeSurfaceSilently(surface: A2uiSurfaceState): void {
     this.currentSurface = this.surfaceSnapshot(surface);
+    this.syncFoodLocationOwner(this.currentSurface);
     aiLogInfo('[AIPhone][A2uiHomeSurfaceSilentUpdate] surfaceId=' + surface.surfaceId +
       ' sequence=' + surface.sequence.toString());
   }
@@ -2002,7 +2136,7 @@ struct Index {
 
   private clearLuckinInlinePatchState(): void {
     this.luckinInlinePatchJson = '';
-    this.finishLuckinOptionSwitch(false);
+    this.clearLuckinOptionSwitchQueue();
   }
 
   aboutToAppear(): void {
@@ -2015,6 +2149,7 @@ struct Index {
     this.loadWaterfallPreferences();
     this.loadPaymentAccounts();
     this.loadStripeReceivingProfile();
+    this.loadFoodAddressBook();
     void this.requestLocationPermissionOnLaunch();
     this.subscribeTrainPresaleHandoff();
     this.subscribeBimSentinelMock();
@@ -3546,6 +3681,13 @@ struct Index {
       this.pendingFirecrawlToolId,
       this.messages.length.toString(),
       this.multiTaskActiveSectionId,
+      this.foodLocationOwnerSurfaceId,
+      this.foodLocationLongitude.toString(),
+      this.foodLocationLatitude.toString(),
+      this.foodLocationRadiusMeters.toString(),
+      this.foodLocationName,
+      this.foodLocationAddress,
+      JSON.stringify(this.foodSavedAddresses),
       needsInputText ? this.inputText : ''
     ].join('|');
   }
@@ -3556,7 +3698,15 @@ struct Index {
       return this.htmlHomeCacheHtml;
     }
     const document = this.withMultiTaskActiveSection(this.currentHtmlHomeDocument());
-    const html = renderHtmlHomeDocument(document, this.isBusy);
+    const html = renderHtmlHomeDocument(document, this.isBusy,
+      document.kind === 'food' && document.surfaceId === this.foodLocationOwnerSurfaceId ? {
+        longitude: this.foodLocationLongitude,
+        latitude: this.foodLocationLatitude,
+        radiusMeters: this.foodLocationRadiusMeters,
+        name: this.foodLocationName,
+        address: this.foodLocationAddress
+      } : undefined,
+      document.kind === 'food' ? this.foodSavedAddresses : []);
     this.recordRenderedPageSnapshot(this.currentSurface, document);
     if (this.htmlHomeDebugExportEnabled) {
       this.writeHtmlHomeDebugExport(document, 'auto');
@@ -3650,6 +3800,7 @@ struct Index {
       this.multiTaskActiveSectionId = this.readMultiTaskActiveSectionId(next);
     }
     this.currentSurface = next;
+    this.syncFoodLocationOwner(next);
     this.surfaceRenderTick = this.surfaceRenderTick + 1;
     this.clearLuckinInlinePatchState();
     this.syncHtmlHomeStableHtml();
@@ -3681,6 +3832,7 @@ struct Index {
       return;
     }
     this.currentSurface = next;
+    this.syncFoodLocationOwner(next);
     this.surfaceRenderTick = this.surfaceRenderTick + 1;
     this.clearLuckinInlinePatchState();
     this.syncHtmlHomeStableHtml();
@@ -4085,6 +4237,7 @@ struct Index {
     this.registeredPageSnapshotStore.clear();
     this.registeredPageRenderGeneration = 0;
     this.currentSurface = this.surfaceSnapshot(createSeedA2uiSurface());
+    this.syncFoodLocationOwner(this.currentSurface);
     this.surfaceRenderTick = this.surfaceRenderTick + 1;
     this.clearLuckinInlinePatchState();
     this.syncHtmlHomeStableHtml();
@@ -4475,6 +4628,79 @@ struct Index {
     }
   }
 
+  private openDeepSearch(query: string, contextJson: string): void {
+    const settings = this.getSettings();
+    this.deepSearchQuery = query;
+    this.deepSearchSettingsJson = JSON.stringify({
+      provider: settings.provider,
+      baseUrl: settings.baseUrl,
+      model: settings.model,
+      apiKey: settings.apiKey,
+      customParametersJson: settings.customParametersJson,
+      ignoreToolSurfaceUpdates: true
+    });
+    // 先写入 context 再打开面板，确保面板 aboutToAppear 读到完整位置/日期。
+    this.deepSearchContextJson = contextJson;
+    this.showDeepSearch = true;
+    aiLogInfo('[AIPhone][DeepSearchPanelOpened] queryChars=' + query.length.toString() +
+      ' context=' + contextJson.length.toString() + 'chars');
+  }
+
+  private deepSearchDateLabel(): string {
+    const now = new Date();
+    const weekdays: string[] = ['日', '一', '二', '三', '四', '五', '六'];
+    return now.getFullYear().toString() + '年' +
+      (now.getMonth() + 1).toString() + '月' +
+      now.getDate().toString() + '日 星期' +
+      weekdays[now.getDay()];
+  }
+
+  private async buildDeepSearchContext(): Promise<string> {
+    const dateLabel = this.deepSearchDateLabel();
+    try {
+      const coordinate = await this.currentDeviceLocation();
+      let locationLabel = '';
+      try {
+        const request: geoLocationManager.ReverseGeoCodeRequest = {
+          latitude: Number.parseFloat(coordinate.split(',')[1]),
+          longitude: Number.parseFloat(coordinate.split(',')[0]),
+          maxItems: 1
+        };
+        const addresses = await geoLocationManager.getAddressesFromLocation(request);
+        if (addresses.length > 0) {
+          const address = addresses[0];
+          const locality = address.locality === undefined ? '' : address.locality;
+          const subArea = address.subAdministrativeArea === undefined ? '' : address.subAdministrativeArea;
+          const adminArea = address.administrativeArea === undefined ? '' : address.administrativeArea;
+          locationLabel = locality.length > 0 ? locality :
+            (subArea.length > 0 ? subArea : adminArea);
+        }
+      } catch (_geoError) {
+        locationLabel = '';
+      }
+      this.deepSearchContextJson = JSON.stringify({
+        locationLabel: locationLabel,
+        dateLabel: dateLabel,
+        coordinateLabel: coordinate
+      });
+    } catch (_locationError) {
+      // 定位不可用时降级：仅注入日期。
+      this.deepSearchContextJson = JSON.stringify({
+        locationLabel: '',
+        dateLabel: dateLabel,
+        coordinateLabel: ''
+      });
+    }
+    return this.deepSearchContextJson;
+  }
+
+  private closeDeepSearch(): void {
+    this.showDeepSearch = false;
+    this.deepSearchQuery = '';
+    this.deepSearchSettingsJson = '';
+    this.deepSearchContextJson = '';
+  }
+
   private openAnythingDemo(): Promise<boolean> {
     return new Promise<boolean>((resolve: (value: boolean) => void): void => {
       router.pushUrl({ url: ANYTHING_DEMO_ROUTE_URL }, (error) => {
@@ -4561,6 +4787,21 @@ struct Index {
       return;
     }
     const directDailyBriefRequest = resolveA2uiHomeSubmitToolRequest(trimmed);
+    const autoDeep = directDailyBriefRequest === null &&
+      sourceBimId.length === 0 && shouldAutoRouteDeepSearch(trimmed, actionId);
+    if (autoDeep && trimmed.length > 0) {
+      this.inputText = inputTextAfterPromptSubmit(this.inputText);
+      this.appendMessage('user', visibleText);
+      const contextJson = await this.buildDeepSearchContext();
+      this.openDeepSearch(trimmed, contextJson);
+      aiLogInfo('[AIPhone][DeepSearchAutoRouted] queryChars=' + trimmed.length.toString() +
+        ' context=' + contextJson.length.toString() + 'chars');
+      return;
+    }
+    // 非 DeepSearch 内容：若面板开着则收起，回到主内容展示 multi-agent 结果。
+    if (this.showDeepSearch) {
+      this.closeDeepSearch();
+    }
     if (directDailyBriefRequest !== null) {
       this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
       this.appendMessage('user', visibleText);
@@ -5243,6 +5484,102 @@ struct Index {
     return true;
   }
 
+  private updateHtmlFoodPhoneState(ok: boolean, message: string): void {
+    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+      ok: ok,
+      status: ok ? 'ready' : 'error',
+      message: message,
+      requestDebug: this.lastModelRequest,
+      assistantDebug: this.lastModelOutput,
+      error: ''
+    }));
+  }
+
+  private foodPhoneErrorCode(error: Object | null | undefined): string {
+    if (error === null || error === undefined) {
+      return 'unknown';
+    }
+    const businessError = error as BusinessError;
+    const code = businessError.code;
+    return code === undefined || code === null ? 'unknown' : code.toString();
+  }
+
+  private async handleHtmlFoodCallAction(action: A2uiAction): Promise<boolean> {
+    if (action.id !== 'html_call_food') {
+      return false;
+    }
+    const model = this.parsedDataModel();
+    const payload = this.htmlPinPayload(action);
+    const index = this.htmlActionIndex(action, payload);
+    if (model === null) {
+      this.updateHtmlFoodPhoneState(false, '当前餐厅数据不可用，无法拨号。');
+      this.logHtmlHomeActionError(action, 'invalid_model');
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=validation result=blocked reason=invalid_model');
+      return true;
+    }
+    const row = this.htmlPinFoodRow(model, payload, index);
+    if (row === null) {
+      this.updateHtmlFoodPhoneState(false, '未找到当前餐厅，无法拨号。');
+      this.logHtmlHomeActionError(action, 'missing_food_row');
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=validation result=blocked reason=missing_food_row');
+      return true;
+    }
+    const displayPhone = this.actionText(row.phone).trim();
+    const uri = buildFoodPhoneUri(displayPhone);
+    if (uri.length === 0) {
+      this.updateHtmlFoodPhoneState(false, '餐厅电话号码无效，无法打开拨号器。');
+      this.logHtmlHomeActionError(action, 'invalid_food_phone');
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=validation result=blocked reason=invalid_phone nameChars=' +
+        row.name.length.toString());
+      return true;
+    }
+    const buttons: [promptAction.Button, promptAction.Button] = [
+      { text: '取消', color: '#6B7280' },
+      { text: '拨打电话', color: '#995F4C' }
+    ];
+    let selectedIndex = 0;
+    try {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=shown nameChars=' + row.name.length.toString());
+      const selected = await this.getUIContext().getPromptAction().showActionMenu({
+        title: row.name + ' · ' + displayPhone,
+        buttons: buttons
+      });
+      selectedIndex = selected.index;
+    } catch (_error) {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=dismissed nameChars=' + row.name.length.toString());
+      return true;
+    }
+    if (selectedIndex !== 1) {
+      aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=cancelled nameChars=' + row.name.length.toString());
+      return true;
+    }
+    aiLogInfo('[AIPhone][FoodPhoneAction] stage=confirmation result=confirmed nameChars=' + row.name.length.toString());
+    if (!call.hasVoiceCapability()) {
+      this.updateHtmlFoodPhoneState(false, '当前设备不支持语音通话');
+      aiLogInfo('[AIPhone][FoodPhoneLaunch] stage=capability result=unsupported');
+      return true;
+    }
+    const verifiedPhone = uri.substring(4);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        call.makeCall(verifiedPhone, (error: BusinessError) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+      this.updateHtmlFoodPhoneState(true, '已打开系统拨号器，请由你确认拨号');
+      aiLogInfo('[AIPhone][FoodPhoneLaunch] stage=makeCall result=success code=0');
+    } catch (error) {
+      const code = this.foodPhoneErrorCode(error as Object);
+      this.updateHtmlFoodPhoneState(false, '系统拨号器打开失败，请稍后重试。');
+      aiLogError('[AIPhone][FoodPhoneLaunch] stage=makeCall result=failed code=' + code);
+    }
+    return true;
+  }
+
   private actionText(value: HtmlActionValue): string {
     if (value === undefined || value === null) {
       return '';
@@ -5630,7 +5967,7 @@ struct Index {
     }
   }
 
-  private async currentDeviceLocation(): Promise<string> {
+  private async currentDeviceCoordinates(): Promise<DeviceCoordinates> {
     await this.ensureLocationPermission();
     const current = await geoLocationManager.getCurrentLocation();
     const longitude = current.longitude;
@@ -5638,7 +5975,58 @@ struct Index {
     if (longitude === undefined || latitude === undefined) {
       throw new Error('系统未返回当前位置');
     }
-    return longitude.toString() + ',' + latitude.toString();
+    return { longitude: longitude, latitude: latitude };
+  }
+
+  private async currentDeviceLocation(): Promise<string> {
+    const current = await this.currentDeviceCoordinates();
+    return current.longitude.toString() + ',' + current.latitude.toString();
+  }
+
+  private foodGeoAddressText(address: geoLocationManager.GeoAddress): string {
+    const placeName = address.placeName === undefined ? '' : address.placeName.trim();
+    if (placeName.length > 0) {
+      return placeName;
+    }
+    const parts: string[] = [];
+    const candidates: (string | undefined)[] = [
+      address.administrativeArea,
+      address.locality,
+      address.subLocality,
+      address.roadName
+    ];
+    candidates.forEach((candidate: string | undefined) => {
+      const part = candidate === undefined ? '' : candidate.trim();
+      if (part.length > 0 && parts.indexOf(part) < 0) {
+        parts.push(part);
+      }
+    });
+    return parts.join('');
+  }
+
+  private async currentFoodDeviceLocation(): Promise<FoodDeviceLocation> {
+    const current = await this.currentDeviceCoordinates();
+    let addressText = '';
+    try {
+      const addresses = await geoLocationManager.getAddressesFromLocation({
+        latitude: current.latitude,
+        longitude: current.longitude,
+        maxItems: 1,
+        locale: 'zh'
+      });
+      if (addresses.length > 0) {
+        addressText = this.foodGeoAddressText(addresses[0]);
+      }
+    } catch (error) {
+      aiLogError('[AIPhone][FoodCurrentLocationReverseGeocode] ok=false reason=' +
+        (error instanceof Error ? error.message : JSON.stringify(error)));
+    }
+    return {
+      longitude: current.longitude,
+      latitude: current.latitude,
+      name: addressText.length > 0 ? addressText : '当前位置',
+      address: addressText
+    };
   }
 
   private mergeLuckinLocationArgs(args: Object | null, location: string): Object {
@@ -6580,6 +6968,22 @@ struct Index {
 
   private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
+    if (action.id === 'food_address_book_save') {
+      await this.saveCurrentFoodAddress(action);
+      return;
+    }
+    if (action.id === 'food_address_book_delete') {
+      await this.deleteFoodAddress(action);
+      return;
+    }
+    if (action.id === 'food_change_location') {
+      await this.refreshFoodSearchAtLocation(action);
+      return;
+    }
+    if (action.id === 'food_relocate_current') {
+      await this.relocateFoodToCurrentDeviceLocation(action);
+      return;
+    }
     if (await this.handleDailyBriefClientAction(action)) {
       return;
     }
@@ -6705,6 +7109,7 @@ struct Index {
       return;
     }
     if (await this.handleFlightBookingAction(action)) {
+    if (await this.handleHtmlFoodCallAction(action)) {
       return;
     }
     if (await this.handleHtmlPinAction(action)) {
@@ -6851,6 +7256,232 @@ struct Index {
       const testPrompt = action.prompt.length > 0 ? action.prompt : (data.prompt.length > 0 ? data.prompt : data.toolId);
       await this.callToolById(data.toolId, testPrompt, action.id);
       return;
+    }
+  }
+
+  private refreshFoodAddressBookUi(): void {
+    this.htmlHomeCacheKey = '';
+    this.htmlHomeCacheHtml = '';
+    this.surfaceRenderTick = this.surfaceRenderTick + 1;
+    this.syncHtmlHomeStableHtml();
+  }
+
+  private foodAddressBookStore(): FoodAddressBookStore | null {
+    if (this.foodAddressBookStoreInstance !== null) {
+      return this.foodAddressBookStoreInstance;
+    }
+    try {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      this.foodAddressBookStoreInstance = new FoodAddressBookStore(context);
+      return this.foodAddressBookStoreInstance;
+    } catch (error) {
+      aiLogError('[AIPhone][FoodAddressBookStore] phase=open ok=false reason=' +
+        (error instanceof Error ? error.message : JSON.stringify(error)));
+      return null;
+    }
+  }
+
+  private loadFoodAddressBook(): void {
+    const store = this.foodAddressBookStore();
+    this.foodSavedAddresses = store === null ? [] : store.list();
+    this.htmlHomeCacheKey = '';
+    this.htmlHomeCacheHtml = '';
+    aiLogInfo('[AIPhone][FoodAddressBookLoaded] count=' + this.foodSavedAddresses.length.toString());
+  }
+
+  private foodAddressActionArgs(action: A2uiAction): Record<string, Object | string | number | boolean | null | undefined> | null {
+    if (action.args === undefined || this.currentSurface.intent !== 'food') {
+      return null;
+    }
+    const args = action.args as Record<string, Object | string | number | boolean | null | undefined>;
+    if (this.actionText(args['surfaceId']).trim() !== this.currentSurface.surfaceId) {
+      return null;
+    }
+    return args;
+  }
+
+  private async saveCurrentFoodAddress(action: A2uiAction): Promise<void> {
+    const args = this.foodAddressActionArgs(action);
+    if (args === null) {
+      this.logHtmlHomeActionError(action, 'stale_food_address_book');
+      return;
+    }
+    const requestedAddressId = this.actionText(args['addressId']).trim();
+    const entry: FoodSavedAddressViewModel = {
+      id: requestedAddressId.length > 0 ? requestedAddressId :
+        'food-address-' + util.generateRandomUUID(false),
+      longitude: this.foodLocationLongitude,
+      latitude: this.foodLocationLatitude,
+      radiusMeters: this.foodLocationRadiusMeters,
+      name: this.foodLocationName.length > 0 ? this.foodLocationName : '常用地址',
+      address: this.foodLocationAddress
+    };
+    const store = this.foodAddressBookStore();
+    if (store === null) {
+      this.logHtmlHomeActionError(action, 'food_address_book_store_unavailable');
+      return;
+    }
+    try {
+      this.foodSavedAddresses = await store.upsert(entry);
+      aiLogInfo('[AIPhone][FoodAddressBookSaved] surfaceId=' + this.currentSurface.surfaceId +
+        ' addressId=' + entry.id + ' count=' + this.foodSavedAddresses.length.toString());
+    } catch (error) {
+      aiLogError('[AIPhone][FoodAddressBookSaveError] reason=' +
+        (error instanceof Error ? error.message : JSON.stringify(error)));
+    }
+  }
+
+  private async deleteFoodAddress(action: A2uiAction): Promise<void> {
+    const args = this.foodAddressActionArgs(action);
+    if (args === null) {
+      this.logHtmlHomeActionError(action, 'stale_food_address_book');
+      return;
+    }
+    const addressId = this.actionText(args['addressId']).trim();
+    if (addressId.length === 0) {
+      this.logHtmlHomeActionError(action, 'missing_food_address_id');
+      return;
+    }
+    const store = this.foodAddressBookStore();
+    if (store === null) {
+      this.logHtmlHomeActionError(action, 'food_address_book_store_unavailable');
+      return;
+    }
+    try {
+      if (!await store.delete(addressId)) {
+        this.logHtmlHomeActionError(action, 'unknown_food_address_id');
+        return;
+      }
+      this.foodSavedAddresses = store.list();
+      aiLogInfo('[AIPhone][FoodAddressBookDeleted] surfaceId=' + this.currentSurface.surfaceId +
+        ' addressId=' + addressId + ' count=' + this.foodSavedAddresses.length.toString());
+    } catch (error) {
+      aiLogError('[AIPhone][FoodAddressBookDeleteError] reason=' +
+        (error instanceof Error ? error.message : JSON.stringify(error)));
+    }
+  }
+
+  private async refreshFoodSearchAtLocation(action: A2uiAction): Promise<void> {
+    if (action.args === undefined || this.currentSurface.intent !== 'food') {
+      this.logHtmlHomeActionError(action, 'food_surface_required');
+      return;
+    }
+    const actionArgs = action.args as Record<string, Object | string | number | boolean | null | undefined>;
+    const ownerSurfaceId = this.actionText(actionArgs['surfaceId']).trim();
+    const model = this.parsedDataModel();
+    if (ownerSurfaceId.length === 0 || ownerSurfaceId !== this.currentSurface.surfaceId || model === null ||
+      model.foodSearchContext === undefined) {
+      this.logHtmlHomeActionError(action, 'stale_food_search_context');
+      return;
+    }
+    const oldContext = model.foodSearchContext;
+    const rawNextArea = actionArgs['searchArea'];
+    const nextArea = rawNextArea === undefined || rawNextArea === null || Array.isArray(rawNextArea) ?
+      null : rawNextArea as Record<string, Object | string | number | boolean | null | undefined>;
+    aiLogInfo('[AIPhone][FoodLocationRefreshInput] surfaceId=' + ownerSurfaceId +
+      ' oldLongitude=' + oldContext.searchArea.longitude.toString() +
+      ' oldLatitude=' + oldContext.searchArea.latitude.toString() +
+      ' oldRadiusMeters=' + oldContext.searchArea.radiusMeters.toString() +
+      ' nextAreaPresent=' + (nextArea === null ? 'false' : 'true') +
+      ' nextLongitude=' + (nextArea === null ? '' : this.actionText(nextArea['longitude']).trim()) +
+      ' nextLatitude=' + (nextArea === null ? '' : this.actionText(nextArea['latitude']).trim()) +
+      ' nextRadiusMeters=' + (nextArea === null ? '' : this.actionText(nextArea['radiusMeters']).trim()) +
+      ' nextNameChars=' + (nextArea === null ? '0' : this.actionText(nextArea['name']).trim().length.toString()));
+    const nextArgs: Record<string, Object | string | number | boolean | null | undefined> = {};
+    nextArgs['query'] = oldContext.query;
+    nextArgs['keyword'] = oldContext.keyword;
+    nextArgs['searchArea'] = actionArgs['searchArea'];
+    if (oldContext.brandPreference !== undefined) {
+      nextArgs['brandPreference'] = oldContext.brandPreference;
+    }
+    if (oldContext.brandStrict !== undefined) {
+      nextArgs['brandStrict'] = oldContext.brandStrict;
+    }
+    if (oldContext.sweetness !== undefined) {
+      nextArgs['sweetness'] = oldContext.sweetness;
+    }
+    aiLogInfo('[AIPhone][FoodLocationRefresh] surfaceId=' + ownerSurfaceId +
+      ' queryChars=' + oldContext.query.length.toString());
+    if (nextArea !== null) {
+      const nextLongitude = Number(this.actionText(nextArea['longitude']).trim());
+      const nextLatitude = Number(this.actionText(nextArea['latitude']).trim());
+      const nextRadiusMeters = Number(this.actionText(nextArea['radiusMeters']).trim());
+      if (Number.isFinite(nextLongitude) && Number.isFinite(nextLatitude) &&
+        nextLongitude >= -180 && nextLongitude <= 180 &&
+        nextLatitude >= -90 && nextLatitude <= 90) {
+        const optimisticSurface = this.surfaceSnapshot(this.currentSurface);
+        const optimisticModel = JSON.parse(optimisticSurface.dataModelJson) as A2uiRuntimeDataModel;
+        optimisticModel.foodSearchContext = {
+          query: oldContext.query,
+          keyword: oldContext.keyword,
+          searchArea: {
+            longitude: nextLongitude,
+            latitude: nextLatitude,
+            radiusMeters: Number.isFinite(nextRadiusMeters) && nextRadiusMeters > 0 ?
+              nextRadiusMeters : oldContext.searchArea.radiusMeters,
+            name: this.actionText(nextArea['name']).trim(),
+            address: this.actionText(nextArea['address']).trim()
+          }
+        };
+        if (oldContext.brandPreference !== undefined) {
+          optimisticModel.foodSearchContext.brandPreference = oldContext.brandPreference;
+        }
+        if (oldContext.brandStrict !== undefined) {
+          optimisticModel.foodSearchContext.brandStrict = oldContext.brandStrict;
+        }
+        if (oldContext.sweetness !== undefined) {
+          optimisticModel.foodSearchContext.sweetness = oldContext.sweetness;
+        }
+        optimisticSurface.dataModelJson = JSON.stringify(optimisticModel);
+        this.forceApplySurface(optimisticSurface, 'food_location_optimistic');
+      }
+    }
+    await this.callToolById(
+      'food.search',
+      oldContext.query,
+      'food_change_location',
+      nextArgs as Object
+    );
+  }
+
+  private async relocateFoodToCurrentDeviceLocation(action: A2uiAction): Promise<void> {
+    const args = this.foodAddressActionArgs(action);
+    const model = this.parsedDataModel();
+    if (args === null || model === null || model.foodSearchContext === undefined) {
+      this.logHtmlHomeActionError(action, 'stale_food_relocate_context');
+      return;
+    }
+    try {
+      aiLogInfo('[AIPhone][FoodCurrentLocation] phase=request surfaceId=' + this.currentSurface.surfaceId);
+      const current = await this.currentFoodDeviceLocation();
+      aiLogInfo('[AIPhone][FoodCurrentLocation] phase=resolved surfaceId=' + this.currentSurface.surfaceId +
+        ' longitude=' + current.longitude.toString() +
+        ' latitude=' + current.latitude.toString() +
+        ' addressChars=' + current.address.length.toString());
+      const searchArea: FoodRelocateSearchArea = {
+        longitude: current.longitude,
+        latitude: current.latitude,
+        radiusMeters: model.foodSearchContext.searchArea.radiusMeters,
+        name: current.name,
+        address: current.address
+      };
+      const actionArgs: FoodRelocateActionArgs = {
+        surfaceId: this.currentSurface.surfaceId,
+        searchArea: searchArea
+      };
+      const refreshAction: A2uiAction = {
+        id: 'food_change_location',
+        label: '使用当前定位',
+        prompt: '使用当前设备位置重新搜索',
+        variant: 'secondary',
+        kind: 'client',
+        args: actionArgs
+      };
+      await this.refreshFoodSearchAtLocation(refreshAction);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : JSON.stringify(error);
+      aiLogError('[AIPhone][FoodCurrentLocation] phase=failed reason=' + reason);
+      this.getUIContext().getPromptAction().showToast({ message: '重新定位失败，请检查定位权限后重试。' });
     }
   }
 
@@ -7035,10 +7666,32 @@ struct Index {
     if (this.isLuckinPaymentActionId(action.id)) {
       this.logLuckinPaymentAction(action, 'dispatch');
     }
+    if (this.shouldBypassRegisteredPageForLuckinAction(action)) {
+      await this.callLuckinToolDirect(action);
+      return;
+    }
     await dispatchRegisteredPageActionCandidate(
       action,
       (clicked: A2uiAction): Promise<boolean> => this.runRegisteredPageAction(clicked),
       (legacy: A2uiAction): Promise<void> => this.sendLegacyAction(legacy, document)
+    );
+  }
+
+  private currentToolRuntimeOwner(): RuntimeOwner {
+    return this.activeRuntimeOwner === 'multi_agent' ? 'multi_agent' : 'legacy';
+  }
+
+  private async callLuckinToolDirect(action: A2uiAction): Promise<boolean> {
+    const args: Object | null = action.args === undefined ? null : action.args;
+    const rawPrompt: string = action.prompt.length > 0 ? action.prompt : action.label;
+    const prompt: string = resolveLuckinActionPrompt(rawPrompt, args);
+    return await this.callToolById(
+      action.id,
+      prompt,
+      action.id,
+      args,
+      undefined,
+      this.currentToolRuntimeOwner()
     );
   }
 
@@ -7054,7 +7707,8 @@ struct Index {
       return false;
     }
     const runtime = this.canaryRuntime();
-    const usesPageBusy = registeredPageActionUsesPageBusy(action.id);
+    const usesPageBusy = registeredPageActionUsesPageBusy(action.id) &&
+      !this.isLuckinOptionSwitchArgs(action.args === undefined ? null : action.args);
     if (usesPageBusy) {
       this.isBusy = true;
     }
@@ -7140,6 +7794,8 @@ struct Index {
         await this.handleClientAction(action);
       } else if (kind === 'input') {
         this.focusEditQuery(action.id);
+      } else if (action.id === 'luckin.order.create' || action.id === 'luckin.order.status') {
+        await this.callLuckinToolDirect(action);
       } else {
         this.logHtmlHomeActionError(action, 'runtime_owner_mismatch');
       }
@@ -7181,12 +7837,7 @@ struct Index {
       return;
     }
     if (action.id === 'luckin.order.preview' || action.id === 'luckin.order.create' || action.id === 'luckin.order.status') {
-      await this.callToolById(
-        action.id,
-        action.prompt.length > 0 ? action.prompt : action.label,
-        action.id,
-        action.args === undefined ? null : action.args
-      );
+      await this.callLuckinToolDirect(action);
       return;
     }
     if (kind === 'client') {
@@ -7366,6 +8017,12 @@ struct Index {
     if (runtimeOwner !== this.activeRuntimeOwner) {
       return false;
     }
+    if (toolId === 'luckin.order.preview' || toolId === 'luckin.order.create' || toolId === 'luckin.order.status') {
+      aiLogInfo('[AIPhone][LuckinOrderTrace] stage=dispatch result=received toolId=' + toolId +
+        ' actionId=' + actionId +
+        ' runtimeOwner=' + runtimeOwner +
+        ' promptChars=' + prompt.length.toString());
+    }
     const directDetailBimAction = false;
     if (!isRegisteredToolId(toolId)) {
       const message = '模型请求了未注册工具：' + toolId;
@@ -7492,11 +8149,21 @@ struct Index {
     const inlineLuckinPaymentStatus = inlinePaymentStatusPlan !== null;
     if (inlineLuckinSwitch) {
       if (this.luckinOptionSwitchInFlight) {
-        aiLogInfo('[AIPhone][A2uiHomeLuckinSwitchIgnored] reason=in_flight');
+        this.luckinOptionSwitchPending = {
+          prompt: prompt,
+          args: args,
+          actionId: actionId,
+          runtimeOwner: runtimeOwner
+        };
+        this.luckinOptionSwitchSeq = this.luckinOptionSwitchSeq + 1;
+        aiLogInfo('[AIPhone][A2uiHomeLuckinSwitchQueued] reason=in_flight seq=' +
+          this.luckinOptionSwitchSeq.toString());
         return false;
       }
+      this.luckinOptionSwitchSeq = this.luckinOptionSwitchSeq + 1;
       this.finishLuckinOptionSwitch(true);
     }
+    const luckinSwitchSeq = this.luckinOptionSwitchSeq;
     if (!directDetailBimAction && !inlineLuckinSwitch && !inlineLuckinPaymentStatus) {
       this.markChecking('正在调用工具：' + toolId);
     }
@@ -7504,6 +8171,9 @@ struct Index {
     if (!runtimeCallbackIsCurrent(
       this.activeRuntimeOwner, this.runtimeGeneration, runtimeOwner, toolGeneration
     )) {
+      if (inlineLuckinSwitch) {
+        this.finishLuckinOptionSwitch(false);
+      }
       return false;
     }
     const firecrawlPending = !directDetailBimAction && isFirecrawlToolId(toolId);
@@ -7518,6 +8188,7 @@ struct Index {
     const targetSurfaceId = directDetailBimAction ?
       personaSourceSurface.surfaceId :
       (multiTaskCtx !== null ? multiTaskCtx.childSurfaceId : this.toolSurfaceId());
+    const suppressFoodLocationPartials = toolId === 'food.search' && actionId === 'food_change_location';
     const result: A2uiCallResult = await callToolGateway(
       TOOL_GATEWAY_URL,
       toolId,
@@ -7525,6 +8196,11 @@ struct Index {
       targetSurfaceId,
       actionId,
       (surface: A2uiSurfaceState, raw: string) => {
+        if (suppressFoodLocationPartials) {
+          aiLogInfo('[AIPhone][FoodLocationPartialSuppressed] surfaceId=' + surface.surfaceId +
+            ' sequence=' + surface.sequence.toString());
+          return;
+        }
         if (inlineLuckinSwitch || inlineLuckinPaymentStatus) {
           return;
         }
@@ -7633,7 +8309,22 @@ struct Index {
     const resultSurface = this.ownedSurface(
       copyPersonaData(personaSourceSurface, result.surface), runtimeOwner, toolGeneration
     );
+    if (suppressFoodLocationPartials && resultSurface.surfaceId === this.currentSurface.surfaceId &&
+      resultSurface.sequence <= this.currentSurface.sequence) {
+      const returnedSequence = resultSurface.sequence;
+      resultSurface.sequence = this.currentSurface.sequence + 1;
+      aiLogInfo('[AIPhone][FoodLocationFinalSequenceRebased] surfaceId=' + resultSurface.surfaceId +
+        ' returnedSequence=' + returnedSequence.toString() +
+        ' currentSequence=' + this.currentSurface.sequence.toString() +
+        ' rebasedSequence=' + resultSurface.sequence.toString());
+    }
     if (inlineLuckinSwitch) {
+      if (luckinSwitchSeq !== this.luckinOptionSwitchSeq) {
+        aiLogInfo('[AIPhone][A2uiHomeLuckinSwitchStale] seq=' + luckinSwitchSeq.toString() +
+          ' current=' + this.luckinOptionSwitchSeq.toString());
+        this.finishLuckinOptionSwitch(false);
+        return false;
+      }
       if (result.ok && this.applyLuckinInlineConfirmPatch(resultSurface)) {
         this.finishLuckinOptionSwitch(false);
         this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
@@ -7987,6 +8678,10 @@ struct Index {
         checkoutWebTaskId: this.trainPresaleCheckoutTaskId,
         checkoutWebContext: this.checkoutWebContext,
         showTrainPresalePanel: this.showTrainPresalePanel,
+        showDeepSearch: this.showDeepSearch,
+        deepSearchQuery: this.deepSearchQuery,
+        deepSearchSettingsJson: this.deepSearchSettingsJson,
+        deepSearchContextJson: this.deepSearchContextJson,
         trainPresaleTrip: this.trainPresaleTrip,
         trainPresaleTask: this.trainPresaleTask,
         trainPresaleTaskState: this.trainPresaleTaskState,
@@ -8082,6 +8777,9 @@ struct Index {
           if (!this.trainPresaleWorking) {
             this.showTrainPresalePanel = false;
           }
+        },
+        onCloseDeepSearch: () => {
+          this.closeDeepSearch();
         },
         onCancelTrainPresaleTask: () => {
           void this.cancelTrainPresaleTask();

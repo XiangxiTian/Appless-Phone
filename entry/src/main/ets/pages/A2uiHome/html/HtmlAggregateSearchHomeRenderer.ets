@@ -1359,14 +1359,14 @@ const WATERFALL_JS: string = `
     if (!track) return 0;
     var nodes = typeof track.querySelectorAll === 'function' ? track.querySelectorAll('[data-waterfall-id]') : [];
     if (!nodes || nodes.length === 0) return Math.round(track.scrollTop / Math.max(1, track.clientHeight));
-    var viewportCenter = track.scrollTop + track.clientHeight / 2;
     var bestIndex = 0;
     var bestDistance = Infinity;
     for (var index = 0; index < nodes.length; index += 1) {
       var node = nodes[index];
       var top = typeof node.offsetTop === 'number' ? node.offsetTop : index * track.clientHeight;
       var height = typeof node.offsetHeight === 'number' && node.offsetHeight > 0 ? node.offsetHeight : track.clientHeight;
-      var distance = Math.abs(top + height / 2 - viewportCenter);
+      var snapTop = Math.max(0, top - Math.max(0, track.clientHeight - height) / 2);
+      var distance = Math.abs(snapTop - track.scrollTop);
       if (distance < bestDistance) {
         bestDistance = distance;
         bestIndex = index;

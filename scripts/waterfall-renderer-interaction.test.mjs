@@ -263,6 +263,16 @@ assert.doesNotMatch(track.innerHTML, /data-waterfall-media-fallback/);
 assert.match(track.innerHTML, /data-waterfall-video-fullscreen/);
 assert.match(track.innerHTML, /<svg[^>]*viewBox="0 0 24 24"/);
 assert.doesNotMatch(track.innerHTML, /[↗⌄⛶]/);
+const compactCardNodes = [
+  { offsetTop: 18, offsetHeight: 260 },
+  { offsetTop: 294, offsetHeight: 520 }
+];
+track.querySelectorAll = (selector) => selector === '[data-waterfall-id]' ? compactCardNodes : [];
+const actionCountBeforePassiveUpdate = actionCount('waterfall.feed.advance');
+window.__aiphoneApplyWaterfallUpdate(window.__aiphoneWaterfallInitial);
+assert.equal(actionCount('waterfall.feed.advance'), actionCountBeforePassiveUpdate,
+  'a compact first card must not advance merely because the next card is closer to the viewport center');
+track.querySelectorAll = () => [];
 topHotzone.emit('click');
 assert.equal(toolbar.classList.contains('revealed'), true);
 const toolbarTimer = timers.find((timer) => timer.delay === 2600 && !timer.canceled);

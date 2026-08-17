@@ -16,6 +16,7 @@ import {
   isKnownDomainToolId,
   isLocalAdapterToolId,
   isMapsToolId,
+  isReleaseToolId,
   isYouTubeToolId,
   resolveBackendForTool,
   toolDefinitionForToolId
@@ -42,13 +43,15 @@ export {
 };
 
 export function allToolDefinitions(): ToolDefinition[] {
-  return runtimeToolDefinitions();
+  return runtimeToolDefinitions().filter(
+    (definition: ToolDefinition): boolean => isReleaseToolId(definition.toolId)
+  );
 }
 
 export function isRegisteredAiphoneToolId(toolId: string): boolean {
-  return isKnownDomainToolId(toolId) || toolId === 'dynamic.search';
+  return isReleaseToolId(toolId);
 }
 
 export function aiphoneToolDefinitionCount(): number {
-  return runtimeToolDefinitions().length;
+  return allToolDefinitions().length;
 }

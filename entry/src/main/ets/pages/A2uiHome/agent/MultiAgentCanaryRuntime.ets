@@ -47,6 +47,7 @@ import {
   VIRTUAL_ACTION_INTENT_SOURCE_TOOL_ID,
   VirtualActionIntent,
   VirtualActionIntentResolver,
+  allAiphoneToolDefinitions,
   allToolDefinitions,
   callStructuredTool,
   gmailDraftApplyAction,
@@ -207,6 +208,8 @@ export interface MultiAgentCanaryOptions {
   ) => Promise<DataResult>;
   /** Host-only planning capability. UI Lab enables trusted operationTarget values; Home keeps this disabled. */
   allowTrustedOperationTargets?: boolean;
+  /** Product projection used by the focused release; shared runtime tests keep the complete catalog. */
+  focusedRelease?: boolean;
   bus?: LinkedMessageBus;
   conversationId?: string;
 }
@@ -1499,14 +1502,18 @@ interface MemorySurfaceOutput {
 function canaryPlanningContext(
   previousPersonaId: string,
   _prompt: string = '',
-  allowTrustedOperationTargets: boolean = false
+  allowTrustedOperationTargets: boolean = false,
+  focusedRelease: boolean = false
 ): LeaderPlanningContext {
-  const tools: LeaderToolMetadata[] = allToolDefinitions()
+  const definitions: ToolDefinition[] = focusedRelease ? allAiphoneToolDefinitions() : allToolDefinitions();
+  const tools: LeaderToolMetadata[] = definitions
     .filter((definition: ToolDefinition): boolean =>
       definition.toolId !== 'gmail.message.send' &&
         definition.toolId !== 'social.reply.draft' &&
         definition.toolId !== 'hotel.navigate' &&
-        definition.toolId !== 'hotel.booking.open'
+        definition.toolId !== 'hotel.booking.open' &&
+        (!focusedRelease ||
+          (definition.toolId !== 'web.research.search' && definition.toolId !== 'web.page.read'))
     )
     .map(
     (definition: ToolDefinition): LeaderToolMetadata => {
@@ -1526,28 +1533,30 @@ function canaryPlanningContext(
       };
     }
   );
-  const memory = memoryDefinition();
-  tools.push({
-    toolId: 'dynamic.search',
-    domain: 'dynamic',
-    intent: 'dynamic.search',
-    riskLevel: 'read',
-    registeredBackends: ['mcp_remote', 'oauth_api'],
-    inputSchema: 'dynamicToolSearchQuery',
-    outputSchema: 'dynamicToolConnect',
-    actions: [],
-    planningHint: toolPlanningDescriptionForToolId('dynamic.search', allowTrustedOperationTargets)
-  });
-  tools.push({
-    toolId: memory.toolId,
-    domain: memory.domain,
-    intent: memory.intent,
-    riskLevel: memory.riskLevel,
-    registeredBackends: memory.backendPriority.slice(),
-    inputSchema: memory.inputSchema,
-    outputSchema: memory.outputSchema,
-    actions: memory.actions.slice()
-  });
+  if (!focusedRelease) {
+    const memory = memoryDefinition();
+    tools.push({
+      toolId: 'dynamic.search',
+      domain: 'dynamic',
+      intent: 'dynamic.search',
+      riskLevel: 'read',
+      registeredBackends: ['mcp_remote', 'oauth_api'],
+      inputSchema: 'dynamicToolSearchQuery',
+      outputSchema: 'dynamicToolConnect',
+      actions: [],
+      planningHint: toolPlanningDescriptionForToolId('dynamic.search', allowTrustedOperationTargets)
+    });
+    tools.push({
+      toolId: memory.toolId,
+      domain: memory.domain,
+      intent: memory.intent,
+      riskLevel: memory.riskLevel,
+      registeredBackends: memory.backendPriority.slice(),
+      inputSchema: memory.inputSchema,
+      outputSchema: memory.outputSchema,
+      actions: memory.actions.slice()
+    });
+  }
   return {
     tools,
     personas: scopedLeaderPersonas(previousPersonaId, tools)
@@ -1719,7 +1728,7 @@ export class MultiAgentCanaryRuntime {
     this.aiphoneExecutor = aiphoneExecutor;
     const allowTrustedOperationTargets = options.allowTrustedOperationTargets === true;
     const initialContext = canaryPlanningContext(
-      this.lastLeaderPersonaId, '', allowTrustedOperationTargets
+      this.lastLeaderPersonaId, '', allowTrustedOperationTargets, options.focusedRelease === true
     );
     const dataTaskInputNormalizer: LeaderDataTaskInputNormalizer = (
       input: InputUserPayload,
@@ -1737,7 +1746,9 @@ export class MultiAgentCanaryRuntime {
       planner: leaderPlanner,
       planningContext: initialContext,
       planningContextProvider: (prompt: string): LeaderPlanningContext =>
-        canaryPlanningContext(this.lastLeaderPersonaId, prompt, allowTrustedOperationTargets),
+        canaryPlanningContext(
+          this.lastLeaderPersonaId, prompt, allowTrustedOperationTargets, options.focusedRelease === true
+        ),
       currentLocalDateProvider: options.currentLocalDate,
       dataTaskInputNormalizer,
       dataAuthorizer: authorizeCanaryDataTask,

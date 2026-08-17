@@ -254,13 +254,11 @@ test('keeps a public-persona job alive when its page is reopened', () => {
   assert.doesNotMatch(source.slice(openStart, openEnd), /loadPublicPersona\(\)/);
 });
 
-test('refreshes the mounted public-persona page after a saved snapshot changes', () => {
+test('does not mount the removed public-persona page in the focused release', () => {
   const index = readFileSync('entry/src/main/ets/pages/A2uiHome/Index.ets', 'utf8');
-  assert.match(index, /@State publicPersonaRenderTick: number = 0/);
-  assert.match(index, /private updatePublicPersonaSnapshot\(snapshot: PublicPersonaSnapshot \| null\): void/);
-  assert.match(index, /this\.publicPersonaSnapshot = snapshot;\s*this\.publicPersonaRenderTick = this\.publicPersonaRenderTick \+ 1/);
-  assert.match(index, /ForEach\(\[this\.publicPersonaRenderTick\][\s\S]{0,300}PublicPersonaPage\(\{/);
-  assert.match(index, /setPublicPersonaMbtiHidden[\s\S]{0,1400}this\.updatePublicPersonaSnapshot\(safe\)/);
+  const build = index.slice(index.indexOf('  build() {'));
+  assert.doesNotMatch(build, /PublicPersonaPage\(\{/);
+  assert.doesNotMatch(build, /showPublicPersonaPage/);
 });
 
 test('keeps Markdown drafts open until the parent confirms a successful save', () => {
@@ -357,18 +355,10 @@ test('starts public-persona discovery from a username with exact and fuzzy modes
   assert.match(index, /discover\(username, mode,/);
 });
 
-test('keeps the public persona entry visible without a remote avatar', () => {
+test('removes the public persona entry from the focused release home', () => {
   const page = readFileSync('entry/src/main/ets/pages/A2uiHome/components/HomePage.ets', 'utf8');
-  const socialStart = page.indexOf("symbol: $r('sys.symbol.person')");
-  const socialEnd = page.indexOf(".margin({ left: A2UI_HEADER_BUTTON_GAP })", socialStart);
-  assert.ok(socialStart >= 0 && socialEnd > socialStart, 'former social slot is present');
-  const socialBlock = page.slice(page.lastIndexOf('A2uiButtonView({', socialStart), socialEnd);
-  assert.match(socialBlock, /symbol: \$r\('sys\.symbol\.person'\)/);
-  assert.match(socialBlock, /hasSymbol: true/);
-  assert.match(socialBlock, /onOpenPublicPersona/);
-  assert.doesNotMatch(socialBlock, /👤|icon_social|onOpenSocialHub/);
-  assert.doesNotMatch(page, /persona_avatar_default/);
-  assert.match(socialBlock, /accessibilityText\('我的画像'/);
+  const build = page.slice(page.indexOf('  build() {'));
+  assert.doesNotMatch(build, /sys\.symbol\.person|onOpenPublicPersona|我的画像/);
 });
 
 test('builds the HAP from an explicit local provider env without committing secrets', () => {
@@ -449,12 +439,14 @@ test('gives only direct daily-brief evidence a bounded twenty-scroll window', ()
   assert.match(callSite, /scrolledEvidenceAttemptLimit\(expectedToolId\)/);
 });
 
-test('keeps direct daily-brief routing independent from removed BIM suggestion state', () => {
+test('routes search need through the model without a daily-brief shortcut', () => {
   const source = readFileSync('entry/src/main/ets/pages/A2uiHome/Index.ets', 'utf8');
-  const start = source.indexOf('const directDailyBriefRequest = resolveA2uiHomeSubmitToolRequest(trimmed);');
-  const end = source.indexOf('const modelPrompt = modelPromptWithActionContext', start);
-  assert.ok(start >= 0 && end > start, 'direct daily-brief submit branch is present');
-  assert.doesNotMatch(source.slice(start, end), /clearBimSuggestion/);
+  const start = source.indexOf('  private async submitPrompt(');
+  const end = source.indexOf('\n  private ', start + 1);
+  const body = source.slice(start, end);
+  assert.doesNotMatch(body, /directDailyBriefRequest|resolveA2uiHomeSubmitToolRequest/);
+  assert.match(body, /deepSearchRouteDecisionPrompt\(trimmed\)/);
+  assert.match(body, /deepSearchRouteDecisionFromModelText\(decision\) === 'deepsearch'/);
 });
 
 test('keeps packaged Didi production mode on app startup', () => {

@@ -118,7 +118,7 @@ import {
   isMultiTaskSurface,
   directFirecrawlToolIdForActionId,
   firecrawlHttpUrlOf,
-  isRegisteredToolId,
+  isRegisteredAiphoneToolId,
   mergeSlotObservationIntoMultiTaskSurface,
   normalizeComposioUserId,
   prepareGmailOAuthAuthorizationUrl,
@@ -359,6 +359,8 @@ import {
 import {
   ConnectionPanelState,
   createInitialConnectionPanelState,
+  deepSearchRouteDecisionFromModelText,
+  deepSearchRouteDecisionPrompt,
   inputTextAfterPromptSubmit,
   nextPendingToolRenderTick,
   runtimeCallbackIsCurrent,
@@ -368,8 +370,6 @@ import {
   shouldShowFirecrawlPendingSurface,
   shouldShowQueryPendingSurface,
   shouldShowWelcome,
-  shouldRouteDeepSearch,
-  shouldAutoRouteDeepSearch,
   updateConnectionPanelState,
   voiceInputTextAfterRecognition
 } from './state/A2uiHomeState';
@@ -880,7 +880,7 @@ struct Index {
   @State isAwaitingFirstSurface: boolean = false;
   @State pendingFirecrawlToolId: string = '';
   @State inputText: string = '';
-  @State bimRootIndex: number = 1;
+  @State bimRootIndex: number = 0;
   @State selectedBimId: string = '';
   @State bimInputText: string = '';
   @State bimRecords: BimRecord[] = [];
@@ -1897,7 +1897,7 @@ struct Index {
     const state = this.interestWaterfallFeedState;
     const surfaceId = 'waterfall-interest-home';
     if (action.id === 'waterfall.home.back') {
-      this.bimRootController.changeIndex(1, !this.bimReduceMotion);
+      this.bimRootController.changeIndex(0, !this.bimReduceMotion);
       return;
     }
     if (state === null) return;
@@ -2145,42 +2145,25 @@ struct Index {
     this.loadBimMotionPreference();
     this.readDebugBuildState();
     this.configureComposioRuntimeForCurrentUser();
-    this.loadPersonaOverrides();
-    this.loadPublicPersona();
     this.loadWaterfallPreferences();
-    this.loadPaymentAccounts();
-    this.loadStripeReceivingProfile();
     this.loadFoodAddressBook();
     void this.requestLocationPermissionOnLaunch();
     this.subscribeTrainPresaleHandoff();
-    this.subscribeBimSentinelMock();
     this.requestPendingTrainPresaleResume();
-    try {
-      this.bimStore().seedDemoRecordsIfMissing(new Date().toISOString());
-    } catch (_error) {
-    }
-    this.refreshBimRecords();
-    void this.catchUpDailyBriefIfNeeded();
   }
 
   onPageShow(): void {
     this.subscribeTrainPresaleHandoff();
-    this.subscribeBimSentinelMock();
     this.requestPendingTrainPresaleResume();
-    this.requestPendingBimSentinelMock();
-    this.requestDailyBimSentinel();
-    void this.catchUpDailyBriefIfNeeded();
   }
 
   onPageHide(): void {
     this.unsubscribeTrainPresaleHandoff();
-    this.unsubscribeBimSentinelMock();
   }
 
   aboutToDisappear(): void {
     this.stopBimMotionPreference();
     this.unsubscribeTrainPresaleHandoff();
-    this.unsubscribeBimSentinelMock();
     this.disposeHotelRuntime();
   }
 
@@ -3435,7 +3418,8 @@ struct Index {
       currentLocalDate: (): string => this.currentLocalDate(),
       submitTimeoutMs: 90000,
       actionTimeoutMs: 45000,
-      settingsFingerprint: fingerprint
+      settingsFingerprint: fingerprint,
+      focusedRelease: true
     };
     if (ENABLE_MULTI_AGENT_UI_LAYOUT_LLM && provider.isConfigured()) {
       options.uiLayoutPlanner = new A2uiAgentRunner(new OpenAiA2uiModel(provider));
@@ -4787,9 +4771,16 @@ struct Index {
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
-    const directDailyBriefRequest = resolveA2uiHomeSubmitToolRequest(trimmed);
-    const autoDeep = DEEP_SEARCH_AUTO_ROUTE_ENABLED && directDailyBriefRequest === null &&
-      sourceBimId.length === 0 && shouldAutoRouteDeepSearch(trimmed, actionId);
+    let autoDeep = false;
+    if (actionId.length === 0) {
+      try {
+        const decision = await this.canaryModel().complete(deepSearchRouteDecisionPrompt(trimmed));
+        autoDeep = deepSearchRouteDecisionFromModelText(decision) === 'deepsearch';
+      } catch (error) {
+        const message = error instanceof Error ? error.message : JSON.stringify(error);
+        aiLogError('[AIPhone][DeepSearchRouteDecisionFailed] ' + logSnippet(message));
+      }
+    }
     if (autoDeep && trimmed.length > 0) {
       this.inputText = inputTextAfterPromptSubmit(this.inputText);
       this.appendMessage('user', visibleText);
@@ -4803,21 +4794,9 @@ struct Index {
     if (this.showDeepSearch) {
       this.closeDeepSearch();
     }
-    if (directDailyBriefRequest !== null) {
-      this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
-      this.appendMessage('user', visibleText);
-      this.inputText = inputTextAfterPromptSubmit(this.inputText);
-      await this.callToolById(
-        directDailyBriefRequest.toolId,
-        directDailyBriefRequest.prompt,
-        directDailyBriefRequest.actionId,
-        directDailyBriefRequest.args
-      );
-      return;
-    }
     const modelPrompt = modelPromptWithActionContext(trimmed, actionId, actionArgs);
     const request: BimForegroundRequest = buildBimForegroundRequest(
-      modelPrompt, this.bimStore().list(), sourceBimId
+      modelPrompt, [], ''
     );
     if (this.baseUrl.trim().length === 0) {
       aiLogError('[AIPhone][A2uiHomeSubmitBlocked] missingBaseUrl');
@@ -4897,26 +4876,6 @@ struct Index {
         error: ''
       }));
       this.appendMessage('assistant', readyMessage);
-      const bimEvidence: BimTurnEvidence = {
-        query: request.query,
-        sourceBimId: request.sourceBimId,
-        visibleSource: visibleText,
-        assistantReply: readyMessage,
-        surfaceSummary: this.currentSurface.title + ' | ' + this.currentSurface.status,
-        toolResultSummary: safeBimToolResultSummary(
-          summarizeAppliedA2uiSurface('', this.currentSurface).text
-        ),
-        // Human confirmation is a separate flow; free-form foreground text never proves completion.
-        userConfirmedCompletion: false,
-        userConfirmedCreate: false
-      };
-      if (request.sourceBimId.length === 0 && explicitBimCreateRequest(request.query)) {
-        this.pendingBimEvidence = bimEvidence;
-        this.bimSuggestionTitle = visibleText.length > 28 ? visibleText.substring(0, 28) + '…' : visibleText;
-        this.bimSuggestionReason = '确认后由后台整理成新的心上事';
-      } else {
-        this.enqueueBimCurator(bimEvidence);
-      }
     } catch (error) {
       if (this.runtimeGeneration !== turnGeneration) {
         return;
@@ -8027,7 +7986,7 @@ struct Index {
         ' promptChars=' + prompt.length.toString());
     }
     const directDetailBimAction = false;
-    if (!isRegisteredToolId(toolId)) {
+    if (!isRegisteredAiphoneToolId(toolId)) {
       const message = '模型请求了未注册工具：' + toolId;
       aiLogError('[AIPhone][A2uiHomeToolRequestInvalid] toolId=' + toolId);
       if (directDetailBimAction) {
@@ -8447,12 +8406,8 @@ struct Index {
 
   onBackPress(): boolean {
     if (!this.showConfigPage && !this.showComposioAuthPage) {
-      if (this.selectedBimId.length > 0) {
-        this.closeBimDetail();
-        return true;
-      }
-      if (this.bimRootIndex === 0 || this.bimRootIndex === 2) {
-        this.bimRootController.changeIndex(1, !this.bimReduceMotion);
+      if (this.bimRootIndex === 1) {
+        this.bimRootController.changeIndex(0, !this.bimReduceMotion);
         return true;
       }
     }
@@ -8605,54 +8560,8 @@ struct Index {
           this.configureDidiMcpSandboxRuntime(isOn);
         }
       })
-    } else if (this.showPublicPersonaPage) {
-      ForEach([this.publicPersonaRenderTick], (_tick: number) => {
-        PublicPersonaPage({
-          phase: this.publicPersonaPhase,
-          candidates: this.publicPersonaCandidates,
-          progress: this.publicPersonaProgress,
-          snapshot: this.publicPersonaSnapshot,
-          errorMessage: this.publicPersonaError,
-          onBack: () => {
-            this.showPublicPersonaPage = false;
-          },
-          onChooseSetup: () => {
-            this.publicPersonaPhase = 'input';
-            this.publicPersonaError = '';
-          },
-          onSkip: () => {
-            this.skipPublicPersonaOnboarding();
-          },
-          onStartDiscovery: (username: string, mode: PublicPersonaSearchMode) => {
-            this.startPublicPersonaDiscovery(username, mode);
-          },
-          onConfirm: (candidateIds: string[]) => {
-            this.confirmPublicPersona(candidateIds);
-          },
-          onSaveMarkdown: (markdown: string): boolean => {
-            return this.savePublicPersonaMarkdown(markdown);
-          },
-          onReinferMbti: () => {
-            this.reinferPublicPersonaMbti();
-          },
-          onSetMbtiHidden: (hidden: boolean) => {
-            this.setPublicPersonaMbtiHidden(hidden);
-          },
-          onDelete: (): boolean => {
-            return this.deletePublicPersona();
-          }
-        })
-      }, (tick: number) => tick.toString())
     } else {
       Swiper(this.bimRootController) {
-        Stack({ alignContent: Alignment.Center }) {
-          ForEach([this.bimDetailRenderTick], (_tick: number) => {
-            this.BimSpace()
-          }, (tick: number) => tick.toString())
-        }
-        .width('100%')
-        .height('100%')
-
       HomePage({
         inputText: $inputText,
         isBusy: this.isBusy,
@@ -8697,25 +8606,6 @@ struct Index {
         bimRememberState: this.bimRememberState,
         bimRememberError: this.bimRememberError,
         reduceMotion: this.bimReduceMotion,
-        onOpenBim: () => {
-          this.openBimRoot();
-        },
-        onRememberBim: () => {
-          this.rememberSuggestedBim();
-        },
-        onReturnDailyBrief: () => {
-          aiLogInfo('[AIPhone][DailyBriefReturn] source=native_child');
-          const snapshot = this.dailyBriefSnapshot;
-          const store = this.dailyBriefStore();
-          if (snapshot !== null && store !== null) {
-            this.forceApplySurface(
-              createDailyBriefSurface(snapshot, store.loadPreference()),
-              'daily_brief_return'
-            );
-            return;
-          }
-          void this.openDailyBrief(false);
-        },
         onToggleHistory: () => {
           this.showHistory = !this.showHistory;
         },
@@ -8723,9 +8613,6 @@ struct Index {
           this.configureComposioRuntimeForCurrentUser();
           this.showConfigPage = true;
           this.refreshComposioAuth();
-        },
-        onOpenPublicPersona: () => {
-          this.openPublicPersona();
         },
         onResetSession: () => {
           this.resetCurrentSession();
@@ -8811,12 +8698,12 @@ struct Index {
       .index(this.bimRootIndex)
       .loop(false)
       .indicator(false)
-      .disableSwipe(this.selectedBimId.length > 0)
+      .disableSwipe(false)
       .duration(this.bimReduceMotion ? 0 : A2UI_MOTION_NORMAL_MS)
       .curve(A2UI_MOTION_MOVE_CURVE)
       .onChange((index: number) => {
         this.bimRootIndex = index;
-        if (index === 2) this.ensureInterestWaterfall();
+        if (index === 1) this.ensureInterestWaterfall();
       })
     }
   }

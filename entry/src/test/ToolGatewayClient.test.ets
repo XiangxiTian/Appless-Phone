@@ -2318,6 +2318,8 @@ export default function toolGatewayClientTest() {
         configureLocalProviderConfigFromRawJson('{}');
         let summary = localProviderConfigDebugSummary();
         expect(summary.indexOf('rideMockEnabled=false')).assertLarger(-1);
+        expect(summary.indexOf('didiMcpSandbox=false')).assertLarger(-1);
+        expect(rideDidiMcpSandboxEnabledForRuntime()).assertFalse();
 
         configureLocalProviderConfigFromRawJson(JSON.stringify({
           RIDE_MOCK_ENABLED: 'true'

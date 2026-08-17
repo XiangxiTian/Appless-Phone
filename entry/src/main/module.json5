@@ -49,26 +49,6 @@
         }
       },
       {
-        "name": "ohos.permission.READ_CALENDAR",
-        "reason": "$string:calendar_permission_reason",
-        "usedScene": {
-          "abilities": [
-            "EntryAbility"
-          ],
-          "when": "inuse"
-        }
-      },
-      {
-        "name": "ohos.permission.WRITE_CALENDAR",
-        "reason": "$string:calendar_permission_reason",
-        "usedScene": {
-          "abilities": [
-            "EntryAbility"
-          ],
-          "when": "inuse"
-        }
-      },
-      {
         "name": "ohos.permission.GET_BUNDLE_INFO"
       },
       {
@@ -107,30 +87,9 @@
                 "scheme": "com.jiuwen.appless"
               },
               {
-                "scheme": "com.jiuwen.appless",
-                "pathStartWith": "oauth/google"
-              },
-              {
-                "scheme": "com.jiuwen.appless",
-                "host": "oauth",
-                "pathStartWith": "google"
-              },
-              {
-                "scheme": "aiphone",
-                "host": "oauth",
-                "pathStartWith": "google"
-              },
-              {
                 "scheme": "aiphone",
                 "host": "composio",
                 "pathStartWith": "callback"
-              },
-              {
-                "scheme": "com.googleusercontent.apps.358078200829-covuu6l8dgvs7kaejua7mrkke7e8833b"
-              },
-              {
-                "scheme": "com.googleusercontent.apps.358078200829-covuu6l8dgvs7kaejua7mrkke7e8833b",
-                "pathStartWith": "oauth2redirect"
               }
             ]
           }
@@ -138,12 +97,6 @@
       }
     ],
     "extensionAbilities": [
-      {
-        "name": "DailyBriefWorkScheduler",
-        "srcEntry": "./ets/extensionability/DailyBriefWorkScheduler.ets",
-        "type": "workScheduler",
-        "exported": false
-      },
       {
         "name": "NavigationCardFormExtensionAbility",
         "srcEntry": "./ets/extensionability/NavigationCardFormExtensionAbility.ets",

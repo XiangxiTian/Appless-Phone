@@ -528,39 +528,6 @@ export struct HomePage {
           Blank()
             .layoutWeight(1)
 
-          Stack({ alignContent: Alignment.Center }) {
-            Image($r('app.media.icon_heart'))
-              .width(A2UI_HEART_ICON_SIZE)
-              .height(A2UI_HEART_ICON_SIZE)
-              .objectFit(ImageFit.Contain)
-
-            if (formatBimCount(this.bimVisibleCount).length > 0) {
-              Text(formatBimCount(this.bimVisibleCount))
-                .fontSize(this.bimVisibleCount > 9 ? 8 : 10)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(COLOR_ACCENT)
-                .maxLines(1)
-            }
-          }
-          .width(A2UI_HEART_TARGET_SIZE)
-          .height(A2UI_HEART_TARGET_SIZE)
-          .borderRadius(A2UI_HEART_TARGET_SIZE / 2)
-          .backgroundColor(this.heartPressed ? COLOR_ACCENT_SOFT : A2UI_HOME_HEADER_BUTTON_BACKGROUND)
-          .border({ width: 1, color: A2UI_HOME_HEADER_BUTTON_EDGE })
-          .shadow({ radius: 8, color: A2UI_HOME_HEADER_BUTTON_SHADOW, offsetX: 0, offsetY: 3 })
-          .scale({
-            x: !this.reduceMotion && this.heartPressed ? 0.97 : 1,
-            y: !this.reduceMotion && this.heartPressed ? 0.97 : 1
-          })
-          .animation({ duration: this.reduceMotion ? 0 : 120, curve: Curve.EaseOut })
-          .accessibilityText(this.heartAccessibilityText())
-          .onTouch((event: TouchEvent) => {
-            this.handleHeartTouch(event);
-          })
-          .onClick(() => {
-            this.onOpenBim();
-          })
-
           A2uiButtonView({
             icon: $r('app.media.icon_history'),
             hasIcon: true,
@@ -601,30 +568,6 @@ export struct HomePage {
               }
               this.onResetSession();
             })
-            .margin({ left: A2UI_HEADER_BUTTON_GAP })
-
-          A2uiButtonView({
-            symbol: $r('sys.symbol.person'),
-            hasSymbol: true,
-            shape: 'circle',
-            circleSize: A2UI_HEADER_BUTTON_SIZE,
-            iconSize: A2UI_HEADER_BUTTON_ICON_SIZE,
-            tone: 'secondary',
-            isEnabled: !this.isBusy,
-            customBackgroundColor: A2UI_HOME_HEADER_BUTTON_BACKGROUND,
-            customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
-            shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
-            shadowRadius: 8,
-            shadowOffsetY: 3
-          })
-            .enabled(!this.isBusy)
-            .onClick(() => {
-              if (this.isBusy) {
-                return;
-              }
-              this.onOpenPublicPersona();
-            })
-            .accessibilityText('我的画像')
             .margin({ left: A2UI_HEADER_BUTTON_GAP })
 
           A2uiButtonView({
@@ -717,25 +660,6 @@ export struct HomePage {
         .margin({ top: this.surfaceTopGap() })
       } else {
         Column() {
-          if (shouldShowDailyBriefReturn(this.currentSurface)) {
-            Row() {
-              A2uiButtonView({
-                label: '‹ 返回日报',
-                tone: 'secondary',
-                isEnabled: !this.isBusy
-              })
-                .enabled(!this.isBusy)
-                .onClick(() => {
-                  if (!this.isBusy) {
-                    this.onReturnDailyBrief();
-                  }
-                })
-            }
-            .width('100%')
-            .height(50)
-            .alignItems(VerticalAlign.Center)
-          }
-
           HtmlHomeSurfaceView({
             html: this.htmlHomeHtml,
             multiTaskPayloadJson: this.multiTaskPayloadJson,
@@ -761,62 +685,6 @@ export struct HomePage {
       }
 
       if (shouldShowHomeChrome(this.waterfallFullscreen)) {
-        if (this.showBimSuggestion()) {
-          Row() {
-            Column() {
-              if (this.bimSuggestionTitle.trim().length > 0) {
-                Text(this.bimSuggestionTitle)
-                  .fontSize(14)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor(COLOR_INK)
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(this.bimSuggestionReason)
-                  .fontSize(12)
-                  .fontColor(COLOR_MUTED)
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  .margin({ top: 3 })
-              }
-              if (this.bimRememberError.trim().length > 0) {
-                Text(this.bimRememberError)
-                  .fontSize(12)
-                  .fontColor(COLOR_ACCENT)
-                  .maxLines(2)
-                  .margin({ top: this.bimSuggestionTitle.trim().length > 0 ? 5 : 0 })
-              }
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-            .margin({ right: 10 })
-
-            if (this.bimSuggestionTitle.trim().length > 0) {
-              A2uiButtonView({
-                label: this.bimRememberLabel(),
-                shape: 'pill',
-                tone: this.bimRememberState === 'saved' ? 'secondary' : 'primary',
-                isEnabled: !this.isBusy &&
-                  this.bimRememberState !== 'saving' && this.bimRememberState !== 'saved'
-              })
-                .enabled(!this.isBusy &&
-                  this.bimRememberState !== 'saving' && this.bimRememberState !== 'saved')
-                .onClick(() => {
-                  if (!this.isBusy &&
-                    this.bimRememberState !== 'saving' && this.bimRememberState !== 'saved') {
-                    this.onRememberBim();
-                  }
-                })
-            }
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-          .padding(12)
-          .margin({ top: A2UI_HOME_SECTION_GAP })
-          .backgroundColor(COLOR_ACCENT_SOFT)
-          .borderRadius(14)
-          .border({ width: 1, color: COLOR_CARD_EDGE })
-        }
-
       Column() {
         Stack({ alignContent: Alignment.Center }) {
           if (this.isVoiceListening) {

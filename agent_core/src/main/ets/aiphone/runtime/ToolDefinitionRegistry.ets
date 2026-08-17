@@ -669,6 +669,35 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   }
 ];
 
+const RELEASE_TOOL_IDS: string[] = [
+  'travel.search',
+  'train.search',
+  'flight.search',
+  'hotel.search',
+  'hotel.detail',
+  'hotel.navigate',
+  'hotel.booking.open',
+  'food.search',
+  'luckin.order.preview',
+  'luckin.order.create',
+  'luckin.order.status',
+  'media.aggregate.search',
+  'maps.place.search',
+  'maps.place.details',
+  'maps.route.open',
+  'ride.estimate',
+  'ride.app.link',
+  'ride.order.create',
+  'ride.order.cancel',
+  'ride.driver.location',
+  'web.research.search',
+  'web.page.read'
+];
+
+export function isReleaseToolId(toolId: string): boolean {
+  return RELEASE_TOOL_IDS.indexOf(toolId) >= 0;
+}
+
 const DYNAMIC_SEARCH_PLANNING_PREFIX: string =
   'dynamic.search inputSchema=dynamicToolSearchQuery outputSchema=dynamicToolConnect. ' +
   'Use for ModelScope/remote MCP discovery, weather requests, Composio-backed app/toolkit requests, and domains ' +

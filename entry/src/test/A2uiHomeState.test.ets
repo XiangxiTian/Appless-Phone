@@ -3,6 +3,8 @@ import { A2uiAction, A2uiGenericToolResultData, A2uiSurfaceState } from '@loop/a
 import {
   A2UI_SEND_SPINNER_STEP_DEG,
   createInitialConnectionPanelState,
+  deepSearchRouteDecisionFromModelText,
+  deepSearchRouteDecisionPrompt,
   inputTextAfterPromptSubmit,
   isWelcomeSurface,
   isPromptInputEnabled,
@@ -15,9 +17,6 @@ import {
   shouldShowWelcome,
   shouldShowQueryPendingSurface,
   shouldApplySurfaceUpdate,
-  shouldRouteDeepSearch,
-  shouldAutoRouteDeepSearch,
-  matchesBuiltinSearchCategory,
   updateConnectionPanelState,
   voiceInputTextAfterRecognition
 } from '../main/ets/pages/A2uiHome/state/A2uiHomeState';
@@ -154,28 +153,13 @@ export default function a2uiHomeStateTest() {
       expect(runtimeSurfaceIdentityMatches(current, retained, 'legacy', 9)).assertFalse();
     });
 
-    it('routes only non-builtin prompts to DeepSearch automatically', 0, () => {
-      // 既有搜索类（媒体/社交/出行/本地生活）不自动路由
-      expect(matchesBuiltinSearchCategory('帮我找最近上映的电影')).assertTrue();
-      expect(matchesBuiltinSearchCategory('深圳到北京的高铁车票')).assertTrue();
-      expect(matchesBuiltinSearchCategory('附近有什么好吃的餐厅')).assertTrue();
-      expect(matchesBuiltinSearchCategory('打车去机场多少钱')).assertTrue();
-      expect(matchesBuiltinSearchCategory('看下微博热搜')).assertTrue();
-      // 范畴之外的搜索内容自动归入 DeepSearch
-      expect(matchesBuiltinSearchCategory('什么是狭义相对论')).assertFalse();
-      expect(matchesBuiltinSearchCategory('2026年诺贝尔奖得主是谁')).assertFalse();
-      expect(matchesBuiltinSearchCategory('新能源汽车行业发展趋势')).assertFalse();
-      expect(shouldAutoRouteDeepSearch('什么是狭义相对论', '')).assertTrue();
-      expect(shouldAutoRouteDeepSearch('帮我查深圳北站附近餐馆', '')).assertFalse();
-      expect(shouldAutoRouteDeepSearch('查一下今天的天气', '')).assertTrue();
-      // 带 actionId 的任务不路由
-      expect(shouldAutoRouteDeepSearch('查一下今天的天气', 'food.search')).assertFalse();
-      expect(shouldAutoRouteDeepSearch('', '')).assertFalse();
-      expect(shouldAutoRouteDeepSearch('   ', '')).assertFalse();
-      // 手动开关路由语义保留
-      expect(shouldRouteDeepSearch(true, '查询', '')).assertTrue();
-      expect(shouldRouteDeepSearch(false, '查询', '')).assertFalse();
-      expect(shouldRouteDeepSearch(true, '查询', 'action')).assertFalse();
+    it('uses only the model routing decision and falls back to the normal agent', 0, () => {
+      expect(deepSearchRouteDecisionFromModelText('{"route":"deepsearch"}')).assertEqual('deepsearch');
+      expect(deepSearchRouteDecisionFromModelText('```json\n{"route":"agent"}\n```')).assertEqual('agent');
+      expect(deepSearchRouteDecisionFromModelText('{"route":"search"}')).assertEqual('agent');
+      expect(deepSearchRouteDecisionFromModelText('not json')).assertEqual('agent');
+      expect(deepSearchRouteDecisionPrompt('比较两款芯片的最新进展').indexOf('比较两款芯片的最新进展'))
+        .assertLarger(-1);
     });
 
     it('keeps send spinner rotation monotonic while loading', 0, () => {

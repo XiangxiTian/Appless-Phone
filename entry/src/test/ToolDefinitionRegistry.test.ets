@@ -65,6 +65,23 @@ function firecrawlDefinitions(definitions: ToolDefinition[]): ToolDefinition[] {
 
 export default function toolDefinitionRegistryTest() {
   describe('toolDefinitionRegistry', () => {
+    it('exposes only the focused release tool set to the app runtime', 0, () => {
+      const ids = allAiphoneToolDefinitions().map(
+        (definition: ToolDefinition): string => definition.toolId
+      );
+
+      expect(ids.join(',')).assertEqual(
+        'travel.search,train.search,flight.search,hotel.search,hotel.detail,hotel.navigate,' +
+        'hotel.booking.open,food.search,luckin.order.preview,luckin.order.create,luckin.order.status,' +
+        'media.aggregate.search,maps.place.search,maps.place.details,maps.route.open,ride.estimate,' +
+        'ride.app.link,ride.order.create,ride.order.cancel,ride.driver.location,web.research.search,' +
+        'web.page.read'
+      );
+      expect(isRegisteredAiphoneToolId('payment.send')).assertFalse();
+      expect(isRegisteredAiphoneToolId('dynamic.search')).assertFalse();
+      expect(isRegisteredAiphoneToolId('memory.update')).assertFalse();
+    });
+
     it('recognizes existing local adapters and Gmail tools through one registry', 0, () => {
       expect(isKnownDomainToolId('travel.search')).assertTrue();
       expect(isKnownDomainToolId('food.search')).assertTrue();
@@ -276,7 +293,7 @@ export default function toolDefinitionRegistryTest() {
       expect(isRegisteredAiphoneToolId('hotel.booking.open')).assertTrue();
       expect(isRegisteredAiphoneToolId(removedDialActionId)).assertFalse();
       expect(isRegisteredAiphoneToolId('hotel.create')).assertFalse();
-      expect(aiphoneToolDefinitionCount()).assertEqual(allToolDefinitions().length);
+      expect(aiphoneToolDefinitionCount()).assertEqual(allAiphoneToolDefinitions().length);
       expect(JSON.stringify(hotelDefinitions(allAiphoneToolDefinitions())))
         .assertEqual(JSON.stringify(hotelDefinitions(allToolDefinitions())));
       expect(isSurfaceDerivedHotelActionId('hotel.navigate')).assertTrue();
@@ -326,8 +343,9 @@ export default function toolDefinitionRegistryTest() {
         .assertEqual('confirm_required');
       expect((toolDefinitionForToolId('web.monitor.list') as ToolDefinition).riskLevel)
         .assertEqual('read');
-      expect(JSON.stringify(firecrawlDefinitions(allAiphoneToolDefinitions())))
-        .assertEqual(JSON.stringify(firecrawlDefinitions(allToolDefinitions())));
+      expect(firecrawlDefinitions(allAiphoneToolDefinitions()).map(
+        (definition: ToolDefinition): string => definition.toolId
+      ).join(',')).assertEqual('web.research.search,web.page.read');
 
       const expectedContracts: string[] = [
         'web.research.search|read|webResearchQuery|web.page.read,web.open.source',
@@ -486,19 +504,16 @@ export default function toolDefinitionRegistryTest() {
         .assertLarger(-1);
     });
 
-    it('keeps every public and runtime tool contract semantically aligned', 0, () => {
+    it('keeps every focused release tool contract aligned with the shared runtime', 0, () => {
       const publicDefinitions: ToolDefinition[] = allAiphoneToolDefinitions();
       const runtimeDefinitions: ToolDefinition[] = allToolDefinitions();
-      const publicUpdate = publicDefinitions.filter((definition: ToolDefinition): boolean =>
-        definition.toolId === 'calendar.event.update')[0];
-      const runtimeUpdate = runtimeDefinitions.filter((definition: ToolDefinition): boolean =>
-        definition.toolId === 'calendar.event.update')[0];
-      const optionalUpdateSchema = 'eventId?:string,query?:string,timeMin?:string,timeMax?:string,' +
-        'title?:string,start?:string,end?:string,timezone?:string,calendarId?:string';
-
-      expect(JSON.stringify(publicDefinitions)).assertEqual(JSON.stringify(runtimeDefinitions));
-      expect(publicUpdate.inputSchema).assertEqual(optionalUpdateSchema);
-      expect(runtimeUpdate.inputSchema).assertEqual(optionalUpdateSchema);
+      for (let index = 0; index < publicDefinitions.length; index++) {
+        const publicDefinition = publicDefinitions[index];
+        const runtimeDefinition = runtimeDefinitions.filter((definition: ToolDefinition): boolean =>
+          definition.toolId === publicDefinition.toolId
+        )[0];
+        expect(JSON.stringify(publicDefinition)).assertEqual(JSON.stringify(runtimeDefinition));
+      }
     });
 
     it('registers aggregate mail tools without enabling send', 0, () => {
@@ -564,7 +579,7 @@ export default function toolDefinitionRegistryTest() {
       expect(isKnownDomainToolId('payment.send')).assertTrue();
       expect(isLocalAdapterToolId('payment.send')).assertTrue();
       expect(isPaymentToolId('payment.send')).assertTrue();
-      expect(isRegisteredAiphoneToolId('payment.send')).assertTrue();
+      expect(isRegisteredAiphoneToolId('payment.send')).assertFalse();
       expect(payment.domain).assertEqual('payment');
       expect(payment.riskLevel).assertEqual('confirm_required');
       expect(payment.backendPriority.join(',')).assertEqual('local_adapter');

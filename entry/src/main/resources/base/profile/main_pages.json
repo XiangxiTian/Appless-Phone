@@ -1,10 +1,5 @@
 {
   "src": [
-    "pages/A2uiHome/Index",
-    "pages/A2uiHome/StyleLab",
-    "pages/A2uiHome/UiAgentLab",
-    "pages/A2uiHome/AnythingDemo",
-    "pages/A2uiHome/MovieDemo",
-    "pages/A2uiHome/DeepSearch"
+    "pages/A2uiHome/Index"
   ]
 }

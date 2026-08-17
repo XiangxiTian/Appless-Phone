@@ -734,46 +734,7 @@ export struct ConfigPage {
         .alignItems(VerticalAlign.Center)
         .margin({ bottom: 16 })
 
-        Row() {
-          Column() {
-            Text('UI Lab')
-              .fontSize(18)
-              .fontWeight(FontWeight.Bold)
-              .fontColor(COLOR_INK)
-            Text('在独立 ArkWeb 页面验证 UI Agent 的生成与交互链路')
-              .fontSize(12)
-              .fontColor(COLOR_MUTED)
-              .lineHeight(18)
-              .margin({ top: 4 })
-          }
-          .layoutWeight(1)
-          .alignItems(HorizontalAlign.Start)
-
-          Button('打开')
-            .height(38)
-            .width(76)
-            .fontSize(13)
-            .fontColor(COLOR_BUTTON_TEXT)
-            .backgroundColor(COLOR_ACCENT_DEEP)
-            .borderRadius(10)
-            .border({ width: 1, color: COLOR_ACCENT })
-            .margin({ left: 12 })
-            .onClick(() => {
-              this.onOpenUiAgentLab();
-            })
-        }
-        .width('100%')
-        .alignItems(VerticalAlign.Center)
-        .padding(16)
-        .backgroundColor(COLOR_PANEL)
-        .borderRadius(16)
-        .border({ width: 1, color: COLOR_CARD_EDGE })
-        .shadow({ radius: 22, color: COLOR_PANEL_SHADOW, offsetX: 0, offsetY: 10 })
-        .margin({ bottom: 14 })
-
         this.ComposioAuthSummarySection()
-
-        this.PersonaEditorSection()
 
         Column() {
           Row() {
@@ -786,7 +747,7 @@ export struct ConfigPage {
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
-          Text('这里是最小刷新实验：点击测试连接后，状态、错误、请求和响应面板应立即更新，不需要切页。')
+          Text('配置基础对话、DeepSearch 与场景调度共用的模型。')
             .fontSize(13)
             .fontColor(COLOR_MUTED)
             .lineHeight(19)
@@ -955,7 +916,7 @@ export struct ConfigPage {
                   .fontSize(13)
                   .fontWeight(FontWeight.Medium)
                   .fontColor(COLOR_INK)
-                Text('默认开启 sandbox；关闭后滴滴查询、估价、下单、司机位置全部走真实 MCP')
+                Text('正式应用默认走真实 MCP；仅测试时开启 sandbox')
                   .fontSize(12)
                   .fontColor(COLOR_MUTED)
                   .margin({ top: 4 })
@@ -977,138 +938,6 @@ export struct ConfigPage {
             .width('100%')
             .alignItems(VerticalAlign.Center)
 
-            Divider()
-              .color(COLOR_LINE)
-              .margin({ top: 16, bottom: 12 })
-
-            Row() {
-              Column() {
-                Text('餐饮来源延时')
-                  .fontSize(13)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor(COLOR_INK)
-                Text('开启后延迟非首个餐饮来源，用于观察分步返回')
-                  .fontSize(12)
-                  .fontColor(COLOR_MUTED)
-                  .margin({ top: 4 })
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
-
-              Toggle({ type: ToggleType.Switch, isOn: this.foodProviderDelayEnabled })
-                .selectedColor(COLOR_ACCENT)
-                .onChange((isOn: boolean) => {
-                  this.foodProviderDelayEnabled = isOn;
-                })
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-
-            this.InputLabel('延时毫秒', 12)
-            TextInput({ text: this.foodProviderDelayMs, placeholder: '5000' })
-              .height(42)
-              .fontSize(13)
-              .fontColor(COLOR_TEXT)
-              .placeholderColor(COLOR_MUTED)
-              .backgroundColor(COLOR_FIELD)
-              .borderRadius(9)
-              .border({ width: 1, color: COLOR_CARD_EDGE })
-              .padding({ left: 10, right: 10 })
-              .enabled(this.foodProviderDelayEnabled)
-              .opacity(this.foodProviderDelayEnabled ? 1 : 0.55)
-              .onChange((value: string) => {
-                this.foodProviderDelayMs = value;
-              })
-
-            this.InputLabel('局部更新间隔（毫秒）', 12)
-            TextInput({ text: this.foodPartialThrottleMs, placeholder: '500' })
-              .height(42)
-              .fontSize(13)
-              .fontColor(COLOR_TEXT)
-              .placeholderColor(COLOR_MUTED)
-              .backgroundColor(COLOR_FIELD)
-              .borderRadius(9)
-              .border({ width: 1, color: COLOR_CARD_EDGE })
-              .padding({ left: 10, right: 10 })
-              .onChange((value: string) => {
-                this.foodPartialThrottleMs = value;
-              })
-
-            Divider()
-              .color(COLOR_LINE)
-              .margin({ top: 16, bottom: 12 })
-
-            Row() {
-              Column() {
-                Text('忽略工具流式 Surface')
-                  .fontSize(13)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor(COLOR_INK)
-                Text('开启后丢弃工具 partial，只在工具完成后回放完整结果')
-                  .fontSize(12)
-                  .fontColor(COLOR_MUTED)
-                  .margin({ top: 4 })
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
-
-              Toggle({ type: ToggleType.Switch, isOn: this.ignoreToolSurfaceUpdates })
-                .selectedColor(COLOR_ACCENT)
-                .onChange((isOn: boolean) => {
-                  this.ignoreToolSurfaceUpdates = isOn;
-                })
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-
-            Divider()
-              .color(COLOR_LINE)
-              .margin({ top: 16, bottom: 12 })
-
-            Row() {
-              Column() {
-                Text('导出 HtmlHome JSON')
-                  .fontSize(13)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor(COLOR_INK)
-                Text('写入当前 WebView renderer 的中间结构')
-                  .fontSize(12)
-                  .fontColor(COLOR_MUTED)
-                  .margin({ top: 4 })
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
-
-              Toggle({ type: ToggleType.Switch, isOn: this.htmlHomeDebugExportEnabled })
-                .selectedColor(COLOR_ACCENT)
-                .onChange((isOn: boolean) => {
-                  this.htmlHomeDebugExportEnabled = isOn;
-                })
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-
-            Button('立即导出')
-              .height(36)
-              .width('100%')
-              .fontSize(12)
-              .fontColor(COLOR_INK)
-              .backgroundColor(COLOR_CARD_RAISED)
-              .borderRadius(9)
-              .border({ width: 1, color: COLOR_CARD_EDGE })
-              .margin({ top: 10 })
-              .onClick(() => {
-                this.onExportHtmlHomeDocument();
-              })
-
-            if (this.htmlHomeDebugExportPath.length > 0) {
-              Text(this.htmlHomeDebugExportPath)
-                .fontSize(11)
-                .fontColor(COLOR_MUTED)
-                .lineHeight(16)
-                .copyOption(CopyOptions.InApp)
-                .margin({ top: 8 })
-            }
           }
 
           Button(this.isBusy ? '检查中' : '测试连接')
@@ -1126,39 +955,11 @@ export struct ConfigPage {
               }
             })
 
-          Divider()
-            .color(COLOR_LINE)
-            .margin({ top: 16, bottom: 14 })
-
-          Row() {
-            Text('面板刷新计数')
-              .fontSize(12)
-              .fontColor(COLOR_MUTED)
-            Text(this.refreshTick.toString())
-              .fontSize(16)
-              .fontWeight(FontWeight.Bold)
-              .fontColor(COLOR_ACCENT)
-              .margin({ left: 8 })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-
           Text(this.connectionMessage)
             .fontSize(13)
             .fontColor(COLOR_TEXT)
             .lineHeight(20)
             .margin({ top: 10 })
-
-          DebugTextPanel({
-            label: '模型请求',
-            value: this.lastModelRequest,
-            refreshTick: this.refreshTick
-          })
-          DebugTextPanel({
-            label: '模型输出',
-            value: this.lastModelOutput,
-            refreshTick: this.refreshTick
-          })
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

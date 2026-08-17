@@ -1706,7 +1706,7 @@ function collectInputText(layout) {
   return values.join('|');
 }
 
-function findControls(layout) {
+function findControls(layout, requireSend = true) {
   let input = null;
   let inputBounds = null;
   let generate = null;
@@ -1755,17 +1755,17 @@ function findControls(layout) {
       };
     }
   }
-  if (generate === null) {
+  if (generate === null && requireSend) {
     throw new Error('Could not locate AIPhone send control.');
   }
   return { input, generate };
 }
 
-async function waitForControls(localName = 'latest-layout.json', attempts = 10) {
+async function waitForControls(localName = 'latest-layout.json', attempts = 10, requireSend = true) {
   let lastError = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      return findControls(dumpLayout(localName));
+      return findControls(dumpLayout(localName), requireSend);
     } catch (error) {
       lastError = error;
       await sleep(500);
@@ -3500,7 +3500,7 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
   await sleep(3000);
   moveAppWindowIntoScreenshot();
   const appPid = hdc(['shell', 'pidof', 'com.jiuwen.appless']).trim().split(/\s+/)[0] || '';
-  const controls = await waitForControls();
+  const controls = await waitForControls('latest-layout.json', 10, false);
   const directTextBaselineName = `query-${index + 1}-direct-text-baseline-layout.json`;
   let directTextBaselineLayout = null;
   const logs = await captureWhile(appPid, async () => {
@@ -3900,7 +3900,7 @@ async function runDeepSearchSmoke(testCase, index) {
   await sleep(3000);
   moveAppWindowIntoScreenshot();
   const appPid = hdc(['shell', 'pidof', 'com.jiuwen.appless']).trim().split(/\s+/)[0] || '';
-  const controls = await waitForControls(`query-${index + 1}-deepsearch-start-layout.json`);
+  const controls = await waitForControls(`query-${index + 1}-deepsearch-start-layout.json`, 10, false);
   const logs = await captureAppLogsFor(appPid, async () => {
     let typed = false;
     for (let attempt = 0; attempt < 3; attempt += 1) {

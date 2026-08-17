@@ -4340,12 +4340,12 @@ struct Index {
 
     this.dailyBriefSnapshot = existing;
     this.isBusy = true;
-    if (existing === null) {
-      this.forceApplySurface(createDailyBriefLoadingSurface(date), 'daily_brief_generate_first');
-    } else {
-      this.forceApplySurface(createDailyBriefSurface(existing, preference), 'daily_brief_regenerate');
-    }
     try {
+      if (existing === null) {
+        this.forceApplySurface(createDailyBriefLoadingSurface(date), 'daily_brief_generate_first');
+      } else {
+        this.forceApplySurface(createDailyBriefSurface(existing, preference), 'daily_brief_regenerate');
+      }
       const generated = await generateDailyBrief({ now, preference, budgetMs: 120000 });
       if (!shouldApplyDailyBriefGeneration(generation, this.dailyBriefGeneration)) {
         return false;

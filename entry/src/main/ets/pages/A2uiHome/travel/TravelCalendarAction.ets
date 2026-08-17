@@ -139,13 +139,16 @@ function appendUniqueEvent(events: HuaweiTravelCalendarEvent[], event: HuaweiTra
 
 export function travelCalendarEventsFromModel(model: A2uiRuntimeDataModel): HuaweiTravelCalendarEvent[] {
   const events: HuaweiTravelCalendarEvent[] = [];
-  model.travelOptions.forEach((item: A2uiTravelOptionData) => {
+  const travelOptions = Array.isArray(model.travelOptions) ? model.travelOptions : [];
+  const trains = Array.isArray(model.trains) ? model.trains : [];
+  const flights = Array.isArray(model.flights) ? model.flights : [];
+  travelOptions.forEach((item: A2uiTravelOptionData) => {
     appendUniqueEvent(events, travelCalendarEventFromOption(item));
   });
-  model.trains.forEach((item: A2uiTrainData) => {
+  trains.forEach((item: A2uiTrainData) => {
     appendUniqueEvent(events, travelCalendarEventFromTrain(item));
   });
-  model.flights.forEach((item: A2uiFlightData) => {
+  flights.forEach((item: A2uiFlightData) => {
     appendUniqueEvent(events, travelCalendarEventFromFlight(item));
   });
   return events;
@@ -201,13 +204,16 @@ export function applyTravelCalendarConflictProjection(
   conflicts: HuaweiTravelCalendarConflict[]
 ): boolean {
   let changed = false;
-  model.travelOptions.forEach((item: A2uiTravelOptionData) => {
+  const travelOptions = Array.isArray(model.travelOptions) ? model.travelOptions : [];
+  const trains = Array.isArray(model.trains) ? model.trains : [];
+  const flights = Array.isArray(model.flights) ? model.flights : [];
+  travelOptions.forEach((item: A2uiTravelOptionData) => {
     changed = applyConflictToOption(item, conflicts) || changed;
   });
-  model.trains.forEach((item: A2uiTrainData) => {
+  trains.forEach((item: A2uiTrainData) => {
     changed = applyConflictToTrain(item, conflicts) || changed;
   });
-  model.flights.forEach((item: A2uiFlightData) => {
+  flights.forEach((item: A2uiFlightData) => {
     changed = applyConflictToFlight(item, conflicts) || changed;
   });
   return changed;

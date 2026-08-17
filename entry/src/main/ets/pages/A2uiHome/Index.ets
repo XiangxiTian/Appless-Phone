@@ -7109,6 +7109,8 @@ struct Index {
       return;
     }
     if (await this.handleFlightBookingAction(action)) {
+      return;
+    }
     if (await this.handleHtmlFoodCallAction(action)) {
       return;
     }

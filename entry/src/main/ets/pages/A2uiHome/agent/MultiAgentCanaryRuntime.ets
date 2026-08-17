@@ -43,6 +43,7 @@ import {
   UiSurfaceWriter,
   UiTaskRenderer,
   UserInputPayload,
+  TravelSearchPreflightResult,
   VIRTUAL_ACTION_INTENT_SOURCE_TOOL_ID,
   VirtualActionIntent,
   VirtualActionIntentResolver,
@@ -771,6 +772,43 @@ function validBimTravelQuery(query: string, currentLocalDate: string): boolean {
   return !Number.isNaN(timestamp) && bimTravelQueryIsComplete(query, new Date(timestamp));
 }
 
+function trustedTravelContextQuery(input: InputUserPayload): string {
+  const parts: string[] = [];
+  const recentMessages = input.recentMessages === undefined ? [] : input.recentMessages;
+  for (let index = 0; index < recentMessages.length; index++) {
+    const message = recentMessages[index];
+    if (message.role !== 'user') continue;
+    const content = originalQueryFromBimPrompt(message.content).trim();
+    if (content.length > 0 && (parts.length === 0 || parts[parts.length - 1] !== content)) {
+      parts.push(content);
+    }
+  }
+  const current = originalQueryFromBimPrompt(input.text).trim();
+  if (current.length > 0 && (parts.length === 0 || parts[parts.length - 1] !== current)) {
+    parts.push(current);
+  }
+  return parts.join('；');
+}
+
+function sameTravelFields(
+  candidate: TravelSearchPreflightResult,
+  trusted: TravelSearchPreflightResult
+): boolean {
+  return candidate.complete && trusted.complete &&
+    candidate.departureDate === trusted.departureDate &&
+    candidate.origin === trusted.origin &&
+    candidate.destination === trusted.destination;
+}
+
+function groundedTravelCandidate(
+  query: string,
+  trusted: TravelSearchPreflightResult,
+  currentLocalDate: string
+): boolean {
+  if (query.trim().length === 0 || !trusted.complete) return false;
+  return sameTravelFields(travelSearchPreflight(query, currentLocalDate), trusted);
+}
+
 function normalizeCanaryTaskInput(
   input: InputUserPayload,
   task: LeaderDecisionDataTask,
@@ -796,14 +834,20 @@ function normalizeCanaryTaskInput(
     const taskQuery = taskSource['query'];
     const fieldQuery = queryFromTravelTaskFields(task.input, task.toolId);
     const isBimTurn = input.text.indexOf('[BIM_SNAPSHOTS]') === 0;
+    const modelQuery = typeof taskQuery === 'string' ? taskQuery.trim() : '';
+    const trustedPreflight = travelSearchPreflight(
+      trustedTravelContextQuery(originalInput), currentLocalDate
+    );
     let query = originalInput.text;
     if (isBimTurn) {
       if (validBimTravelQuery(originalInput.text, currentLocalDate)) {
         query = originalInput.text;
-      } else if (fieldQuery.length > 0 && validBimTravelQuery(fieldQuery, currentLocalDate)) {
+      } else if (fieldQuery.length > 0 && validBimTravelQuery(fieldQuery, currentLocalDate) &&
+        groundedTravelCandidate(fieldQuery, trustedPreflight, currentLocalDate)) {
         query = fieldQuery;
-      } else if (typeof taskQuery === 'string' && validBimTravelQuery(taskQuery, currentLocalDate)) {
-        query = taskQuery.trim();
+      } else if (validBimTravelQuery(modelQuery, currentLocalDate) &&
+        groundedTravelCandidate(modelQuery, trustedPreflight, currentLocalDate)) {
+        query = modelQuery;
       } else {
         // Every foreground prompt is wrapped in read-only BIM snapshots. An
         // incomplete travel request still belongs to the travel preflight
@@ -811,19 +855,16 @@ function normalizeCanaryTaskInput(
         throw new Error('TRAVEL_QUERY_INCOMPLETE');
       }
     } else {
-      const modelQuery = typeof taskQuery === 'string' ? taskQuery.trim() : '';
-      const candidateQueries: string[] = [modelQuery, originalInput.text, fieldQuery];
-      let resolvedQuery = '';
-      for (let index = 0; index < candidateQueries.length; index++) {
-        if (candidateQueries[index].length === 0) continue;
-        const preflight = travelSearchPreflight(candidateQueries[index], currentLocalDate);
-        if (preflight.complete) {
-          resolvedQuery = candidateQueries[index].trim();
-          break;
-        }
+      const originalPreflight = travelSearchPreflight(originalInput.text, currentLocalDate);
+      if (originalPreflight.complete) {
+        query = originalInput.text.trim();
+      } else if (groundedTravelCandidate(modelQuery, trustedPreflight, currentLocalDate)) {
+        query = modelQuery;
+      } else if (groundedTravelCandidate(fieldQuery, trustedPreflight, currentLocalDate)) {
+        query = fieldQuery;
+      } else {
+        throw new Error('TRAVEL_QUERY_INCOMPLETE');
       }
-      if (resolvedQuery.length === 0) throw new Error('TRAVEL_QUERY_INCOMPLETE');
-      query = resolvedQuery;
     }
     const normalized = setJsonPointer(task.input as JsonValue, '/query', query);
     if (!normalized.ok || normalized.value === undefined || normalized.value === null ||

@@ -157,6 +157,13 @@ const CONTEXTUAL_TRAVEL_DECISION: string = '{"personaId":"travel_companion","ski
   '"input":{"query":"从深圳到上海，出发日期 2026-08-21，查询高铁和航班"},"required":true}],' +
   '"uiIntent":{"purpose":"travel.search","preferredDensity":"comfortable",' +
   '"requiredSections":["travel"]}}';
+const CONTEXTUAL_TRAVEL_FIELDS_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":["travel.search"],"roundAction":"execute","continuationMode":"complete",' +
+  '"dataTasks":[{"localId":"travel","goal":"查询深圳到上海的出行方案",' +
+  '"allowedToolIds":["travel.search"],"toolId":"travel.search",' +
+  '"input":{"origin":"深圳","destination":"上海","departureDate":"2026-08-21"},"required":true}],' +
+  '"uiIntent":{"purpose":"travel.search","preferredDensity":"comfortable",' +
+  '"requiredSections":["travel"]}}';
 const TIME_DECISION: string = '{"personaId":"default_companion","skillId":"",' +
   '"requestedCapabilityIds":["time"],"roundAction":"execute","continuationMode":"complete",' +
   '"dataTasks":[{"localId":"current-time","goal":"查询当前设备时间",' +
@@ -1635,6 +1642,41 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(outcome.message).assertEqual('你从哪座城市出发？另外，下周具体哪一天出发？');
       expect(executor.calls.length).assertEqual(0);
       expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(0);
+      expect(model.prompts.length).assertEqual(2);
+      runtime.dispose();
+    });
+
+    it('rejects a complete model travel query whose route and date are not grounded', 0, async () => {
+      const executor = new TwoToolExecutor();
+      const model = new QueueModel([CONTEXTUAL_TRAVEL_DECISION, TRAVEL_REPAIR_CLARIFY_DECISION]);
+      const options = canaryOptions(model, executor, new RecordingOpener(), [], []);
+      options.currentLocalDate = (): string => '2026-08-13';
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const outcome = await runtime.submit(
+        '我下周要去上海出差', { text: '' }
+      ) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('success');
+      expect(outcome.message).assertEqual('你从哪座城市出发？另外，下周具体哪一天出发？');
+      expect(executor.calls.length).assertEqual(0);
+      expect(model.prompts.length).assertEqual(2);
+      runtime.dispose();
+    });
+
+    it('rejects model travel fields whose route and date are not grounded', 0, async () => {
+      const executor = new TwoToolExecutor();
+      const model = new QueueModel([CONTEXTUAL_TRAVEL_FIELDS_DECISION, TRAVEL_REPAIR_CLARIFY_DECISION]);
+      const options = canaryOptions(model, executor, new RecordingOpener(), [], []);
+      options.currentLocalDate = (): string => '2026-08-13';
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const outcome = await runtime.submit(
+        '我下周要去上海出差', { text: '' }
+      ) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('success');
+      expect(executor.calls.length).assertEqual(0);
       expect(model.prompts.length).assertEqual(2);
       runtime.dispose();
     });

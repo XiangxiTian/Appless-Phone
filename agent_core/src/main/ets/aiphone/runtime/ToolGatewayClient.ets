@@ -3391,6 +3391,26 @@ function ridePointFromLocation(name: string, location: string, city: string): Ri
   };
 }
 
+function rideAmapResolutionTargets(
+  originPoint: RidePoint | null,
+  destinationPoint: RidePoint | null
+): string[] {
+  const targets: string[] = [];
+  if (originPoint === null) targets.push('origin');
+  if (destinationPoint === null) targets.push('destination');
+  return targets;
+}
+
+export function rideAmapResolutionTargetsForTest(
+  originLocation: string,
+  destinationLocation: string
+): string[] {
+  return rideAmapResolutionTargets(
+    ridePointFromLocation('起点', originLocation, '深圳'),
+    ridePointFromLocation('终点', destinationLocation, '深圳')
+  );
+}
+
 function ridePointFromAmapResolution(name: string, resolution: AmapLocationResolution): RidePoint {
   const parts = resolution.location.split(',');
   return {
@@ -4374,10 +4394,15 @@ async function callStructuredRideReadResults(toolId: string, args: Object | null
   destinationPoint = ridePointFromLocation(route.destination, route.destinationLocation, route.city);
   amapOriginPoint = originPoint;
   amapDestinationPoint = destinationPoint;
-  if (amapGeocodeKey.length > 0 && (amapOriginPoint === null || amapDestinationPoint === null)) {
+  const amapResolutionTargets = rideAmapResolutionTargets(amapOriginPoint, amapDestinationPoint);
+  if (amapGeocodeKey.length > 0 && amapResolutionTargets.length > 0) {
     try {
-      amapOriginPoint = await resolveAmapRidePoint(route.origin, route.city, amapGeocodeKey);
-      amapDestinationPoint = await resolveAmapRidePoint(route.destination, route.city, amapGeocodeKey);
+      if (amapResolutionTargets.indexOf('origin') >= 0) {
+        amapOriginPoint = await resolveAmapRidePoint(route.origin, route.city, amapGeocodeKey);
+      }
+      if (amapResolutionTargets.indexOf('destination') >= 0) {
+        amapDestinationPoint = await resolveAmapRidePoint(route.destination, route.city, amapGeocodeKey);
+      }
     } catch (error) {
       amapResolveError = describeThrown(error);
     }

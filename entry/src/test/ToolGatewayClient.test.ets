@@ -90,6 +90,7 @@ import {
   partialDataResult,
   rideAmapGeocodePointForTest,
   rideAmapGeocodeKeyForTest,
+  rideAmapResolutionTargetsForTest,
   rideAmapRequestArgsForTest,
   rideDidiCityFromAmapGeocodeForTest,
   socialHubDraft,
@@ -2784,6 +2785,18 @@ export default function toolGatewayClientTest() {
       } finally {
         configureLocalProviderConfigFromRawJson('{}');
       }
+    });
+
+    it('geocodes only the missing ride endpoint when one coordinate is already supplied', 0, () => {
+      expect(rideAmapResolutionTargetsForTest(
+        '114.060000,22.540000', ''
+      ).join(',')).assertEqual('destination');
+      expect(rideAmapResolutionTargetsForTest(
+        '', '114.070000,22.550000'
+      ).join(',')).assertEqual('origin');
+      expect(rideAmapResolutionTargetsForTest(
+        '114.060000,22.540000', '114.070000,22.550000'
+      ).length).assertEqual(0);
     });
 
     it('extracts Amap ride links from plain MCP text content', 0, () => {

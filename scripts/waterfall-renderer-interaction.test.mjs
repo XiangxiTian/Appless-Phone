@@ -43,6 +43,9 @@ assert.match(waterfallCss, /\.waterfall-card--image-text/);
 assert.match(waterfallCss, /\.waterfall-card--text/);
 assert.match(waterfallCss, /\.waterfall-card--video-fullscreen/);
 assert.match(waterfallCss, /\.waterfall-card-shell\s*\{/);
+assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*scroll-snap-align:\s*center/s);
+assert.doesNotMatch(waterfallCss, /\.waterfall-card\s*\{[^}]*height:\s*100dvh/s);
+assert.match(waterfallCss, /\.waterfall-icon svg\s*\{/);
 assert.match(waterfallCss, /\.waterfall-top-hotzone\s*\{/);
 assert.match(waterfallCss, /\.waterfall-toolbar\s*\{[^}]*opacity:\s*0/s);
 assert.match(waterfallCss, /\.waterfall-toolbar\.revealed\s*\{[^}]*opacity:\s*1/s);
@@ -78,8 +81,7 @@ assert.match(reducedMotionCss, /\.waterfall-reader,[^}]*\.waterfall-preferences\
 assert.match(reducedMotionCss, /\.waterfall-video-fullscreen-toggle,[^}]*\.waterfall-card-shell,[^}]*\{[^}]*opacity 140ms var\(--ease-out\)[^}]*background-color 140ms ease !important/s);
 assert.match(reducedMotionCss, /\.waterfall-video-fullscreen-toggle:active,[^}]*\.waterfall-card-shell:active,[^}]*\{[^}]*transform:\s*none[^}]*opacity:\s*0\.82/s);
 assert.match(reducedMotionCss, /\.waterfall-overlay\.active\s*\{[^}]*animation:\s*waterfall-overlay-in 140ms var\(--ease-out\) both !important/s);
-assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-card h2\s*\{[^}]*-webkit-line-clamp/s);
-assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-card p\s*\{[^}]*-webkit-line-clamp/s);
+assert.match(waterfallCss, /\.waterfall-cinema-card p\s*\{[^}]*-webkit-line-clamp:\s*3/s);
 assert.match(waterfallCss, /\.waterfall-preferences label\s*\{[^}]*border:\s*0/s);
 assert.match(waterfallCss, /\.waterfall-toolbar-secondary\s*\{[^}]*border:\s*0/s);
 assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-stage img\s*\{/);
@@ -183,25 +185,39 @@ const textCandidate = {
   summary: 'A long text summary for the dedicated reader',
   reason: '补充 HN 来源'
 };
+const noCoverImageCandidate = {
+  ...imageCandidate,
+  id: 'no-cover-image',
+  source: 'reddit',
+  coverUrl: '',
+  summary: 'A Reddit post without a cover should stay a compact text card'
+};
 const portraitCandidate = {
   ...candidate('portrait-current'),
   format: 'portrait_video',
   coverUrl: '',
   url: 'https://example.test/portrait'
 };
+const testUiIcon = '<span class="waterfall-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16" /></svg></span>';
 const window = {
   __aiphoneWaterfallInitial: {
     surfaceId: 'surface-1',
     currentId: 'current',
-    enabledSources: ['youtube'],
+    enabledSources: ['youtube', 'reddit'],
     aggregateHtml: '',
-    candidates: [candidate('current'), imageCandidate, textCandidate, portraitCandidate],
+    candidates: [candidate('current'), imageCandidate, textCandidate, portraitCandidate, noCoverImageCandidate],
     mediaEmbeds: {
       'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1'
     },
     sources: [{ source: 'youtube', phase: 'success' }]
   },
-  __aiphoneWaterfallSourceLogos: { youtube: 'data:image/png;base64,logo' },
+  __aiphoneWaterfallSourceLogos: { youtube: 'data:image/png;base64,logo', reddit: 'data:image/png;base64,reddit' },
+  __aiphoneWaterfallUiIcons: {
+    back: testUiIcon,
+    external: testUiIcon,
+    expand: testUiIcon,
+    sources: testUiIcon
+  },
   AIPhoneHome: {
     postAction: (value) => actions.push(JSON.parse(value)),
     setWaterfallFullscreen: (value) => fullscreenStates.push(value)
@@ -227,6 +243,8 @@ assert.match(track.innerHTML, /waterfall-card--video waterfall-card--landscape/)
 assert.match(track.innerHTML, /waterfall-card--image-text/);
 assert.match(track.innerHTML, /waterfall-card--text/);
 assert.match(track.innerHTML, /waterfall-card--video waterfall-card--portrait/);
+assert.match(track.innerHTML, /waterfall-card--text" data-waterfall-id="no-cover-image"/);
+assert.match(track.innerHTML, /A Reddit post without a cover should stay a compact text card/);
 assert.doesNotMatch(track.innerHTML, /data-waterfall-play/);
 assert.doesNotMatch(track.innerHTML, /data-waterfall-read/);
 assert.match(track.innerHTML, /data-waterfall-open="image-current"/);
@@ -241,8 +259,10 @@ assert.doesNotMatch(track.innerHTML, /B 站视频搜索结果：/);
 assert.match(track.innerHTML, /waterfall-recommendation/);
 assert.match(track.innerHTML, /标题命中查询/);
 assert.match(track.innerHTML, /data-waterfall-reason/);
-assert.match(track.innerHTML, /data-waterfall-media-fallback/);
+assert.doesNotMatch(track.innerHTML, /data-waterfall-media-fallback/);
 assert.match(track.innerHTML, /data-waterfall-video-fullscreen/);
+assert.match(track.innerHTML, /<svg[^>]*viewBox="0 0 24 24"/);
+assert.doesNotMatch(track.innerHTML, /[↗⌄⛶]/);
 topHotzone.emit('click');
 assert.equal(toolbar.classList.contains('revealed'), true);
 const toolbarTimer = timers.find((timer) => timer.delay === 2600 && !timer.canceled);

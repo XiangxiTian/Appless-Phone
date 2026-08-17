@@ -84,6 +84,11 @@ function bimSnapshotPrompt(query: string): string {
   return '[BIM_SNAPSHOTS]\n## 展会计划\n- bimId: bim-expo\n- version: 1\n' +
     '- lifecycle: active\n\n展会行程待跟进。\n[/BIM_SNAPSHOTS]\n\n' + query;
 }
+function bimTravelSnapshotPrompt(query: string): string {
+  return '[BIM_SNAPSHOTS]\n## 展会计划\n- bimId: bim-expo\n- version: 1\n' +
+    '- lifecycle: active\n\n计划于2026年8月30日从深圳出发去杭州出差。\n' +
+    '[/BIM_SNAPSHOTS]\n\n' + query;
+}
 const SEARCH_INPUT: string = '{"originQuery":"帮我找深圳酒店","place":"深圳",' +
   '"placeType":"CITY","countryCode":"CN","checkInDate":"2026-08-15",' +
   '"stayNights":2,"adultCount":2,"childCount":0,"childAgeDetails":[],' +
@@ -2282,7 +2287,7 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       const originalQuery = '帮我查去展会的机票';
-      const bimPrompt = bimSnapshotPrompt(originalQuery);
+      const bimPrompt = bimTravelSnapshotPrompt(originalQuery);
 
       const outcome = await runtime.submit(bimPrompt, { text: originalQuery }) as MultiAgentSettledOutcome;
 
@@ -2349,7 +2354,7 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       const originalQuery = '帮我查从深圳出发去展会的机票';
-      const bimPrompt = bimSnapshotPrompt(originalQuery);
+      const bimPrompt = bimTravelSnapshotPrompt(originalQuery);
 
       const outcome = await runtime.submit(
         bimPrompt, { text: originalQuery }
@@ -2384,7 +2389,7 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const runtime = new MultiAgentCanaryRuntime(options);
       const originalQuery = '帮我查去展会的高铁';
-      const bimPrompt = bimSnapshotPrompt(originalQuery);
+      const bimPrompt = bimTravelSnapshotPrompt(originalQuery);
 
       const outcome = await runtime.submit(bimPrompt, { text: originalQuery }) as MultiAgentSettledOutcome;
 

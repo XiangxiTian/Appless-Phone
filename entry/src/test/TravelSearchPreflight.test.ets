@@ -31,5 +31,15 @@ export default function travelSearchPreflightTest() {
       );
       expect(result.departureDate).assertEqual('2026-08-13');
     });
+
+    it('recognizes Hong Kong rail stations as a complete cross-city route', 0, () => {
+      const result = travelSearchPreflight(
+        '帮我查询明天晚上六点以后深圳北到香港西九龙的高铁', '2026-07-21'
+      );
+      expect(result.complete).assertTrue();
+      expect(result.departureDate).assertEqual('2026-07-22');
+      expect(result.origin).assertEqual('深圳');
+      expect(result.destination).assertEqual('香港');
+    });
   });
 }

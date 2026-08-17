@@ -774,18 +774,22 @@ function validBimTravelQuery(query: string, currentLocalDate: string): boolean {
 
 function trustedTravelContextQuery(input: InputUserPayload): string {
   const parts: string[] = [];
+  // Prefer the newest user statement so a follow-up date/origin overrides an
+  // older incomplete request. A BIM snapshot is host-owned read-only context,
+  // so retain it instead of stripping it before grounding model fields.
+  const current = input.text.indexOf('[BIM_SNAPSHOTS]') === 0 ?
+    input.text.trim() : originalQueryFromBimPrompt(input.text).trim();
+  if (current.length > 0) {
+    parts.push(current);
+  }
   const recentMessages = input.recentMessages === undefined ? [] : input.recentMessages;
-  for (let index = 0; index < recentMessages.length; index++) {
+  for (let index = recentMessages.length - 1; index >= 0; index--) {
     const message = recentMessages[index];
     if (message.role !== 'user') continue;
     const content = originalQueryFromBimPrompt(message.content).trim();
     if (content.length > 0 && (parts.length === 0 || parts[parts.length - 1] !== content)) {
       parts.push(content);
     }
-  }
-  const current = originalQueryFromBimPrompt(input.text).trim();
-  if (current.length > 0 && (parts.length === 0 || parts[parts.length - 1] !== current)) {
-    parts.push(current);
   }
   return parts.join('；');
 }
@@ -836,7 +840,7 @@ function normalizeCanaryTaskInput(
     const isBimTurn = input.text.indexOf('[BIM_SNAPSHOTS]') === 0;
     const modelQuery = typeof taskQuery === 'string' ? taskQuery.trim() : '';
     const trustedPreflight = travelSearchPreflight(
-      trustedTravelContextQuery(originalInput), currentLocalDate
+      trustedTravelContextQuery(input), currentLocalDate
     );
     let query = originalInput.text;
     if (isBimTurn) {

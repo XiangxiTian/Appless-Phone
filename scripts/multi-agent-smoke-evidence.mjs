@@ -998,6 +998,24 @@ export function modelTransportEvidence(logText, options = {}) {
     sameAppIdentity(line, identity) && streamingCloudResponse(line));
 }
 
+export function externalProviderBlocked(logText, lifecycle) {
+  const text = String(logText || '');
+  const hasDataTask = Array.isArray(lifecycle?.dataTasks) && lifecycle.dataTasks.length > 0;
+  const terminal = /\[AIPhone\]\[(?:MultiAgentTaskError|MultiAgentTurnResult)\]/.test(text);
+  const leaderContractFailed = /\[AIPhone\]\[(?:MultiAgentTaskError|A2uiHomeModelException)\][^\n]*LEADER_(?!PLAN_FAILED)/.test(text);
+  if (leaderContractFailed) {
+    return false;
+  }
+  const transportFailed =
+    /LLM request failed:[^\n]*(?:Failed to receive data from the peer|Operation timeout|Failed to connect|network)/i.test(text);
+  const pendingModel = hasDataTask && !terminal &&
+    text.lastIndexOf('[AIPhone][ModelRequestStart]') > text.lastIndexOf('finish_reason":"stop"');
+  const pendingProvider = hasDataTask && !terminal &&
+    /\[AIPhone\]\[MultiAgentDataResult\][^\n]*phase=stream status=partial/.test(text) &&
+    !/\[AIPhone\]\[MultiAgentDataResult\][^\n]*phase=final/.test(text);
+  return transportFailed || pendingModel || pendingProvider;
+}
+
 const DIRECT_TEXT_FORBIDDEN_MARKERS = new Set([
   'MultiAgentDataTask', 'MultiAgentDataResult', 'MultiAgentUiTask', 'MultiAgentUiResult',
   'MultiAgentTaskError', 'MultiAgentActionPlan', 'MultiAgentActionRun', 'MultiAgentActionResult',

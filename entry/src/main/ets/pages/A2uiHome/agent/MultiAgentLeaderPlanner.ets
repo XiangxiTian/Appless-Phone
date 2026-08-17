@@ -295,6 +295,9 @@ const C10_C11_SELECTION_CONTRACT: string =
   '我只喝瑞幸咖啡, 以后只喝..., or an explicit remember-preference request uses only memory.update. Use ' +
   'luckin.order.preview only for an explicit Luckin/Ruixing order request with a concrete product or specification, ' +
   'for example 帮我点一杯瑞幸生椰拿铁，半糖少冰. A Luckin product or price question uses food.search; ' +
+  'luckin.order.preview is a draft Action: put it only in actionIntent.allowedActionIds with dataTasks=[], and ' +
+  'do not include luckin.order.create in the initial request. Create is available only from the exact current ' +
+  'preview surface after a separate user confirmation. ' +
   'luckin.order.status is only for an explicit existing-order status or pickup-code request. Do not infer ordering ' +
   'or order status from generic coffee, a product/price question, or saved preference text.';
 const SOCIAL_SELECTION_CONTRACT: string =
@@ -374,7 +377,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     let sameRoundConsumerTaskToolIds: string[] = [];
     let rejectedDecision: LeaderDecision | null = null;
     try {
-      const decision: LeaderDecision = this.parseDecision(output, context, input.text);
+      const decision: LeaderDecision = this.parseDecision(output, context, input.text, round);
       this.normalizeModelContinuationDecision(decision);
       this.normalizeIncompleteSerialCalendarCreate(
         message, input, decision, currentLocalDate, round
@@ -432,7 +435,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           input
         );
         try {
-          const repairedDecision: LeaderDecision = this.parseDecision(repaired, context, input.text);
+          const repairedDecision: LeaderDecision = this.parseDecision(repaired, context, input.text, round);
           this.normalizeModelContinuationDecision(repairedDecision);
           if (rejectedDecision === null ||
             !this.explicitMapsSelectionOnlyRepair(rejectedDecision, repairedDecision)) {
@@ -477,7 +480,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           if (!this.prematureCalendarUpdateActionOnlyRepair(output, repaired)) {
             throw new Error(PREMATURE_CALENDAR_UPDATE_ACTION_ERROR);
           }
-          const repairedDecision: LeaderDecision = this.parseDecision(repaired, context, input.text);
+          const repairedDecision: LeaderDecision = this.parseDecision(repaired, context, input.text, round);
           this.normalizeModelContinuationDecision(repairedDecision);
           this.rejectSkillCapabilityViolation(repairedDecision, context);
           this.rejectOverlappingVideoTools(repairedDecision);
@@ -518,7 +521,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           if (!this.prematureMapsDetailsOnlyRepair(output, repaired)) {
             throw new Error(PREMATURE_MAPS_DETAILS_ERROR);
           }
-          const repairedDecision: LeaderDecision = this.parseDecision(repaired, context, input.text);
+          const repairedDecision: LeaderDecision = this.parseDecision(repaired, context, input.text, round);
           this.normalizeModelContinuationDecision(repairedDecision);
           this.rejectSkillCapabilityViolation(repairedDecision, context);
           this.rejectOverlappingVideoTools(repairedDecision);
@@ -632,7 +635,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       const repaired: string = await this.completeBounded(prompt + '\n' + correction, input);
       try {
         const repairedScope: LeaderRepairScope | null = this.repairScope(repaired);
-        const repairedDecision: LeaderDecision = this.parseDecision(repaired, context, input.text);
+        const repairedDecision: LeaderDecision = this.parseDecision(repaired, context, input.text, round);
         this.normalizeModelContinuationDecision(repairedDecision);
         const acceptedBimStateOnlyRepair: boolean = bimStateOnlyRepair &&
           rejectedDecision !== null &&
@@ -1577,7 +1580,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
   private parseDecision(
     output: string,
     context: LeaderPlanningContext,
-    inputText: string
+    inputText: string,
+    round: number
   ): LeaderDecision {
     let trimmed: string = output.trim();
     if (trimmed.startsWith('{') && !trimmed.endsWith('}')) {
@@ -1603,7 +1607,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     if (this.hasDuplicateObjectKeys(trimmed)) {
       throw new Error('Leader planner JSON contains duplicate object keys.');
     }
-    return this.decision(parsed, context, inputText);
+    return this.decision(parsed, context, inputText, round);
   }
 
   private hasDuplicateObjectKeys(json: string): boolean {
@@ -1852,7 +1856,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
   private decision(
     parsed: Object,
     context: LeaderPlanningContext,
-    inputText: string
+    inputText: string,
+    round: number
   ): LeaderDecision {
     if (parsed === null || Array.isArray(parsed)) {
       throw new Error('Leader decision contains missing or unknown fields.');
@@ -1867,6 +1872,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       throw new Error('Leader decision contains missing or unknown fields.');
     }
     const values = parsed as Record<string, Object | string | number | boolean | null | undefined>;
+    this.normalizeInitialLuckinPreview(values, inputText, round);
     this.normalizeSingleMixedActionTask(values, context);
     const personaId = values['personaId'];
     const skillId = values['skillId'];
@@ -2241,6 +2247,91 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     values['dataTasks'] = retainedTasks;
     actionValues['allowedActionIds'] = orderedActionIds;
     if (retainedTasks.length === 0 && values['continuationMode'] === 'sequence') {
+      values['continuationMode'] = 'complete';
+    }
+  }
+
+  private normalizeInitialLuckinPreview(
+    values: Record<string, Object | string | number | boolean | null | undefined>,
+    inputText: string,
+    round: number
+  ): void {
+    if (round !== 1) {
+      return;
+    }
+    const text: string = inputText.trim().toLowerCase();
+    if (!/(瑞幸|ruixing|\bluckin\b(?!\.))/i.test(text)) {
+      return;
+    }
+    const rawTasks = values['dataTasks'];
+    const rawRequested = values['requestedCapabilityIds'];
+    const rawAction = values['actionIntent'];
+    if (!Array.isArray(rawTasks) || !Array.isArray(rawRequested) ||
+      (rawAction !== undefined && (rawAction === null || typeof rawAction !== 'object' ||
+        Array.isArray(rawAction) || Object.keys(rawAction).sort().join(',') !== ACTION_INTENT_KEYS))) {
+      return;
+    }
+    const hasIndependentDataTask: boolean = (rawTasks as Object[]).some((task: Object): boolean => {
+      const toolId = task !== null && typeof task === 'object' && !Array.isArray(task) ?
+        (task as Record<string, Object>)['toolId'] : undefined;
+      return toolId !== 'luckin.order.preview' && toolId !== 'luckin.order.create';
+    });
+    if (hasIndependentDataTask || values['continuationMode'] === 'sequence') {
+      return;
+    }
+    const action = rawAction === undefined ? null : rawAction as
+      Record<string, Object | string | number | boolean | null | undefined>;
+    const rawActionIds = action === null ? [] : action['allowedActionIds'];
+    if (!Array.isArray(rawActionIds)) {
+      return;
+    }
+    const selected: boolean = (rawRequested as Object[]).some(
+      (id: Object): boolean => id === 'luckin.order.preview' || id === 'luckin.order.create'
+    ) || (rawTasks as Object[]).some((task: Object): boolean => {
+      const toolId = task !== null && typeof task === 'object' && !Array.isArray(task) ?
+        (task as Record<string, Object>)['toolId'] : undefined;
+      return toolId === 'luckin.order.preview' || toolId === 'luckin.order.create';
+    }) || (rawActionIds as Object[]).some(
+      (id: Object): boolean => id === 'luckin.order.preview' || id === 'luckin.order.create'
+    );
+    if (!selected) {
+      return;
+    }
+    values['dataTasks'] = (rawTasks as Object[]).filter((task: Object): boolean => {
+      const toolId = task !== null && typeof task === 'object' && !Array.isArray(task) ?
+        (task as Record<string, Object>)['toolId'] : undefined;
+      return toolId !== 'luckin.order.preview' && toolId !== 'luckin.order.create';
+    });
+    const requested: string[] = [];
+    for (let index = 0; index < rawRequested.length; index++) {
+      const rawId: Object = rawRequested[index];
+      const id: Object = rawId === 'luckin.order.create' ? 'luckin.order.preview' : rawId;
+      if (typeof id === 'string' && requested.indexOf(id) < 0) {
+        requested.push(id);
+      }
+    }
+    if (requested.indexOf('luckin.order.preview') < 0) {
+      requested.push('luckin.order.preview');
+    }
+    const actionIds: string[] = [];
+    for (let index = 0; index < rawActionIds.length; index++) {
+      const rawId: Object = rawActionIds[index];
+      const id: Object = rawId === 'luckin.order.create' ? 'luckin.order.preview' : rawId;
+      if (typeof id === 'string' && actionIds.indexOf(id) < 0) {
+        actionIds.push(id);
+      }
+    }
+    if (actionIds.indexOf('luckin.order.preview') < 0) {
+      actionIds.push('luckin.order.preview');
+    }
+    const normalizedActionIntent: LeaderActionIntent = {
+      goal: action !== null && typeof action['goal'] === 'string' ? action['goal'] : '预览瑞幸订单',
+      allowedActionIds: actionIds
+    };
+    values['requestedCapabilityIds'] = requested;
+    values['actionIntent'] = normalizedActionIntent;
+    values['roundAction'] = 'execute';
+    if ((values['dataTasks'] as Object[]).length === 0) {
       values['continuationMode'] = 'complete';
     }
   }

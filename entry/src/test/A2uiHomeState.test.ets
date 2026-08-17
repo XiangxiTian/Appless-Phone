@@ -175,6 +175,13 @@ export default function a2uiHomeStateTest() {
       expect(explicitDeepSearchRouteDecision('我不希望联网搜索')).assertEqual('agent');
       expect(explicitDeepSearchRouteDecision('DeepSearch 我不想用')).assertEqual('agent');
       expect(explicitDeepSearchRouteDecision('DeepSearch 我不希望用')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('No DeepSearch')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('DeepSearch is not needed')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('Answer without DeepSearch')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('DeepSearch, no thanks')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('Use another DeepSearch query')).assertEqual('deepsearch');
+      expect(explicitDeepSearchRouteDecision('Use techno DeepSearch sources')).assertEqual('deepsearch');
+      expect(explicitDeepSearchRouteDecision('Not only DeepSearch, compare sources')).assertEqual('deepsearch');
       expect(explicitDeepSearchRouteDecision('请勿深度搜索')).assertEqual('agent');
       expect(explicitDeepSearchRouteDecision('不要普通搜索，请深度搜索')).assertEqual('deepsearch');
       expect(explicitDeepSearchRouteDecision('比较两款芯片的最新进展')).assertEqual(null);

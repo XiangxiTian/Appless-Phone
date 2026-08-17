@@ -8616,9 +8616,7 @@ struct Index {
           this.showHistory = !this.showHistory;
         },
         onOpenConfig: () => {
-          this.configureComposioRuntimeForCurrentUser();
           this.showConfigPage = true;
-          this.refreshComposioAuth();
         },
         onResetSession: () => {
           this.resetCurrentSession();

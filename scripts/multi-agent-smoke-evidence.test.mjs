@@ -14,6 +14,7 @@ import {
   latestMultiAgentUiSurface,
   mailThreadReadEvidence,
   visibleMailBodyText,
+  externalProviderBlocked,
   modelTransportEvidence,
   multiAgentActionEvidence,
   shouldPreserveSmokeAppSession,
@@ -278,6 +279,8 @@ test('does not mount Composio authorization in focused release settings', () => 
   const start = index.indexOf('      ConfigPage({');
   const config = index.slice(start, index.indexOf('\n    } else {', start));
   assert.doesNotMatch(config, /onOpenComposioAuth|onRefreshComposioAuth/);
+  const home = index.slice(index.indexOf('        onOpenConfig: () => {'), index.indexOf('\n        onResetSession:', index.indexOf('        onOpenConfig: () => {')));
+  assert.doesNotMatch(home, /Composio|refreshComposioAuth|configureComposioRuntimeForCurrentUser/);
 });
 
 test('keeps Markdown drafts open until the parent confirms a successful save', () => {
@@ -1346,6 +1349,26 @@ test('accepts only a correlated app-owned cloud streaming model lifecycle', () =
     cloudStreamTurn.replace('status=success', 'status=error')
   ];
   mutations.forEach((logs) => assert.equal(modelTransportEvidence(logs), false));
+});
+
+test('classifies only external model or provider stalls as blocked', () => {
+  const lifecycle = { dataTasks: [{ toolId: 'travel.search' }] };
+  assert.equal(externalProviderBlocked(
+    '[AIPhone][MultiAgentDataResult] phase=final status=partial\n' +
+      '[AIPhone][ModelRequestStart]', lifecycle), true);
+  assert.equal(externalProviderBlocked(
+    '[AIPhone][MultiAgentDataResult] phase=stream status=partial', lifecycle), true);
+  assert.equal(externalProviderBlocked(
+    '[AIPhone][A2uiHomeModelException] LLM request failed: Failed to receive data from the peer',
+    { dataTasks: [] }), true);
+  assert.equal(externalProviderBlocked(
+    '[AIPhone][MultiAgentTaskError] code=LEADER_TASK_INPUT_INVALID', lifecycle), false);
+  assert.equal(externalProviderBlocked(
+    '[AIPhone][DeepSearchRouteDecisionFailed] LLM request failed: Operation timeout\n' +
+      '[AIPhone][MultiAgentTaskError] code=LEADER_TASK_INPUT_INVALID', lifecycle), false);
+  assert.equal(externalProviderBlocked(
+    '[AIPhone][ModelRequestStart]\n' +
+      '[AIPhone][A2uiHomeModelException] LEADER_TASK_INPUT_INVALID', lifecycle), false);
 });
 
 test('keeps pending presentation markers inside the current model transport window', () => {
@@ -2459,6 +2482,8 @@ test('lists only safe focused release cases by default and keeps legacy coverage
   assert.match(source, /async function runDeepSearchSmoke\(testCase, index\)/);
   assert.match(source, /deepsearch-input-attempt-\$\{attempt \+ 1\}/);
   assert.match(source, /DeepSearchPanelOpened[\s\S]*DeepSearchAutoRouted[\s\S]*DeepSearchStart/);
+  assert.match(source, /DeepSearchRouteDecisionFailed/);
+  assert.match(source, /routeModelBlocked \|\| providerBlocked \? 'BLOCKED'/);
   assert.match(source, /inferredCase\.verifyDeepSearch === true/);
   const focused = listedCases();
   assert.deepEqual(focused.map((item) => item.id),
@@ -2470,6 +2495,8 @@ test('lists only safe focused release cases by default and keeps legacy coverage
     expectedToolIds: ['web.research.search'],
     retryLimit: 0
   });
+  assert.equal(listedCases(['查证 OpenAI 最近发布的模型，并对比至少两个官方来源'])[0].id, 'R03');
+  assert.equal(listedCases(['帮我找2026年9月8日到10日深圳科技园附近的酒店，2位成人1间房'])[0].id, 'R07');
   assert.doesNotMatch(JSON.stringify(focused),
     /mail\.|gmail\.|social\.|x\.post|payment\.|whatsapp\.|calendar\.|worldcup\.|movie\.|daily\.brief|dynamic\.search|media\.video/);
   const full = listedCases(['--full-regression']);

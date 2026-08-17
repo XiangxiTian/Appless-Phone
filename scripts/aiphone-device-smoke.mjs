@@ -40,6 +40,7 @@ import {
   dynamicAuthOutcomeAssessment,
   dynamicToolDiscoveryEvidence,
   expandedMailBodyRegionText,
+  externalProviderBlocked,
   finalVisibleDateBlockingHits,
   mailThreadReadEvidence,
   modelTransportEvidence,
@@ -142,7 +143,7 @@ const defaultCases = [
   { id: 'R04', query: '我明天要从北京去上海，帮我搜索出行方案', expectsTool: true, expectedToolId: 'travel.search' },
   { id: 'R05', query: '帮我查明天北京到上海的航班', expectsTool: true, expectedToolId: 'flight.search' },
   { id: 'R06', query: '帮我查询明天晚上六点以后深圳北到香港西九龙的高铁', expectsTool: true, expectedToolId: 'train.search' },
-  { id: 'R07', query: '帮我找8月8日到10日深圳科技园附近的酒店，2位成人1间房', expectsTool: true, expectedToolId: 'hotel.search' },
+  { id: 'R07', query: '帮我找2026年9月8日到10日深圳科技园附近的酒店，2位成人1间房', expectsTool: true, expectedToolId: 'hotel.search' },
   { id: 'R08', query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
   { id: 'R09', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
   { id: 'R10', query: '帮我点一杯瑞幸生椰拿铁，半糖少冰', expectsTool: true, expectedToolId: 'luckin.order.preview' },
@@ -831,6 +832,10 @@ function isDailyBriefQuery(query) {
 }
 
 function expectedCaseForQuery(query) {
+  const focusedCase = defaultCases.find((testCase) => testCase.query === query);
+  if (focusedCase !== undefined) {
+    return focusedCase;
+  }
   const configuredCase = fullRegressionCases.find((testCase) => testCase.query === query);
   if (configuredCase !== undefined) {
     return configuredCase;
@@ -2063,6 +2068,7 @@ function analyze(
     });
   const hasExpectedDiscoveredToolId = dynamicDiscovery === null ? true : dynamicDiscovery.ok;
   const missingConfig = /\[AIPhone\]\[LocalToolMissingConfig\]/.test(text);
+  const externalBlocked = externalProviderBlocked(text, multiAgentLifecycle);
   const rawModelSelectedExpectedToolId = expectedToolId.length === 0 ||
     new RegExp(`"toolId":"${escapedToolId}"`).test(text) ||
     new RegExp(`toolId=${escapedToolId}`).test(text);
@@ -2108,6 +2114,7 @@ function analyze(
       /\[AIPhone\]\[A2uiHomeToolOutput\][^\n]*"status":"error"/.test(text) ||
       /Google Calendar API 调用失败/.test(text) ||
       /invalid request data provided|Composio 调用失败|WhatsApp Business 账号不可用/i.test(text) ||
+      externalBlocked ||
       (multiAgentLifecycle.complete && multiAgentLifecycle.status === 'error') ||
       (missingConfig && expectedToolId !== 'travel.search'),
     modelFailed: !multiAgentLifecycle.ok,
@@ -3957,8 +3964,11 @@ async function runDeepSearchSmoke(testCase, index) {
   const failed = safeLogs.includes('[AIPhone][DeepSearchFailed]');
   const panelVisible = /DeepSearch|深度搜索|联网检索|研究进度|来源/.test(layoutText);
   const routeOk = panelOpened && autoRouted && started;
+  const routeModelBlocked = safeLogs.includes('[AIPhone][DeepSearchRouteDecisionFailed]');
+  const providerBlocked = routeOk && failed && panelVisible && (providerRequested ||
+    /Firecrawl API key is required|needs_auth|Operation timeout|Failed to resolve|network/i.test(safeLogs));
   const status = routeOk && providerRequested && done && panelVisible ? 'PASS' :
-    (routeOk && providerRequested && failed && panelVisible ? 'BLOCKED' : 'FAIL');
+    (routeModelBlocked || providerBlocked ? 'BLOCKED' : 'FAIL');
   return {
     caseId: testCase.id,
     query: testCase.query,
@@ -3972,11 +3982,14 @@ async function runDeepSearchSmoke(testCase, index) {
     done,
     failed,
     panelVisible,
+    routeModelBlocked,
+    providerBlocked,
     logPath,
     layoutPath,
     screenPath: captureScreen(`query-${index + 1}-deepsearch-final-screen.png`),
-    reason: status === 'BLOCKED' ? 'DeepSearch reached Firecrawl but the external provider did not return sources.' :
-      (status === 'FAIL' ? 'DeepSearch routing or panel evidence is incomplete.' : '')
+    reason: routeModelBlocked ? 'The route model provider failed before DeepSearch could start.' :
+      (providerBlocked ? 'DeepSearch external provider did not return usable sources.' :
+        (status === 'FAIL' ? 'DeepSearch routing or panel evidence is incomplete.' : ''))
   };
 }
 

@@ -2254,6 +2254,34 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.prompts[0].indexOf('user explicitly confirms creating the order')).assertLarger(-1);
     });
 
+    it('downgrades a premature initial Luckin create decision to preview', 0, async () => {
+      const decision = await new MultiAgentLeaderPlanner(
+        new QueueLocalModel([actionDecision('luckin.order.create')])
+      ).plan(
+        inputMessage(),
+        { text: '瑞幸生椰拿铁来一杯，半糖少冰' },
+        c10C11Context(),
+        1
+      );
+
+      expect(decision.requestedCapabilityIds.join(',')).assertEqual('luckin.order.preview');
+      expect(decision.dataTasks.length).assertEqual(0);
+      expect(decision.actionIntent!.allowedActionIds.join(',')).assertEqual('luckin.order.preview');
+    });
+
+    it('keeps a later-round Luckin create decision', 0, async () => {
+      const decision = await new MultiAgentLeaderPlanner(
+        new QueueLocalModel([actionDecision('luckin.order.create')])
+      ).plan(
+        inputMessage(),
+        { text: '帮我点一杯瑞幸生椰拿铁，半糖少冰' },
+        c10C11Context(),
+        2
+      );
+
+      expect(decision.actionIntent!.allowedActionIds.join(',')).assertEqual('luckin.order.create');
+    });
+
     it('asks the Leader model once to correct an explicit Google Maps selection without host rewriting', 0,
       async () => {
       const model = new QueueLocalModel([

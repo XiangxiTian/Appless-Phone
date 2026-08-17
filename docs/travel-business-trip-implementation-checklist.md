@@ -263,6 +263,9 @@ entry/src/main/ets/pages/A2uiHome/travel/TravelTaskActions.ets
 - [x] `TRIP-TCAL-008` 用户确认的预订在日历描述中标明“用户确认，未同步供应商”。（owner: Codex）
 - [x] `TRIP-TCAL-009` 实现 `travel.calendar.add`。（owner: Codex）
 - [x] `TRIP-TCAL-010` 写入成功后进入酒店搜索步骤。（owner: Codex）
+- [x] `TRIP-TCAL-011` 每张高铁、航班和交通聚合卡都展示“加入日历”，并使用该卡片的真实日期、出发时间和到达时间生成系统日历事件。（owner: Codex）
+- [ ] `TRIP-TCAL-012` 交通结果展示前批量读取系统日历；存在重叠安排时卡片显示冲突摘要，按钮变为红色“时间冲突”。（owner: Codex；代码已完成，读取用户全部系统日历仍需申请`ohos.permission.READ_WHOLE_CALENDAR` ACL并重新签名真机验收）
+- [x] `TRIP-TCAL-013` 用户点击交通日历动作时再次读取系统日历；若此时出现冲突则阻止写入并提示冲突日程。（owner: Codex）
 
 ### 阶段验收
 
@@ -512,6 +515,7 @@ entry/src/main/ets/pages/A2uiHome/travel/TravelTaskActions.ets
 | 高铁界面 | `entry/src/main/ets/pages/A2uiHome/components/TrainOptionsView.ets` |
 | 航班界面 | `entry/src/main/ets/pages/A2uiHome/components/FlightBoardView.ets` |
 | 交通WebView动作 | `entry/src/main/ets/pages/A2uiHome/html/HtmlHomeSnapshot.ets` |
+| 交通卡片日历动作与冲突投影 | `entry/src/main/ets/pages/A2uiHome/travel/TravelCalendarAction.ets`、`agent_core/src/main/ets/aiphone/runtime/HuaweiCalendarClient.ets` |
 | 交通预订供应商适配与白名单 | `entry/src/main/ets/pages/A2uiHome/travel/TravelBookingProvider.ets` |
 | 酒店动作 | `agent_core/src/main/ets/aiphone/runtime/HotelActions.ets` |
 | 酒店A2UI数据 | `agent_core/src/main/ets/aiphone/runtime/HotelToolA2ui.ets` |
@@ -556,6 +560,9 @@ entry/src/main/ets/pages/A2uiHome/travel/TravelTaskActions.ets
 | 2026-08-13 | 阶段九：真机验收 | 完成 | `docs/evidence/travel-stage9-device-2026-08-13/`；设备`6HR0226506005010`运行“验收阶段九酒店日历流程”样例，酒店日历事件ID为`294` | 真机完成“加入系统日历 → 完成并归档 → 杀进程重启”；完成页分别显示交通/酒店已加入日历及事件ID，归档后重启回到普通首页且无常驻出差卡；“清理阶段九酒店日历样例”已执行并恢复原酒店核验现场 |
 | 2026-08-13 | 阶段十：到达目的地解析、导航与打车承接 | 部分完成，真机主动作通过 | `TravelArrivalResolver.ets`、`TravelArrivalSurface.ets`、`Index.ets` 到达请求路由；`ToolGatewayClient.ets` 支持起终点直传坐标；`assembleHap` 构建成功；新增到达解析与界面测试已完成 ArkTS 编译；设备`6HR0226506005010`运行阶段十样例 | 真机成功读取“阶段九验收酒店”（上海市浦东新区世纪大道1号），展示“导航到酒店/查看打车价格”；导航跳转Petal Maps并返回Appless后上下文保留；打车估价页显示“当前位置 → 阶段九验收酒店”、4种车型和示例价格；未点击“确认叫车”，未产生真实订单；实时系统日历查询、坐标缺失时地名解析、真实叫车/司机/取消和完整门禁仍未完成 |
 | 2026-08-13 | 交通工具执行前预检 | 代码完成 | `TravelIntentResolver.ets`、`MultiAgentLeaderPlanner.ets`；新增解析、Leader决策与Canary终态测试通过；Debug签名HAP构建成功 | 模型仍负责理解意图和选择工具；宿主只在执行前校验具体日期、出发地、目的地且不改写完整原始query。真机日志发现并修复预检追问保留`requestedCapabilityIds`导致`LEADER_UNOBSERVED_TERMINAL`的问题。全量Hypium为`Tests run: 2013, Failure: 2, Error: 0, Pass: 2011`；剩余失败是既有酒店日历文案与到达候选按钮断言，和本项文件无关；修复包待真机复核 |
-| 2026-08-13 | 携程航班预订深链与App内承接 | 代码完成 | `TravelBookingProvider.ets`按已选机场码和日期生成携程单程结果页；`CheckoutWebOverlay.ets`新增携程App内WebView、安全域名限制和已选航班上下文；Debug签名HAP构建成功 | 携程没有稳定的单航班公开深链，因此地址携带航线和日期，App页头固定展示已选航班号供用户核对；返回后恢复交通订单核验步骤。新增深链参数、恶意URL和WebView导航测试已通过ArkTS编译；全量Hypium执行器在报告落盘前持续无输出，已停止，既有两条无关失败仍单独记录。 |
-| 2026-08-14 | 旅行搭子航班卡直达携程 | 代码完成 | `A2uiFlightData`保留机场码与日期；`HtmlHomeSnapshot.ets`和`FlightBoardView.ets`均新增“去携程订票”；`Index.ets`校验当前真实航班行后在App内打开携程；Debug签名HAP构建成功 | 修复旅行搭子`flight.search`结果只显示“固定到桌面”的旧链路；航班号、航线、日期继续显示在App安全页头，关闭后原地返回航班结果，不误恢复其他出行任务。 |
+| 2026-08-13 | 携程航班预订深链与App内承接 | 代码完成，待移动页真机复核 | `TravelBookingProvider.ets`按已选机场码和日期生成携程移动端单程结果页；`CheckoutWebOverlay.ets`在App内承接并限制主页面只能停留在携程HTTPS域名 | 原桌面站地址在ArkWeb与系统浏览器均返回`whaleguard block`，现改用携程移动端H5地址。 |
+| 2026-08-14 | 旅行搭子航班卡直达携程 | 代码完成 | `A2uiFlightData`保留机场码与日期；`HtmlHomeSnapshot.ets`和`FlightBoardView.ets`均新增“去携程订票”；`Index.ets`校验当前真实航班行后在App内打开携程移动页 | 修复旅行搭子`flight.search`结果只显示“固定到桌面”的旧链路；App页头持续展示所选航班、航线和日期。 |
+| 2026-08-15 | 携程航班预订移动端H5承接 | 代码完成，待真机复核 | `TravelBookingProvider.ets`生成`m.ctrip.com/html5/flight/swift/domestic/{from}/{to}/{date}`；`Index.ets`使用`CheckoutWebOverlay`在App内打开；主框架导航限定携程HTTPS域名 | 不再跳转系统浏览器；高铁12306和RollingGo酒店的App内承接保持不变。 |
+| 2026-08-15 | BIM快照包装下的出行预检补问修复 | 代码完成 | `MultiAgentCanaryRuntime.ets`将快照包装后的交通字段缺失统一送入`LEADER_TRAVEL_QUERY_INCOMPLETE`修复路径；新增真机同形态回归用例 | 日志已确认模型能够生成正确补问；修复后不再被BIM通用输入校验误判为`LEADER_TASK_INPUT_INVALID`。Loopy 328项校验与ohosTest ArkTS构建通过；待真机复核。 |
 | 2026-08-14 | 移除旧出差任务架构 | 代码完成 | 删除 `TravelTask`、`TravelIntentResolver`、专用 Store/Orchestrator/Surface 及对应测试；新增 `TravelSearchPreflight.ets` | 模型通过通用 `recentMessages` 理解多轮信息；宿主仅在交通工具执行前校验日期、出发地、目的地，不再生成或恢复出差任务界面。 |
+| 2026-08-16 | 高铁/航班卡片直接加入日历与冲突标记 | 受`READ_WHOLE_CALENDAR` ACL阻塞 | `TravelCalendarAction.ets`统一生成卡片动作；`HuaweiCalendarClient.ets`遍历当前应用可见日历并批量查询重叠日程；原生卡片与WebView均支持红色冲突状态；Loopy 328项校验、ohosTest ArkTS测试包和Release HAP构建通过；真机查询日志为`candidates=31 calendars=1 existing=0 conflicts=0` | 当前签名Profile为`apl=normal`且`allowed-acls=[]`，普通`READ_CALENDAR`无法读取用户在系统日历中手动创建的会议；需在AGC申请`ohos.permission.READ_WHOLE_CALENDAR` ACL、重新生成调试/发布Profile后再完成真机验收。 |

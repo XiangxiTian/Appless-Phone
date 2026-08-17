@@ -81,6 +81,8 @@ export interface A2uiTrainData {
   saleAt?: string;
   fromCode?: string;
   toCode?: string;
+  calendarConflict?: boolean;
+  calendarConflictTitle?: string;
 }
 
 export interface A2uiFlightData {
@@ -96,6 +98,8 @@ export interface A2uiFlightData {
   arrTime: string;
   status: string;
   price: string;
+  calendarConflict?: boolean;
+  calendarConflictTitle?: string;
 }
 
 export interface A2uiTravelOptionData {
@@ -127,6 +131,8 @@ export interface A2uiTravelOptionData {
   feasibilityReason?: string;
   recommendationLabels?: string[];
   selected?: boolean;
+  calendarConflict?: boolean;
+  calendarConflictTitle?: string;
 }
 
 export interface A2uiFoodData {

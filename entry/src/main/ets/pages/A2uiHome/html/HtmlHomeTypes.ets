@@ -60,6 +60,8 @@ export interface HtmlHomeBlock {
   subtitle?: string;
   status?: string;
   source?: string;
+  calendarConflict?: boolean;
+  calendarConflictTitle?: string;
   credentialName?: string;
   credentialRef?: string;
   toolId?: string;

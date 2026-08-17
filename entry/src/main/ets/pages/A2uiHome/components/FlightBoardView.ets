@@ -11,6 +11,8 @@ import {
   COLOR_CARD_EDGE,
   COLOR_CARD_GLOW,
   COLOR_CARD_RAISED,
+  COLOR_ERROR,
+  COLOR_ERROR_SOFT,
   COLOR_FIELD,
   COLOR_INK,
   COLOR_MUTED,
@@ -21,6 +23,10 @@ import {
   buildCtripFlightSearchUrl,
   ctripFlightBookingSelection
 } from '../travel/TravelBookingProvider';
+import {
+  travelCalendarActionForFlight,
+  travelCalendarEventFromFlight
+} from '../travel/TravelCalendarAction';
 import { A2UI_PANEL_BACKGROUND_COLOR, A2UI_PANEL_BORDER_COLOR, A2UI_PANEL_CORNER_RADIUS } from '../style/A2uiPanelFrameStyle';
 import { ActionBarView } from './ActionBarView';
 import { StatusBadgeView } from './StatusBadgeView';
@@ -116,6 +122,20 @@ export struct FlightBoardView {
     return buildCtripFlightSearchUrl(ctripFlightBookingSelection(item)).length > 0;
   }
 
+  private canAddCalendarReminder(item: A2uiFlightOption): boolean {
+    return travelCalendarEventFromFlight(item) !== null;
+  }
+
+  private calendarButtonLabel(item: A2uiFlightOption): string {
+    if (item.calendarConflict === true) return '时间冲突';
+    return this.canAddCalendarReminder(item) ? '加入日历' : '缺少日期或时间，暂不能加入日历';
+  }
+
+  private calendarConflictText(item: A2uiFlightOption): string {
+    const title = item.calendarConflictTitle === undefined ? '' : item.calendarConflictTitle.trim();
+    return title.length > 0 ? '时间冲突 · 与“' + title + '”重叠' : '时间冲突 · 与系统日历已有安排重叠';
+  }
+
   private ctripBookingAction(item: A2uiFlightOption): A2uiAction {
     const selection = ctripFlightBookingSelection(item);
     return {
@@ -182,7 +202,7 @@ export struct FlightBoardView {
         .alignItems(VerticalAlign.Top)
         .padding({ top: 4, bottom: 4 })
       }
-      Text('航班信息来自飞常准；票价、余票和订单状态以携程实时页面为准。')
+      Text('航班信息来自飞常准；点击后将在系统浏览器打开携程，票价、余票和订单状态以携程实时页面为准。')
         .fontSize(12)
         .fontColor(COLOR_MUTED)
         .lineHeight(18)
@@ -306,6 +326,36 @@ export struct FlightBoardView {
               .fontColor(COLOR_MUTED)
               .margin({ top: 6 })
 
+            if (item.calendarConflict === true) {
+              Text(this.calendarConflictText(item))
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(COLOR_ERROR)
+                .padding({ left: 9, right: 9, top: 6, bottom: 6 })
+                .backgroundColor(COLOR_ERROR_SOFT)
+                .borderRadius(8)
+                .margin({ top: 9 })
+            }
+
+            Button(this.calendarButtonLabel(item))
+              .enabled(this.canAddCalendarReminder(item) && !this.isBusy)
+              .height(38)
+              .width('100%')
+              .fontSize(13)
+              .fontColor(item.calendarConflict === true ? COLOR_BUTTON_TEXT :
+                (this.canAddCalendarReminder(item) ? COLOR_ACCENT_DARK : COLOR_MUTED))
+              .backgroundColor(item.calendarConflict === true ? COLOR_ERROR : COLOR_ACCENT_SOFT)
+              .borderRadius(10)
+              .border({
+                width: 1,
+                color: item.calendarConflict === true ? COLOR_ERROR :
+                  (this.canAddCalendarReminder(item) ? COLOR_ACCENT : COLOR_CARD_EDGE)
+              })
+              .margin({ top: 10 })
+              .onClick(() => {
+                this.onAction(travelCalendarActionForFlight(item, this.component.id));
+              })
+
             if (this.expandedFlightKey === this.flightKey(item)) {
               this.FlightDetailPanel(item)
             }
@@ -315,7 +365,8 @@ export struct FlightBoardView {
           .padding(16)
           .backgroundColor(COLOR_CARD)
           .borderRadius(16)
-          .border({ width: 1, color: COLOR_CARD_EDGE })
+          .border({ width: item.calendarConflict === true ? 2 : 1,
+            color: item.calendarConflict === true ? COLOR_ERROR : COLOR_CARD_EDGE })
           .shadow({ radius: 20, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 9 })
           .margin({ top: 10 })
           .onClick(() => {

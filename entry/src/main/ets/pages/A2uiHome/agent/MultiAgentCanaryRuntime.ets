@@ -806,7 +806,10 @@ function normalizeCanaryTaskInput(
       } else if (typeof taskQuery === 'string' && validBimTravelQuery(taskQuery, currentLocalDate)) {
         query = taskQuery.trim();
       } else {
-        throw new Error('BIM_TRAVEL_QUERY_INCOMPLETE');
+        // Every foreground prompt is wrapped in read-only BIM snapshots. An
+        // incomplete travel request still belongs to the travel preflight
+        // repair path so the Leader can ask for the missing route/date fields.
+        throw new Error('TRAVEL_QUERY_INCOMPLETE');
       }
     } else {
       const modelQuery = typeof taskQuery === 'string' ? taskQuery.trim() : '';

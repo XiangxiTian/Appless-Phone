@@ -5,6 +5,9 @@ import {
   COLOR_CARD_EDGE,
   COLOR_CARD_GLOW,
   COLOR_CARD_INSET,
+  COLOR_BUTTON_TEXT,
+  COLOR_ERROR,
+  COLOR_ERROR_SOFT,
   COLOR_INK,
   COLOR_MUTED,
   COLOR_TEXT,
@@ -22,6 +25,10 @@ import {
 } from '../style/A2uiHomeTheme';
 import { componentBodyOf, componentStatusOf, componentTitleOf } from '../render/A2uiRenderData';
 import { A2UI_PANEL_BACKGROUND_COLOR, A2UI_PANEL_BORDER_COLOR, A2UI_PANEL_CORNER_RADIUS } from '../style/A2uiPanelFrameStyle';
+import {
+  travelCalendarActionForOption,
+  travelCalendarEventFromOption
+} from '../travel/TravelCalendarAction';
 import { ActionBarView } from './ActionBarView';
 import { StatusBadgeView } from './StatusBadgeView';
 import { A2uiPanelAccentView } from './common/A2uiPanelAccentView';
@@ -192,6 +199,20 @@ export struct TravelOptionsView {
     };
   }
 
+  private canAddCalendarReminder(item: A2uiTravelOption): boolean {
+    return travelCalendarEventFromOption(item) !== null;
+  }
+
+  private calendarButtonLabel(item: A2uiTravelOption): string {
+    if (item.calendarConflict === true) return '时间冲突';
+    return this.canAddCalendarReminder(item) ? '加入日历' : '缺少日期或时间，暂不能加入日历';
+  }
+
+  private calendarConflictText(item: A2uiTravelOption): string {
+    const title = item.calendarConflictTitle === undefined ? '' : item.calendarConflictTitle.trim();
+    return title.length > 0 ? '时间冲突 · 与“' + title + '”重叠' : '时间冲突 · 与系统日历已有安排重叠';
+  }
+
   private handleAction(action: A2uiAction): void {
     if (!this.isLocalTravelAction(action)) {
       this.onAction(action);
@@ -273,7 +294,7 @@ export struct TravelOptionsView {
       if (item.feasibilityReason !== undefined && item.feasibilityReason.length > 0) {
         this.DetailRow('会议判断', item.feasibilityReason)
       }
-      Text(item.source === 'flight' ? '以飞常准返回为准；支持订票的结果可继续前往携程。' :
+      Text(item.source === 'flight' ? '以飞常准返回为准；支持订票的结果会在系统浏览器打开携程。' :
         (this.trainBookingAction(item) === null ? '以 12306 返回为准，当前结果未提供购票入口。' :
           '以 12306 返回为准，可继续前往官方页面购票。'))
         .fontSize(12)
@@ -500,15 +521,46 @@ export struct TravelOptionsView {
                   })
                 }
                 .width('100%')
-                .margin({ top: 6 })
+                  .margin({ top: 6 })
               }
+
+              if (item.calendarConflict === true) {
+                Text(this.calendarConflictText(item))
+                  .fontSize(12)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(COLOR_ERROR)
+                  .padding({ left: 9, right: 9, top: 6, bottom: 6 })
+                  .backgroundColor(COLOR_ERROR_SOFT)
+                  .borderRadius(8)
+                  .margin({ top: 9 })
+              }
+
+              Button(this.calendarButtonLabel(item))
+                .enabled(this.canAddCalendarReminder(item) && !this.isBusy)
+                .height(38)
+                .width('100%')
+                .fontSize(13)
+                .fontColor(item.calendarConflict === true ? COLOR_BUTTON_TEXT :
+                  (this.canAddCalendarReminder(item) ? this.sourceAccent(item.source) : COLOR_MUTED))
+                .backgroundColor(item.calendarConflict === true ? COLOR_ERROR : this.sourceSoft(item.source))
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: item.calendarConflict === true ? COLOR_ERROR :
+                    (this.canAddCalendarReminder(item) ? this.sourceLine(item.source) : COLOR_CARD_EDGE)
+                })
+                .margin({ top: 10 })
+                .onClick(() => {
+                  this.onAction(travelCalendarActionForOption(item, this.component.id));
+                })
 
             }
             .width('100%')
             .padding(16)
             .backgroundColor(this.sourceCard(item.source))
             .borderRadius(16)
-            .border({ width: item.selected === true ? 2 : 1, color: this.sourceLine(item.source) })
+            .border({ width: item.calendarConflict === true || item.selected === true ? 2 : 1,
+              color: item.calendarConflict === true ? COLOR_ERROR : this.sourceLine(item.source) })
             .shadow({ radius: 20, color: this.sourceGlow(item.source), offsetX: 0, offsetY: 9 })
             .onClick(() => {
               const key = this.rowKey(item);

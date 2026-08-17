@@ -1639,6 +1639,31 @@ export default function multiAgentCanaryRuntimeTest() {
       runtime.dispose();
     });
 
+    it('repairs an incomplete travel execution when foreground BIM snapshots wrap the query', 0, async () => {
+      const executor = new TwoToolExecutor();
+      const bus = new TrackingBus();
+      const model = new QueueModel([INCOMPLETE_TRAVEL_DECISION, TRAVEL_REPAIR_CLARIFY_DECISION]);
+      const runtime = new MultiAgentCanaryRuntime(canaryOptions(
+        model,
+        executor,
+        new RecordingOpener(),
+        [],
+        [],
+        bus
+      ));
+
+      const outcome = await runtime.submit(
+        '[BIM_SNAPSHOTS]\n\n[/BIM_SNAPSHOTS]\n\n我下周要去上海出差', { text: '' }
+      ) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('success');
+      expect(outcome.message).assertEqual('你从哪座城市出发？另外，下周具体哪一天出发？');
+      expect(executor.calls.length).assertEqual(0);
+      expect(bus.count(AgentMessageType.TASK_CREATE_DATA)).assertEqual(0);
+      expect(model.prompts.length).assertEqual(2);
+      runtime.dispose();
+    });
+
     it('keeps independent flight and train reads concurrent until one aggregate surface is ready', 0,
       async () => {
         const executor = new DeferredFlightTrainExecutor();

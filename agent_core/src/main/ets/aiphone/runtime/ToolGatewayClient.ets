@@ -10765,7 +10765,9 @@ async function callStructuredTrainTool(prompt: string): Promise<DataResult> {
   const top: A2uiTrainData[] = [];
   const count = parsed.length > TRAIN_RESULT_LIMIT ? TRAIN_RESULT_LIMIT : parsed.length;
   for (let index = 0; index < count; index++) {
-    top.push(normalizeTrainRecord(parsed[index], bookingUrl));
+    const train = parsed[index];
+    train.travelDate = date;
+    top.push(normalizeTrainRecord(train, bookingUrl));
   }
 
   const timeSummary = departAfter.length > 0 ? departAfter + ' 后' : '';

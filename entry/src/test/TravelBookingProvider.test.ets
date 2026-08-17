@@ -18,7 +18,9 @@ export default function travelBookingProviderTest() {
       expect(selection.fromCode).assertEqual('SZX');
       expect(selection.toCode).assertEqual('SHA');
       expect(selection.travelDate).assertEqual('2026-08-21');
-      expect(url.indexOf('/online/list/oneway-szx-sha')).assertLarger(-1);
+      expect(url).assertEqual(
+        'https://m.ctrip.com/html5/flight/swift/domestic/SZX/SHA/2026-08-21'
+      );
       expect(isAllowedCtripFlightBookingUrl(url)).assertTrue();
       expect(buildCtripFlightSelectionContext(selection)).assertEqual(
         '已选 9C7556 · 2026-08-21 · SZX → SHA'
@@ -33,7 +35,9 @@ export default function travelBookingProviderTest() {
         fromCode: 'SZX', toCode: 'SHA'
       });
       const url = buildCtripFlightSearchUrl(selection);
-      expect(url.indexOf('depdate=2026-08-28')).assertLarger(-1);
+      expect(url).assertEqual(
+        'https://m.ctrip.com/html5/flight/swift/domestic/SZX/SHA/2026-08-28'
+      );
       expect(isAllowedCtripFlightBookingUrl(url)).assertTrue();
     });
 
@@ -43,6 +47,12 @@ export default function travelBookingProviderTest() {
       })).assertEqual('');
       expect(isAllowedCtripFlightBookingUrl(
         'https://flights.ctrip.com.evil.example/online/list/oneway-szx-sha?depdate=2026-08-21&cabin=y_s_c_f&adult=1&child=0&infant=0'
+      )).assertFalse();
+      expect(isAllowedCtripFlightBookingUrl(
+        'https://m.ctrip.com.evil.example/html5/flight/swift/domestic/SZX/SHA/2026-08-21'
+      )).assertFalse();
+      expect(isAllowedCtripFlightBookingUrl(
+        'https://m.ctrip.com/html5/flight/swift/domestic/SZX/SHA/2026-08-21?redirect=https://evil.example'
       )).assertFalse();
     });
   });

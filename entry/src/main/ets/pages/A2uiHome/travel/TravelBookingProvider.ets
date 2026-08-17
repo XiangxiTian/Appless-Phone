@@ -3,8 +3,8 @@ import {
   A2uiTravelOptionData
 } from '@loop/agent-core';
 
-const CTRIP_FLIGHT_BOOKING_PREFIX: string = 'https://flights.ctrip.com/online/list/oneway-';
-const CTRIP_FLIGHT_BOOKING_QUERY_SUFFIX: string = '&cabin=y_s_c_f&adult=1&child=0&infant=0';
+const CTRIP_MOBILE_FLIGHT_BOOKING_PREFIX: string =
+  'https://m.ctrip.com/html5/flight/swift/domestic/';
 
 export interface CtripFlightBookingSelection {
   flightNumber: string;
@@ -15,18 +15,10 @@ export interface CtripFlightBookingSelection {
 
 export function isAllowedCtripFlightBookingUrl(url: string): boolean {
   const value = url.trim();
-  if (!value.startsWith(CTRIP_FLIGHT_BOOKING_PREFIX) || value.indexOf('\\') >= 0 ||
-    value.indexOf('@') >= 0 || value.indexOf('#') >= 0) return false;
-  const queryStart = value.indexOf('?depdate=', CTRIP_FLIGHT_BOOKING_PREFIX.length);
-  if (queryStart < 0) return false;
-  const route = value.substring(CTRIP_FLIGHT_BOOKING_PREFIX.length, queryStart);
-  if (!/^[a-z]{3}-[a-z]{3}$/.test(route)) return false;
-  const dateStart = queryStart + '?depdate='.length;
-  const dateEnd = dateStart + 10;
-  if (dateEnd > value.length) return false;
-  const travelDate = value.substring(dateStart, dateEnd);
-  return /^\d{4}-\d{2}-\d{2}$/.test(travelDate) &&
-    value.substring(dateEnd) === CTRIP_FLIGHT_BOOKING_QUERY_SUFFIX;
+  if (!value.startsWith(CTRIP_MOBILE_FLIGHT_BOOKING_PREFIX) || value.indexOf('\\') >= 0 ||
+    value.indexOf('@') >= 0 || value.indexOf('?') >= 0 || value.indexOf('#') >= 0) return false;
+  const routeAndDate = value.substring(CTRIP_MOBILE_FLIGHT_BOOKING_PREFIX.length);
+  return /^[A-Z]{3}\/[A-Z]{3}\/\d{4}-\d{2}-\d{2}$/.test(routeAndDate);
 }
 
 function isFlightAirportCode(value: string): boolean {
@@ -91,8 +83,8 @@ export function ctripTravelOptionBookingSelection(item: A2uiTravelOptionData): C
 export function buildCtripFlightSearchUrl(selection: CtripFlightBookingSelection): string {
   if (!isFlightAirportCode(selection.fromCode) || !isFlightAirportCode(selection.toCode) ||
     !isFlightTravelDate(selection.travelDate)) return '';
-  return CTRIP_FLIGHT_BOOKING_PREFIX + selection.fromCode.toLowerCase() + '-' +
-    selection.toCode.toLowerCase() + '?depdate=' + selection.travelDate + CTRIP_FLIGHT_BOOKING_QUERY_SUFFIX;
+  return CTRIP_MOBILE_FLIGHT_BOOKING_PREFIX + selection.fromCode + '/' +
+    selection.toCode + '/' + selection.travelDate;
 }
 
 export function buildCtripFlightSelectionContext(selection: CtripFlightBookingSelection): string {

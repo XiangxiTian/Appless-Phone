@@ -72,6 +72,11 @@ import { gmailOpenDraftAction, gmailReplyDraftAction } from '@loop/agent-core';
 import { mailReplyDraftAction } from '@loop/agent-core';
 import { isMediaVideoResult, mediaVideoPlaybackAction, officialMediaVideoPlaybackUrl } from '@loop/agent-core';
 import {
+  travelCalendarActionForFlight,
+  travelCalendarActionForOption,
+  travelCalendarActionForTrain
+} from '../travel/TravelCalendarAction';
+import {
   SocialHubConnectionData,
   SocialHubDraftData,
   SocialHubItemData,
@@ -659,6 +664,8 @@ function appendTravelBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
       (item.recommendationLabels !== undefined && item.recommendationLabels.length > 0 ?
         item.recommendationLabels[0] : item.status);
     block.source = firstText(item.sourceTag, item.source);
+    block.calendarConflict = item.calendarConflict === true;
+    block.calendarConflictTitle = textOf(item.calendarConflictTitle);
     appendMetric(block.metrics, 'source', item.source);
     appendMetric(block.metrics, 'from', item.from);
     appendMetric(block.metrics, 'to', item.to);
@@ -719,6 +726,14 @@ function appendTravelBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
       bookingAction.variant = 'primary';
       block.actions.push(bookingAction);
     }
+    if (item.source === 'train' || item.source === 'flight') {
+      const calendarAction = travelCalendarActionForOption(item, component.id);
+      const htmlCalendarAction = clientAction(
+        calendarAction.id, calendarAction.label, calendarAction.prompt, component.id
+      );
+      htmlCalendarAction.variant = calendarAction.variant;
+      block.actions.push(htmlCalendarAction);
+    }
     block.actions.push(clientAction('html_pin_travel', '固定到桌面', JSON.stringify({
       index: index,
       id: textOf(item.id),
@@ -741,6 +756,8 @@ function appendTrainBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState
     const block = newBlock(component.id + '-' + index.toString(), 'train-option', firstText(item.trainCode, component.id));
     block.subtitle = joinText([item.from, item.to], ' -> ');
     block.status = item.status;
+    block.calendarConflict = item.calendarConflict === true;
+    block.calendarConflictTitle = textOf(item.calendarConflictTitle);
     appendMetric(block.metrics, 'from', item.from);
     appendMetric(block.metrics, 'to', item.to);
     appendMetric(block.metrics, 'depart', item.depart);
@@ -769,6 +786,12 @@ function appendTrainBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState
     } else {
       appendTrainBookingActions(block, component.id, item.bookingUrl);
     }
+    const calendarAction = travelCalendarActionForTrain(item, component.id);
+    const htmlCalendarAction = clientAction(
+      calendarAction.id, calendarAction.label, calendarAction.prompt, component.id
+    );
+    htmlCalendarAction.variant = calendarAction.variant;
+    block.actions.push(htmlCalendarAction);
     block.actions.push(clientAction('html_pin_train', '固定到桌面', JSON.stringify({
       index: index,
       trainCode: textOf(item.trainCode),
@@ -790,6 +813,8 @@ function appendFlightBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
     const block = newBlock(component.id + '-' + index.toString(), 'flight-option', firstText(item.flightNo, item.airline, component.id));
     block.subtitle = joinText([item.dep, item.arr], ' -> ');
     block.status = item.status;
+    block.calendarConflict = item.calendarConflict === true;
+    block.calendarConflictTitle = textOf(item.calendarConflictTitle);
     const retryDate = firstDateText(
       componentTitleOf(component),
       componentBodyOf(component),
@@ -819,6 +844,12 @@ function appendFlightBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
     const bookingAction = clientAction('flight.booking.ctrip.open', '去携程订票', actionPayload, component.id);
     bookingAction.variant = 'primary';
     block.actions.push(bookingAction);
+    const calendarAction = travelCalendarActionForFlight(item, component.id);
+    const htmlCalendarAction = clientAction(
+      calendarAction.id, calendarAction.label, calendarAction.prompt, component.id
+    );
+    htmlCalendarAction.variant = calendarAction.variant;
+    block.actions.push(htmlCalendarAction);
     block.actions.push(clientAction('html_pin_flight', '固定到桌面', actionPayload, component.id));
     document.blocks.push(block);
   });

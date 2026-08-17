@@ -67,13 +67,11 @@ export default function checkoutWebOverlayTest() {
       expect(checkoutWebInitialSource('hotel', 'https://rollinggo.cn/hotel')).assertEqual(
         'https://rollinggo.cn/hotel'
       );
-      const flight = 'https://flights.ctrip.com/online/list/oneway-szx-sha?' +
-        'depdate=2026-08-21&cabin=y_s_c_f&adult=1&child=0&infant=0';
+      const flight = 'https://m.ctrip.com/html5/flight/swift/domestic/SZX/SHA/2026-08-21';
       expect(checkoutWebInitialSource('flight', flight)).assertEqual(flight);
       expect(checkoutWebInitialSource(
         'flight',
-        'https://flights.ctrip.com.evil.example/online/list/oneway-szx-sha?' +
-          'depdate=2026-08-21&cabin=y_s_c_f&adult=1&child=0&infant=0'
+        'https://m.ctrip.com.evil.example/html5/flight/swift/domestic/SZX/SHA/2026-08-21'
       )).assertEqual('');
     });
 
@@ -188,23 +186,23 @@ export default function checkoutWebOverlayTest() {
 
     it('keeps Ctrip booking inside official HTTPS domains', 0, () => {
       expect(isAllowedCtripMainFrameUrl(
-        'https://flights.ctrip.com/online/list/oneway-szx-sha?depdate=2026-08-21'
+        'https://m.ctrip.com/html5/flight/swift/domestic/SZX/SHA/2026-08-21'
       )).assertTrue();
       expect(isAllowedCtripMainFrameUrl('https://passport.ctrip.com/user/login')).assertTrue();
       expect(checkoutWebNavigationDecision(
-        'flight', 'https://m.ctrip.com/html5/flight/taro/first', true
+        'flight', 'https://m.ctrip.com/html5/flight/swift/domestic/booking', true
       )).assertEqual('allow');
       expect(checkoutWebNavigationDecision(
-        'flight', 'https://flights.ctrip.com.evil.example/online', true
+        'flight', 'https://m.ctrip.com.evil.example/online', true
       )).assertEqual('block');
       expect(checkoutWebNavigationDecision(
-        'flight', 'https://user:secret@flights.ctrip.com/online', true
+        'flight', 'https://user:secret@m.ctrip.com/online', true
       )).assertEqual('block');
       expect(checkoutWebNavigationDecision(
-        'flight', 'https://flights.ctrip.com:8443/online', true
+        'flight', 'https://m.ctrip.com:8443/online', true
       )).assertEqual('block');
       expect(checkoutWebNavigationDecision(
-        'flight', 'http://flights.ctrip.com/online', true
+        'flight', 'http://m.ctrip.com/online', true
       )).assertEqual('block');
       expect(checkoutWebNavigationDecision(
         'flight', 'ctrip://wireless/flight', true

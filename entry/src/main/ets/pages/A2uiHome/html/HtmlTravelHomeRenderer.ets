@@ -25,6 +25,8 @@ const TRAVEL_HOME_CSS: string = `
   --rail: #16875b;
   --air: #2f79b7;
   --signal: #d8492f;
+  --danger: #b04a42;
+  --danger-soft: #f6e2df;
   --other: #815f3e;
   --shadow: 0 10px 28px rgba(44, 34, 26, 0.08);
 }
@@ -363,6 +365,10 @@ button:disabled { cursor: default; opacity: 0.52; }
   border-color: var(--source);
   box-shadow: 0 0 0 2px var(--source), var(--shadow);
 }
+.journey-card.calendar-conflict {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger), var(--shadow);
+}
 .journey-card::before {
   content: "";
   position: absolute;
@@ -453,6 +459,19 @@ button:disabled { cursor: default; opacity: 0.52; }
   font-size: 10px;
   font-weight: 840;
   line-height: 1;
+}
+.journey-conflict {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 8px;
+  border-radius: 9px;
+  padding: 6px 9px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 840;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .journey-expand {
   border: 1px solid var(--line);
@@ -590,6 +609,12 @@ button:disabled { cursor: default; opacity: 0.52; }
   gap: 8px;
   margin-top: 11px;
 }
+.journey-actions-persistent {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid var(--line);
+  padding-top: 11px;
+}
 .journey-action {
   border: 0;
   border-radius: 999px;
@@ -604,6 +629,11 @@ button:disabled { cursor: default; opacity: 0.52; }
   background: var(--ink);
   color: var(--void);
   border: 1px solid var(--line);
+}
+.journey-action.danger {
+  border: 1px solid var(--danger);
+  background: var(--danger);
+  color: #fff;
 }
 @media (min-width: 680px) {
   .route-hero { min-height: 430px; padding: 36px 28px 28px; }
@@ -895,12 +925,17 @@ const TRAVEL_HOME_JS: string = `
     if (raw === 'detail') { return '详情'; }
     return raw;
   }
-  function addActionButtons(parent, actions) {
+  function isTravelCalendarAction(action) {
+    return text(action && action.id) === 'travel.calendar.add';
+  }
+  function addActionButtons(parent, actions, persistent) {
     var kept = list(actions).filter(function (action) { return text(action && (action.label || action.id)).length > 0; });
     if (kept.length === 0) { return; }
-    var row = add(parent, 'div', 'journey-actions');
+    var row = add(parent, 'div', persistent ? 'journey-actions journey-actions-persistent' : 'journey-actions');
     kept.forEach(function (action, index) {
-      var button = add(row, 'button', index === 0 ? 'journey-action' : 'journey-action secondary', action.label || action.id);
+      var actionClass = text(action && action.variant) === 'danger' ? 'journey-action danger' :
+        (index === 0 ? 'journey-action' : 'journey-action secondary');
+      var button = add(row, 'button', actionClass, action.label || action.id);
       button.type = 'button';
       button.disabled = isBusy;
       button.addEventListener('click', function (event) {
@@ -1012,6 +1047,7 @@ const TRAVEL_HOME_JS: string = `
     var selected = text(block.status) === '已选择';
     var cardClass = index === 0 ? 'journey-card featured' : 'journey-card';
     if (selected) { cardClass += ' selected'; }
+    if (block.calendarConflict === true) { cardClass += ' calendar-conflict'; }
     var card = add(board, 'article', cardClass);
     card.setAttribute('data-card-key', key);
     card.setAttribute('data-source', source);
@@ -1024,6 +1060,11 @@ const TRAVEL_HOME_JS: string = `
     add(title, 'div', 'journey-tag ' + source, sourceLabel(block));
     add(title, 'h2', '', text(block.title) || text(block.kind) || '出行结果');
     if (selected) { add(title, 'div', 'journey-selected', '已选择'); }
+    if (block.calendarConflict === true) {
+      var conflictTitle = text(block.calendarConflictTitle);
+      add(title, 'div', 'journey-conflict', conflictTitle.length > 0 ?
+        '时间冲突 · 与“' + conflictTitle + '”重叠' : '时间冲突 · 与系统日历已有安排重叠');
+    }
     var expand = add(top, 'button', 'journey-expand', '展开');
     expand.type = 'button';
     expand.addEventListener('click', function (event) { event.stopPropagation(); setExpanded(key); });
@@ -1053,6 +1094,7 @@ const TRAVEL_HOME_JS: string = `
       }
       add(box, 'b', '', item[1]);
     });
+    addActionButtons(card, list(block.actions).filter(isTravelCalendarAction), true);
     var detail = add(card, 'div', 'journey-detail');
     var grid = add(detail, 'div', 'detail-grid');
     detailRow(grid, '来源', sourceLabel(block));
@@ -1061,7 +1103,9 @@ const TRAVEL_HOME_JS: string = `
       if (source === 'train' && text(item && item.label).toLowerCase() === 'price') { return; }
       detailRow(grid, text(item && item.label), text(item && item.value));
     });
-    addActionButtons(detail, block.actions);
+    addActionButtons(detail, list(block.actions).filter(function (action) {
+      return !isTravelCalendarAction(action);
+    }), false);
   });
   applyView();
 })();

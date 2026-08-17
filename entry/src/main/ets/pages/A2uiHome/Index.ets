@@ -152,10 +152,22 @@ import {
   MailCalendarSuggestion,
   MailReplyCommand,
   MailReplyOperationResult,
+  HuaweiTravelCalendarConflict,
+  HuaweiTravelCalendarEvent,
   addHuaweiCalendarEvent,
+  addHuaweiTravelCalendarEvent,
+  findHuaweiTravelCalendarConflicts,
   saveConfiguredMailDraft,
   sendConfiguredMailReply
 } from '@loop/agent-core';
+import {
+  TRAVEL_CALENDAR_ADD_ACTION_ID,
+  applyTravelCalendarConflictProjection,
+  travelCalendarEventFromFlight,
+  travelCalendarEventsFromModel,
+  travelCalendarEventFromOption,
+  travelCalendarEventFromTrain
+} from './travel/TravelCalendarAction';
 import {
   copyPersonaData,
   leaderPersonaSurfaceUpdate
@@ -591,6 +603,7 @@ interface MailReplyAiArgs {
 }
 
 interface HtmlPinPayload {
+  calendarCollection?: HtmlActionValue;
   index?: HtmlActionValue;
   id?: HtmlActionValue;
   source?: HtmlActionValue;
@@ -888,6 +901,7 @@ struct Index {
   @State mailReplyEventJson: string = '';
   @State mailCalendarEventJson: string = '';
   private mailCalendarSuggestions: Record<string, MailCalendarSuggestion> = {};
+  private travelConflictRefreshGeneration: number = 0;
   private htmlHomeCacheKey: string = '';
   private htmlHomeCacheHtml: string = '';
   private readonly registeredPageSnapshotStore: RegisteredPageSnapshotStore =
@@ -3428,6 +3442,55 @@ struct Index {
     }
   }
 
+  private scheduleTravelCalendarConflictRefresh(): void {
+    const model = this.parsedDataModel();
+    if (model === null || travelCalendarEventsFromModel(model).length === 0) {
+      return;
+    }
+    this.travelConflictRefreshGeneration = this.travelConflictRefreshGeneration + 1;
+    const generation = this.travelConflictRefreshGeneration;
+    const surfaceId = this.currentSurface.surfaceId;
+    const sequence = this.currentSurface.sequence;
+    const dataModelJson = this.currentSurface.dataModelJson;
+    void this.refreshTravelCalendarConflicts(generation, surfaceId, sequence, dataModelJson);
+  }
+
+  private async refreshTravelCalendarConflicts(
+    generation: number,
+    surfaceId: string,
+    sequence: number,
+    dataModelJson: string
+  ): Promise<void> {
+    try {
+      await this.ensureCalendarPermissions();
+      const model = JSON.parse(dataModelJson) as A2uiRuntimeDataModel;
+      const events = travelCalendarEventsFromModel(model);
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const conflicts = await findHuaweiTravelCalendarConflicts(context, events);
+      if (generation !== this.travelConflictRefreshGeneration ||
+        this.currentSurface.surfaceId !== surfaceId || this.currentSurface.sequence !== sequence ||
+        this.currentSurface.dataModelJson !== dataModelJson) {
+        return;
+      }
+      const changed = applyTravelCalendarConflictProjection(model, conflicts);
+      if (changed) {
+        const next = this.surfaceSnapshot(this.currentSurface);
+        next.dataModelJson = JSON.stringify(model);
+        this.currentSurface = next;
+        this.surfaceRenderTick = this.surfaceRenderTick + 1;
+        this.htmlHomeCacheKey = '';
+        this.htmlHomeCacheHtml = '';
+        this.syncHtmlHomeStableHtml();
+      }
+      aiLogInfo('[AIPhone][TravelCalendarConflictProjection] candidates=' + events.length.toString() +
+        ' conflicts=' + conflicts.filter((item: HuaweiTravelCalendarConflict) => item.conflict).length.toString() +
+        ' changed=' + (changed ? 'true' : 'false'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      aiLogError('[AIPhone][TravelCalendarConflictProjection] ok=false error=' + message.substring(0, 220));
+    }
+  }
+
   private currentHtmlHomeDocument(): HtmlHomeDocument {
     if (isFirecrawlToolId(this.pendingFirecrawlToolId) &&
       shouldShowFirecrawlPendingSurface(
@@ -3601,6 +3664,7 @@ struct Index {
       ' sequence=' + next.sequence.toString() +
       ' renderTick=' + this.surfaceRenderTick.toString() +
       ' multiTaskTick=' + this.multiTaskPayloadTick.toString());
+    this.scheduleTravelCalendarConflictRefresh();
     return true;
   }
 
@@ -3629,6 +3693,7 @@ struct Index {
       ' dataChars=' + surface.dataModelJson.length.toString() +
       ' sequence=' + surface.sequence.toString() +
       ' renderTick=' + this.surfaceRenderTick.toString());
+    this.scheduleTravelCalendarConflictRefresh();
   }
 
   private rememberLuckinReturnSurface(reason: string): void {
@@ -5046,6 +5111,71 @@ struct Index {
     this.trainPresaleCheckoutTaskId = '';
     this.showCheckoutWeb = true;
     aiLogInfo('[AIPhone][FlightBookingOpen] provider=携程 channel=flight_ctrip mode=in_app source=' + source);
+    return true;
+  }
+
+  private async handleTravelCalendarAction(action: A2uiAction): Promise<boolean> {
+    if (action.id !== TRAVEL_CALENDAR_ADD_ACTION_ID) {
+      return false;
+    }
+    const model = this.parsedDataModel();
+    const payload = this.htmlPinPayload(action);
+    const index = this.htmlActionIndex(action, payload);
+    if (model === null) {
+      this.logHtmlHomeActionError(action, 'invalid_model');
+      return true;
+    }
+    const collection = this.actionText(payload.calendarCollection).trim();
+    let event: HuaweiTravelCalendarEvent | null = null;
+    if (collection === 'travel') {
+      const row = this.htmlPinTravelRow(model, payload, index);
+      if (row !== null && (row.source === 'train' || row.source === 'flight')) {
+        event = travelCalendarEventFromOption(row);
+      }
+    } else if (collection === 'train') {
+      const row = this.htmlPinTrainRow(model, payload, index);
+      if (row !== null) {
+        event = travelCalendarEventFromTrain(row);
+      }
+    } else if (collection === 'flight') {
+      const row = this.htmlPinFlightRow(model, payload, index);
+      if (row !== null) {
+        event = travelCalendarEventFromFlight(row);
+      }
+    }
+    if (event === null) {
+      this.getUIContext().getPromptAction().showToast({
+        message: '这条行程缺少日期、出发时间或到达时间，请重新查询后再加入日历。'
+      });
+      this.logHtmlHomeActionError(action, 'missing_travel_calendar_fields');
+      return true;
+    }
+    try {
+      await this.ensureCalendarPermissions();
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const conflicts = await findHuaweiTravelCalendarConflicts(context, [event]);
+      if (conflicts.length > 0 && conflicts[0].conflict) {
+        const conflictTitle = conflicts[0].eventTitle.length > 0 ? '“' + conflicts[0].eventTitle + '”' : '已有日程';
+        this.getUIContext().getPromptAction().showToast({
+          message: '该班次与' + conflictTitle + '时间冲突，未加入日历。'
+        });
+        this.scheduleTravelCalendarConflictRefresh();
+        aiLogInfo('[AIPhone][TravelCalendarAction] ok=false reason=time_conflict eventId=' + conflicts[0].eventId);
+        return true;
+      }
+      const result = await addHuaweiTravelCalendarEvent(context, event);
+      this.getUIContext().getPromptAction().showToast({
+        message: result.duplicate ? '该行程已在系统日历中，无需重复添加。' :
+          '已加入系统日历，并设置出发前 2 小时和 30 分钟提醒。'
+      });
+      aiLogInfo('[AIPhone][TravelCalendarAction] ok=true duplicate=' +
+        (result.duplicate ? 'true' : 'false') + ' eventId=' + result.eventId);
+      this.scheduleTravelCalendarConflictRefresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      this.getUIContext().getPromptAction().showToast({ message: '加入系统日历失败：' + message });
+      aiLogError('[AIPhone][TravelCalendarAction] ok=false error=' + message.substring(0, 220));
+    }
     return true;
   }
 
@@ -6569,6 +6699,9 @@ struct Index {
       return;
     }
     if (await this.handleHtmlFoodMapAction(action)) {
+      return;
+    }
+    if (await this.handleTravelCalendarAction(action)) {
       return;
     }
     if (await this.handleFlightBookingAction(action)) {

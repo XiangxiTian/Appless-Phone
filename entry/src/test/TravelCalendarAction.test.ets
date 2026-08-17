@@ -5,7 +5,8 @@ import {
   travelCalendarActionForFlight,
   travelCalendarEventFromFlight,
   travelCalendarEventFromOption,
-  travelCalendarEventFromTrain
+  travelCalendarEventFromTrain,
+  travelCalendarEventsFromModel
 } from '../main/ets/pages/A2uiHome/travel/TravelCalendarAction';
 
 export default function travelCalendarActionTest() {
@@ -46,6 +47,15 @@ export default function travelCalendarActionTest() {
       });
 
       expect(event === null).assertTrue();
+    });
+
+    it('ignores non-travel surface models without travel collections', 0, () => {
+      const model = JSON.parse(
+        '{"dailyBriefDate":"2026-08-17","dailyBriefMessage":"日报生成中"}'
+      ) as A2uiRuntimeDataModel;
+
+      expect(travelCalendarEventsFromModel(model).length).assertEqual(0);
+      expect(applyTravelCalendarConflictProjection(model, [])).assertFalse();
     });
 
     it('creates a row-bound calendar action', 0, () => {

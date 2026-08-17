@@ -8,6 +8,7 @@ import {
   LeaderDecision,
   LeaderDecisionDataTask,
   LeaderPlanningContext,
+  LeaderToolMetadata,
   LocalModel,
   ObservationDigest,
   ToolDefinition,
@@ -2303,6 +2304,26 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.prompts.length).assertEqual(2);
       expect(model.prompts[1].indexOf('LEADER_EXPLICIT_MAPS_SELECTION') >= 0).assertTrue();
       expect(model.prompts[1].indexOf(EXPLICIT_GOOGLE_MAPS_AS_FOOD_DECISION) >= 0).assertTrue();
+    });
+
+    it('does not force a removed Maps tool back into focused release planning', 0, async () => {
+      const model = new QueueLocalModel([EXPLICIT_GOOGLE_MAPS_AS_FOOD_DECISION]);
+      const context = planningContext();
+      context.tools = context.tools.filter((tool: LeaderToolMetadata): boolean =>
+        tool.toolId !== 'maps.place.search' && tool.toolId !== 'maps.place.details'
+      );
+
+      const decision = await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        { text: '请用 Google Maps 查伦敦国王十字车站附近的中餐' },
+        context,
+        1,
+        (): boolean => true
+      );
+
+      expect(decision.requestedCapabilityIds.join(',')).assertEqual('food.search');
+      expect(model.prompts.length).assertEqual(1);
+      expect(model.prompts[0].indexOf('Maps selection contract') >= 0).assertFalse();
     });
 
     it('accepts the device C04 Maps repair with one redundant terminal object closure', 0, async () => {

@@ -387,7 +387,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       sameRoundConsumerTaskToolIds = leaderSameRoundDependencyConsumerTaskToolIds(decision.dataTasks);
       this.rejectSkillCapabilityViolation(decision, context);
       this.rejectOverlappingVideoTools(decision);
-      this.rejectExplicitMapsSelection(input, decision);
+      this.rejectExplicitMapsSelection(input, decision, context);
       this.normalizeSameRoundDependency(
         decision,
         sameRoundProducerTaskToolIds,
@@ -443,7 +443,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           }
           this.rejectSkillCapabilityViolation(repairedDecision, context);
           this.rejectOverlappingVideoTools(repairedDecision);
-          this.rejectExplicitMapsSelection(input, repairedDecision);
+          this.rejectExplicitMapsSelection(input, repairedDecision, context);
           this.normalizeSameRoundDependency(
             repairedDecision,
             leaderSameRoundDependencyProducerTaskToolIds(repairedDecision.dataTasks),
@@ -484,7 +484,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           this.normalizeModelContinuationDecision(repairedDecision);
           this.rejectSkillCapabilityViolation(repairedDecision, context);
           this.rejectOverlappingVideoTools(repairedDecision);
-          this.rejectExplicitMapsSelection(input, repairedDecision);
+          this.rejectExplicitMapsSelection(input, repairedDecision, context);
           this.normalizeSameRoundDependency(
             repairedDecision,
             leaderSameRoundDependencyProducerTaskToolIds(repairedDecision.dataTasks),
@@ -525,7 +525,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           this.normalizeModelContinuationDecision(repairedDecision);
           this.rejectSkillCapabilityViolation(repairedDecision, context);
           this.rejectOverlappingVideoTools(repairedDecision);
-          this.rejectExplicitMapsSelection(input, repairedDecision);
+          this.rejectExplicitMapsSelection(input, repairedDecision, context);
           this.normalizeSameRoundDependency(
             repairedDecision,
             leaderSameRoundDependencyProducerTaskToolIds(repairedDecision.dataTasks),
@@ -1225,9 +1225,10 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
 
   private rejectExplicitMapsSelection(
     input: InputUserPayload,
-    decision: LeaderDecision
+    decision: LeaderDecision,
+    context: LeaderPlanningContext
   ): void {
-    if (decision.roundAction !== 'execute') {
+    if (!this.registeredCapability(context, 'maps.place.search') || decision.roundAction !== 'execute') {
       return;
     }
     const text: string = input.text.trim().toLowerCase();
@@ -1753,7 +1754,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       'Maximum Data tasks in one round: ' + MAX_LEADER_DATA_TASKS_PER_ROUND.toString() + '.',
       TRAVEL_SELECTION_CONTRACT,
       VIDEO_SELECTION_CONTRACT,
-      MAPS_SELECTION_CONTRACT,
+      this.registeredCapability(context, 'maps.place.search') ? MAPS_SELECTION_CONTRACT : '',
       C10_C11_SELECTION_CONTRACT,
       SOCIAL_SELECTION_CONTRACT,
       AGGREGATE_MEDIA_SELECTION_CONTRACT,

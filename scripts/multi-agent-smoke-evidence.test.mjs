@@ -265,7 +265,9 @@ test('admits only one prompt while the model chooses the focused release route',
   const index = readFileSync('entry/src/main/ets/pages/A2uiHome/Index.ets', 'utf8');
   const start = index.indexOf('  private async submitPrompt(');
   const submit = index.slice(start, index.indexOf('\n  private async submitBimPrompt(', start));
-  assert.ok(submit.indexOf('this.isBusy = true;') < submit.indexOf('await this.canaryModel().complete('));
+  assert.ok(submit.indexOf('this.isBusy = true;') < submit.indexOf('this.canaryModel().complete('));
+  assert.doesNotMatch(submit, /Promise\.race<string>/);
+  assert.match(submit, /result\.surfaceId === 'none'[\s\S]*this\.showHistory = true/);
 });
 
 test('does not mount Composio authorization in focused release settings', () => {
@@ -2449,10 +2451,25 @@ test('keeps direct daily-brief analysis independent from model tool and provider
 });
 
 test('lists only safe focused release cases by default and keeps legacy coverage explicit', () => {
+  const source = readFileSync('scripts/aiphone-device-smoke.mjs', 'utf8');
+  const runQuery = source.slice(source.indexOf('async function runQuery('),
+    source.indexOf('\nasync function waitForComposioAuthEvidence(', source.indexOf('async function runQuery(')));
+  assert.match(runQuery,
+    /uiInput', 'inputText',\s+String\(controls\.input\.x\), String\(controls\.input\.y\), query/);
+  assert.match(source, /async function runDeepSearchSmoke\(testCase, index\)/);
+  assert.match(source, /deepsearch-input-attempt-\$\{attempt \+ 1\}/);
+  assert.match(source, /DeepSearchPanelOpened[\s\S]*DeepSearchAutoRouted[\s\S]*DeepSearchStart/);
+  assert.match(source, /inferredCase\.verifyDeepSearch === true/);
   const focused = listedCases();
   assert.deepEqual(focused.map((item) => item.id),
-    Array.from({ length: 10 }, (_value, index) => `R${String(index + 1).padStart(2, '0')}`));
+    Array.from({ length: 12 }, (_value, index) => `R${String(index + 1).padStart(2, '0')}`));
   assert.deepEqual(listedCases(['--core-regression']), focused);
+  assert.deepEqual(focused.find((item) => item.id === 'R03'), {
+    id: 'R03',
+    mode: 'deepsearch',
+    expectedToolIds: ['web.research.search'],
+    retryLimit: 0
+  });
   assert.doesNotMatch(JSON.stringify(focused),
     /mail\.|gmail\.|social\.|x\.post|payment\.|whatsapp\.|calendar\.|worldcup\.|movie\.|daily\.brief|dynamic\.search|media\.video/);
   const full = listedCases(['--full-regression']);

@@ -4887,6 +4887,9 @@ struct Index {
         error: ''
       }));
       this.appendMessage('assistant', readyMessage);
+      if (result.surfaceId === 'none' || result.surfaceId.length === 0) {
+        this.showHistory = true;
+      }
     } catch (error) {
       if (this.runtimeGeneration !== turnGeneration) {
         return;

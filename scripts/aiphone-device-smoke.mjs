@@ -137,15 +137,17 @@ function writeScreenshotIndex() {
 
 const defaultCases = [
   { id: 'R01', query: '你好', expectsTool: false, expectedToolId: '' },
-  { id: 'R02', query: '我明天要从北京去上海，帮我搜索出行方案', expectsTool: true, expectedToolId: 'travel.search' },
-  { id: 'R03', query: '帮我查明天北京到上海的航班', expectsTool: true, expectedToolId: 'flight.search' },
-  { id: 'R04', query: '帮我查询明天晚上六点以后深圳北到香港西九龙的高铁', expectsTool: true, expectedToolId: 'train.search' },
-  { id: 'R05', query: '帮我找8月8日到10日深圳科技园附近的酒店，2位成人1间房', expectsTool: true, expectedToolId: 'hotel.search' },
-  { id: 'R06', query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
-  { id: 'R07', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
-  { id: 'R08', query: '帮我点一杯瑞幸生椰拿铁，半糖少冰', expectsTool: true, expectedToolId: 'luckin.order.preview' },
-  { id: 'R09', query: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐', expectsTool: true, expectedToolId: 'maps.place.search' },
-  { id: 'R10', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: true, expectedToolId: 'media.aggregate.search' }
+  { id: 'R02', query: '不要用 DeepSearch，直接回答 1+1', expectsTool: false, expectedToolId: '' },
+  { id: 'R03', query: '查证 OpenAI 最近发布的模型，并对比至少两个官方来源', expectsTool: true, expectedToolId: 'web.research.search', verifyDeepSearch: true, retryLimit: 0 },
+  { id: 'R04', query: '我明天要从北京去上海，帮我搜索出行方案', expectsTool: true, expectedToolId: 'travel.search' },
+  { id: 'R05', query: '帮我查明天北京到上海的航班', expectsTool: true, expectedToolId: 'flight.search' },
+  { id: 'R06', query: '帮我查询明天晚上六点以后深圳北到香港西九龙的高铁', expectsTool: true, expectedToolId: 'train.search' },
+  { id: 'R07', query: '帮我找8月8日到10日深圳科技园附近的酒店，2位成人1间房', expectsTool: true, expectedToolId: 'hotel.search' },
+  { id: 'R08', query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
+  { id: 'R09', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
+  { id: 'R10', query: '帮我点一杯瑞幸生椰拿铁，半糖少冰', expectsTool: true, expectedToolId: 'luckin.order.preview' },
+  { id: 'R11', query: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐', expectsTool: true, expectedToolId: 'maps.place.search' },
+  { id: 'R12', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: true, expectedToolId: 'media.aggregate.search' }
 ];
 
 const dynamicCases = [
@@ -737,6 +739,7 @@ if (listCases) {
   }) : (runFullRegression ?
     [...coreScenarioManifest, ...fullScenarioManifest] : selectedDefaultCases.map((testCase) => ({
       id: testCase.id || '',
+      mode: testCase.verifyDeepSearch === true ? 'deepsearch' : 'agent',
       expectedToolIds: lifecycleOptions(testCase).expectedToolIds,
       retryLimit: testCase.retryLimit ?? queryRetryLimit
     })));
@@ -3525,7 +3528,8 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
       hdc(['shell', 'uitest', 'uiInput', 'click', String(controls.input.x), String(controls.input.y)]);
       hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2072', '2017']);
       hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2055']);
-      hdc(['shell', 'uitest', 'uiInput', 'text', query]);
+      hdc(['shell', 'uitest', 'uiInput', 'inputText',
+        String(controls.input.x), String(controls.input.y), query]);
       await sleep(1200);
       const inputText = collectInputText(dumpLayout(`query-${index + 1}-input-attempt-${attempt + 1}.json`));
       if (inputText.includes(query)) {
@@ -3906,6 +3910,74 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
     summary.hotelDetailAction.ok &&
     summary.absenceVerified;
   return summary;
+}
+
+async function runDeepSearchSmoke(testCase, index) {
+  clearHilog();
+  hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
+  hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.jiuwen.appless']);
+  await sleep(3000);
+  moveAppWindowIntoScreenshot();
+  const appPid = hdc(['shell', 'pidof', 'com.jiuwen.appless']).trim().split(/\s+/)[0] || '';
+  const controls = await waitForControls(`query-${index + 1}-deepsearch-start-layout.json`);
+  const logs = await captureAppLogsFor(appPid, async () => {
+    let typed = false;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2072', '2017']);
+      hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2055']);
+      hdc(['shell', 'uitest', 'uiInput', 'inputText',
+        String(controls.input.x), String(controls.input.y), testCase.query]);
+      await sleep(1200);
+      const inputText = collectInputText(dumpLayout(
+        `query-${index + 1}-deepsearch-input-attempt-${attempt + 1}.json`
+      ));
+      if (inputText.includes(testCase.query)) {
+        typed = true;
+        break;
+      }
+    }
+    if (!typed) {
+      throw new Error('Could not type the DeepSearch query.');
+    }
+    const submitControls = await waitForControls(`query-${index + 1}-deepsearch-submit-layout.json`, 2);
+    hdc(['shell', 'uitest', 'uiInput', 'click',
+      String(submitControls.generate.x), String(submitControls.generate.y)]);
+  }, Number.parseInt(process.env.AIPHONE_DEEPSEARCH_TIMEOUT_MS || '75000', 10));
+  const safeLogs = sanitizeExternalUrlLogs(logs.join('\n'));
+  const logPath = join(outDir, `query-${index + 1}-deepsearch.log`);
+  writeFileSync(logPath, safeLogs + '\n');
+  const layoutPath = join(outDir, `query-${index + 1}-deepsearch-final-layout.json`);
+  const layout = dumpLayout(`query-${index + 1}-deepsearch-final-layout.json`);
+  const layoutText = collectLayoutText(layout).join('\n');
+  const panelOpened = safeLogs.includes('[AIPhone][DeepSearchPanelOpened]');
+  const autoRouted = safeLogs.includes('[AIPhone][DeepSearchAutoRouted]');
+  const started = safeLogs.includes('[AIPhone][DeepSearchStart]');
+  const providerRequested = /\[AIPhone\]\[FirecrawlMcp\][^\n]*toolId=web\.research\.search/.test(safeLogs);
+  const done = /\[AIPhone\]\[DeepSearchDone\] sources=[1-9]\d*/.test(safeLogs);
+  const failed = safeLogs.includes('[AIPhone][DeepSearchFailed]');
+  const panelVisible = /DeepSearch|深度搜索|联网检索|研究进度|来源/.test(layoutText);
+  const routeOk = panelOpened && autoRouted && started;
+  const status = routeOk && providerRequested && done && panelVisible ? 'PASS' :
+    (routeOk && providerRequested && failed && panelVisible ? 'BLOCKED' : 'FAIL');
+  return {
+    caseId: testCase.id,
+    query: testCase.query,
+    expectedTool: true,
+    expectedToolId: 'web.research.search',
+    expectedToolIds: ['web.research.search'],
+    status,
+    ok: status === 'PASS',
+    routeOk,
+    providerRequested,
+    done,
+    failed,
+    panelVisible,
+    logPath,
+    layoutPath,
+    screenPath: captureScreen(`query-${index + 1}-deepsearch-final-screen.png`),
+    reason: status === 'BLOCKED' ? 'DeepSearch reached Firecrawl but the external provider did not return sources.' :
+      (status === 'FAIL' ? 'DeepSearch routing or panel evidence is incomplete.' : '')
+  };
 }
 
 async function waitForComposioAuthEvidence() {
@@ -5157,6 +5229,18 @@ for (let index = 0; index < queries.length; index += 1) {
       settingsSummary
     );
     console.log(JSON.stringify(settingsSummary, null, 2));
+    continue;
+  }
+  if (inferredCase.verifyDeepSearch === true) {
+    const deepSearchSummary = await runDeepSearchSmoke(inferredCase, index);
+    summaries.push(deepSearchSummary);
+    snapshotCaseArtifacts(
+      inferredCase.id || `query-${index + 1}`,
+      1,
+      [`query-${index + 1}-deepsearch`],
+      deepSearchSummary
+    );
+    console.log(JSON.stringify(deepSearchSummary, null, 2));
     continue;
   }
   const blockedC19Write = (['C19c', 'C19d', 'C19e'].includes(inferredCase.id || '') && !c19CreateSucceeded) ||

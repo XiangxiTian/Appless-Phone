@@ -149,10 +149,12 @@ export default function deepSearchEngineTest() {
         overviewResult(),
         sourceResult('来源A', 'https://a.example.com/1', '摘要A', 'success'),
         sourceResult('来源A重复', 'https://a.example.com/1', '重复摘要', 'success'),
-        sourceResult('来源B', 'https://b.example.com/2', '摘要B', 'partial')
+        sourceResult('来源B', 'https://b.example.com/2', '摘要B', 'partial'),
+        sourceResult('失败来源', 'https://blocked.example.com', '站点拒绝访问', 'blocked_by_site')
       ]), '核心事实', 1);
       expect(outcome.sources.length).assertEqual(2);
       expect(outcome.needsAuth).assertFalse();
+      expect(outcome.message).assertEqual('站点拒绝访问');
       expect(outcome.sources[0].url).assertEqual('https://a.example.com/1');
       expect(outcome.sources[0].subQuery).assertEqual('核心事实');
     });

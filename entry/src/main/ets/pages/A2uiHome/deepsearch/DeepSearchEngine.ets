@@ -343,7 +343,7 @@ export function searchRoundOutcomeOf(
       continue;
     }
     seenUrls.push(url);
-    sources.push({
+    const source: DeepSearchSourceView = {
       title: result.title,
       url: url,
       summary: result.summary,
@@ -351,7 +351,14 @@ export function searchRoundOutcomeOf(
       round: round,
       subQuery: subQuery,
       deepRead: false
-    });
+    };
+    if (!usableSource(source)) {
+      if (message.length === 0 && source.summary.trim().length > 0) {
+        message = source.summary.trim();
+      }
+      continue;
+    }
+    sources.push(source);
   }
   return { sources: sources, needsAuth: needsAuth, message: message };
 }

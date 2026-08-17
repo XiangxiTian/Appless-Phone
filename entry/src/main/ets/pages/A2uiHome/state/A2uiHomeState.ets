@@ -128,7 +128,7 @@ export function deepSearchRouteDecisionFromModelText(raw: string): DeepSearchRou
 
 export function explicitDeepSearchRouteDecision(query: string): DeepSearchRouteDecision | null {
   const text = query.trim();
-  if (/(不要|不用|无需|别|禁止|拒绝).{0,16}(深度搜索|深度检索|联网搜索|联网|搜索|deep\s*search|deepsearch)|(深度搜索|深度检索|联网搜索|deep\s*search|deepsearch).{0,8}(免了|不用|不要|不需要|无需|别)/i.test(text)) {
+  if (/(不想|不希望|不要|不用|不需要|不必|无需|别|禁止|拒绝|请勿)[^，。；,;!?！？]{0,16}(深度搜索|深度检索|联网搜索|联网|deep\s*search|deepsearch)|(深度搜索|深度检索|联网搜索|deep\s*search|deepsearch)[^，。；,;!?！？]{0,8}(免了|算了|不用了?|不要了?|不需要|无需|别|我?不想用?|我?不希望用?)|(do\s*not|don't|dont|skip|avoid)[^,.;!?]{0,16}(deep\s*search|deepsearch)/i.test(text)) {
     return 'agent';
   }
   return /(深度搜索|深度检索|联网搜索|deep\s*search|deepsearch)/i.test(text) ? 'deepsearch' : null;

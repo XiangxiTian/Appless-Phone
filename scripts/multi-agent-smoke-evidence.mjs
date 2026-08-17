@@ -1007,7 +1007,7 @@ export function externalProviderBlocked(logText, lifecycle) {
     return false;
   }
   const transportFailed =
-    /LLM request failed:[^\n]*(?:Failed to receive data from the peer|Operation timeout|Failed to connect|network)/i.test(text);
+    /LLM request failed:[^\n]*(?:Failed to receive data from the peer|Operation timeout|Failed to connect|network|HTTP 429|current quota|RateLimitError)/i.test(text);
   const pendingModel = hasDataTask && !terminal &&
     text.lastIndexOf('[AIPhone][ModelRequestStart]') > text.lastIndexOf('finish_reason":"stop"');
   const pendingProvider = hasDataTask && !terminal &&

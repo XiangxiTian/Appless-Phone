@@ -1362,6 +1362,9 @@ test('classifies only external model or provider stalls as blocked', () => {
     '[AIPhone][A2uiHomeModelException] LLM request failed: Failed to receive data from the peer',
     { dataTasks: [] }), true);
   assert.equal(externalProviderBlocked(
+    '[AIPhone][A2uiHomeModelException] LLM request failed: LLM request failed with HTTP 429: ' +
+      'You exceeded your current quota', { dataTasks: [] }), true);
+  assert.equal(externalProviderBlocked(
     '[AIPhone][MultiAgentTaskError] code=LEADER_TASK_INPUT_INVALID', lifecycle), false);
   assert.equal(externalProviderBlocked(
     '[AIPhone][DeepSearchRouteDecisionFailed] LLM request failed: Operation timeout\n' +

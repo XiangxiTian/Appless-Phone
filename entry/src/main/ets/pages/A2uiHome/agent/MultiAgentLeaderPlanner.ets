@@ -216,7 +216,9 @@ const TASK_INPUT_REPAIR_INSTRUCTION: string =
   'Correction: LEADER_TASK_INPUT_INVALID. Change only dataTasks[].input so every selected tool receives its exact ' +
   'registered input shape. Keep personaId, skillId, requestedCapabilityIds, roundAction, each Data task localId, ' +
   'goal, allowedToolIds, toolId and required value, uiIntent, actionIntent, answer, and Data task order exactly ' +
-  'unchanged. The only permitted difference is inside dataTasks[].input. ' + FULL_DECISION_CONTRACT;
+  'unchanged. The only permitted difference is inside dataTasks[].input. For hotel.search, copy the current user ' +
+  'message verbatim into originQuery; never summarize it or omit its prefix, dates, guests, or rooms. ' +
+  FULL_DECISION_CONTRACT;
 const TRAVEL_QUERY_INCOMPLETE_REPAIR_INSTRUCTION: string =
   'Correction: LEADER_TRAVEL_QUERY_INCOMPLETE. A selected travel, train, or flight search lacks an exact ' +
   'departure date, origin, or destination. Re-read the current message and standard recent conversation. ' +

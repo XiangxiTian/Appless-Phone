@@ -3365,6 +3365,7 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.prompts.length).assertEqual(2);
       expect(model.prompts[1].indexOf('LEADER_TASK_INPUT_INVALID')).assertLarger(-1);
       expect(model.prompts[1].indexOf('Change only dataTasks[].input')).assertLarger(-1);
+      expect(model.prompts[1].indexOf('copy the current user message verbatim into originQuery')).assertLarger(-1);
       expect(decision.personaId).assertEqual('travel_companion');
       expect(decision.requestedCapabilityIds.join(',')).assertEqual('social.feed.search');
       expect(decision.dataTasks[0].toolId).assertEqual('social.feed.search');

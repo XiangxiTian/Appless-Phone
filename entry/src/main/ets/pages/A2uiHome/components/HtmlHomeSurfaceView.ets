@@ -66,6 +66,7 @@ export struct HtmlHomeSurfaceView {
   private lastMultiTaskPayloadTick: number = -1;
   private lastWaterfallPayloadJson: string = '';
   private lastWaterfallPayloadTick: number = -1;
+  private waterfallPayloadPushInFlight: boolean = false;
   private appliedLuckinPatchTick: number = -1;
   @State private popupVisible: boolean = false;
   @State private popupTitle: string = '支付确认';
@@ -132,7 +133,7 @@ export struct HtmlHomeSurfaceView {
   private pushWaterfallPayloadIfNeeded(): void {
     if (this.waterfallPayloadJson.length === 0 ||
       (this.waterfallPayloadJson === this.lastWaterfallPayloadJson &&
-        this.waterfallPayloadTick === this.lastWaterfallPayloadTick)) {
+        this.waterfallPayloadTick === this.lastWaterfallPayloadTick) || this.waterfallPayloadPushInFlight) {
       return;
     }
     if (!this.webReady) {
@@ -140,16 +141,29 @@ export struct HtmlHomeSurfaceView {
         ' payloadChars=' + this.waterfallPayloadJson.length.toString());
       return;
     }
+    const payloadJson = this.waterfallPayloadJson;
+    const payloadTick = this.waterfallPayloadTick;
     try {
+      this.waterfallPayloadPushInFlight = true;
       this.controller.runJavaScript(
-        'if (window.__aiphoneApplyWaterfallUpdate) {' +
-        'window.__aiphoneApplyWaterfallUpdate(' + this.waterfallPayloadJson + ');}'
-      );
-      this.lastWaterfallPayloadJson = this.waterfallPayloadJson;
-      this.lastWaterfallPayloadTick = this.waterfallPayloadTick;
-      aiLogInfo('[AIPhone][HtmlHomeWaterfallPush] tick=' + this.waterfallPayloadTick.toString() +
-        ' payloadChars=' + this.waterfallPayloadJson.length.toString());
+        'if (!window.__aiphoneApplyWaterfallUpdate) { throw new Error("WATERFALL_UPDATE_BRIDGE_MISSING"); }' +
+        'window.__aiphoneApplyWaterfallUpdate(' + payloadJson + ');'
+      ).then((): void => {
+        this.lastWaterfallPayloadJson = payloadJson;
+        this.lastWaterfallPayloadTick = payloadTick;
+        this.waterfallPayloadPushInFlight = false;
+        aiLogInfo('[AIPhone][HtmlHomeWaterfallPush] tick=' + payloadTick.toString() +
+          ' payloadChars=' + payloadJson.length.toString());
+        this.pushWaterfallPayloadIfNeeded();
+      }).catch((error: Error): void => {
+        this.waterfallPayloadPushInFlight = false;
+        aiLogError('[AIPhone][HtmlHomeWaterfallPushError] ' + JSON.stringify(error));
+        if (payloadJson !== this.waterfallPayloadJson || payloadTick !== this.waterfallPayloadTick) {
+          this.pushWaterfallPayloadIfNeeded();
+        }
+      });
     } catch (error) {
+      this.waterfallPayloadPushInFlight = false;
       aiLogError('[AIPhone][HtmlHomeWaterfallPushError] ' + JSON.stringify(error));
     }
   }
@@ -358,13 +372,16 @@ export struct HtmlHomeSurfaceView {
             }
             .layoutWeight(1)
 
-            Button('返回')
-              .height(36)
-              .width(68)
-              .fontSize(13)
-              .fontColor('#493F38')
+            Stack({ alignContent: Alignment.Center }) {
+              Image($r('app.media.icon_back'))
+                .width(20)
+                .height(20)
+            }
+              .height(44)
+              .width(44)
               .backgroundColor('#F5F2EE')
-              .borderRadius(18)
+              .borderRadius(22)
+              .accessibilityText('返回')
               .onClick(() => {
                 if (this.popupController.accessBackward()) {
                   this.popupController.backward();

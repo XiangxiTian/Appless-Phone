@@ -3073,6 +3073,10 @@ function rideArgs(args: Object | null): RideRouteArgs {
   if (args === null) {
     return JSON.parse('{}') as RideRouteArgs;
   }
+  const nested = (args as ToolArgRecord)['args'];
+  if (nested !== null && typeof nested === 'object' && !Array.isArray(nested)) {
+    return nested as RideRouteArgs;
+  }
   return args as RideRouteArgs;
 }
 

@@ -2448,6 +2448,29 @@ export default function toolGatewayClientTest() {
       }
     });
 
+    it('accepts Leader ride arguments wrapped in input args', 0, async () => {
+      try {
+        configureLocalProviderConfigFromRawJson('{}');
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const result = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'ride.estimate',
+          '帮我看从深圳湾万象城到深圳北站打车多少钱',
+          'surface_ride_nested_args',
+          'model_tool_request',
+          noop,
+          null,
+          looseObject('{"args":{"origin":"深圳湾万象城","destination":"深圳北站","city":"深圳"}}')
+        );
+
+        const rendered = genericToolResults(result.surface);
+        expect(rendered[0].sourceTag).assertEqual('滴滴');
+        expect(rendered[0].summary.indexOf('DIDI_MCP_KEY')).assertLarger(-1);
+      } finally {
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
+
     it('blocks non-RFC3339 Calendar times before Composio', 0, async () => {
       try {
         configureComposioConfigFromRawJson('{}');

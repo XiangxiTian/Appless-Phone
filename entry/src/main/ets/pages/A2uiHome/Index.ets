@@ -4772,6 +4772,7 @@ struct Index {
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
+    this.isBusy = true;
     let autoDeep = false;
     if (actionId.length === 0) {
       const explicitDecision = explicitDeepSearchRouteDecision(trimmed);
@@ -4788,12 +4789,16 @@ struct Index {
       }
     }
     if (autoDeep && trimmed.length > 0) {
-      this.inputText = inputTextAfterPromptSubmit(this.inputText);
-      this.appendMessage('user', visibleText);
-      const contextJson = await this.buildDeepSearchContext();
-      this.openDeepSearch(trimmed, contextJson);
-      aiLogInfo('[AIPhone][DeepSearchAutoRouted] queryChars=' + trimmed.length.toString() +
-        ' context=' + contextJson.length.toString() + 'chars');
+      try {
+        this.inputText = inputTextAfterPromptSubmit(this.inputText);
+        this.appendMessage('user', visibleText);
+        const contextJson = await this.buildDeepSearchContext();
+        this.openDeepSearch(trimmed, contextJson);
+        aiLogInfo('[AIPhone][DeepSearchAutoRouted] queryChars=' + trimmed.length.toString() +
+          ' context=' + contextJson.length.toString() + 'chars');
+      } finally {
+        this.isBusy = false;
+      }
       return;
     }
     // 非 DeepSearch 内容：若面板开着则收起，回到主内容展示 multi-agent 结果。
@@ -4814,6 +4819,7 @@ struct Index {
         assistantDebug: this.lastModelOutput,
         error: 'Base URL 为空'
       }));
+      this.isBusy = false;
       return;
     }
     this.pendingBimEvidence = null;
@@ -4831,7 +4837,6 @@ struct Index {
     this.multiTaskActiveSectionId = '';
     this.multiTaskUserPinnedSection = false;
     this.multiTaskShellHtml = '';
-    this.isBusy = true;
     this.isAwaitingFirstSurface = true;
     this.markChecking('正在生成 A2UI...');
     try {
@@ -8541,14 +8546,6 @@ struct Index {
         },
         onTestConnection: () => {
           this.testConnection();
-        },
-        onOpenComposioAuth: () => {
-          this.configureComposioRuntimeForCurrentUser();
-          this.showComposioAuthPage = true;
-          this.refreshComposioAuth();
-        },
-        onRefreshComposioAuth: () => {
-          this.refreshComposioAuth();
         },
         onSelectPersona: (personaId: string) => {
           this.selectPersonaForEdit(personaId);

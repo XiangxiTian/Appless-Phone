@@ -166,6 +166,9 @@ export default function a2uiHomeStateTest() {
     it('lets explicit DeepSearch requests and refusals override model routing', 0, () => {
       expect(explicitDeepSearchRouteDecision('请深度搜索 Firecrawl 的限制')).assertEqual('deepsearch');
       expect(explicitDeepSearchRouteDecision('不要联网搜索，直接回答')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('不要为这个问题调用深度搜索')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('深度搜索就免了')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('不要用 DeepSearch')).assertEqual('agent');
       expect(explicitDeepSearchRouteDecision('比较两款芯片的最新进展')).assertEqual(null);
     });
 

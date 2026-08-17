@@ -261,6 +261,23 @@ test('does not mount the removed public-persona page in the focused release', ()
   assert.doesNotMatch(build, /showPublicPersonaPage/);
 });
 
+test('admits only one prompt while the model chooses the focused release route', () => {
+  const index = readFileSync('entry/src/main/ets/pages/A2uiHome/Index.ets', 'utf8');
+  const start = index.indexOf('  private async submitPrompt(');
+  const submit = index.slice(start, index.indexOf('\n  private async submitBimPrompt(', start));
+  assert.ok(submit.indexOf('this.isBusy = true;') < submit.indexOf('await this.canaryModel().complete('));
+});
+
+test('does not mount Composio authorization in focused release settings', () => {
+  const page = readFileSync('entry/src/main/ets/pages/A2uiHome/components/ConfigPage.ets', 'utf8');
+  const build = page.slice(page.indexOf('  build() {'));
+  assert.doesNotMatch(build, /this\.ComposioAuthSummarySection\(\)/);
+  const index = readFileSync('entry/src/main/ets/pages/A2uiHome/Index.ets', 'utf8');
+  const start = index.indexOf('      ConfigPage({');
+  const config = index.slice(start, index.indexOf('\n    } else {', start));
+  assert.doesNotMatch(config, /onOpenComposioAuth|onRefreshComposioAuth/);
+});
+
 test('keeps Markdown drafts open until the parent confirms a successful save', () => {
   const page = readFileSync('entry/src/main/ets/pages/A2uiHome/components/PublicPersonaPage.ets', 'utf8');
   assert.match(page, /onSaveMarkdown: \(markdown: string\) => boolean/);
@@ -2431,13 +2448,16 @@ test('keeps direct daily-brief analysis independent from model tool and provider
   assert.equal(analyzed.ok, true);
 });
 
-test('lists exactly C01-C24 and F01-F16 without excluded sends', () => {
-  const core = listedCases();
-  assert.deepEqual(core.map((item) => item.id),
-    Array.from({ length: 24 }, (_value, index) => `C${String(index + 1).padStart(2, '0')}`));
+test('lists only safe focused release cases by default and keeps legacy coverage explicit', () => {
+  const focused = listedCases();
+  assert.deepEqual(focused.map((item) => item.id),
+    Array.from({ length: 10 }, (_value, index) => `R${String(index + 1).padStart(2, '0')}`));
+  assert.deepEqual(listedCases(['--core-regression']), focused);
+  assert.doesNotMatch(JSON.stringify(focused),
+    /mail\.|gmail\.|social\.|x\.post|payment\.|whatsapp\.|calendar\.|worldcup\.|movie\.|daily\.brief|dynamic\.search|media\.video/);
   const full = listedCases(['--full-regression']);
   assert.deepEqual(full.map((item) => item.id), [
-    ...core.map((item) => item.id),
+    ...Array.from({ length: 24 }, (_value, index) => `C${String(index + 1).padStart(2, '0')}`),
     ...Array.from({ length: 16 }, (_value, index) => `F${String(index + 1).padStart(2, '0')}`)
   ]);
   const serialized = JSON.stringify(full);

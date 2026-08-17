@@ -734,8 +734,6 @@ export struct ConfigPage {
         .alignItems(VerticalAlign.Center)
         .margin({ bottom: 16 })
 
-        this.ComposioAuthSummarySection()
-
         Column() {
           Row() {
             Text('模型连接')

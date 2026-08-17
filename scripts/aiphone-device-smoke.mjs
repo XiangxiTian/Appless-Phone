@@ -136,18 +136,16 @@ function writeScreenshotIndex() {
 }
 
 const defaultCases = [
-  { query: '我明天要从北京去上海，帮我搜索出行方案', expectsTool: true, expectedToolId: 'travel.search' },
-  { query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
-  { query: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐', expectsTool: true, expectedToolId: 'maps.place.search' },
-  { query: '帮我查看邮箱里最新的重要邮件', expectsTool: true, expectedToolId: 'mail.search' },
-  { query: '帮我查看我Gmail里和我eccv论文相关的邮件', expectsTool: true, expectedToolId: 'gmail.mail.search' },
-  { query: '帮我在b站和youtube里搜索qwen的官方视频', expectsTool: true, expectedToolId: 'media.video.search' },
-  { query: '我想看看有关 openai codex 的相关新闻和讨论', expectsTool: true, expectedToolId: 'media.aggregate.search' },
-  { query: '帮我查看我今天 X 和 Slack 上的消息', expectsTool: true, expectedToolId: 'social.feed.search' },
-  { query: '帮我查看 X 上 openai 最近的公开 post', expectsTool: true, expectedToolId: 'x.post.search' },
-  { query: '点一杯咖啡', expectsTool: true, expectedToolId: 'food.search' },
-  { query: '我只喝瑞幸咖啡', expectsTool: false, expectedToolId: '' },
-  { query: '点一杯咖啡', expectsTool: true, expectedToolId: 'food.search', expectedPersonaMemory: 'luckin_only' }
+  { id: 'R01', query: '你好', expectsTool: false, expectedToolId: '' },
+  { id: 'R02', query: '我明天要从北京去上海，帮我搜索出行方案', expectsTool: true, expectedToolId: 'travel.search' },
+  { id: 'R03', query: '帮我查明天北京到上海的航班', expectsTool: true, expectedToolId: 'flight.search' },
+  { id: 'R04', query: '帮我查询明天晚上六点以后深圳北到香港西九龙的高铁', expectsTool: true, expectedToolId: 'train.search' },
+  { id: 'R05', query: '帮我找8月8日到10日深圳科技园附近的酒店，2位成人1间房', expectsTool: true, expectedToolId: 'hotel.search' },
+  { id: 'R06', query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
+  { id: 'R07', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
+  { id: 'R08', query: '帮我点一杯瑞幸生椰拿铁，半糖少冰', expectsTool: true, expectedToolId: 'luckin.order.preview' },
+  { id: 'R09', query: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐', expectsTool: true, expectedToolId: 'maps.place.search' },
+  { id: 'R10', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: true, expectedToolId: 'media.aggregate.search' }
 ];
 
 const dynamicCases = [
@@ -680,7 +678,7 @@ const queryArgs = argv.filter((arg) => arg !== '--clean-data' &&
   arg !== '--list-cases');
 const selectedDefaultCases = runComposioCases ? composioCases :
   (runFullRegression ? fullRegressionCases :
-    (runCoreRegression ? coreRegressionCases :
+    (runCoreRegression ? defaultCases :
       (runGoogleApps ? defaultCases.concat(googleAppCases) :
         (runDynamicCases ? defaultCases.concat(dynamicCases) : defaultCases))));
 const useDefaultCases = queryArgs.length === 0;
@@ -737,7 +735,11 @@ if (listCases) {
       retryLimit: testCase.retryLimit ?? queryRetryLimit
     };
   }) : (runFullRegression ?
-    [...coreScenarioManifest, ...fullScenarioManifest] : coreScenarioManifest);
+    [...coreScenarioManifest, ...fullScenarioManifest] : selectedDefaultCases.map((testCase) => ({
+      id: testCase.id || '',
+      expectedToolIds: lifecycleOptions(testCase).expectedToolIds,
+      retryLimit: testCase.retryLimit ?? queryRetryLimit
+    })));
   console.log(JSON.stringify(manifest, null, 2));
   process.exit(0);
 }

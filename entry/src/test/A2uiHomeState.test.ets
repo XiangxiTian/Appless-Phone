@@ -5,6 +5,7 @@ import {
   createInitialConnectionPanelState,
   deepSearchRouteDecisionFromModelText,
   deepSearchRouteDecisionPrompt,
+  explicitDeepSearchRouteDecision,
   inputTextAfterPromptSubmit,
   isWelcomeSurface,
   isPromptInputEnabled,
@@ -160,6 +161,12 @@ export default function a2uiHomeStateTest() {
       expect(deepSearchRouteDecisionFromModelText('not json')).assertEqual('agent');
       expect(deepSearchRouteDecisionPrompt('比较两款芯片的最新进展').indexOf('比较两款芯片的最新进展'))
         .assertLarger(-1);
+    });
+
+    it('lets explicit DeepSearch requests and refusals override model routing', 0, () => {
+      expect(explicitDeepSearchRouteDecision('请深度搜索 Firecrawl 的限制')).assertEqual('deepsearch');
+      expect(explicitDeepSearchRouteDecision('不要联网搜索，直接回答')).assertEqual('agent');
+      expect(explicitDeepSearchRouteDecision('比较两款芯片的最新进展')).assertEqual(null);
     });
 
     it('keeps send spinner rotation monotonic while loading', 0, () => {

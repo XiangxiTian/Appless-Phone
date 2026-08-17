@@ -1311,7 +1311,7 @@ function verifySourceContracts() {
   ]) {
     assert(runtimeUniqueIds.has(id), `runtime registered ${id}`);
   }
-  assertContains(definitions, "toolId === 'dynamic.search'", 'dynamic.search is treated as registered');
+  assertContains(definitions, 'return isReleaseToolId(toolId);', 'focused product registry rejects non-release tools');
   assertContains(runtimeGateway, "if (toolId === 'dynamic.search')", 'runtime registry explicitly handles dynamic.search');
   assertContains(
     runtimeGateway,
@@ -1334,9 +1334,10 @@ function verifySourceContracts() {
     'leader planning prompt defines the social capability selection contract'
   );
   assert(
-    definitions.includes('return runtimeToolDefinitions();') &&
-      definitions.includes('return runtimeToolDefinitions().length;'),
-    'public compatibility APIs derive the runtime registry'
+    definitions.includes('runtimeToolDefinitions().filter(') &&
+      definitions.includes('isReleaseToolId(definition.toolId)') &&
+      definitions.includes('return allToolDefinitions().length;'),
+    'focused product APIs project the shared runtime registry'
   );
   assert(
     hasOptionalCalendarUpdateSchema(runtimeDefinitions),

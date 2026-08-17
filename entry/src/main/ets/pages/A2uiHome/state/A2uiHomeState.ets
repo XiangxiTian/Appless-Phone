@@ -126,6 +126,14 @@ export function deepSearchRouteDecisionFromModelText(raw: string): DeepSearchRou
   }
 }
 
+export function explicitDeepSearchRouteDecision(query: string): DeepSearchRouteDecision | null {
+  const text = query.trim();
+  if (/(不要|不用|无需|别).{0,6}(深度搜索|深度检索|联网搜索|联网|搜索)/i.test(text)) {
+    return 'agent';
+  }
+  return /(深度搜索|深度检索|联网搜索|deep\s*search|deepsearch)/i.test(text) ? 'deepsearch' : null;
+}
+
 export function deepSearchRouteDecisionPrompt(query: string): string {
   return '判断用户请求应由普通 Agent 处理还是进入 DeepSearch。只输出 JSON：' +
     '{"route":"agent"} 或 {"route":"deepsearch"}。' +

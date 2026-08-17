@@ -2005,6 +2005,24 @@ export default function multiAgentLeaderPlannerTest() {
       ) >= 0).assertTrue();
     });
 
+    it('accepts one missing terminal object closure from a streamed Leader response', 0, async () => {
+      const truncated: string = LIVE_ANSWER_WITHOUT_REASON_CODE.substring(
+        0,
+        LIVE_ANSWER_WITHOUT_REASON_CODE.length - 1
+      );
+      const model = new QueueLocalModel([truncated]);
+
+      const decision = await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        { text: '你好' },
+        planningContext(),
+        1
+      );
+
+      expect(decision.answer).assertEqual('LIVE_PRIVATE_MARKER');
+      expect(model.prompts.length).assertEqual(1);
+    });
+
     it('preserves the locked first-round persona and skill in later-round prompt and decision', 0, async () => {
       const model = new LockedSelectionPromptAwareModel();
       const context = planningContext();

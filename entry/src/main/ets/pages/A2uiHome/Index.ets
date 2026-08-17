@@ -361,6 +361,7 @@ import {
   createInitialConnectionPanelState,
   deepSearchRouteDecisionFromModelText,
   deepSearchRouteDecisionPrompt,
+  explicitDeepSearchRouteDecision,
   inputTextAfterPromptSubmit,
   nextPendingToolRenderTick,
   runtimeCallbackIsCurrent,
@@ -4773,12 +4774,17 @@ struct Index {
     }
     let autoDeep = false;
     if (actionId.length === 0) {
-      try {
-        const decision = await this.canaryModel().complete(deepSearchRouteDecisionPrompt(trimmed));
-        autoDeep = deepSearchRouteDecisionFromModelText(decision) === 'deepsearch';
-      } catch (error) {
-        const message = error instanceof Error ? error.message : JSON.stringify(error);
-        aiLogError('[AIPhone][DeepSearchRouteDecisionFailed] ' + logSnippet(message));
+      const explicitDecision = explicitDeepSearchRouteDecision(trimmed);
+      if (explicitDecision !== null) {
+        autoDeep = explicitDecision === 'deepsearch';
+      } else {
+        try {
+          const decision = await this.canaryModel().complete(deepSearchRouteDecisionPrompt(trimmed));
+          autoDeep = deepSearchRouteDecisionFromModelText(decision) === 'deepsearch';
+        } catch (error) {
+          const message = error instanceof Error ? error.message : JSON.stringify(error);
+          aiLogError('[AIPhone][DeepSearchRouteDecisionFailed] ' + logSnippet(message));
+        }
       }
     }
     if (autoDeep && trimmed.length > 0) {

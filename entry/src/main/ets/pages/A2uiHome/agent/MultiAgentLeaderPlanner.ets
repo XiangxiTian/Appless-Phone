@@ -1580,6 +1580,9 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     inputText: string
   ): LeaderDecision {
     let trimmed: string = output.trim();
+    if (trimmed.startsWith('{') && !trimmed.endsWith('}')) {
+      trimmed += '}';
+    }
     if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
       throw new Error('Leader planner requires exactly one JSON object.');
     }

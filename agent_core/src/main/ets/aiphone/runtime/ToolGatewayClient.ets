@@ -10995,7 +10995,7 @@ function foodPartialA2ui(surfaceId: string, prompt: string, providerNames: strin
   return planA2uiPartialUpdate(previous, foodA2uiRenderState(
     surfaceId,
     '外卖聚合搜索',
-    '以下结果来自高德、腾讯地图、百度地图、Google Maps、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。',
+    '以下结果来自高德、腾讯地图、百度地图、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。',
     '已返回 ' + snapshot.completed.toString() + '/' + snapshot.total.toString() +
       ' 个餐饮来源；当前可展示 ' + snapshot.foods.length.toString() + ' 个结果。用户请求：' + prompt,
     snapshot.foods,
@@ -11251,9 +11251,6 @@ async function callStructuredFoodTool(
     new MeituanUnionFoodProvider(),
     new TaobaoFlashFoodProvider()
   ];
-  if (localProviderConfig.googleMapsApiKey.length > 0) {
-    adapters.push(new GoogleMapsFoodProvider());
-  }
   if (shouldQueryMcDonalds(effectivePrompt, keyword)) {
     adapters.push(new McDonaldsMcpFoodProvider());
   }
@@ -11331,7 +11328,7 @@ async function callStructuredFoodTool(
   }
   const data: FoodStructuredData = {
     title: '外卖聚合搜索',
-    body: '以下结果来自高德、腾讯地图、百度地图、Google Maps、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。' + preferenceNote,
+    body: '以下结果来自高德、腾讯地图、百度地图、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。' + preferenceNote,
     summary: aggregated.foods.length > 0 ?
       '已聚合 ' + aggregated.foods.length.toString() + ' 个可展示结果；' + rows.length.toString() + ' 个来源状态见下方。' :
       '所有来源都没有可展示外卖结果；下面只列出真实 provider 状态。',

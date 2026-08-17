@@ -61,8 +61,9 @@ export default function composioAuthViewDataTest() {
       expect(composioToolkitDisplayName('qqmail')).assertEqual('QQ 邮箱');
       expect(composioToolkitDisplayName('luckin')).assertEqual('瑞幸咖啡');
       expect(composioToolkitDisplayName('didi')).assertEqual('滴滴出行');
-      expect(EXTERNAL_AUTH_APPS.length).assertEqual(17);
-      expect(COMPOSIO_SUPPORTED_TOOLKITS.length + EXTERNAL_AUTH_APPS.length).assertEqual(41);
+      expect(EXTERNAL_AUTH_APPS.length).assertEqual(16);
+      expect(COMPOSIO_SUPPORTED_TOOLKITS.length + EXTERNAL_AUTH_APPS.length).assertEqual(40);
+      expect(EXTERNAL_AUTH_APPS.filter((app) => app.slug === 'googlemaps').length).assertEqual(0);
       expect(EXTERNAL_AUTH_APPS[0].url).assertEqual('https://wx.mail.qq.com/list/readtemplate?name=app_intro.html#/agreement/authorizationCode');
       expect(EXTERNAL_AUTH_APPS[1].url).assertEqual('https://open01.luckincoffeecdn.com/');
       expect(EXTERNAL_AUTH_APPS[2].url).assertEqual('https://mcp.didichuxing.com');

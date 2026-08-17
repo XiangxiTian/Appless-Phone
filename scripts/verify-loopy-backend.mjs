@@ -1144,6 +1144,8 @@ function verifySourceContracts() {
   const agentRuntimeSources = readAgentRuntimeSources();
   const runtimeDefinitions = read('agent_core/src/main/ets/aiphone/runtime/ToolDefinitionRegistry.ets');
   const runtimeGateway = read('agent_core/src/main/ets/aiphone/runtime/ToolGatewayClient.ets');
+  const deviceSmoke = read('scripts/aiphone-device-smoke.mjs');
+  const providerConfigSync = read('scripts/sync-provider-config.mjs');
   const localGmailTool = liveDeclarationBody(runtimeGateway, 'async function callLocalGmailTool');
   const registeredGmailReply = liveDeclarationBody(a2uiHome, 'private async executeRegisteredGmailReply');
   const gmailNormalizer = read('agent_core/src/main/ets/aiphone/runtime/GmailToolNormalizer.ets');
@@ -1272,6 +1274,16 @@ function verifySourceContracts() {
 
   const runtimeIds = [...runtimeDefinitions.matchAll(/toolId:\s*'([^']+)'/g)].map((match) => match[1]);
   const runtimeUniqueIds = new Set(runtimeIds);
+  const releaseToolIdsStart = runtimeDefinitions.indexOf('const RELEASE_TOOL_IDS: string[] = [');
+  const releaseToolIdsEnd = runtimeDefinitions.indexOf('];', releaseToolIdsStart);
+  const releaseToolIdsSource = releaseToolIdsStart >= 0 && releaseToolIdsEnd > releaseToolIdsStart
+    ? runtimeDefinitions.slice(releaseToolIdsStart, releaseToolIdsEnd)
+    : '';
+  const focusedCasesStart = deviceSmoke.indexOf('const defaultCases = [');
+  const focusedCasesEnd = deviceSmoke.indexOf('const dynamicCases = [', focusedCasesStart);
+  const focusedCasesSource = focusedCasesStart >= 0 && focusedCasesEnd > focusedCasesStart
+    ? deviceSmoke.slice(focusedCasesStart, focusedCasesEnd)
+    : '';
   assert(
     !/^\s*toolId:\s*'/m.test(definitions),
     'public compatibility module has no independently maintained tool definitions'
@@ -1312,6 +1324,25 @@ function verifySourceContracts() {
     assert(runtimeUniqueIds.has(id), `runtime registered ${id}`);
   }
   assertContains(definitions, 'return isReleaseToolId(toolId);', 'focused product registry rejects non-release tools');
+  assert(
+    !releaseToolIdsSource.includes("'maps.place.search'") &&
+      !releaseToolIdsSource.includes("'maps.place.details'") &&
+      !releaseToolIdsSource.includes("'maps.route.open'") &&
+      releaseToolIdsSource.includes("'ride.estimate'"),
+    'focused release excludes Google Maps tools while retaining ride estimates'
+  );
+  assert(
+    !focusedCasesSource.includes('Google Maps') && !focusedCasesSource.includes("'maps."),
+    'focused device regression excludes Google Maps cases'
+  );
+  assert(
+    !providerConfigSync.includes("'GOOGLE_MAPS_API_KEY'"),
+    'focused provider sync does not package the Google Maps key'
+  );
+  assert(
+    !runtimeGateway.includes('adapters.push(new GoogleMapsFoodProvider())'),
+    'focused food search does not call Google Maps'
+  );
   assertContains(runtimeGateway, "if (toolId === 'dynamic.search')", 'runtime registry explicitly handles dynamic.search');
   assertContains(
     runtimeGateway,
@@ -1376,7 +1407,11 @@ function verifySourceContracts() {
   const runtimeFiles = readdirSync(runtimeDir).filter((name) => name.endsWith('.ets'));
   assert(runtimeFiles.length >= 30, 'AIPhone runtime files are vendored into agent_core', `found ${runtimeFiles.length}`);
 
-  assertContains(executor, 'isRegisteredToolId(toolId)', 'executor rejects unknown tools through runtime registry');
+  assertContains(
+    executor,
+    'isRegisteredAiphoneToolId(toolId)',
+    'executor rejects tools outside the focused release registry'
+  );
   assertContains(executor, 'callToolGateway(', 'executor delegates to runtime tool gateway');
   assertContains(executor, 'defaultToolGatewayUrl()', 'executor uses local AIPhone tool route');
   assertContains(executor, 'result.raw.trim().length > 0', 'executor returns runtime A2UI JSONL');

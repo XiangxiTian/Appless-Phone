@@ -65,14 +65,6 @@ export const EXTERNAL_AUTH_APPS: ExternalAuthApp[] = [
     url: 'https://mcp.didichuxing.com'
   },
   {
-    slug: 'googlemaps',
-    name: 'Google Maps',
-    subtitle: '无需用户授权',
-    source: '内置能力',
-    url: '',
-    requiresAuth: false
-  },
-  {
     slug: 'bilibili',
     name: 'Bilibili',
     subtitle: '无需用户授权',

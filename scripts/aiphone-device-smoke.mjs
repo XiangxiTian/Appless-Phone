@@ -147,8 +147,7 @@ const defaultCases = [
   { id: 'R08', query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
   { id: 'R09', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
   { id: 'R10', query: '帮我点一杯瑞幸生椰拿铁，半糖少冰', expectsTool: true, expectedToolId: 'luckin.order.preview' },
-  { id: 'R11', query: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐', expectsTool: true, expectedToolId: 'maps.place.search' },
-  { id: 'R12', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: true, expectedToolId: 'media.aggregate.search' }
+  { id: 'R11', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: true, expectedToolId: 'media.aggregate.search' }
 ];
 
 const dynamicCases = [
@@ -251,8 +250,7 @@ const googleAppCases = [
   { query: '帮我在 YouTube 搜索 世界杯相关视频', expectsTool: true, expectedToolId: 'youtube.video.search' },
   { query: '帮我查看我的 YouTube 播放列表', expectsTool: true, expectedToolId: 'youtube.mine.playlists' },
   { query: '帮我看本月的 Google Calendar 日程', expectsTool: true, expectedToolId: 'calendar.events.search' },
-  { query: '帮我在 2026年7月30日下午3点创建一个标题为 AIPhoneDemo 的30分钟日程', expectsTool: true, expectedToolId: 'calendar.event.create' },
-  { query: '帮我用 Google Maps 搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'maps.place.search' }
+  { query: '帮我在 2026年7月30日下午3点创建一个标题为 AIPhoneDemo 的30分钟日程', expectsTool: true, expectedToolId: 'calendar.event.create' }
 ];
 
 const publicPersonaCases = [
@@ -278,7 +276,6 @@ const coreRegressionCases = [
   { id: 'C01', query: '你好', expectsTool: false, expectedToolId: '' },
   { id: 'C02', query: '我明天要从北京去上海，帮我搜索出行方案', expectsTool: true, expectedToolId: 'travel.search' },
   { id: 'C03', query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
-  { id: 'C04', query: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐', expectsTool: true, expectedToolId: 'maps.place.search' },
   { id: 'C05', query: '帮我查看邮箱里最新的重要邮件', expectsTool: true, expectedToolId: 'mail.search', verifyMailBody: true },
   { id: 'C06', query: '帮我查看我 Gmail 里和 ECCV 论文相关的邮件', expectsTool: true, expectedToolId: 'gmail.mail.search' },
   { id: 'C07', query: '帮我在 B 站和 YouTube 里搜索 Qwen 的官方视频', expectsTool: true, expectedToolId: 'media.video.search' },
@@ -292,7 +289,6 @@ const coreRegressionCases = [
   { id: 'C13', query: '帮我查明天深圳天气', expectsTool: true, expectedToolId: 'dynamic.search', expectedDiscoveredToolId: 'weather.query' },
   { id: 'C14', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
   { id: 'C15', query: '帮我点一杯瑞幸生椰拿铁，半糖少冰', expectsTool: true, expectedToolId: 'luckin.order.preview' },
-  { id: 'C16', query: '帮我用 Google Maps 查询从深圳北站到深圳湾口岸的驾车路线并发起导航', expectsTool: true, expectedToolId: 'maps.route.open' },
   { id: 'C17', query: '用 PayPal 给罗一格转 1 美元', expectsTool: true, expectedToolId: 'payment.send' },
   {
     id: 'C18',
@@ -367,20 +363,6 @@ const retainedFullCases = [
   { id: 'F09', query: '帮我在 YouTube 搜索世界杯相关视频', expectsTool: true, expectedToolId: 'youtube.video.search' },
   { id: 'F10', query: '帮我查看我的 YouTube 播放列表', expectsTool: true, expectedToolId: 'youtube.mine.playlists' },
   { id: 'F11', query: '帮我查看我的 YouTube 订阅', expectsTool: true, expectedToolId: 'youtube.mine.subscriptions' },
-  {
-    id: 'F12',
-    query: '帮我先用 Google Maps 搜索伦敦国王十字车站，再用搜索结果的真实 placeId 查询地点详情',
-    expectsTool: true,
-    expectedToolId: 'maps.place.search',
-    expectedToolIds: ['maps.place.search', 'maps.place.details'],
-    minimumDataRounds: 2,
-    expectedDependencies: [{
-      toolId: 'maps.place.details',
-      predecessorToolId: 'maps.place.search',
-      path: '/places/0/placeId',
-      target: '/placeId'
-    }]
-  },
   { id: 'F13', query: '帮我在 GitHub 里找 Appless-Phone 最近的 pr', expectsTool: true, expectedToolId: 'dynamic.search', expectedDiscoveredToolId: 'dynamic.search', expectedDynamicQualifiedName: 'github_find_pull_requests' },
   { id: 'F14', query: '帮我在 Google Drive 里找专利交底书', expectsTool: true, expectedToolId: 'dynamic.search', expectedDiscoveredToolId: 'dynamic.search', expectedDynamicQualifiedName: 'googledrive_find_file' },
   { id: 'F15', query: '帮我在 Google Docs 里找 AIPhoneDemo 设计文档', expectsTool: true, expectedToolId: 'dynamic.search', expectedDiscoveredToolId: 'dynamic.search', expectedDynamicQualifiedName: 'googledocs_search_documents' },
@@ -410,13 +392,13 @@ function lifecycleOptions(testCase) {
 
 const coreScenarioManifest = [
   ['C01', []], ['C02', ['travel.search']], ['C03', ['food.search']],
-  ['C04', ['maps.place.search']], ['C05', ['mail.search']],
+  ['C05', ['mail.search']],
   ['C06', ['gmail.mail.search']], ['C07', ['media.video.search']],
   ['C08', ['media.aggregate.search']], ['C09', ['social.feed.search']],
   ['C10', ['x.post.search']], ['C11', ['food.search', 'memory.update']],
   ['C12', ['worldcup.open']], ['C13', ['dynamic.search']],
   ['C14', ['ride.estimate']], ['C15', ['luckin.order.preview']],
-  ['C16', ['maps.route.open']], ['C17', ['payment.send']],
+  ['C17', ['payment.send']],
   ['C18', ['whatsapp.message.send']],
   ['C19', ['calendar.events.search', 'calendar.event.create', 'calendar.event.update', 'calendar.event.delete']],
   ['C20', ['hotel.search']],
@@ -520,12 +502,7 @@ const visibleDomainMarkers = [
   'calendar.event.create',
   'calendar.event.delete',
   'Google OAuth',
-  'Google Places',
-  'Google Maps',
-  'maps.place.search',
-  'maps.route.open',
   'whatsapp.message.send',
-  'GOOGLE_MAPS_API_KEY',
   'Gmail Web',
   'google.gmail',
   'gmail.mail.search',
@@ -1034,9 +1011,8 @@ function expectedCaseForQuery(query) {
   }
   if (/Google\s*Maps?|Google\s*Places|GMap|谷歌地图/i.test(query)) {
     return {
-      expectsTool: true,
-      expectedToolId: isMapsRouteQuery(query) ? 'maps.route.open' :
-        (/详情|placeId|地点 ID|地点ID/i.test(query) ? 'maps.place.details' : 'maps.place.search')
+      expectsTool: false,
+      expectedToolId: ''
     };
   }
   if (/出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(query) && /北京|上海|广州|深圳|杭州|成都|重庆|西安|南京|武汉|厦门|青岛|长沙|昆明|海口|三亚/.test(query)) {
@@ -2415,9 +2391,7 @@ function layoutExpectationsForQuery(query) {
         : ['Composio', 'Google Calendar', 'calendar.events.search']));
   }
   if (/Google\s*Maps?|Google\s*Places|GMap|谷歌地图/i.test(query)) {
-    return isMapsRouteQuery(query)
-      ? ['Google Maps', '查看路线']
-      : ['Google Places', 'Google Maps', 'GOOGLE_MAPS_API_KEY', 'maps.place.search'];
+    return ['Google Maps', '暂不支持'];
   }
   if (/出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(query)) {
     return ['北京', '上海'];

@@ -2490,7 +2490,7 @@ test('lists only safe focused release cases by default and keeps legacy coverage
   assert.match(source, /inferredCase\.verifyDeepSearch === true/);
   const focused = listedCases();
   assert.deepEqual(focused.map((item) => item.id),
-    Array.from({ length: 12 }, (_value, index) => `R${String(index + 1).padStart(2, '0')}`));
+    Array.from({ length: 11 }, (_value, index) => `R${String(index + 1).padStart(2, '0')}`));
   assert.deepEqual(listedCases(['--core-regression']), focused);
   assert.deepEqual(focused.find((item) => item.id === 'R03'), {
     id: 'R03',
@@ -2504,16 +2504,13 @@ test('lists only safe focused release cases by default and keeps legacy coverage
     /mail\.|gmail\.|social\.|x\.post|payment\.|whatsapp\.|calendar\.|worldcup\.|movie\.|daily\.brief|dynamic\.search|media\.video/);
   const full = listedCases(['--full-regression']);
   assert.deepEqual(full.map((item) => item.id), [
-    ...Array.from({ length: 24 }, (_value, index) => `C${String(index + 1).padStart(2, '0')}`),
+    ...Array.from({ length: 24 }, (_value, index) => `C${String(index + 1).padStart(2, '0')}`)
+      .filter((id) => id !== 'C04' && id !== 'C16'),
     ...Array.from({ length: 16 }, (_value, index) => `F${String(index + 1).padStart(2, '0')}`)
+      .filter((id) => id !== 'F12')
   ]);
   const serialized = JSON.stringify(full);
-  assert.deepEqual(full.find((item) => item.id === 'F12')?.expectedDependencies, [{
-    toolId: 'maps.place.details',
-    predecessorToolId: 'maps.place.search',
-    path: '/places/0/placeId',
-    target: '/placeId'
-  }]);
+  assert.doesNotMatch(serialized, /maps\.|Google Maps|Google Places/);
   assert.equal(full.find((item) => item.id === 'F13')?.expectedDynamicQualifiedName,
     'github_find_pull_requests');
   assert.equal(full.find((item) => item.id === 'F14')?.expectedDynamicQualifiedName,

@@ -1,6 +1,7 @@
 import { aiphoneErrorJsonl } from './AiphoneA2ui';
+import { isRegisteredAiphoneToolId } from './AiphoneToolDefinitions';
 import { A2uiSurfaceState } from './runtime/A2uiTypes';
-import { callToolGateway, defaultToolGatewayUrl, isRegisteredToolId } from './runtime/ToolGatewayClient';
+import { callToolGateway, defaultToolGatewayUrl } from './runtime/ToolGatewayClient';
 
 export type AiphoneToolSurfaceCallback = (surface: A2uiSurfaceState, raw: string) => void;
 
@@ -22,7 +23,7 @@ export async function runAiphoneTool(
   ignoreSurfaceUpdates: boolean = true,
   onSurface: AiphoneToolSurfaceCallback | null = null
 ): Promise<string> {
-  if (!isRegisteredToolId(toolId)) {
+  if (!isRegisteredAiphoneToolId(toolId)) {
     return aiphoneErrorJsonl(surfaceId, '未知 AIPhone 工具', '未注册 AIPhone 工具：' + toolId);
   }
 

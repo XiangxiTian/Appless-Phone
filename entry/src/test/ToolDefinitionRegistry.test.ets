@@ -73,10 +73,13 @@ export default function toolDefinitionRegistryTest() {
       expect(ids.join(',')).assertEqual(
         'travel.search,train.search,flight.search,hotel.search,hotel.detail,hotel.navigate,' +
         'hotel.booking.open,food.search,luckin.order.preview,luckin.order.create,luckin.order.status,' +
-        'media.aggregate.search,maps.place.search,maps.place.details,maps.route.open,ride.estimate,' +
-        'ride.app.link,ride.order.create,ride.order.cancel,ride.driver.location,web.research.search,' +
-        'web.page.read'
+        'media.aggregate.search,ride.estimate,ride.app.link,ride.order.create,ride.order.cancel,' +
+        'ride.driver.location,web.research.search,web.page.read'
       );
+      expect(isRegisteredAiphoneToolId('maps.place.search')).assertFalse();
+      expect(isRegisteredAiphoneToolId('maps.place.details')).assertFalse();
+      expect(isRegisteredAiphoneToolId('maps.route.open')).assertFalse();
+      expect(isRegisteredAiphoneToolId('ride.estimate')).assertTrue();
       expect(isRegisteredAiphoneToolId('payment.send')).assertFalse();
       expect(isRegisteredAiphoneToolId('dynamic.search')).assertFalse();
       expect(isRegisteredAiphoneToolId('memory.update')).assertFalse();

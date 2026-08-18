@@ -368,8 +368,6 @@ import {
   shouldShowFirecrawlPendingSurface,
   shouldShowQueryPendingSurface,
   shouldShowWelcome,
-  shouldRouteDeepSearch,
-  shouldAutoRouteDeepSearch,
   updateConnectionPanelState,
   voiceInputTextAfterRecognition
 } from './state/A2uiHomeState';
@@ -428,7 +426,6 @@ const initialConnectionState: ConnectionPanelState = createInitialConnectionPane
 const initialSurface: A2uiSurfaceState = createSeedA2uiSurface();
 const LOG_SNIPPET_LIMIT: number = 1200;
 const DEFAULT_INPUT_PLACEHOLDER: string = '点击输入或按住说话';
-const DEEP_SEARCH_AUTO_ROUTE_ENABLED: boolean = false;
 const TRAIN_EDIT_QUERY_PLACEHOLDER: string = '请输入具体车站和时间，如：深圳北 18:00 后 到香港西九龙';
 const NAVIGATION_CARD_TTL_MS: number = 60 * 60 * 1000;
 const PAYMENT_ACCOUNT_STORE_NAME: string = 'aiphone_payment_account_store';
@@ -3433,6 +3430,9 @@ struct Index {
       currentHostSurface: (): A2uiSurfaceState | null => this.canaryHostSurface(),
       currentHostGeneration: (): number => this.runtimeGeneration,
       currentLocalDate: (): string => this.currentLocalDate(),
+      onDeepSearch: (query: string): void => {
+        void this.openDeepSearchForQuery(query);
+      },
       submitTimeoutMs: 90000,
       actionTimeoutMs: 45000,
       settingsFingerprint: fingerprint
@@ -4702,6 +4702,18 @@ struct Index {
     this.deepSearchContextJson = '';
   }
 
+  private async openDeepSearchForQuery(query: string): Promise<void> {
+    const generation = this.runtimeGeneration;
+    const owner = this.activeRuntimeOwner;
+    const contextJson = await this.buildDeepSearchContext();
+    if (!runtimeCallbackIsCurrent(
+      this.activeRuntimeOwner, this.runtimeGeneration, owner, generation
+    )) {
+      return;
+    }
+    this.openDeepSearch(query, contextJson);
+  }
+
   private openAnythingDemo(): Promise<boolean> {
     return new Promise<boolean>((resolve: (value: boolean) => void): void => {
       router.pushUrl({ url: ANYTHING_DEMO_ROUTE_URL }, (error) => {
@@ -4788,18 +4800,8 @@ struct Index {
       return;
     }
     const directDailyBriefRequest = resolveA2uiHomeSubmitToolRequest(trimmed);
-    const autoDeep = DEEP_SEARCH_AUTO_ROUTE_ENABLED && directDailyBriefRequest === null &&
-      sourceBimId.length === 0 && shouldAutoRouteDeepSearch(trimmed, actionId);
-    if (autoDeep && trimmed.length > 0) {
-      this.inputText = inputTextAfterPromptSubmit(this.inputText);
-      this.appendMessage('user', visibleText);
-      const contextJson = await this.buildDeepSearchContext();
-      this.openDeepSearch(trimmed, contextJson);
-      aiLogInfo('[AIPhone][DeepSearchAutoRouted] queryChars=' + trimmed.length.toString() +
-        ' context=' + contextJson.length.toString() + 'chars');
-      return;
-    }
-    // 非 DeepSearch 内容：若面板开着则收起，回到主内容展示 multi-agent 结果。
+    // DeepSearch is now exclusively LLM-autonomous: no client-side auto-route.
+    // The LLM decides when to call deep.search via the registered tool definition.
     if (this.showDeepSearch) {
       this.closeDeepSearch();
     }

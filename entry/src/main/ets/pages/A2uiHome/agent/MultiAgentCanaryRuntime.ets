@@ -197,6 +197,7 @@ export interface MultiAgentCanaryOptions {
   submitTimeoutMs?: number;
   actionTimeoutMs?: number;
   currentLocalDate?: HotelLocalDateProvider;
+  onDeepSearch?: (query: string) => void;
   dataPlanner?: DataTaskPlanner;
   dataExecutor?: DataTaskExecutor;
   structuredToolCall?: (
@@ -744,6 +745,20 @@ function validSocialFeedTaskInput(input: Object): boolean {
   }
 }
 
+interface DeepSearchTaskInput {
+  query: string;
+}
+
+function normalizedDeepSearchTaskInput(input: Object): Object {
+  const source = input as Record<string, Object | string | number | boolean | null | undefined>;
+  const query = source['query'];
+  if (typeof query !== 'string' || query.trim().length === 0) {
+    throw new Error('DEEP_SEARCH_QUERY_INVALID');
+  }
+  const result: DeepSearchTaskInput = { query: query.trim() };
+  return result;
+}
+
 function travelTaskText(input: Object, keys: string[]): string {
   const source = input as Record<string, Object | string | number | boolean | null | undefined>;
   for (let index = 0; index < keys.length; index++) {
@@ -881,6 +896,9 @@ function normalizeCanaryTaskInput(
   if (task.toolId === 'social.feed.search') {
     return normalizedSocialFeedTaskInput(unwrapSingleArgsEnvelope(task.input));
   }
+  if (task.toolId === 'deep.search') {
+    return normalizedDeepSearchTaskInput(unwrapSingleArgsEnvelope(task.input));
+  }
   if (task.toolId !== 'calendar.events.search') {
     return task.input;
   }
@@ -966,20 +984,71 @@ class CanaryStructuredDataExecutor implements DataTaskExecutor {
     args: Object,
     onPartial?: (result: DataResult) => void
   ) => Promise<DataResult>;
+  private readonly onDeepSearch: ((query: string) => void) | null;
 
   constructor(structuredToolCall?: (
     toolId: string,
     prompt: string,
     args: Object,
     onPartial?: (result: DataResult) => void
-  ) => Promise<DataResult>) {
+  ) => Promise<DataResult>, onDeepSearch?: (query: string) => void) {
     this.structuredToolCall = structuredToolCall === undefined ? callStructuredTool : structuredToolCall;
+    this.onDeepSearch = onDeepSearch === undefined ? null : onDeepSearch;
   }
 
   async execute(
     task: CreateDataTaskPayload,
     onPartial?: (result: DataResult) => void
   ): Promise<DataResult> {
+    if (task.toolId === 'deep.search') {
+      const values = task.args as Record<string, Object | string | number | boolean | null | undefined>;
+      const query = values['query'];
+      const queryText = typeof query === 'string' ? query.trim() : task.goal.trim();
+      if (queryText.length === 0) {
+        throw new Error('DEEP_SEARCH_QUERY_MISSING');
+      }
+      if (this.onDeepSearch === null) {
+        return {
+          toolId: 'deep.search',
+          outputSchema: 'genericToolResults',
+          status: 'error',
+          sources: [],
+          data: new Object(),
+          warnings: [],
+          error: {
+            code: 'DEEP_SEARCH_HOST_UNAVAILABLE',
+            message: 'DeepSearch panel host is unavailable in this runtime.',
+            retryable: false
+          }
+        };
+      }
+      this.onDeepSearch(queryText);
+      const result: DynamicGenericToolResult = {
+        sourceTag: 'DeepSearch',
+        toolName: 'deep.search',
+        title: '深度搜索',
+        status: 'success',
+        summary: '深度搜索已在面板中开始：' + queryText,
+        rows: [{ label: '研究问题', value: queryText }],
+        rawPreview: ''
+      };
+      return {
+        toolId: 'deep.search',
+        outputSchema: 'genericToolResults',
+        status: 'success',
+        sources: [{
+          provider: 'DeepSearch',
+          backend: 'local_adapter',
+          operation: 'deep.search',
+          fetchedAt: new Date().toISOString()
+        }],
+        data: JSON.parse(JSON.stringify({
+          summary: queryText,
+          results: [result]
+        })) as Object,
+        warnings: []
+      };
+    }
     if (task.toolId === TIME_TOOL_ID) {
       const now = new Date();
       const localTime = now.toLocaleString();
@@ -1499,14 +1568,16 @@ interface MemorySurfaceOutput {
 function canaryPlanningContext(
   previousPersonaId: string,
   _prompt: string = '',
-  allowTrustedOperationTargets: boolean = false
+  allowTrustedOperationTargets: boolean = false,
+  allowDeepSearch: boolean = false
 ): LeaderPlanningContext {
   const tools: LeaderToolMetadata[] = allToolDefinitions()
     .filter((definition: ToolDefinition): boolean =>
       definition.toolId !== 'gmail.message.send' &&
         definition.toolId !== 'social.reply.draft' &&
         definition.toolId !== 'hotel.navigate' &&
-        definition.toolId !== 'hotel.booking.open'
+        definition.toolId !== 'hotel.booking.open' &&
+        (allowDeepSearch || definition.toolId !== 'deep.search')
     )
     .map(
     (definition: ToolDefinition): LeaderToolMetadata => {
@@ -1718,8 +1789,9 @@ export class MultiAgentCanaryRuntime {
     );
     this.aiphoneExecutor = aiphoneExecutor;
     const allowTrustedOperationTargets = options.allowTrustedOperationTargets === true;
+    const allowDeepSearch = options.onDeepSearch !== undefined;
     const initialContext = canaryPlanningContext(
-      this.lastLeaderPersonaId, '', allowTrustedOperationTargets
+      this.lastLeaderPersonaId, '', allowTrustedOperationTargets, allowDeepSearch
     );
     const dataTaskInputNormalizer: LeaderDataTaskInputNormalizer = (
       input: InputUserPayload,
@@ -1737,13 +1809,15 @@ export class MultiAgentCanaryRuntime {
       planner: leaderPlanner,
       planningContext: initialContext,
       planningContextProvider: (prompt: string): LeaderPlanningContext =>
-        canaryPlanningContext(this.lastLeaderPersonaId, prompt, allowTrustedOperationTargets),
+        canaryPlanningContext(
+          this.lastLeaderPersonaId, prompt, allowTrustedOperationTargets, allowDeepSearch
+        ),
       currentLocalDateProvider: options.currentLocalDate,
       dataTaskInputNormalizer,
       dataAuthorizer: authorizeCanaryDataTask,
       dataPlanner: options.dataPlanner,
       dataExecutor: options.dataExecutor === undefined ?
-        new CanaryStructuredDataExecutor(options.structuredToolCall) : options.dataExecutor,
+        new CanaryStructuredDataExecutor(options.structuredToolCall, options.onDeepSearch) : options.dataExecutor,
       uiRenderer: mailDetailBridge,
       surfaceWriter: mailDetailBridge,
       actionCatalog: catalog,

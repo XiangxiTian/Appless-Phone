@@ -596,6 +596,18 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     actions: ['ride.driver.location.refresh', 'ride.order.cancel']
   },
   {
+    toolId: 'deep.search',
+    domain: 'research',
+    intent: 'deep.search',
+    riskLevel: 'read',
+    backendPriority: ['local_adapter'],
+    authModes: ['none'],
+    inputSchema: 'deepSearchQuery',
+    outputSchema: 'genericToolResults',
+    a2uiComponent: 'GenericToolResults',
+    actions: []
+  },
+  {
     toolId: 'web.research.search',
     domain: 'firecrawl',
     intent: 'web.research.search',
@@ -822,6 +834,8 @@ export function toolPlanningDescriptionForToolId(
     description += '. Input must provide pages max 5 XOR queries max 3, required goal, and optional name, scheduleText, timezone, email. The first call is preview only.';
   } else if (definition.toolId === 'web.monitor.list') {
     description += '. Read cloud state; monitor mutations come only from exact visible actions with current IDs.';
+  } else if (definition.toolId === 'deep.search') {
+    description += '. Use for complex research questions that require comprehensive web search, multi-source synthesis, and in-depth analysis. This tool performs iterative web searches, reads multiple sources, and generates a structured research report with cited sources. Use when the user asks for detailed research, comparative analysis, market research, technical deep-dives, or any query that benefits from thorough investigation across multiple web sources. Do not use for simple factual lookups or when other specialized tools (travel, food, calendar, etc.) are more appropriate. Input must be JSON with a single query field containing the research question.';
   }
   return description;
 }

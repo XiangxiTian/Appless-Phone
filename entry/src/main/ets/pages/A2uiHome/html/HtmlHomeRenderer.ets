@@ -29,8 +29,8 @@ interface HtmlHomeDocumentWithBusy extends HtmlHomeDocument {
 const HTML_HOME_CSS: string = `
 :root {
   color-scheme: light;
-  --paper: #f5f2ee;
-  --paper-deep: #ebe5dc;
+  --paper: rgba(255, 255, 255, 0.48);
+  --paper-deep: rgba(255, 255, 255, 0.62);
   --panel: rgba(255, 255, 255, 0.88);
   --panel-strong: #ffffff;
   --ink: #211b17;
@@ -114,7 +114,7 @@ body {
   margin: 0;
   min-height: 100dvh;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0) 45%),
+    linear-gradient(180deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 45%),
     var(--paper);
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;

@@ -50,6 +50,10 @@ import {
   popupTitleFromUrl
 } from '../main/ets/pages/A2uiHome/components/HtmlHomeSurfaceView';
 import {
+  homeDateText,
+  homeGreetingText,
+  homePromptTitle,
+  homeTimeText,
   shouldShowDailyBriefReturn,
   shouldShowHomeChrome
 } from '../main/ets/pages/A2uiHome/components/HomePage';
@@ -1652,9 +1656,12 @@ function socialHubDocumentFixture(): HtmlHomeDocument {
   return doc;
 }
 
-function expectCalmUtilityPalette(document: HtmlHomeDocument): void {
+function expectCalmUtilityPalette(
+  document: HtmlHomeDocument,
+  paper: string = '--paper: #f5f2ee;'
+): void {
   const html = renderHtmlHomeDocument(document);
-  expect(html.indexOf('--paper: #f5f2ee;')).assertLarger(-1);
+  expect(html.indexOf(paper)).assertLarger(-1);
   expect(html.indexOf('--ink: #211b17;')).assertLarger(-1);
   expect(html.indexOf('--accent: #995f4c;')).assertLarger(-1);
 }
@@ -2168,7 +2175,7 @@ export default function htmlHomeRendererTest() {
     });
 
     it('uses the calm utility palette across result templates', 0, () => {
-      expectCalmUtilityPalette(documentFixture());
+      expectCalmUtilityPalette(documentFixture(), '--paper: rgba(255, 255, 255, 0.48);');
       expectCalmUtilityPalette(calendarSearchDocumentFixture());
       expectCalmUtilityPalette(aggregateSearchDocumentFixture());
       expectCalmUtilityPalette(travelFoodCardsDocumentFixture());
@@ -3424,6 +3431,24 @@ export default function htmlHomeRendererTest() {
       const busyHtml = renderHtmlHomeDocument(doc, true);
       expect(busyHtml.indexOf('正在更新')).assertLarger(-1);
       expect(busyHtml.indexOf('正在补充内容')).assertEqual(-1);
+    });
+
+    it('formats the light home clock and greeting from local device time', 0, () => {
+      const morning = new Date(2026, 7, 17, 9, 12).getTime();
+      const afternoon = new Date(2026, 7, 17, 16, 30).getTime();
+      const evening = new Date(2026, 7, 17, 20, 5).getTime();
+
+      expect(homeTimeText(morning)).assertEqual('09:12');
+      expect(homeDateText(morning)).assertEqual('8月17日  星期一');
+      expect(homeGreetingText(morning)).assertEqual('早上好');
+      expect(homeGreetingText(afternoon)).assertEqual('下午好');
+      expect(homeGreetingText(evening)).assertEqual('晚上好');
+      expect(homePromptTitle(morning, false, false, false)).assertEqual('今天准备先做什么？');
+      expect(homePromptTitle(afternoon, false, false, false)).assertEqual('接下来想处理什么？');
+      expect(homePromptTitle(evening, false, false, false)).assertEqual('今晚还有什么安排？');
+      expect(homePromptTitle(morning, false, false, true)).assertEqual('想先从哪件事开始？');
+      expect(homePromptTitle(morning, true, false, false)).assertEqual('正在替你处理');
+      expect(homePromptTitle(morning, true, true, true)).assertEqual('我在听，请继续说');
     });
 
     it('opens the home discovery page directly in the shared Waterfall renderer', 0, () => {

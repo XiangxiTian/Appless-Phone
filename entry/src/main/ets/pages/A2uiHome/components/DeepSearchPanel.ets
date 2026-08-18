@@ -8,7 +8,6 @@ import {
   COLOR_INK,
   COLOR_LINE,
   COLOR_MUTED,
-  COLOR_PAGE,
   COLOR_PANEL,
   COLOR_SUCCESS,
   COLOR_TEXT,
@@ -26,6 +25,11 @@ import {
   usableSource
 } from '../deepsearch/DeepSearchEngine';
 import { deepSearchPortsOf } from '../deepsearch/DeepSearchPortsFactory';
+import {
+  A2UI_PANEL_BACKGROUND_COLOR,
+  A2UI_PANEL_BORDER_COLOR,
+  A2UI_PANEL_SHADOW_COLOR
+} from '../style/A2uiPanelFrameStyle';
 
 function stageColor(status: DeepSearchStageStatus): string {
   if (status === 'done') {
@@ -705,8 +709,8 @@ export struct DeepSearchPanel {
     .height('100%')
     .padding(14)
     .borderRadius(18)
-    .backgroundColor(COLOR_PAGE)
-    .border({ width: 1, color: COLOR_CARD_EDGE })
-    .shadow({ radius: 24, color: COLOR_CARD_EDGE, offsetX: 0, offsetY: 6 })
+    .backgroundColor(A2UI_PANEL_BACKGROUND_COLOR)
+    .border({ width: 1, color: A2UI_PANEL_BORDER_COLOR })
+    .shadow({ radius: 22, color: A2UI_PANEL_SHADOW_COLOR, offsetX: 0, offsetY: 8 })
   }
 }

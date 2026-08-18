@@ -34,7 +34,6 @@ import {
 import {
   A2UI_HOME_FLOATING_RADIUS,
   A2UI_HOME_MAX_WIDTH,
-  A2UI_HOME_PAGE_PADDING_BOTTOM,
   A2UI_HOME_PAGE_PADDING_TOP,
   A2UI_HOME_PAGE_PADDING_X,
   A2UI_HOME_SECTION_GAP
@@ -60,6 +59,15 @@ const A2UI_VOICE_PULSE_STEPS: number = 12;
 const A2UI_VOICE_HOLD_DELAY_MS: number = 360;
 const A2UI_VOICE_WAVE_CENTER_INDEX: number = 8;
 const A2UI_VOICE_WAVE_INDICES: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+const A2UI_COMPOSER_MIN_HEIGHT: number = 54;
+const A2UI_COMPOSER_MAX_HEIGHT: number = 122;
+const A2UI_COMPOSER_TEXT_MAX_HEIGHT: number = 110;
+const A2UI_COMPOSER_TEXT_LINE_HEIGHT: number = 24;
+const A2UI_COMPOSER_TEXT_VERTICAL_PADDING: number = 14;
+const A2UI_COMPOSER_TEXT_UNITS_PER_LINE: number = 30;
+const A2UI_COMPOSER_TEXT_MAX_LINES: number = 4;
+const A2UI_COMPOSER_DOCK_EXTRA_HEIGHT: number = 8;
+const A2UI_HOME_COMPOSER_BOTTOM_PADDING: number = 4;
 const A2UI_HOME_CLOCK_INTERVAL_MS: number = 30000;
 const A2UI_HOME_SHELL_BACKGROUND: string = '#FFFDF9';
 const A2UI_HOME_GLASS_BACKGROUND: string = '#B8FFFFFF';
@@ -71,6 +79,9 @@ const A2UI_HOME_SEND_SHADOW: string = '#38995F4C';
 const A2UI_HOME_HEADER_BUTTON_BACKGROUND: string = '#CCFFFFFF';
 const A2UI_HOME_HEADER_BUTTON_EDGE: string = '#B8E7D8CE';
 const A2UI_HOME_HEADER_BUTTON_SHADOW: string = '#188C6A53';
+const A2UI_HOME_AI_LABEL_BACKGROUND: string = '#F6EAE4';
+const A2UI_HOME_AI_LABEL_EDGE: string = '#D8B8AA';
+const A2UI_HOME_AI_LABEL_TEXT: string = '#714737';
 
 function padHomeClockPart(value: number): string {
   return value < 10 ? '0' + value.toString() : value.toString();
@@ -134,6 +145,46 @@ export function homePromptTitle(
     return '接下来想处理什么？';
   }
   return '今晚还有什么安排？';
+}
+
+export function canStartHomeComposerVoice(isBusy: boolean, inputText: string): boolean {
+  return !isBusy && inputText.length === 0;
+}
+
+export function homeComposerTextHeight(inputText: string): number {
+  let lineCount = 1;
+  let lineUnits = 0;
+  for (let index = 0; index < inputText.length; index += 1) {
+    const charCode = inputText.charCodeAt(index);
+    if (charCode === 10) {
+      lineCount += 1;
+      lineUnits = 0;
+    } else {
+      const charUnits = charCode <= 127 ? 1 : 2;
+      if (lineUnits > 0 && lineUnits + charUnits > A2UI_COMPOSER_TEXT_UNITS_PER_LINE) {
+        lineCount += 1;
+        lineUnits = charUnits;
+      } else {
+        lineUnits += charUnits;
+      }
+    }
+    if (lineCount >= A2UI_COMPOSER_TEXT_MAX_LINES) {
+      return A2UI_COMPOSER_TEXT_MAX_HEIGHT;
+    }
+  }
+  return Math.max(
+    36,
+    lineCount * A2UI_COMPOSER_TEXT_LINE_HEIGHT + A2UI_COMPOSER_TEXT_VERTICAL_PADDING
+  );
+}
+
+export function hasLlmReply(messages: A2uiMessage[]): boolean {
+  for (let index = 0; index < messages.length; index += 1) {
+    if (messages[index].role === 'assistant' && messages[index].content.trim().length > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function shouldShowHomeChrome(waterfallFullscreen: boolean): boolean {
@@ -350,7 +401,7 @@ export struct HomePage {
       this.voiceHoldActive = false;
       return;
     }
-    if (this.isBusy) {
+    if (!canStartHomeComposerVoice(this.isBusy, this.inputText)) {
       return;
     }
     if (event.type === TouchType.Down) {
@@ -358,7 +409,7 @@ export struct HomePage {
       this.voiceHoldActive = false;
       this.voiceHoldTimerId = setTimeout(() => {
         this.voiceHoldTimerId = -1;
-        if (this.isBusy) {
+        if (!canStartHomeComposerVoice(this.isBusy, this.inputText)) {
           return;
         }
         this.voiceHoldActive = true;
@@ -404,6 +455,24 @@ export struct HomePage {
       .height('100%')
       .objectFit(ImageFit.Cover)
       .hitTestBehavior(HitTestMode.Transparent)
+  }
+
+  @Builder
+  private AiGeneratedDisclosure() {
+    Row() {
+      Text('AI生成')
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(A2UI_HOME_AI_LABEL_TEXT)
+        .maxLines(1)
+    }
+    .height(26)
+    .padding({ left: 10, right: 10 })
+    .margin({ left: 10 })
+    .alignItems(VerticalAlign.Center)
+    .backgroundColor(A2UI_HOME_AI_LABEL_BACKGROUND)
+    .borderRadius(13)
+    .border({ width: 1, color: A2UI_HOME_AI_LABEL_EDGE })
   }
 
   @Builder
@@ -524,6 +593,10 @@ export struct HomePage {
             .width(A2UI_HEADER_LOGO_SIZE)
             .height(A2UI_HEADER_LOGO_SIZE)
             .objectFit(ImageFit.Contain)
+
+          if (hasLlmReply(this.messages)) {
+            this.AiGeneratedDisclosure()
+          }
 
           Blank()
             .layoutWeight(1)
@@ -838,11 +911,13 @@ export struct HomePage {
                 placeholder: this.inputPlaceholder,
                 text: this.inputText
               })
-                .constraintSize({ minHeight: 36, maxHeight: 80 })
+                .height(homeComposerTextHeight(this.inputText))
+                .constraintSize({ minHeight: 36, maxHeight: A2UI_COMPOSER_TEXT_MAX_HEIGHT })
                 .layoutWeight(1)
                 .fontSize(16)
                 .fontColor(COLOR_TEXT)
                 .lineHeight(24)
+                .maxLines(A2UI_COMPOSER_TEXT_MAX_LINES)
                 .textAlign(this.inputText.trim().length === 0 ? TextAlign.Center : TextAlign.Start)
                 .enterKeyType(EnterKeyType.Send)
                 .placeholderColor(COLOR_MUTED)
@@ -865,6 +940,10 @@ export struct HomePage {
                 .onChange((value: string) => {
                   if (!isPromptInputEnabled(this.isBusy)) {
                     return;
+                  }
+                  if (value.length > 0) {
+                    this.cancelVoiceHoldTimer();
+                    this.voiceHoldActive = false;
                   }
                   this.inputText = value;
                 })
@@ -903,7 +982,10 @@ export struct HomePage {
             }
           }
           .width('100%')
-          .height(this.isVoiceListening ? A2UI_VOICE_DOCK_HEIGHT : 54)
+          .constraintSize({
+            minHeight: this.isVoiceListening ? A2UI_VOICE_DOCK_HEIGHT : A2UI_COMPOSER_MIN_HEIGHT,
+            maxHeight: this.isVoiceListening ? A2UI_VOICE_DOCK_HEIGHT : A2UI_COMPOSER_MAX_HEIGHT
+          })
           .alignItems(VerticalAlign.Center)
           .padding({
             left: this.isVoiceListening ? 10 : 8,
@@ -923,7 +1005,14 @@ export struct HomePage {
           .animation({ duration: 320, curve: A2UI_MOTION_MOVE_CURVE })
         }
         .width('100%')
-        .height(A2UI_VOICE_DOCK_HEIGHT + 8)
+        .constraintSize({
+          minHeight: this.isVoiceListening ?
+            A2UI_VOICE_DOCK_HEIGHT + A2UI_COMPOSER_DOCK_EXTRA_HEIGHT :
+            A2UI_COMPOSER_MIN_HEIGHT + A2UI_COMPOSER_DOCK_EXTRA_HEIGHT,
+          maxHeight: this.isVoiceListening ?
+            A2UI_VOICE_DOCK_HEIGHT + A2UI_COMPOSER_DOCK_EXTRA_HEIGHT :
+            A2UI_COMPOSER_MAX_HEIGHT + A2UI_COMPOSER_DOCK_EXTRA_HEIGHT
+        })
         .onTouch((event: TouchEvent) => {
           this.handleComposerHoldTouch(event);
         })
@@ -940,7 +1029,7 @@ export struct HomePage {
         left: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_X,
         right: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_X,
         top: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_TOP,
-        bottom: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_BOTTOM
+        bottom: this.waterfallFullscreen ? 0 : A2UI_HOME_COMPOSER_BOTTOM_PADDING
       })
       .backgroundColor('#00000000')
 

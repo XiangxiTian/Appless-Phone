@@ -50,6 +50,9 @@ import {
   popupTitleFromUrl
 } from '../main/ets/pages/A2uiHome/components/HtmlHomeSurfaceView';
 import {
+  canStartHomeComposerVoice,
+  hasLlmReply,
+  homeComposerTextHeight,
   homeDateText,
   homeGreetingText,
   homePromptTitle,
@@ -3449,6 +3452,18 @@ export default function htmlHomeRendererTest() {
       expect(homePromptTitle(morning, false, false, true)).assertEqual('想先从哪件事开始？');
       expect(homePromptTitle(morning, true, false, false)).assertEqual('正在替你处理');
       expect(homePromptTitle(morning, true, true, true)).assertEqual('我在听，请继续说');
+      expect(canStartHomeComposerVoice(false, '')).assertTrue();
+      expect(canStartHomeComposerVoice(false, '你好')).assertFalse();
+      expect(canStartHomeComposerVoice(false, ' ')).assertFalse();
+      expect(canStartHomeComposerVoice(true, '')).assertFalse();
+      expect(homeComposerTextHeight('')).assertEqual(38);
+      expect(homeComposerTextHeight('你好')).assertEqual(38);
+      expect(homeComposerTextHeight('1234567890123456789012345678901')).assertEqual(62);
+      expect(homeComposerTextHeight('一\n二\n三\n四')).assertEqual(110);
+      expect(hasLlmReply([])).assertFalse();
+      expect(hasLlmReply([{ id: 'u1', role: 'user', content: '你好' }])).assertFalse();
+      expect(hasLlmReply([{ id: 'a1', role: 'assistant', content: '  ' }])).assertFalse();
+      expect(hasLlmReply([{ id: 'a2', role: 'assistant', content: '你好，我能帮你什么？' }])).assertTrue();
     });
 
     it('opens the home discovery page directly in the shared Waterfall renderer', 0, () => {

@@ -105,6 +105,14 @@ const REQUEST_SCOPE_CONTRACT: string =
   'mail or email. Explicit multi-domain requests remain valid and should keep independent tasks in the same round. ' +
   'Before returning JSON, silently scope-check every requestedCapabilityId, Data task, allowed tool, and Action ' +
   'against that closed set; do not output the check.';
+const EXECUTION_READINESS_CONTRACT: string =
+  'Final execution readiness gate: before returning execute, check every planned Data task against the selected ' +
+  'registry capability inputSchema and planningHint. Its input and goal must be immediately executable using only ' +
+  'facts present in Context; never use an empty value, a placeholder, an unresolved reference, or an assumed ' +
+  'current state for a fact the capability requires. If any required fact is unavailable or ambiguous, return ' +
+  'clarify with dataTasks=[] and ask only for the missing facts instead of calling the tool. This gate applies ' +
+  'uniformly to every capability. A failed or empty Observation does not supply a missing fact; when the response ' +
+  'asks the user for missing information, use roundAction clarify rather than answer.';
 const WATERFALL_MEMORY_SELECTION_CONTRACT: string =
   'Stable content-recommendation preferences such as 以后多推荐..., 不要推荐..., 少给我看... use only ' +
   'memory.update with personaId entertainment_companion. A one-off search or ordinary topic mention is not a ' +
@@ -132,7 +140,6 @@ const UNBOUND_LATER_TOOL_ERROR: string = 'LEADER_UNBOUND_LATER_TOOL';
 const SAME_ROUND_DEPENDENCY_ERROR: string = 'LEADER_SAME_ROUND_DEPENDENCY';
 const OVERLAPPING_VIDEO_TOOLS_ERROR: string = 'LEADER_OVERLAPPING_VIDEO_TOOLS';
 const TASK_INPUT_INVALID_ERROR: string = 'LEADER_TASK_INPUT_INVALID';
-const TRAVEL_QUERY_INCOMPLETE_ERROR: string = 'LEADER_TRAVEL_QUERY_INCOMPLETE';
 const ACTION_OWNED_DATA_TASK_ERROR: string = 'LEADER_ACTION_OWNED_DATA_TASK';
 const SKILL_CAPABILITY_ERROR: string = 'LEADER_SKILL_CAPABILITY_VIOLATION';
 const PERSONA_SKILL_SWITCH_ERROR: string = 'LEADER_PERSONA_SKILL_SWITCH';
@@ -217,13 +224,6 @@ const TASK_INPUT_REPAIR_INSTRUCTION: string =
   'registered input shape. Keep personaId, skillId, requestedCapabilityIds, roundAction, each Data task localId, ' +
   'goal, allowedToolIds, toolId and required value, uiIntent, actionIntent, answer, and Data task order exactly ' +
   'unchanged. The only permitted difference is inside dataTasks[].input. ' + FULL_DECISION_CONTRACT;
-const TRAVEL_QUERY_INCOMPLETE_REPAIR_INSTRUCTION: string =
-  'Correction: LEADER_TRAVEL_QUERY_INCOMPLETE. A selected travel, train, or flight search lacks an exact ' +
-  'departure date, origin, or destination. Re-read the current message and standard recent conversation. ' +
-  'If all required values are explicitly grounded there, correct only the affected task input. Otherwise return ' +
-  'clarify with empty dataTasks and no actionIntent, and ask only for the missing values in your own natural words. ' +
-  'Preserve requestedCapabilityIds and do not invent a date, city, airport, station, or provider result. ' +
-  FULL_DECISION_CONTRACT;
 const BIM_STATE_ONLY_REPAIR_INSTRUCTION: string =
   'Correction: LEADER_TASK_INPUT_INVALID during a BIM turn. First decide whether the user explicitly requested ' +
   'the selected business tool. A BIM state-only update, including participants, room preferences, dates, budgets, ' +
@@ -571,8 +571,6 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
         correction = input.text.indexOf('[BIM_CONTEXT]') === 0 ?
           BIM_STATE_ONLY_REPAIR_INSTRUCTION + '\nRejected decision: ' + output :
           TASK_INPUT_REPAIR_INSTRUCTION + '\nRejected decision: ' + output;
-      } else if (error instanceof Error && error.message === TRAVEL_QUERY_INCOMPLETE_ERROR) {
-        correction = TRAVEL_QUERY_INCOMPLETE_REPAIR_INSTRUCTION + '\nRejected decision: ' + output;
       } else if (error instanceof Error && error.message === ACTION_OWNED_DATA_TASK_ERROR) {
         correction = ACTION_OWNED_DATA_TASK_REPAIR_INSTRUCTION + '\nRejected decision: ' + output;
       } else if (error instanceof Error && error.message === SKILL_CAPABILITY_ERROR) {
@@ -605,7 +603,6 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           error.message === UNBOUND_LATER_TOOL_ERROR ||
           error.message === PREMATURE_CALENDAR_DELETE_ACTION_ERROR ||
           error.message === PREMATURE_CALENDAR_UPDATE_AFTER_SEARCH_ERROR ||
-          error.message === TRAVEL_QUERY_INCOMPLETE_ERROR ||
           error.message === BIM_MEMORY_UPDATE_ERROR ||
           error.message === BIM_NEW_MATTER_MEMORY_UPDATE_ERROR ||
           error.message === BIM_NEW_MATTER_CONTRACT_ERROR);
@@ -682,10 +679,6 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
           round
         );
         this.validateDecisionInputs(input, repairedDecision, currentLocalDate);
-        if (error instanceof Error && error.message === TRAVEL_QUERY_INCOMPLETE_ERROR &&
-          repairedDecision.roundAction === 'clarify') {
-          repairedDecision.reasonCode = 'host_preflight_clarify';
-        }
         repairedDecision.normalizationCurrentLocalDate = currentLocalDate;
         return repairedDecision;
       } catch (repairError) {
@@ -712,10 +705,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       for (let index = 0; index < decision.dataTasks.length; index++) {
         normalizer(input, decision.dataTasks[index], currentLocalDate);
       }
-    } catch (error) {
-      if (error instanceof Error && error.message === 'TRAVEL_QUERY_INCOMPLETE') {
-        throw new Error(TRAVEL_QUERY_INCOMPLETE_ERROR);
-      }
+    } catch (_error) {
       throw new Error(TASK_INPUT_INVALID_ERROR);
     }
   }
@@ -1729,6 +1719,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
         'the unique union of every selected Data tool, allowed tool, and Action ID. In other words, ' +
         'requestedCapabilityIds is the exact current-round execution union, not a list of future-round tools.',
       'Tasks in this round must be independent. Put dependent work in a later round.',
+      'Every dataTasks[].goal must be a self-contained execution request synthesized from the current user message, ' +
+        'recentMessages, and trusted context. Do not make an executor reconstruct missing facts from chat history.',
       'For dependent serial tools, emit exactly one data task in this planning round.\n' +
         'Wait for its Observation, then emit the next task with args derived from that real output.\n' +
         'Never pre-fill placeId, eventId, threadId, messageId, orderId, or provider receipt.',
@@ -1764,7 +1756,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       lockedSelection,
       'Context: ' + JSON.stringify(input),
       'Registry capabilities: ' + toolCatalog,
-      'Personas: ' + JSON.stringify(context.personas)
+      'Personas: ' + JSON.stringify(context.personas),
+      EXECUTION_READINESS_CONTRACT
     ].join('\n');
     if (result.length > MAX_LEADER_PROMPT_CHARS) {
       throw new Error('LEADER_PROMPT_LIMIT');

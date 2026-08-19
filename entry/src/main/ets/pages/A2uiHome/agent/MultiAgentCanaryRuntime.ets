@@ -43,7 +43,6 @@ import {
   UiSurfaceWriter,
   UiTaskRenderer,
   UserInputPayload,
-  TravelSearchPreflightResult,
   VIRTUAL_ACTION_INTENT_SOURCE_TOOL_ID,
   VirtualActionIntent,
   VirtualActionIntentResolver,
@@ -59,8 +58,7 @@ import {
   parseA2uiJsonl,
   setJsonPointer,
   toolDefinitionForToolId,
-  toolPlanningDescriptionForToolId,
-  travelSearchPreflight
+  toolPlanningDescriptionForToolId
 } from '@loop/agent-core';
 import { leaderPersonaContext } from '../../../model/LeaderPersonaContext';
 import {
@@ -73,8 +71,7 @@ import { personaPackForId } from '../../../model/PersonaStore';
 import { MultiAgentLeaderPlanner } from './MultiAgentLeaderPlanner';
 import { MultiAgentActionPlanCompiler } from './MultiAgentActionPlanCompiler';
 import {
-  HotelLocalDateProvider,
-  normalizeHotelSearchTaskInput
+  HotelLocalDateProvider
 } from './HotelLeaderPlanner';
 import { mailDetailIdentityDigest, MultiAgentRuntime } from './MultiAgentRuntime';
 import { MultiAgentTurnOutcome } from './MultiAgentRuntimeTypes';
@@ -108,7 +105,6 @@ import {
   resolveVirtualRegisteredPageAction
 } from './RegisteredPageActionRoute';
 import {
-  bimTravelQueryIsComplete,
   originalQueryFromBimPrompt
 } from '../bim/BimRuntime';
 
@@ -758,81 +754,17 @@ function normalizedDeepSearchTaskInput(input: Object): Object {
   const result: DeepSearchTaskInput = { query: query.trim() };
   return result;
 }
-
-function travelTaskText(input: Object, keys: string[]): string {
-  const source = input as Record<string, Object | string | number | boolean | null | undefined>;
-  for (let index = 0; index < keys.length; index++) {
-    const value = source[keys[index]];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return '';
-}
-
-function queryFromTravelTaskFields(input: Object, toolId: string): string {
-  const origin = travelTaskText(input, ['origin', 'departureCity', 'from']);
-  const destination = travelTaskText(input, ['destination', 'arrivalCity', 'to']);
-  const date = travelTaskText(input, ['departureDate', 'date', 'startDate']);
-  if (origin.length === 0 || destination.length === 0 || date.length === 0) {
-    return '';
-  }
-  const subject = toolId === 'train.search' ? '高铁' :
-    (toolId === 'flight.search' ? '航班' : '出行方式');
-  return '从' + origin + '到' + destination + '，出发日期 ' + date + '，查询' + subject;
-}
-
-function validBimTravelQuery(query: string, currentLocalDate: string): boolean {
-  const timestamp = Date.parse(currentLocalDate + 'T00:00:00+08:00');
-  return !Number.isNaN(timestamp) && bimTravelQueryIsComplete(query, new Date(timestamp));
-}
-
-function trustedTravelContextQuery(input: InputUserPayload): string {
-  const parts: string[] = [];
-  // Prefer the newest user statement so a follow-up date/origin overrides an
-  // older incomplete request. A BIM snapshot is host-owned read-only context,
-  // so retain it instead of stripping it before grounding model fields.
-  const current = input.text.indexOf('[BIM_SNAPSHOTS]') === 0 ?
-    input.text.trim() : originalQueryFromBimPrompt(input.text).trim();
-  if (current.length > 0) {
-    parts.push(current);
-  }
-  const recentMessages = input.recentMessages === undefined ? [] : input.recentMessages;
-  for (let index = recentMessages.length - 1; index >= 0; index--) {
-    const message = recentMessages[index];
-    if (message.role !== 'user') continue;
-    const content = originalQueryFromBimPrompt(message.content).trim();
-    if (content.length > 0 && (parts.length === 0 || parts[parts.length - 1] !== content)) {
-      parts.push(content);
-    }
-  }
-  return parts.join('；');
-}
-
-function sameTravelFields(
-  candidate: TravelSearchPreflightResult,
-  trusted: TravelSearchPreflightResult
-): boolean {
-  return candidate.complete && trusted.complete &&
-    candidate.departureDate === trusted.departureDate &&
-    candidate.origin === trusted.origin &&
-    candidate.destination === trusted.destination;
-}
-
-function groundedTravelCandidate(
-  query: string,
-  trusted: TravelSearchPreflightResult,
-  currentLocalDate: string
-): boolean {
-  if (query.trim().length === 0 || !trusted.complete) return false;
-  return sameTravelFields(travelSearchPreflight(query, currentLocalDate), trusted);
-}
-
 function normalizeCanaryTaskInput(
   input: InputUserPayload,
   task: LeaderDecisionDataTask,
   currentLocalDate: string
 ): Object {
+  const cloned = setJsonPointer(task.input as JsonValue, '', task.input as JsonValue);
+  if (!cloned.ok || cloned.value === undefined || cloned.value === null ||
+    typeof cloned.value !== 'object' || Array.isArray(cloned.value)) {
+    throw new Error(cloned.errorCode.length > 0 ? cloned.errorCode : 'TASK_INPUT_INVALID');
+  }
+  const safeInput: Object = cloned.value as Object;
   const originalInput: InputUserPayload = {
     text: originalQueryFromBimPrompt(input.text),
     recentMessages: input.recentMessages,
@@ -844,63 +776,14 @@ function normalizeCanaryTaskInput(
   // MultiAgentLeaderPlanner owns the date snapshot and replaces task.input with
   // the normalized value. LeaderAgent receives the same host-only authority
   // for its defense-in-depth pass and never calls an independent clock.
-  if (task.toolId === 'hotel.search') {
-    return normalizeHotelSearchTaskInput(originalInput, task, currentLocalDate);
-  }
-  if (task.toolId === 'travel.search' || task.toolId === 'train.search' ||
-    task.toolId === 'flight.search') {
-    const taskSource = task.input as Record<string, Object | string | number | boolean | null | undefined>;
-    const taskQuery = taskSource['query'];
-    const fieldQuery = queryFromTravelTaskFields(task.input, task.toolId);
-    const isBimTurn = input.text.indexOf('[BIM_SNAPSHOTS]') === 0;
-    const modelQuery = typeof taskQuery === 'string' ? taskQuery.trim() : '';
-    const trustedPreflight = travelSearchPreflight(
-      trustedTravelContextQuery(input), currentLocalDate
-    );
-    let query = originalInput.text;
-    if (isBimTurn) {
-      if (validBimTravelQuery(originalInput.text, currentLocalDate)) {
-        query = originalInput.text;
-      } else if (fieldQuery.length > 0 && validBimTravelQuery(fieldQuery, currentLocalDate) &&
-        groundedTravelCandidate(fieldQuery, trustedPreflight, currentLocalDate)) {
-        query = fieldQuery;
-      } else if (validBimTravelQuery(modelQuery, currentLocalDate) &&
-        groundedTravelCandidate(modelQuery, trustedPreflight, currentLocalDate)) {
-        query = modelQuery;
-      } else {
-        // Every foreground prompt is wrapped in read-only BIM snapshots. An
-        // incomplete travel request still belongs to the travel preflight
-        // repair path so the Leader can ask for the missing route/date fields.
-        throw new Error('TRAVEL_QUERY_INCOMPLETE');
-      }
-    } else {
-      const originalPreflight = travelSearchPreflight(originalInput.text, currentLocalDate);
-      if (originalPreflight.complete) {
-        query = originalInput.text.trim();
-      } else if (groundedTravelCandidate(modelQuery, trustedPreflight, currentLocalDate)) {
-        query = modelQuery;
-      } else if (groundedTravelCandidate(fieldQuery, trustedPreflight, currentLocalDate)) {
-        query = fieldQuery;
-      } else {
-        throw new Error('TRAVEL_QUERY_INCOMPLETE');
-      }
-    }
-    const normalized = setJsonPointer(task.input as JsonValue, '/query', query);
-    if (!normalized.ok || normalized.value === undefined || normalized.value === null ||
-      typeof normalized.value !== 'object' || Array.isArray(normalized.value)) {
-      throw new Error(normalized.errorCode.length > 0 ?
-        normalized.errorCode : 'TRAVEL_TASK_INPUT_INVALID');
-    }
-    return normalized.value as Object;
-  }
   if (task.toolId === 'social.feed.search') {
-    return normalizedSocialFeedTaskInput(unwrapSingleArgsEnvelope(task.input));
+    return normalizedSocialFeedTaskInput(unwrapSingleArgsEnvelope(safeInput));
   }
   if (task.toolId === 'deep.search') {
     return normalizedDeepSearchTaskInput(unwrapSingleArgsEnvelope(task.input));
   }
   if (task.toolId !== 'calendar.events.search') {
-    return task.input;
+    return safeInput;
   }
   const timestamp: number = Date.parse(currentLocalDate + 'T00:00:00+08:00');
   if (Number.isNaN(timestamp)) {
@@ -915,7 +798,7 @@ function normalizeCanaryTaskInput(
   if (remove !== null) {
     return remove as Object;
   }
-  const source = task.input as Record<string, Object | string | number | boolean | null | undefined>;
+  const source = safeInput as Record<string, Object | string | number | boolean | null | undefined>;
   const safe: Record<string, Object | string | number | boolean> = {};
   Object.keys(source).forEach((key: string) => {
     const value = source[key];
@@ -1088,10 +971,9 @@ class CanaryStructuredDataExecutor implements DataTaskExecutor {
       task.toolId === 'flight.search') {
       const values = task.args as Record<string, Object | string | number | boolean | null | undefined>;
       const query = values['query'];
-      if (typeof query !== 'string' || query.trim().length === 0) {
-        throw new Error('TRAVEL_QUERY_MISSING');
+      if (typeof query === 'string' && query.trim().length > 0) {
+        prompt = query.trim();
       }
-      prompt = query;
     }
     const result = task.toolId === 'media.aggregate.search' && onPartial !== undefined ?
       await this.structuredToolCall(task.toolId, prompt, task.args, onPartial) :

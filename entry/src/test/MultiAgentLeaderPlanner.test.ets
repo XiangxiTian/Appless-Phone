@@ -1114,6 +1114,9 @@ export default function multiAgentLeaderPlannerTest() {
       expect(decision.answer)
         .assertEqual('你从哪座城市出发？另外，下周具体哪一天出发？');
       expect(model.prompts.length).assertEqual(1);
+      expect(model.prompts[0].indexOf('Final execution readiness gate:')).assertLarger(-1);
+      expect(model.prompts[0].indexOf('inputSchema and planningHint')).assertLarger(-1);
+      expect(model.prompts[0].indexOf('This gate applies uniformly to every capability.')).assertLarger(-1);
     });
 
     it('keeps complete model-selected travel execution without rewriting its task input', 0, async () => {

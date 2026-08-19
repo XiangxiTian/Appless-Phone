@@ -1115,6 +1115,9 @@ export default function multiAgentLeaderPlannerTest() {
       expect(decision.answer)
         .assertEqual('你从哪座城市出发？另外，下周具体哪一天出发？');
       expect(model.prompts.length).assertEqual(1);
+      expect(model.prompts[0].indexOf('Final execution readiness gate:')).assertLarger(-1);
+      expect(model.prompts[0].indexOf('inputSchema and planningHint')).assertLarger(-1);
+      expect(model.prompts[0].indexOf('This gate applies uniformly to every capability.')).assertLarger(-1);
     });
 
     it('keeps complete model-selected travel execution without rewriting its task input', 0, async () => {
@@ -3365,7 +3368,7 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.prompts.length).assertEqual(2);
       expect(model.prompts[1].indexOf('LEADER_TASK_INPUT_INVALID')).assertLarger(-1);
       expect(model.prompts[1].indexOf('Change only dataTasks[].input')).assertLarger(-1);
-      expect(model.prompts[1].indexOf('copy the current user message verbatim into originQuery')).assertLarger(-1);
+      expect(model.prompts[1].indexOf('copy the current user message verbatim into originQuery')).assertEqual(-1);
       expect(decision.personaId).assertEqual('travel_companion');
       expect(decision.requestedCapabilityIds.join(',')).assertEqual('social.feed.search');
       expect(decision.dataTasks[0].toolId).assertEqual('social.feed.search');

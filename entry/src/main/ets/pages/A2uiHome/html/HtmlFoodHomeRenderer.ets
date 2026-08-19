@@ -19,7 +19,7 @@ interface HtmlFoodHomeDocumentWithBusy extends HtmlHomeDocument {
 const FOOD_HOME_CSS: string = `
 :root {
   color-scheme: light;
-  --paper: #f5f2ee;
+  --paper: #fffdf9;
   --panel: rgba(255, 255, 255, 0.88);
   --panel-strong: #ffffff;
   --ink: #211b17;
@@ -253,7 +253,7 @@ button:disabled { cursor: default; opacity: 0.5; }
   max-width: 100%;
   background: rgba(23, 18, 13, 0.44);
   color: #fffaf1;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 820;
   line-height: 1;
   overflow-wrap: anywhere;
@@ -608,6 +608,359 @@ button:disabled { cursor: default; opacity: 0.5; }
 .editorial-action:active {
   transform: scale(0.98);
 }
+
+/* v2 scene polish: keep the existing data/actions, but use the compact glass
+   surface, editorial hierarchy, and pill controls from appless-scene-redesign-v2. */
+.editorial-food-shell {
+  width: min(100%, 820px);
+  min-height: 0;
+  padding: 10px 15px 104px;
+  background: transparent;
+}
+html,
+body {
+  min-height: 100%;
+  background: transparent;
+}
+.editorial-cover {
+  min-height: 0;
+  padding: 11px 3px 6px;
+  overflow: visible;
+  display: block;
+  background: transparent;
+  color: #3f2f27;
+}
+.editorial-cover-media,
+.editorial-cover::after,
+.persona-banner,
+.source-cloud,
+.cover-stats { display: none; }
+.editorial-cover-content { width: 100%; }
+.food-scene-kicker {
+  display: block;
+  margin: 0 0 4px;
+  color: #8b7d73;
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 400;
+}
+.editorial-cover h1 {
+  max-width: none;
+  margin: 0;
+  font-family: inherit;
+  color: #3f2f27;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 500;
+  letter-spacing: -.025em;
+}
+.editorial-cover p {
+  margin: 6px 0 16px;
+  max-width: none;
+  color: #74665c;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.editorial-location-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 7px;
+  width: 100%;
+  margin: 0 0 10px;
+}
+.editorial-kicker { display: none; }
+.food-current-address {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 47px;
+  padding: 8px 10px;
+  overflow: hidden;
+  border: 1px solid rgba(73,63,56,.1);
+  border-radius: 15px;
+  background: rgba(255,255,255,.62);
+  color: #5e4d43;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  white-space: normal;
+}
+.food-current-address::after { display: none; }
+.food-location-symbol {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: rgba(153,95,76,.1);
+  color: #995f4c;
+}
+.food-location-symbol svg { width: 14px; height: 14px; }
+.food-location-copy { min-width: 0; flex: 1; }
+.food-location-copy small { display: block; color: #8b7d73; font-size: 10px; }
+.food-location-copy strong { display: block; margin-top: 2px; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.food-location-chevron { display: grid; place-items: center; color: #8b7d73; }
+.food-location-chevron svg { width: 14px; height: 14px; }
+.food-map-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 47px;
+  padding: 0;
+  border: 1px solid rgba(73,63,56,.1);
+  border-radius: 15px;
+  background: rgba(255,255,255,.62);
+  color: #995f4c;
+}
+.food-map-icon svg { width: 18px; height: 18px; }
+.editorial-tabs {
+  position: static;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 0 5px;
+  overflow-x: auto;
+  background: transparent;
+  border-bottom: 0;
+  backdrop-filter: none;
+}
+.appless-v2-food-tabs { display: flex; }
+.editorial-tab {
+  min-height: 31px;
+  padding: 6px 9px;
+  border: 1px solid rgba(73,63,56,.1);
+  border-radius: 999px;
+  background: rgba(255,255,255,.57);
+  color: #68584e;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: none;
+}
+.editorial-tab.active {
+  border-color: #995f4c;
+  background: #995f4c;
+  color: #fff;
+  box-shadow: none;
+}
+.food-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 1px 0 10px;
+  padding: 0;
+  overflow: visible;
+}
+.appless-v2-food-filters { display: grid; }
+.food-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  min-height: 31px;
+  border: 1px dashed rgba(73,63,56,.16);
+  border-radius: 999px;
+  background: rgba(255,255,255,.57);
+  white-space: nowrap;
+}
+.food-control span { display: none; }
+.food-control select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  height: 29px;
+  padding: 0 0 0 9px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #68584e;
+  font-size: 12px;
+  line-height: 1;
+}
+.food-control::after {
+  content: '';
+  position: static;
+  width: 5px;
+  height: 5px;
+  margin: 0 9px 3px 6px;
+  border-right: 1.3px solid #8b7d73;
+  border-bottom: 1.3px solid #8b7d73;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.food-filters > button.editorial-tab { min-height: 31px; }
+.editorial-feature {
+  --source-accent: var(--food-local);
+  margin: 0 0 10px;
+  overflow: hidden;
+  border: 1px solid rgba(73,63,56,.11);
+  border-radius: 21px;
+  background: rgba(255,255,255,.69);
+  color: var(--ink);
+  box-shadow: 0 10px 26px rgba(82,59,44,.07);
+  backdrop-filter: blur(22px);
+}
+.editorial-feature-media {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 94px;
+  background: radial-gradient(circle at 52% 45%,rgba(255,246,225,.95),transparent 22%), linear-gradient(135deg,#d8b493,#a8795d);
+  color: #fff;
+}
+.editorial-feature-media { display: none; }
+.editorial-feature-media::after { content: none; }
+.editorial-feature-media > span.editorial-badge {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.75);
+  color: #795c4a;
+  font-size: 8px;
+}
+.food-feature-icon { display: grid; place-items: center; color: rgba(255,255,255,.92); font-style: normal; }
+.food-feature-icon svg { width: 30px; height: 30px; }
+.editorial-feature-copy { padding: 12px; }
+.editorial-feature-copy > .editorial-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(153,95,76,.14);
+  border-radius: 999px;
+  background: rgba(153,95,76,.08);
+  color: #795c4a;
+  font-size: 10px;
+  line-height: 1;
+}
+.editorial-feature-label { display: none; }
+.editorial-feature .editorial-card-head { grid-template-columns: minmax(0,1fr); }
+.editorial-feature .editorial-title h2 {
+  margin: 3px 0 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.editorial-feature .editorial-title small { color: #995f4c; font-size: 11px; }
+.editorial-feature p {
+  margin: 7px 0 0;
+  color: #786a60;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.editorial-feature .editorial-detail { display: block; margin-top: 9px; padding-top: 0; border-top: 0; }
+.editorial-feature .editorial-detail-grid { grid-template-columns: 1.2fr .9fr .9fr; gap: 6px; }
+.editorial-feature .editorial-detail-row {
+  display: block;
+  min-width: 0;
+  padding: 7px;
+  border-radius: 10px;
+  background: rgba(245,240,235,.66);
+  font-size: 11px;
+  line-height: 1.25;
+}
+.editorial-feature .editorial-detail-row b { display: block; color: #8b7d73; font-size: 10px; font-weight: 400; }
+.editorial-feature .editorial-detail-row span { display: block; margin-top: 3px; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.editorial-feature .editorial-detail-row:nth-child(n+4) { display: none; }
+.editorial-feature .editorial-actions { margin-top: 10px; }
+.editorial-feature .editorial-action { min-height: 38px; padding: 8px 12px; border: 1px solid rgba(153,95,76,.16); border-radius: 11px; background: rgba(255,255,255,.72); color: #795c4a; font-size: 12px; font-weight: 500; box-shadow: none; }
+.editorial-feature .editorial-action,
+.editorial-card .editorial-action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.food-action-icon { display: inline-grid; place-items: center; }
+.food-action-icon svg { width: 12px; height: 12px; }
+.editorial-feature .editorial-action:first-child { border-color: #995f4c; background: #995f4c; color: #fff; }
+.editorial-card .editorial-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.editorial-card .editorial-expand::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-right: 1.3px solid currentColor;
+  border-bottom: 1.3px solid currentColor;
+  transform: rotate(45deg);
+}
+.editorial-card.expanded .editorial-expand::after { transform: rotate(225deg); }
+.editorial-list { display: grid; gap: 9px; padding: 0 0 18px; }
+.editorial-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 9px;
+  border: 0;
+  border-radius: 15px;
+  background: rgba(255,255,255,.5);
+  box-shadow: none;
+}
+.appless-v2-food-list-card { display: grid; }
+.editorial-card::before { display: none; }
+.editorial-card-head { display: contents; }
+.merchant-avatar { width: 42px; height: 42px; border: 0; border-radius: 12px; background: rgba(57,122,85,.1); box-shadow: none; }
+.merchant-avatar.multi { padding: 5px; }
+.merchant-avatar-fallback { color: #397a55; font-size: 18px; }
+.editorial-title h2 { font-size: 14px; font-weight: 500; }
+.editorial-meta { margin-top: 3px; font-size: 11px; line-height: 1.4; }
+.editorial-source-row { grid-column: 2; gap: 4px; margin-top: 3px; }
+.editorial-source { padding: 0; background: transparent; color: #995f4c; font-size: 10px; font-weight: 400; }
+.editorial-source + .editorial-source::before { content: ' · '; color: #8b7d73; }
+.editorial-expand { grid-column: 3; grid-row: 1 / 4; padding: 0; border: 0; color: #995f4c; font-size: 12px; font-weight: 400; }
+.editorial-card .editorial-detail { grid-column: 1 / -1; }
+.editorial-card:not(.expanded) .editorial-detail { display: none; }
+.editorial-card.expanded { display: block; }
+.editorial-card.expanded .editorial-card-head { display: grid; }
+.editorial-card.expanded .editorial-source-row { grid-column: 1 / -1; }
+.editorial-card.expanded .editorial-expand { float: right; }
+.editorial-card.expanded .editorial-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.editorial-card.expanded .editorial-actions { display: flex; }
+.editorial-card .editorial-actions { display: none; }
+.editorial-card .editorial-detail-grid { gap: 7px; }
+.editorial-card .editorial-detail-row { font-size: 12px; }
+.editorial-card .editorial-action { min-height: 38px; padding: 8px 12px; border-radius: 11px; font-size: 12px; }
+.editorial-empty { grid-column: 1 / -1; margin-top: 0; }
+.appless-v2-address-functions {
+  display: grid;
+  grid-template-columns: 34px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 12px;
+  padding: 11px;
+  border-radius: 17px;
+  background: rgba(255,255,255,.5);
+}
+.appless-v2-address-functions > i {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: rgba(71,111,159,.1);
+  color: #476f9f;
+  font-style: normal;
+}
+.appless-v2-address-functions > i svg { width: 17px; height: 17px; }
+.appless-v2-address-functions strong { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; }
+.appless-v2-address-functions p { margin: 3px 0 0; color: #8b7d73; font-size: 10px; line-height: 1.4; }
+.appless-v2-address-functions button { border: 0; background: transparent; color: #995f4c; font: inherit; font-size: 12px; }
+@media (max-width: 430px) {
+  .editorial-feature .editorial-detail-grid { grid-template-columns: 1fr 1fr; }
+  .editorial-feature .editorial-detail-row:first-child { grid-column: 1 / -1; }
+  .appless-v2-address-functions { grid-template-columns: 32px minmax(0,1fr); }
+  .appless-v2-address-functions button { grid-column: 2; justify-self: start; }
+}
 `;
 
 const FOOD_HOME_JS: string = `
@@ -737,6 +1090,14 @@ const FOOD_HOME_JS: string = `
       }
     } catch (error) {}
   }
+  function decorateFoodActionButton(button, id) {
+    var icon = add(button, 'span', 'food-action-icon');
+    var path = id === 'html_open_food_map' ? '<path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11Z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/>' :
+      (id === 'html_call_food' ? '<path d="M7.2 4.5 9.8 7 8.2 8.8a13.5 13.5 0 0 0 7 7l1.8-1.6 2.5 2.6-1.7 2.1c-.5.6-1.4.8-2.1.5C9.1 17.1 6.9 14.9 4.6 8.3c-.3-.8-.1-1.6.5-2.1l2.1-1.7Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>' :
+        '<path d="M6 4.5h12v15l-6-3-6 3v-15Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8h6M9 11h6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>');
+    icon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + path + '</svg>';
+    button.insertBefore(icon, button.firstChild);
+  }
   function setExpanded(key) {
     state.expandedKey = state.expandedKey === key ? '' : key;
     Array.prototype.slice.call(document.querySelectorAll('.editorial-card')).forEach(function (card) {
@@ -798,19 +1159,30 @@ const FOOD_HOME_JS: string = `
     var visible = 0;
     cards.forEach(function (card) { var keep = matchesFilter(card); if (keep) { visible += 1; } card.style.display = keep ? '' : 'none'; });
     var count = document.getElementById('editorial-count');
-    if (count) { count.textContent = String(visible) + ' / ' + String(cards.length) + ' 条'; }
+    var featureVisible = feature && matchesFilter(feature) ? 1 : 0;
+    var visibleTotal = visible + featureVisible;
+    var total = cards.length + (feature ? 1 : 0);
+    if (count) {
+      count.textContent = visibleTotal === total ? text(count.getAttribute('data-default-summary')) : String(visibleTotal) + ' 条结果 · 来源结果已合并';
+    }
+    var kicker = document.getElementById('editorial-kicker-count');
+    if (kicker) { kicker.textContent = '附近餐饮 · ' + String(visibleTotal) + ' 条结果'; }
     var empty = document.getElementById('editorial-filter-empty');
-    if (empty) { empty.style.display = cards.length > 0 && visible === 0 ? '' : 'none'; }
+    if (empty) { empty.style.display = cards.length > 0 && visible === 0 && featureVisible === 0 ? '' : 'none'; }
     Array.prototype.slice.call(document.querySelectorAll('.editorial-tab')).forEach(function (button) { button.classList.toggle('active', button.getAttribute('data-filter') === state.filter); });
   }
   function selectValue(label, values, current, setter) {
     var wrap = add(filters, 'label', 'food-control');
-    add(wrap, 'span', '', label);
     var select = add(wrap, 'select');
-    values.forEach(function (item) { var option = add(select, 'option', '', item[1]); option.value = item[0]; option.selected = item[0] === current; });
+    select.setAttribute('aria-label', label);
+    values.forEach(function (item) {
+      var optionLabel = item[0] === 'all' ? label : item[1];
+      var option = add(select, 'option', '', optionLabel);
+      option.value = item[0];
+      option.selected = item[0] === current;
+    });
     select.addEventListener('change', function () { setter(select.value); applyFilter(); });
   }
-  function clearFilters() { state.price = 'all'; state.rating = 'all'; state.business = 'all'; state.sort = 'smart'; state.filter = 'all'; Array.prototype.slice.call(filters.querySelectorAll('select')).forEach(function (select) { select.selectedIndex = 0; }); applyFilter(); }
   function handleFilter(action) {
     var id = text(action && action.id);
     if (id === 'food_filter_featured') { state.filter = 'featured'; applyFilter(); return true; }
@@ -869,11 +1241,22 @@ const FOOD_HOME_JS: string = `
   var hero = add(shell, 'header', 'editorial-cover');
   add(hero, 'div', 'editorial-cover-media');
   var heroContent = add(hero, 'div', 'editorial-cover-content');
+  var sceneKicker = add(heroContent, 'small', 'food-scene-kicker', '附近餐饮 · ' + String(blocks.length) + ' 条结果');
+  sceneKicker.id = 'editorial-kicker-count';
+  add(heroContent, 'h1', '', '今天附近值得吃');
+  var resultSummary = add(heroContent, 'p', '', String(blocks.filter(hasLocation).length) + ' 家可导航 · 来源结果已合并');
+  resultSummary.id = 'editorial-count';
+  resultSummary.setAttribute('data-default-summary', resultSummary.textContent);
   var locationBar = add(heroContent, 'div', 'editorial-location-bar');
-  add(locationBar, 'div', 'editorial-kicker', '附近餐饮');
-  var currentAddressButton = add(locationBar, 'button', 'food-current-address',
-    text(data.foodLocation && (data.foodLocation.name || data.foodLocation.address)) || '选择地址');
+  var currentAddressButton = add(locationBar, 'button', 'food-current-address');
   currentAddressButton.type = 'button';
+  var locationSymbol = add(currentAddressButton, 'span', 'food-location-symbol');
+  locationSymbol.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>';
+  var currentLocationCopy = add(currentAddressButton, 'span', 'food-location-copy');
+  add(currentLocationCopy, 'small', '', '当前搜索位置');
+  add(currentLocationCopy, 'strong', '', text(data.foodLocation && (data.foodLocation.name || data.foodLocation.address)) || '选择地址');
+  var locationChevron = add(currentAddressButton, 'span', 'food-location-chevron');
+  locationChevron.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   currentAddressButton.addEventListener('click', function () {
     var overlay = document.getElementById('food-address-overlay');
     if (overlay) { overlay.classList.add('open'); }
@@ -889,8 +1272,6 @@ const FOOD_HOME_JS: string = `
       overlay.classList.add('open');
     }
   });
-  add(heroContent, 'h1', '', '今日附近值得吃');
-  add(heroContent, 'p', '', text(data.subtitle) || text(data.title) || '从真实餐饮结果里挑出今天可以出发的一餐。');
   renderPersonaBanner(heroContent);
   if (data.foodLocationPickerHtml) {
     var mapOverlay = add(shell, 'section', 'food-map-overlay');
@@ -1086,10 +1467,9 @@ const FOOD_HOME_JS: string = `
   if (Object.keys(seenSources).length === 0) { sourceCloud.style.display = 'none'; }
   var stats = add(hero, 'div', 'cover-stats');
   var count = add(stats, 'span', 'cover-stat', String(blocks.length) + ' 条');
-  count.id = 'editorial-count';
   add(stats, 'span', 'cover-stat', String(blocks.filter(hasLocation).length) + ' 家可导航');
-  var tabs = add(shell, 'nav', 'editorial-tabs');
-  var filters = add(shell, 'section', 'food-filters');
+  var tabs = add(shell, 'nav', 'editorial-tabs appless-v2-food-tabs');
+  var filters = add(shell, 'section', 'food-filters appless-v2-food-filters');
   var filterItems = [
     ['food_show_all', '全部', 'all'],
     ['food_filter_featured', '精选', 'featured'],
@@ -1104,10 +1484,9 @@ const FOOD_HOME_JS: string = `
   selectValue('评分', [['all', '不限'], ['4', '4.0+'], ['4_5', '4.5+'], ['4_8', '4.8+']], state.rating, function (value) { state.rating = value; });
   selectValue('营业', [['all', '不限'], ['open', '营业中']], state.business, function (value) { state.business = value; });
   selectValue('排序', [['smart', '智能排序'], ['distance', '距离最近'], ['rating', '评分最高'], ['price', '价格最低']], state.sort, function (value) { state.sort = value; });
-  var clear = add(filters, 'button', 'editorial-tab', '清除筛选'); clear.type = 'button'; clear.addEventListener('click', clearFilters);
   if (blocks.length > 0) {
     var featureBlock = blocks[0];
-    var feature = add(shell, 'section', 'editorial-feature');
+    var feature = add(shell, 'section', 'editorial-feature appless-v2-food-card featured');
     feature.setAttribute('data-card-key', text(featureBlock.id) || '0');
     feature.setAttribute('data-source-key', sourceKey(featureBlock));
     feature.setAttribute('data-distance', metric(featureBlock, ['distance']));
@@ -1117,19 +1496,48 @@ const FOOD_HOME_JS: string = `
     feature.setAttribute('data-featured', 'true');
     feature.setAttribute('data-sources', sourceParts(featureBlock).join(' / '));
     feature.setAttribute('data-search', [text(featureBlock.title), text(featureBlock.subtitle), metric(featureBlock, ['category']), metric(featureBlock, ['address']), sourceParts(featureBlock).join(' ')].join(' '));
-    add(feature, 'div', 'editorial-feature-media');
-    var featureCopy = add(feature, 'div', 'editorial-feature-copy');
-    add(featureCopy, 'div', 'editorial-feature-label', '今日编辑');
-    add(featureCopy, 'h2', '', text(featureBlock.title) || '餐饮结果');
-    add(featureCopy, 'p', '', [metric(featureBlock, ['distance']), metric(featureBlock, ['address']), sourceParts(featureBlock).join(' / ')].filter(Boolean).join(' · '));
+    var featureMedia = add(feature, 'div', 'editorial-feature-media appless-v2-food-photo');
+    add(featureMedia, 'span', 'editorial-badge', '为你推荐');
+    var featureIcon = add(featureMedia, 'i', 'food-feature-icon');
+    featureIcon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12M7 8v8.5A2.5 2.5 0 0 0 9.5 19h5A2.5 2.5 0 0 0 17 16.5V8M9 5h6l1 3H8l1-3Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 3.5c1.2 1 2.8 1 4 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    var featureCopy = add(feature, 'div', 'editorial-feature-copy appless-v2-food-copy');
+    add(featureCopy, 'span', 'editorial-badge', '为你推荐');
+    var featureHead = add(featureCopy, 'div', 'editorial-card-head appless-v2-card-head');
+    var featureTitle = add(featureHead, 'div', 'editorial-title');
+    add(featureTitle, 'small', '', sourceParts(featureBlock).join(' · ') || '附近餐饮');
+    add(featureTitle, 'h2', '', text(featureBlock.title) || '餐饮结果');
+    add(featureCopy, 'p', '', [metric(featureBlock, ['category']), metric(featureBlock, ['distance']), metric(featureBlock, ['ratingText', 'rating']), metric(featureBlock, ['priceText', 'pricePerPerson']), metric(featureBlock, ['businessStatusLabel']), metric(featureBlock, ['openHoursToday'])].filter(Boolean).join(' · '));
+    var featureDetail = add(featureCopy, 'div', 'editorial-detail appless-v2-food-detail');
+    var featureGrid = add(featureDetail, 'div', 'editorial-detail-grid');
+    detailRow(featureGrid, '地址', metric(featureBlock, ['address']));
+    detailRow(featureGrid, '今日营业', metric(featureBlock, ['openHoursToday']) || metric(featureBlock, ['openHoursWeek']));
+    detailRow(featureGrid, '电话', metric(featureBlock, ['phone']));
+    var featureActions = list(featureBlock.actions).filter(function (action) {
+      var id = text(action && action.id);
+      if (id !== 'html_open_food_map' && id !== 'html_pin_food' && id !== 'html_call_food') { return false; }
+      if (id !== 'html_call_food' && !hasLocation(featureBlock)) { return false; }
+      return true;
+    });
+    if (featureActions.length > 0) {
+      var featureActionRow = add(featureDetail, 'div', 'editorial-actions food-actions appless-v2-card-actions');
+      featureActions.forEach(function (action) {
+        var id = text(action && action.id);
+        var button = add(featureActionRow, 'button', 'editorial-action', id === 'html_open_food_map' ? '导航去' : (id === 'html_call_food' ? '拨打电话' : '固定到桌面'));
+        button.type = 'button';
+        button.disabled = isBusy;
+        decorateFoodActionButton(button, id);
+        button.addEventListener('click', function (event) { event.stopPropagation(); postAction(action); });
+      });
+    }
   }
   var listNode = add(shell, 'section', 'editorial-list');
   var empty = add(listNode, 'div', 'editorial-empty', '当前筛选下暂无匹配餐饮。');
   empty.id = 'editorial-filter-empty';
   empty.style.display = 'none';
   blocks.forEach(function (block, index) {
+    if (index === 0) { return; }
     var key = text(block.id) || String(index);
-    var card = add(listNode, 'article', 'editorial-card');
+    var card = add(listNode, 'article', 'editorial-card appless-v2-food-list-card');
     card.setAttribute('data-card-key', key);
     card.setAttribute('data-source-key', sourceKey(block));
     card.setAttribute('data-distance', metric(block, ['distance']));
@@ -1145,8 +1553,7 @@ const FOOD_HOME_JS: string = `
     addAvatar(head, block);
     var title = add(head, 'div', 'editorial-title');
     add(title, 'h2', '', text(block.title) || '餐饮结果');
-    add(title, 'div', 'editorial-meta', [metric(block, ['distance']), metric(block, ['address']), metric(block, ['ratingText', 'rating']), metric(block, ['priceText', 'pricePerPerson']), metric(block, ['businessStatusLabel']),
-      metric(block, ['openHoursToday']) || metric(block, ['openHoursWeek'])].filter(Boolean).join(' · '));
+    add(title, 'div', 'editorial-meta', [metric(block, ['category']) || text(block.subtitle), metric(block, ['distance']), metric(block, ['ratingText', 'rating']), metric(block, ['priceText', 'pricePerPerson']), metric(block, ['businessStatusLabel'])].filter(Boolean).join(' · '));
     var expand = add(head, 'button', 'editorial-expand', '展开');
     expand.type = 'button';
     expand.addEventListener('click', function (event) { event.stopPropagation(); setExpanded(key); });
@@ -1185,15 +1592,25 @@ const FOOD_HOME_JS: string = `
           id === 'html_open_food_map' ? '导航去' : (id === 'html_call_food' ? '拨打电话' : '固定到桌面'));
         button.type = 'button';
         button.disabled = isBusy;
+        decorateFoodActionButton(button, id);
         button.addEventListener('click', function (event) { event.stopPropagation(); postAction(action); });
       });
     }
   });
-  var cards = Array.prototype.slice.call(document.querySelectorAll('.editorial-card'));
-  filterItems.filter(function (item) {
-    var matches = cards.filter(function (card) { return matchesFilter(card, item[2]); }).length;
-    return item[2] === 'all' || (matches > 0 && (item[2] === 'within_1km' || matches < cards.length));
-  }).forEach(function (item) {
+  var addressFunctions = add(shell, 'section', 'appless-v2-address-functions');
+  var addressFunctionIcon = add(addressFunctions, 'i');
+  addressFunctionIcon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-8Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 20v-5h6v5M8 10h.01M12 10h.01M16 10h.01" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+  var addressFunctionCopy = add(addressFunctions, 'div');
+  add(addressFunctionCopy, 'strong', '', '位置与地址簿功能保持');
+  add(addressFunctionCopy, 'p', '', '地址搜索、地图选点、重新定位、保存地址、使用常用地址、删除地址');
+  var addressFunctionButton = add(addressFunctions, 'button', '', '换位置');
+  addressFunctionButton.type = 'button';
+  addressFunctionButton.disabled = isBusy;
+  addressFunctionButton.addEventListener('click', function () {
+    var overlay = document.getElementById('food-address-overlay');
+    if (overlay) { overlay.classList.add('open'); }
+  });
+  filterItems.forEach(function (item) {
     var button = add(tabs, 'button', 'editorial-tab', item[1]);
     button.type = 'button';
     button.disabled = isBusy;

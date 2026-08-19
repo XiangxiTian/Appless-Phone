@@ -34,7 +34,7 @@ const TRAVEL_HOME_CSS: string = `
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--void);
+  background: transparent;
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
   letter-spacing: 0;
@@ -65,7 +65,6 @@ button:disabled { cursor: default; opacity: 0.52; }
   z-index: -2;
   background:
     linear-gradient(180deg, rgba(248, 242, 232, 0.16) 0%, rgba(248, 242, 232, 0.34) 44%, rgba(248, 242, 232, 0.96) 100%),
-    url("https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1200&q=80"),
     linear-gradient(135deg, #f8f2e8, #fffaf1);
   background-size: cover;
   background-position: center;
@@ -540,15 +539,43 @@ button:disabled { cursor: default; opacity: 0.52; }
   background: linear-gradient(90deg, var(--source), rgba(23, 18, 13, 0.14));
 }
 .track::after {
-  content: "";
+  display: none;
+}
+.track small,
+.track span,
+.track i {
   position: absolute;
-  right: 4px;
-  top: 10px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--source);
-  box-shadow: 0 0 18px rgba(37, 24, 13, 0.12);
+  z-index: 1;
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+.track small {
+  top: -2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.track i { display: none; }
+.track svg {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 9px;
+  display: block;
+  width: 13px;
+  height: 13px;
+  transform: translateX(-50%);
+  color: var(--source);
+}
+.track span {
+  bottom: -1px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1;
 }
 .journey-metrics {
   position: relative;
@@ -705,6 +732,425 @@ button:disabled { cursor: default; opacity: 0.52; }
 .journey-card:active {
   transform: scale(0.98);
 }
+
+/* Travel scene v2: match the shared Appless scene hierarchy. */
+.itinerary-shell {
+  width: min(100%, 820px);
+  background: transparent;
+  padding: 10px 15px 104px;
+}
+.route-hero {
+  min-height: 0;
+  padding: 11px 3px 0;
+  display: block;
+}
+.route-hero::before,
+.route-hero::after {
+  display: none;
+}
+.route-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 16px;
+}
+.route-title > div {
+  min-width: 0;
+}
+.route-date {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+.route-title h1 {
+  margin: 0;
+  max-width: none;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 520;
+  letter-spacing: -0.025em;
+}
+.route-title p {
+  margin: 6px 0 0;
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+.route-date-action {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 35px;
+  height: 35px;
+  padding: 0;
+  border: 1px solid rgba(126, 96, 77, 0.14);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink-soft);
+  box-shadow: 0 4px 12px rgba(85, 61, 45, 0.08);
+}
+.route-date-action::before {
+  display: none;
+}
+.route-date-action svg {
+  width: 18px;
+  height: 18px;
+}
+.route-kicker { display: none; }
+.route-hero .persona-banner { display: none; }
+.route-map {
+  margin-top: 0;
+  border: 1px solid rgba(106, 78, 60, 0.12);
+  border-radius: 23px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.67);
+  box-shadow: 0 10px 28px rgba(91, 65, 48, 0.07);
+  backdrop-filter: blur(22px);
+}
+.route-city {
+  border-radius: 12px;
+  padding: 8px;
+  background: rgba(245, 240, 235, 0.72);
+}
+.route-city b {
+  font-size: 16px;
+  font-weight: 500;
+}
+.route-city span {
+  margin-top: 4px;
+  font-size: 10px;
+}
+.route-mid {
+  width: 54px;
+  height: 36px;
+}
+.route-mid::before {
+  left: 3px;
+  right: 3px;
+  top: 22px;
+  height: 1px;
+}
+.route-mid::after {
+  top: 7px;
+  width: 25px;
+  height: 25px;
+  background-size: 15px 15px;
+}
+.route-stats {
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(73, 63, 56, 0.08);
+}
+.route-stat {
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(245, 240, 235, 0.72);
+}
+.route-stat span { font-size: 9px; }
+.route-stat b {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.travel-controls {
+  position: static;
+  display: block;
+  padding: 12px 0 0;
+  border-bottom: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.travel-primary-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 15px;
+  background: rgba(92, 70, 57, 0.08);
+}
+.travel-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.travel-primary-tabs .travel-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: #75665c;
+  font-size: 11px;
+  font-weight: 400;
+}
+.travel-primary-tabs .travel-control.active {
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink-soft);
+  box-shadow: 0 3px 10px rgba(75, 53, 40, 0.06);
+}
+.travel-tool-row .travel-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 31px;
+  padding: 6px 9px;
+  border: 1px solid rgba(73, 63, 56, 0.1);
+  background: rgba(255, 255, 255, 0.57);
+  color: #68584e;
+  font-size: 10px;
+  font-weight: 400;
+}
+.travel-tool-row .travel-control.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.travel-control svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+.journey-board {
+  gap: 10px;
+  margin-top: 12px;
+  padding: 0 0 20px;
+}
+.journey-card {
+  border-radius: 21px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.69);
+  box-shadow: 0 10px 26px rgba(82, 59, 44, 0.07);
+  backdrop-filter: blur(22px);
+}
+.journey-card::before,
+.journey-card::after {
+  display: none;
+}
+.journey-card:not(.featured) {
+  box-shadow: none;
+}
+.journey-card.compact {
+  border-radius: 21px;
+  box-shadow: none;
+}
+.journey-title h2 {
+  display: none;
+}
+.journey-tag {
+  min-height: 24px;
+  padding: 4px 7px;
+  font-size: 9px;
+  font-weight: 500;
+}
+.journey-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: auto;
+  min-height: 24px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 400;
+}
+.journey-expand::after { display: none; }
+.journey-expand svg { width: 12px; height: 12px; }
+.journey-mainline {
+  grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr);
+  margin-top: 13px;
+}
+.time-block b {
+  font-size: 22px;
+  font-weight: 500;
+}
+.time-block span { font-size: 10px; }
+.track {
+  width: 74px;
+  height: 28px;
+}
+.track::before { top: 14px; }
+.track::after { top: 8px; }
+.journey-trip-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 13px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(73, 63, 56, 0.08);
+  color: var(--muted);
+  font-size: 10px;
+}
+.journey-trip-meta .journey-code {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.journey-trip-meta .journey-availability {
+  overflow-wrap: anywhere;
+}
+.journey-trip-meta .journey-price {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.journey-conflict {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  padding: 8px 9px;
+  border-radius: 11px;
+  background: rgba(176, 74, 66, 0.08);
+  color: #9b4f48;
+  font-size: 9px;
+  line-height: 1.35;
+}
+.journey-conflict::before {
+  display: none;
+}
+.journey-conflict svg {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+}
+.journey-conflict b { font-weight: 500; }
+.journey-expanded-grid {
+  display: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 9px;
+}
+.journey-card.expanded .journey-expanded-grid { display: grid; }
+.journey-expanded-grid > span {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 11px;
+  background: rgba(245, 240, 235, 0.64);
+}
+.journey-expanded-grid small {
+  display: block;
+  color: #8b7d73;
+  font-size: 8px;
+  line-height: 1.2;
+}
+.journey-expanded-grid b {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.journey-metrics { display: none; }
+.journey-metric {
+  border-radius: 11px;
+  padding: 8px;
+  background: rgba(245, 240, 235, 0.64);
+}
+.journey-metric span { font-size: 8px; }
+.journey-metric b {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.journey-actions { gap: 6px; margin-top: 10px; }
+.journey-actions-persistent {
+  margin-top: 10px;
+  border-top: 0;
+  padding-top: 0;
+}
+.journey-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 11px;
+  font-size: 9px;
+  font-weight: 500;
+}
+.journey-action svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+.journey-action.secondary {
+  border: 1px solid rgba(153, 95, 76, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  color: #795c4a;
+}
+.journey-card.featured:not(.expanded) .journey-actions-persistent { display: none; }
+.journey-detail {
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: 0;
+}
+.journey-detail .detail-grid { display: none; }
+.journey-detail .journey-actions { margin-top: 0; }
+.detail-row {
+  grid-template-columns: 72px minmax(0, 1fr);
+  font-size: 10px;
+}
+
+/* Keep travel typography aligned with the shared scene hierarchy. */
+.route-date { font-size: 12px; }
+.route-title h1 { font-size: 32px; }
+.route-title p { font-size: 15px; }
+.route-city b { font-size: 18px; }
+.route-city span { font-size: 12px; }
+.route-stat span { font-size: 12px; }
+.route-stat b { font-size: 15px; }
+.travel-primary-tabs .travel-control,
+.travel-tool-row .travel-control { font-size: 13px; }
+.journey-tag { font-size: 12px; }
+.journey-expand { font-size: 13px; }
+.time-block span { font-size: 12px; }
+.journey-trip-meta { font-size: 12px; }
+.journey-trip-meta .journey-price { font-size: 15px; }
+.journey-conflict { font-size: 12px; }
+.journey-expanded-grid small,
+.journey-metric span { font-size: 12px; }
+.journey-expanded-grid b,
+.journey-metric b { font-size: 15px; }
+.journey-action { font-size: 13px; }
+.detail-row { font-size: 15px; }
+@media (min-width: 680px) {
+  .route-hero { min-height: 0; padding: 11px 3px 0; }
+  .route-title h1 { font-size: 32px; }
+  .journey-board { padding-left: 0; padding-right: 0; }
+}
+@media (max-width: 380px) {
+  .route-title h1 { font-size: 30px; }
+  .route-map { padding: 12px; }
+  .journey-mainline { grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr); }
+  .journey-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 `;
 
 const TRAVEL_HOME_JS: string = `
@@ -730,6 +1176,44 @@ const TRAVEL_HOME_JS: string = `
     if (value !== undefined && value !== null && text(value).length > 0) { el.textContent = text(value); }
     parent.appendChild(el);
     return el;
+  }
+  function icon(parent, name) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '14');
+    svg.setAttribute('height', '14');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    var shapes = {
+      'calendar-days': [['rect', { x: '3', y: '4', width: '18', height: '17', rx: '2' }], ['path', { d: 'M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01' }]],
+      'calendar-plus': [['rect', { x: '3', y: '4', width: '18', height: '17', rx: '2' }], ['path', { d: 'M16 2v4M8 2v4M3 10h18M12 14v5M9.5 16.5h5' }]],
+      'calendar-x': [['rect', { x: '3', y: '4', width: '18', height: '17', rx: '2' }], ['path', { d: 'M16 2v4M8 2v4M3 10h18M10 14l4 4M14 14l-4 4' }]],
+      'zap': [['path', { d: 'M13 2 3 14h7l-1 8 11-14h-7z' }]],
+      'ticket-check': [['path', { d: 'M3 7h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4z' }], ['path', { d: 'm8 15 2 2 5-5' }]],
+      'list-filter': [['path', { d: 'M4 6h16M7 12h10M10 18h4' }]],
+      'calendar-sync': [['path', { d: 'M4 4h16v16H4zM8 2v4M16 2v4M4 10h16' }], ['path', { d: 'm8 15 2 2 3-3M16 17h3' }]],
+      'refresh-cw': [['path', { d: 'M20 11a8 8 0 0 0-14.8-4L3 10M3 5v5h5M4 13a8 8 0 0 0 14.8 4L21 14M21 19v-5h-5' }]],
+      'chevron-up': [['path', { d: 'm6 15 6-6 6 6' }]],
+      'chevron-down': [['path', { d: 'm6 9 6 6 6-6' }]],
+      'plane': [['path', { d: 'M2 16l20-8-8-3-3-3-2 1 2 5-6 3-3-1z' }]],
+      'train-front': [['rect', { x: '5', y: '3', width: '14', height: '16', rx: '3' }], ['path', { d: 'M8 19l-2 3M16 19l2 3M5 12h14M8 7h.01M16 7h.01' }]],
+      'pin': [['path', { d: 'M12 21s7-6.1 7-12a7 7 0 1 0-14 0c0 5.9 7 12 7 12z' }], ['circle', { cx: '12', cy: '9', r: '2' }]],
+      'arrow-up-right': [['path', { d: 'M7 17 17 7M7 7h10v10' }]],
+      'book-ticket': [['rect', { x: '3', y: '5', width: '18', height: '14', rx: '2' }], ['path', { d: 'M8 9h8M8 13h5' }]]
+    };
+    var parts = shapes[name] || shapes['book-ticket'];
+    parts.forEach(function (shape) {
+      var child = document.createElementNS('http://www.w3.org/2000/svg', shape[0]);
+      var attrs = shape[1];
+      Object.keys(attrs).forEach(function (key) { child.setAttribute(key, attrs[key]); });
+      svg.appendChild(child);
+    });
+    parent.appendChild(svg);
+    return svg;
   }
   function metric(block, labels) {
     var items = list(block && block.metrics).concat(list(block && block.rows));
@@ -811,6 +1295,27 @@ const TRAVEL_HOME_JS: string = `
     });
     return best;
   }
+  function routeDateLabel(value) {
+    var raw = text(value);
+    var match = raw.match(/(\d{1,2})月(\d{1,2})日/);
+    if (!match) { return '出行方案'; }
+    var month = Number(match[1]);
+    var day = Number(match[2]);
+    var date = new Date(new Date().getFullYear(), month - 1, day);
+    var weekdays = '日一二三四五六';
+    return String(month) + '月' + String(day) + '日 · 周' + weekdays[date.getDay()];
+  }
+  function firstAction(actions, id) {
+    var items = list(actions);
+    for (var index = 0; index < items.length; index += 1) {
+      if (text(items[index] && items[index].id) === id) { return items[index]; }
+    }
+    return null;
+  }
+  function headlinePlace(value) {
+    var raw = text(value).trim().replace(/\s*T\d+$/i, '');
+    return raw.replace(/(?:宝安|虹桥|浦东|首都|大兴|南站|北站|东站|西站|机场|火车站|站)$/,'') || raw;
+  }
   function postAction(action) {
     if (isBusy) { return; }
     try {
@@ -833,7 +1338,10 @@ const TRAVEL_HOME_JS: string = `
       card.classList.toggle('expanded', expanded);
       card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
       var button = card.querySelector('.journey-expand');
-      if (button) { button.textContent = expanded ? '收起' : '展开'; }
+      if (button) {
+        button.textContent = expanded ? '收起' : '展开';
+        icon(button, expanded ? 'chevron-up' : 'chevron-down');
+      }
     });
   }
   function handleLocalAction(action) {
@@ -889,6 +1397,8 @@ const TRAVEL_HOME_JS: string = `
     });
     var count = document.getElementById('journey-count');
     if (count) { count.textContent = String(visible) + ' / ' + String(cards.length) + ' 条'; }
+    var currentCount = document.getElementById('travel-current-count');
+    if (currentCount) { currentCount.textContent = String(visible) + ' / ' + String(cards.length); }
     var empty = document.getElementById('journey-empty');
     if (empty) { empty.style.display = cards.length > 0 && visible === 0 ? '' : 'none'; }
     updateControls();
@@ -928,6 +1438,22 @@ const TRAVEL_HOME_JS: string = `
   function isTravelCalendarAction(action) {
     return text(action && action.id) === 'travel.calendar.add';
   }
+  function controlIcon(id) {
+    if (id === 'client_sort_fastest') { return 'zap'; }
+    if (id === 'client_filter_available') { return 'ticket-check'; }
+    if (id === 'client_show_more') { return 'list-filter'; }
+    if (id === 'travel_change_date') { return 'calendar-sync'; }
+    if (id === 'travel_retry') { return 'refresh-cw'; }
+    return '';
+  }
+  function actionIcon(action) {
+    var raw = (text(action && action.id) + ' ' + text(action && action.label)).toLowerCase();
+    if (raw.indexOf('calendar') >= 0 || raw.indexOf('日历') >= 0) { return 'calendar-plus'; }
+    if (raw.indexOf('pin') >= 0 || raw.indexOf('固定') >= 0) { return 'pin'; }
+    if (raw.indexOf('open') >= 0 || raw.indexOf('external') >= 0 || raw.indexOf('打开') >= 0) { return 'arrow-up-right'; }
+    if (raw.indexOf('book') >= 0 || raw.indexOf('ticket') >= 0 || raw.indexOf('购票') >= 0 || raw.indexOf('订票') >= 0) { return 'book-ticket'; }
+    return '';
+  }
   function addActionButtons(parent, actions, persistent) {
     var kept = list(actions).filter(function (action) { return text(action && (action.label || action.id)).length > 0; });
     if (kept.length === 0) { return; }
@@ -935,9 +1461,12 @@ const TRAVEL_HOME_JS: string = `
     kept.forEach(function (action, index) {
       var actionClass = text(action && action.variant) === 'danger' ? 'journey-action danger' :
         (index === 0 ? 'journey-action' : 'journey-action secondary');
-      var button = add(row, 'button', actionClass, action.label || action.id);
+      var button = add(row, 'button', actionClass);
       button.type = 'button';
       button.disabled = isBusy;
+      var iconName = actionIcon(action);
+      if (iconName.length > 0) { icon(button, iconName); }
+      add(button, 'span', 'journey-action-label', action.label || action.id);
       button.addEventListener('click', function (event) {
         event.stopPropagation();
         if (isBusy) { return; }
@@ -973,16 +1502,31 @@ const TRAVEL_HOME_JS: string = `
   var cardBlocks = blocks.filter(function (block) {
     return travelBlocks.indexOf(block) >= 0 || text(block && block.kind) === 'food-result';
   });
-  var shell = add(app, 'main', 'itinerary-shell');
-  var hero = add(shell, 'header', 'route-hero');
-  add(hero, 'div', 'route-kicker', '出行方案 · 实时候选');
-  add(hero, 'h1', '', text(data.title) || '今日出行方案');
-  add(hero, 'p', '', text(data.subtitle) ||
-    '高铁和航班结果来自真实工具返回，页面只做本地筛选和展示。');
-  renderPersonaBanner(hero);
-  var map = add(hero, 'section', 'route-map');
   var from = firstMetric(travelBlocks, ['from', 'dep']) || '出发';
   var to = firstMetric(travelBlocks, ['to', 'arr']) || '到达';
+  var routeHeadline = from !== '出发' && to !== '到达' ? headlinePlace(from) + ' → ' + headlinePlace(to) : (text(data.title) || '今日出行方案');
+  var fastest = shortest(travelBlocks);
+  var routeSummary = travelBlocks.length > 0 ?
+    String(travelBlocks.length) + ' 个方案 · 最快 ' + (fastest || '待确认') :
+    (text(data.subtitle) || '等待出行方案返回');
+  var shell = add(app, 'main', 'itinerary-shell');
+  var hero = add(shell, 'header', 'route-hero');
+  var titleRow = add(hero, 'div', 'route-title');
+  var titleCopy = add(titleRow, 'div');
+  add(titleCopy, 'small', 'route-date', routeDateLabel(text(data.subtitle) || firstMetric(travelBlocks, ['date', 'travelDate', 'departureDate'])));
+  add(titleCopy, 'h1', '', routeHeadline);
+  add(titleCopy, 'p', '', routeSummary);
+  var dateAction = firstAction(data.actions, 'travel_change_date');
+  if (dateAction !== null) {
+    var dateButton = add(titleRow, 'button', 'route-date-action');
+    dateButton.type = 'button';
+    icon(dateButton, 'calendar-days');
+    dateButton.setAttribute('aria-label', text(dateAction.label) || '换日期');
+    dateButton.disabled = isBusy;
+    dateButton.addEventListener('click', function () { postAction(dateAction); });
+  }
+  renderPersonaBanner(hero);
+  var map = add(hero, 'section', 'route-map');
   var cities = add(map, 'div', 'route-cities');
   var fromNode = add(cities, 'div', 'route-city');
   add(fromNode, 'b', '', from);
@@ -994,16 +1538,20 @@ const TRAVEL_HOME_JS: string = `
   var stats = add(map, 'div', 'route-stats');
   var trainCount = travelBlocks.filter(function (block) { return sourceKind(block) === 'train'; }).length;
   var flightCount = travelBlocks.filter(function (block) { return sourceKind(block) === 'flight'; }).length;
+  var conflictCount = travelBlocks.filter(function (block) { return block && block.calendarConflict === true; }).length;
   [
-    ['候选', String(travelBlocks.length) + ' 条'],
     ['高铁 / 航班', String(trainCount) + ' / ' + String(flightCount)],
-    ['最短耗时', shortest(travelBlocks) || '待确认']
-  ].forEach(function (item) {
+    ['当前显示', String(travelBlocks.length) + ' / ' + String(travelBlocks.length)],
+    ['日历冲突', String(conflictCount) + ' 个']
+  ].forEach(function (item, index) {
     var stat = add(stats, 'div', 'route-stat');
     add(stat, 'span', '', item[0]);
-    add(stat, 'b', '', item[1]);
+    var value = add(stat, 'b', '', item[1]);
+    if (index === 1) { value.id = 'travel-current-count'; }
   });
   var controls = add(shell, 'nav', 'travel-controls');
+  var primaryControls = add(controls, 'div', 'travel-primary-tabs');
+  var toolControls = add(controls, 'div', 'travel-tool-row');
   var localControls = [
     { id: 'travel_show_all', label: '全部', prompt: 'travel_show_all', variant: 'secondary', kind: 'client' },
     { id: 'travel_filter_train', label: '高铁', prompt: 'travel_filter_train', variant: 'secondary', kind: 'client' },
@@ -1021,22 +1569,26 @@ const TRAVEL_HOME_JS: string = `
     if (id.length === 0 || seen[id]) { return; }
     seen[id] = true;
     var label = text(action && action.label);
-    if (id === 'travel_filter_train') { label = '高铁'; }
-    if (id === 'travel_filter_flight') { label = '飞机'; }
+    if (id === 'travel_filter_train') { label = '高铁 ' + String(trainCount); }
+    if (id === 'travel_filter_flight') { label = '飞机 ' + String(flightCount); }
     if (id === 'client_sort_fastest') { label = '最快'; }
     if (id === 'client_filter_available') { label = '有票'; }
     if (id === 'client_show_more') { label = '更多'; }
-    var button = add(controls, 'button', 'travel-control', label || id);
+    if (id === 'travel_change_date') { label = '换日期'; }
+    if (id === 'travel_retry') { label = '重新查询'; }
+    var primary = id === 'travel_show_all' || id === 'travel_filter_train' || id === 'travel_filter_flight';
+    var button = add(primary ? primaryControls : toolControls, 'button', 'travel-control');
     button.type = 'button';
     button.disabled = isBusy;
     button.setAttribute('data-action', id);
+    var controlIconName = controlIcon(id);
+    if (controlIconName.length > 0) { icon(button, controlIconName); }
+    add(button, 'span', 'travel-control-label', label || id);
     button.addEventListener('click', function () {
       if (handleLocalAction(action)) { return; }
       postAction(action);
     });
   });
-  var countBadge = add(controls, 'span', 'travel-control', '0 / 0 条');
-  countBadge.id = 'journey-count';
   var board = add(shell, 'section', 'journey-board');
   var empty = add(board, 'div', 'journey-empty', '当前筛选下暂无匹配出行方案。');
   empty.id = 'journey-empty';
@@ -1045,7 +1597,7 @@ const TRAVEL_HOME_JS: string = `
     var source = sourceKind(block);
     var key = text(block.id) || String(index);
     var selected = text(block.status) === '已选择';
-    var cardClass = index === 0 ? 'journey-card featured' : 'journey-card';
+    var cardClass = index === 0 ? 'journey-card featured' : 'journey-card compact';
     if (selected) { cardClass += ' selected'; }
     if (block.calendarConflict === true) { cardClass += ' calendar-conflict'; }
     var card = add(board, 'article', cardClass);
@@ -1060,28 +1612,39 @@ const TRAVEL_HOME_JS: string = `
     add(title, 'div', 'journey-tag ' + source, sourceLabel(block));
     add(title, 'h2', '', text(block.title) || text(block.kind) || '出行结果');
     if (selected) { add(title, 'div', 'journey-selected', '已选择'); }
-    if (block.calendarConflict === true) {
-      var conflictTitle = text(block.calendarConflictTitle);
-      add(title, 'div', 'journey-conflict', conflictTitle.length > 0 ?
-        '时间冲突 · 与“' + conflictTitle + '”重叠' : '时间冲突 · 与系统日历已有安排重叠');
-    }
     var expand = add(top, 'button', 'journey-expand', '展开');
     expand.type = 'button';
+    icon(expand, 'chevron-down');
     expand.addEventListener('click', function (event) { event.stopPropagation(); setExpanded(key); });
     card.addEventListener('click', function () { setExpanded(key); });
     var mainline = add(card, 'div', 'journey-mainline');
     var left = add(mainline, 'div', 'time-block');
     add(left, 'b', '', displayTime(metric(block, ['depart', 'depTime'])) || '--');
     add(left, 'span', '', metric(block, ['from', 'dep']) || '出发');
-    add(mainline, 'div', 'track');
+    var track = add(mainline, 'div', 'track');
+    add(track, 'small', '', metric(block, ['duration']) || '待确认');
+    icon(track, source === 'flight' ? 'plane' : 'train-front');
+    add(track, 'span', '', source === 'flight' ? '直飞' : '直达');
     var right = add(mainline, 'div', 'time-block');
     add(right, 'b', '', displayTime(metric(block, ['arrive', 'arrTime'])) || '--');
     add(right, 'span', '', metric(block, ['to', 'arr']) || '到达');
+    var tripMeta = add(card, 'div', 'journey-trip-meta');
+    add(tripMeta, 'span', 'journey-code', text(block.title));
+    var availabilityText = metric(block, ['availability', 'status', 'second', 'seats']);
+    if (availabilityText.length > 0) {
+      add(tripMeta, 'span', 'journey-availability', availabilityText);
+    }
     var price = metric(block, ['price']);
     var displayPrice = trainPrice(price);
-    if (source === 'train' && displayPrice.length > 0) {
-      var priceBlock = add(mainline, 'div', 'journey-price');
-      add(priceBlock, 'b', '', displayPrice);
+    if (displayPrice.length > 0) {
+      add(tripMeta, 'strong', 'journey-price', displayPrice);
+    }
+    if (block.calendarConflict === true) {
+      var conflictTitle = text(block.calendarConflictTitle);
+      var conflict = add(card, 'div', 'journey-conflict');
+      icon(conflict, 'calendar-x');
+      add(conflict, 'span', '', conflictTitle.length > 0 ?
+        '时间冲突 · 与“' + conflictTitle + '”重叠' : '时间冲突 · 与系统日历已有安排重叠');
     }
     var metrics = add(card, 'div', 'journey-metrics');
     var summaryMetrics = [
@@ -1094,7 +1657,22 @@ const TRAVEL_HOME_JS: string = `
       }
       add(box, 'b', '', item[1]);
     });
-    addActionButtons(card, list(block.actions).filter(isTravelCalendarAction), true);
+    var expandedGrid = add(card, 'div', 'journey-expanded-grid');
+    var expandedItems = [];
+    list(block.metrics).concat(list(block.rows)).forEach(function (item) {
+      var label = text(item && item.label);
+      var value = text(item && item.value);
+      if (label.length === 0 || value.length === 0 || label === 'source' || label === 'price') { return; }
+      if (expandedItems.length < 3) { expandedItems.push([labelText(label), value]); }
+    });
+    if (expandedItems.length === 0) {
+      expandedItems.push(['来源', sourceLabel(block)]);
+    }
+    expandedItems.forEach(function (item) {
+      var cell = add(expandedGrid, 'span');
+      add(cell, 'small', '', item[0]);
+      add(cell, 'b', '', item[1]);
+    });
     var detail = add(card, 'div', 'journey-detail');
     var grid = add(detail, 'div', 'detail-grid');
     detailRow(grid, '来源', sourceLabel(block));
@@ -1103,10 +1681,11 @@ const TRAVEL_HOME_JS: string = `
       if (source === 'train' && text(item && item.label).toLowerCase() === 'price') { return; }
       detailRow(grid, text(item && item.label), text(item && item.value));
     });
-    addActionButtons(detail, list(block.actions).filter(function (action) {
-      return !isTravelCalendarAction(action);
-    }), false);
+    addActionButtons(card, list(block.actions), false);
   });
+  if (cardBlocks.length > 0) {
+    setExpanded(text(cardBlocks[0].id) || '0');
+  }
   applyView();
 })();
 `;

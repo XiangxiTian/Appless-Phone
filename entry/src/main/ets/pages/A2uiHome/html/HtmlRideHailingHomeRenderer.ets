@@ -576,7 +576,7 @@ button:disabled { cursor: default; opacity: 0.5; }
   font-weight: 820;
 }
 .ride-estimate-price-whole {
-  font-size: 28px;
+  font-size: 32px;
 }
 .ride-estimate-price-decimal {
   margin-left: 1px;
@@ -880,6 +880,250 @@ body.ride-map-fullscreen .ride-map-panel[data-fullscreen="true"] .ride-map-frame
 .ride-action-link {
   transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
 }
+
+/* Ride scene v2: use the shared scene hierarchy from the design reference. */
+body { background: transparent; }
+.ride-shell {
+  width: min(100%, 820px);
+  min-height: 0;
+  padding: 10px 15px 104px;
+  background: transparent;
+}
+.ride-hero {
+  min-height: 0;
+  padding: 11px 3px 0;
+  display: block;
+  background: transparent;
+}
+.ride-hero::after,
+.ride-cover-media::after,
+.ride-cover-image,
+.ride-hero-kicker { display: none; }
+.ride-cover-media {
+  position: relative;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-soft);
+}
+.ride-cover-title {
+  position: static;
+  margin: 0;
+  max-width: calc(100% - 70px);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 520;
+  text-shadow: none;
+}
+.ride-cover-kicker-v2 {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.ride-cover-subtitle {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.ride-stage {
+  top: 0;
+  right: 0;
+  max-width: 68px;
+  border: 1px solid rgba(153,95,76,.16);
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: rgba(255,255,255,.72);
+  color: var(--ride-dark);
+  font-size: 13px;
+  font-weight: 500;
+  backdrop-filter: blur(12px);
+}
+.ride-route-map {
+  margin-top: 16px;
+  border: 1px solid rgba(106,78,60,.12);
+  border-radius: 23px;
+  padding: 15px;
+  background: rgba(255,255,255,.67);
+  box-shadow: 0 10px 28px rgba(91,65,48,.07);
+  backdrop-filter: blur(22px);
+}
+.ride-route-cities { display: block; }
+.ride-route-city {
+  min-height: 0;
+  border-radius: 0;
+  padding: 0 0 0 22px;
+  background: transparent;
+}
+.ride-route-city::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ride);
+  box-shadow: 0 0 0 4px rgba(153,95,76,.1);
+}
+.ride-route-city:last-child::before {
+  background: #476f9f;
+  box-shadow: 0 0 0 4px rgba(71,111,159,.1);
+}
+.ride-route-city b { display: block; font-size: 18px; font-weight: 500; }
+.ride-route-city span {
+  position: static;
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+.ride-route-mid {
+  width: 1px;
+  height: 17px;
+  margin: 2px 0 2px 8px;
+  background: rgba(73,63,56,.18);
+}
+.ride-route-mid::before,
+.ride-route-mid::after { display: none; }
+.ride-route-stats {
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(73,63,56,.08);
+}
+.ride-route-stat {
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(245,240,235,.72);
+}
+.ride-route-stat span { font-size: 12px; }
+.ride-route-stat b { margin-top: 3px; font-size: 15px; font-weight: 500; }
+.ride-board {
+  gap: 10px;
+  margin-top: 17px;
+  padding: 0 0 20px;
+}
+.ride-panel-card {
+  border: 1px solid rgba(73,63,56,.11);
+  border-radius: 21px;
+  padding: 14px;
+  background: rgba(255,255,255,.69);
+  box-shadow: 0 10px 26px rgba(82,59,44,.07);
+  backdrop-filter: blur(22px);
+}
+.ride-panel-card::before,
+.ride-panel-card::after { display: none; }
+.ride-panel-card[data-stage="estimate"] {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.ride-status-strip[data-stage="estimate"] { display: none; }
+.ride-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 3px 9px;
+}
+.ride-section-head small { color: var(--muted); font-size: 12px; }
+.ride-section-head h2 { margin: 3px 0 0; color: var(--ink-soft); font-size: 18px; font-weight: 500; }
+.ride-section-head button { border: 0; background: transparent; color: var(--accent); font-size: 13px; }
+.ride-estimates { gap: 8px; margin-top: 0; }
+.ride-estimate {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 78px;
+  padding: 10px;
+  border: 1px solid rgba(73,63,56,.09);
+  border-radius: 16px;
+  background: rgba(255,255,255,.58);
+}
+.ride-estimate-action[data-selected="true"] {
+  border-color: rgba(153,95,76,.42);
+  background: rgba(255,247,243,.78);
+  box-shadow: none;
+}
+.ride-estimate-source,
+.ride-estimate-art { display: none; }
+.ride-estimate-icon {
+  position: static;
+  grid-row: 1 / 3;
+  align-self: center;
+  justify-self: center;
+  width: 26px;
+  height: 26px;
+  color: var(--accent);
+}
+.ride-estimate-icon svg { width: 26px; height: 26px; }
+.ride-estimate-name { grid-column: 2; margin: 0; font-size: 15px; font-weight: 500; }
+.ride-estimate-price { grid-column: 2; margin: 4px 0 0; color: var(--ink-soft); }
+.ride-estimate-price-currency { font-size: 12px; }
+.ride-estimate-price-whole { font-size: 20px; }
+.ride-estimate-price-decimal { font-size: 12px; }
+.ride-estimate-action[data-selected="true"]::after { width: 16px; height: 16px; right: 7px; bottom: 7px; font-size: 10px; }
+.ride-details { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(73,63,56,.08); }
+.ride-detail { grid-template-columns: 72px minmax(0,1fr); font-size: 15px; }
+.ride-detail span:first-child { font-size: 12px; }
+.ride-actions { gap: 6px; margin-top: 10px; }
+.ride-action-primary,
+.ride-action-secondary,
+.ride-action-danger,
+.ride-action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.ride-panel-card[data-stage="estimate"] .ride-action-primary {
+  width: 100%;
+  min-height: 43px;
+  margin-top: 10px;
+  border-radius: 15px;
+  background: var(--accent);
+  box-shadow: 0 8px 18px rgba(153,95,76,.2);
+  font-size: 12px;
+}
+.ride-action-secondary,
+.ride-action-link { border: 1px solid rgba(153,95,76,.16); background: rgba(255,255,255,.72); color: #795c4a; }
+.ride-action-danger { border: 1px solid rgba(176,74,66,.22); background: rgba(176,74,66,.08); color: var(--red); }
+.ride-action-primary svg,
+.ride-action-secondary svg,
+.ride-action-danger svg,
+.ride-action-link svg { width: 13px; height: 13px; flex: 0 0 13px; }
+.ride-link-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 7px; }
+.ride-action-link { width: 100%; }
+.ride-action-logo { display: none; }
+.ride-action-link svg { width: 13px; height: 13px; }
+.ride-map-frame { border-radius: 16px; }
+.ride-persona { display: none; }
+@media (max-width: 380px) {
+  .ride-shell { padding-left: 15px; padding-right: 15px; }
+  .ride-route-map { padding: 12px; }
+  .ride-estimates { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
 `;
 
 const RIDE_HAILING_HOME_JS: string = `
@@ -902,6 +1146,27 @@ const RIDE_HAILING_HOME_JS: string = `
     if (content !== undefined && content !== null) { node.textContent = text(content); }
     parent.appendChild(node);
     return node;
+  }
+  function rideIcon(parent, kind) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    var d = kind === 'taxi' ? 'M4 16h16v4H4zM5 16l2-6h10l2 6M8 10V7h8v3M7 20v1M17 20v1M7 14h.01M17 14h.01' :
+      (kind === 'luxury' ? 'M12 3l2.6 5.3L20 9l-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5L4 9l5.4-.7z' :
+        (kind === 'premium' ? 'M3 17h18M5 17l2-6h10l2 6M8 11V8h8v3M6 17v3M18 17v3M7 14h.01M17 14h.01' :
+          (kind === 'car' ? 'M3 17h18M5 17l2-6h10l2 6M6 17v3M18 17v3M7 14h.01M17 14h.01' :
+        (kind === 'pin' ? 'M12 21s7-6.1 7-12a7 7 0 1 0-14 0c0 5.9 7 12 7 12zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z' :
+          (kind === 'map' ? 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15' : 'M7 17l10-10M7 7h10v10')))));
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+    parent.appendChild(svg);
+    return svg;
   }
   function rideAssetUrl(file) {
     return 'resource://rawfile/ride/' + text(file);
@@ -1043,6 +1308,10 @@ const RIDE_HAILING_HOME_JS: string = `
     var id = text(action && action.id);
     return id === 'ride.open.didi' || id === 'ride.open.amap' || (text(action && action.kind) === 'client' && id.indexOf('open') >= 0);
   }
+  function isRideRetryAction(action) {
+    var id = text(action && action.id).toLowerCase();
+    return id === 'ride.query.retry';
+  }
   function isRideDangerAction(action) {
     return text(action && action.id) === 'ride.order.cancel' ||
       text(action && action.variant) === 'danger' ||
@@ -1094,11 +1363,11 @@ const RIDE_HAILING_HOME_JS: string = `
     var cities = add(panel, 'div', 'ride-route-cities');
     var from = add(cities, 'div', 'ride-route-city');
     add(from, 'b', '', route.from);
-    add(from, 'span', '', '出发');
+    add(from, 'span', '', '上车点');
     var mid = add(cities, 'div', 'ride-route-mid');
     var to = add(cities, 'div', 'ride-route-city');
     add(to, 'b', '', route.to);
-    add(to, 'span', '', '到达');
+    add(to, 'span', '', '目的地');
     var stats = add(panel, 'div', 'ride-route-stats');
     addRideRouteStat(stats, '状态', rideStageLabel(stage, showDriver));
     addRideRouteStat(stats, '车型', rideVehicleStatText(block, estimates));
@@ -1112,6 +1381,9 @@ const RIDE_HAILING_HOME_JS: string = `
     var logoFile = rideActionLogoFile(action);
     if (logoFile.length > 0) {
       addRideLogo(button, logoFile, 'ride-action-logo');
+    }
+    if (isRideHandoffAction(action)) {
+      rideIcon(button, text(action && action.id) === 'ride.open.amap' ? 'map' : 'external');
     }
     add(button, 'span', '', action.label || action.id);
     button.addEventListener('click', function (event) {
@@ -1128,7 +1400,12 @@ const RIDE_HAILING_HOME_JS: string = `
     selection.syncConfirm = function () {
       button.disabled = isBusy || selection.action === null;
       button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
-      label.textContent = selection.action === null ? '先选择车型' : '确认叫车';
+      if (selection.action === null || selection.item === null) {
+        label.textContent = '先选择车型';
+      } else {
+        label.textContent = '确认叫车 · ' + text(selection.item.name || selection.item.category) +
+          (text(selection.item.price).length > 0 ? ' ' + ridePrice(selection.item.price) : '');
+      }
     };
     selection.syncConfirm();
     button.addEventListener('click', function (event) {
@@ -1139,7 +1416,7 @@ const RIDE_HAILING_HOME_JS: string = `
   }
   function addRideActions(parent, actions, selection) {
     var kept = list(actions).filter(function (action) {
-      return text(action && (action.label || action.id)).length > 0;
+      return text(action && (action.label || action.id)).length > 0 && !isRideRetryAction(action);
     });
     if (kept.length === 0) { return; }
     var confirmActions = rideConfirmActions(kept);
@@ -1176,7 +1453,7 @@ const RIDE_HAILING_HOME_JS: string = `
   }
   function renderRideEstimates(parent, block, estimates) {
     if (estimates.length === 0) { return null; }
-    var selection = { action: null, syncConfirm: null };
+    var selection = { action: null, item: null, syncConfirm: null };
     var buttons = [];
     var grid = add(parent, 'div', 'ride-estimates');
     function setSelectedEstimate(selectedIndex) {
@@ -1186,6 +1463,7 @@ const RIDE_HAILING_HOME_JS: string = `
         button.setAttribute('aria-pressed', selected ? 'true' : 'false');
       });
       selection.action = rideActionForEstimate(block.actions, estimates[selectedIndex]);
+      selection.item = estimates[selectedIndex];
       if (selection.syncConfirm) { selection.syncConfirm(); }
     }
     estimates.forEach(function (item, index) {
@@ -1201,6 +1479,12 @@ const RIDE_HAILING_HOME_JS: string = `
       var vehicle = addRideLogo(estimate, rideVehicleImage(item), 'ride-estimate-art');
       vehicle.alt = text(item.name || item.category || '车型') + '示例图';
       vehicle.removeAttribute('aria-hidden');
+      var itemText = (text(item.category) + ' ' + text(item.name)).toLowerCase();
+      var iconKind = itemText.indexOf('豪华') >= 0 || itemText.indexOf('luxury') >= 0 ? 'luxury' :
+        (itemText.indexOf('专车') >= 0 || itemText.indexOf('premium') >= 0 ? 'premium' :
+          (itemText.indexOf('特惠') >= 0 || itemText.indexOf('discount') >= 0 ? 'taxi' : 'car'));
+      var vehicleIcon = add(estimate, 'span', 'ride-estimate-icon');
+      rideIcon(vehicleIcon, iconKind);
       add(estimate, 'div', 'ride-estimate-name', item.name || item.category || '车型');
       renderRidePrice(estimate, item.price);
       estimate.addEventListener('click', function (event) {
@@ -1210,6 +1494,7 @@ const RIDE_HAILING_HOME_JS: string = `
       });
       buttons.push(estimate);
     });
+    if (estimates.length > 0) { setSelectedEstimate(0); }
     return selection;
   }
   function addRideDetail(parent, label, value) {
@@ -1343,6 +1628,22 @@ const RIDE_HAILING_HOME_JS: string = `
       }
     }
     var estimates = rideEstimates(block);
+    if (stage === 'estimate') {
+      var sectionHead = add(card, 'div', 'ride-section-head');
+      var sectionCopy = add(sectionHead, 'div');
+      add(sectionCopy, 'small', '', '滴滴实时预估');
+      add(sectionCopy, 'h2', '', '选择车型');
+      var retry = list(block.actions).filter(isRideRetryAction)[0];
+      if (retry) {
+        var retryButton = add(sectionHead, 'button', '', retry.label || '重新查询');
+        retryButton.type = 'button';
+        retryButton.disabled = isBusy;
+        retryButton.addEventListener('click', function (event) {
+          event.stopPropagation();
+          if (!isBusy) { postAction(retry); }
+        });
+      }
+    }
     var estimateSelection = renderRideEstimates(card, block, estimates);
     var details = add(card, 'div', 'ride-details');
     addRideDetail(details, '订单号', metricValue(block, ['orderId']));
@@ -1372,7 +1673,11 @@ const RIDE_HAILING_HOME_JS: string = `
   coverImage.alt = '';
   coverImage.setAttribute('aria-hidden', 'true');
   add(cover, 'div', 'ride-hero-kicker', '打车方案 · 实时叫车');
+  add(cover, 'small', 'ride-cover-kicker-v2', '打车方案 · 实时叫车');
   add(cover, 'h1', 'ride-cover-title', block ? (text(block.title) || '打车') : '打车');
+  if (block) {
+    add(cover, 'p', 'ride-cover-subtitle', metricValue(block, ['routeText']) || text(block.subtitle));
+  }
   add(cover, 'div', 'ride-stage', block ? rideStageLabel(metricValue(block, ['stage']), metricValue(block, ['showDriverMarker']) === 'true') : '待处理');
   if (block) { renderRideRouteMap(cover, block); }
   var board = add(shell, 'section', 'ride-board');

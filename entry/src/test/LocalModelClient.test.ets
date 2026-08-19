@@ -47,7 +47,7 @@ export default function localModelClientTest() {
       expect(cloudModelSettingsForPreset('unknown')).assertNull();
       configureLocalModelSettingsFromRawJson('{"DEEPSEEK_API_KEY":"new-key",' +
         '"DEEPSEEK_BASE_URL":"javascript:alert(1)"}');
-      expect(defaultLocalModelSettings().baseUrl).assertEqual('https://39.96.220.235/v1/chat/completions');
+      expect(defaultLocalModelSettings().baseUrl).assertEqual('https://api.jiuwenappless.com/v1/chat/completions');
       configureLocalModelSettingsFromRawJson('{}');
     });
   });

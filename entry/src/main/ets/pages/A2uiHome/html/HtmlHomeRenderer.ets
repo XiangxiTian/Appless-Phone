@@ -971,79 +971,474 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   padding: 10px 11px;
   margin-top: 8px;
 }
-.plain-chat-response {
-  margin-top: 8px;
-  padding: 2px 0 8px 14px;
-  border-left: 2px solid var(--accent);
+.plain-chat {
+  margin-top: 0;
 }
-.plain-chat-response-copy {
-  color: var(--ink);
-  font-size: 17px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-.plain-chat-context {
-  margin-top: 16px;
-  border-top: 1px solid var(--line);
-}
-.plain-chat-context > summary {
-  display: flex;
+.plain-chat-user-message {
+  display: grid;
+  grid-template-columns: 24px minmax(0, auto);
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 0;
-  color: var(--ink-soft);
-  cursor: pointer;
-  list-style: none;
+  gap: 7px;
+  max-width: 84%;
+  margin: 0 0 0 auto;
 }
-.plain-chat-context > summary::-webkit-details-marker { display: none; }
-.plain-chat-context > summary::after {
-  content: '+';
+.plain-chat-user-role {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: rgba(153, 95, 76, 0.1);
   color: var(--accent);
-  font-size: 17px;
-  line-height: 1;
+  font-size: 9px;
 }
-.plain-chat-context[open] > summary::after { content: '-'; }
-.plain-chat-timeline {
-  position: relative;
-  margin-left: 5px;
-  padding: 2px 0 2px 18px;
-  border-left: 1px solid var(--line);
-}
-.plain-chat-turn {
-  position: relative;
-  margin: 0 0 12px;
-  padding: 0 0 2px;
-}
-.plain-chat-turn:last-child { margin-bottom: 0; }
-.plain-chat-turn::before {
-  content: '';
-  position: absolute;
-  left: -23px;
-  top: 4px;
-  width: 7px;
-  height: 7px;
-  border: 2px solid var(--muted);
-  border-radius: 50%;
-  background: var(--paper);
-}
-.plain-chat-role-assistant::before { border-color: var(--accent); }
-.plain-chat-role {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.25;
-}
-.plain-chat-role-assistant .plain-chat-role { color: var(--accent); }
-.plain-chat-turn-copy {
-  margin-top: 3px;
+.plain-chat-user-copy {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 16px 16px 5px 16px;
+  background: var(--accent-soft);
   color: var(--ink-soft);
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
-.plain-chat-hero h1 { font-size: 24px; }
+.plain-chat-response {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+  padding: 17px;
+  border: 1px solid rgba(73, 63, 56, 0.11);
+  border-radius: 21px;
+  background: rgba(255, 255, 255, 0.69);
+  box-shadow: 0 10px 26px rgba(82, 59, 44, 0.07);
+  backdrop-filter: blur(22px);
+}
+.plain-chat-assistant-head {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+.plain-chat-assistant-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(153, 95, 76, 0.1);
+  color: var(--accent);
+  font-family: Georgia, serif;
+  font-size: 17px;
+  font-style: italic;
+}
+.plain-chat-assistant-copy {
+  min-width: 0;
+}
+.plain-chat-assistant-label {
+  color: var(--accent);
+  font-size: 11px;
+}
+.plain-chat-response-copy {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.72;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.plain-chat-context {
+  margin-top: 15px;
+  border-top: 1px solid rgba(73, 63, 56, 0.1);
+}
+.plain-chat-context > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 2px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+}
+.plain-chat-context > summary::-webkit-details-marker { display: none; }
+.plain-chat-context-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.plain-chat-context-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(153, 95, 76, 0.06);
+}
+.plain-chat-context-icon::before {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 7px;
+  border: 1.2px solid var(--accent);
+  border-radius: 3px;
+  transform: translate(-1px, -1px);
+}
+.plain-chat-context-icon::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-right: 1.2px solid var(--accent);
+  border-bottom: 1.2px solid var(--accent);
+  border-radius: 0 0 2px 0;
+  transform: translate(4px, 4px) rotate(8deg);
+}
+.plain-chat-context-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-height: 20px;
+}
+.plain-chat-context-meta .meta {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+}
+.plain-chat-context-chevron {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+.plain-chat-context-chevron::before {
+  content: '+';
+}
+.plain-chat-context[open] .plain-chat-context-chevron {
+  font-size: 0;
+}
+.plain-chat-context[open] .plain-chat-context-chevron::before {
+  content: '-';
+  font-size: 15px;
+}
+.plain-chat-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 2px 10px;
+}
+.plain-chat-turn {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+.plain-chat-role {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: nowrap;
+}
+.plain-chat-role-assistant .plain-chat-role { color: var(--accent); }
+.plain-chat-turn-copy {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.plain-chat-hero {
+  margin-bottom: 4px;
+  padding: 24px 4px 20px;
+  border-bottom: 0;
+}
+.plain-chat-hero h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
 .plain-chat-hero .subtitle {
-  margin-top: 5px;
+  margin: 6px 0 0;
+  color: var(--muted);
   font-size: 12px;
+  line-height: 1.45;
+}
+.thinking-hero {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 4px;
+  padding: 20px 4px 16px;
+  border-bottom: 0;
+}
+.thinking-hero-orbit {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(153, 95, 76, 0.1);
+  color: var(--accent);
+}
+.thinking-hero-orbit::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px dashed rgba(153, 95, 76, 0.38);
+  border-radius: 50%;
+  animation: thinking-orbit-spin 6s linear infinite;
+}
+.thinking-hero-orbit::after {
+  content: '✦';
+  position: relative;
+  z-index: 1;
+  color: var(--accent);
+  font-family: Georgia, serif;
+  font-size: 23px;
+  line-height: 1;
+}
+@keyframes thinking-orbit-spin {
+  to { transform: rotate(360deg); }
+}
+.thinking-hero-copy {
+  min-width: 0;
+}
+.thinking-hero .eyebrow {
+  margin-bottom: 6px;
+}
+.thinking-hero h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 520;
+  letter-spacing: -0.025em;
+}
+.thinking-hero .subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.thinking-scene {
+  margin-top: 0;
+}
+.thinking-request-summary {
+  margin-top: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(73, 63, 56, 0.11);
+  border-radius: 21px;
+  background: rgba(255, 255, 255, 0.69);
+  box-shadow: 0 10px 26px rgba(82, 59, 44, 0.07);
+  backdrop-filter: blur(22px);
+}
+.thinking-request-label {
+  color: var(--accent);
+  font-size: 10px;
+}
+.thinking-request-copy {
+  margin-top: 5px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.thinking-steps {
+  position: relative;
+  display: grid;
+  gap: 0;
+  margin: 17px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.thinking-steps::before {
+  content: '';
+  position: absolute;
+  top: 19px;
+  bottom: 19px;
+  left: 17px;
+  width: 1px;
+  background: rgba(73, 63, 56, 0.13);
+}
+.thinking-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 35px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 65px;
+  padding: 8px 3px;
+}
+.thinking-step-icon {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  background: rgba(240, 234, 228, 0.98);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+}
+.thinking-step-done .thinking-step-icon {
+  background: rgba(57, 122, 85, 0.12);
+  color: #397a55;
+}
+.thinking-step-running .thinking-step-icon {
+  background: rgba(153, 95, 76, 0.13);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(153, 95, 76, 0.06);
+}
+.thinking-step-copy {
+  min-width: 0;
+}
+.thinking-step-copy strong {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+.thinking-step-copy p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.thinking-step-status {
+  align-self: start;
+  padding-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.thinking-step-done .thinking-step-status { color: #397a55; }
+.thinking-step-running .thinking-step-status { color: var(--accent); }
+.thinking-context {
+  margin-top: 15px;
+  border-top: 1px solid rgba(73, 63, 56, 0.1);
+}
+.thinking-context > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 2px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+}
+.thinking-context > summary::-webkit-details-marker { display: none; }
+.thinking-context-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.thinking-context-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(153, 95, 76, 0.06);
+}
+.thinking-context-icon::before {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 7px;
+  border: 1.2px solid var(--accent);
+  border-radius: 3px;
+  transform: translate(-1px, -1px);
+}
+.thinking-context-icon::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-right: 1.2px solid var(--accent);
+  border-bottom: 1.2px solid var(--accent);
+  border-radius: 0 0 2px 0;
+  transform: translate(4px, 4px) rotate(8deg);
+}
+.thinking-context-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-height: 20px;
+}
+.thinking-context-meta .meta {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+}
+.thinking-context-chevron {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+.thinking-context-chevron::before { content: '+'; }
+.thinking-context[open] .thinking-context-chevron {
+  font-size: 0;
+}
+.thinking-context[open] .thinking-context-chevron::before {
+  content: '-';
+  font-size: 15px;
+}
+.thinking-context-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 2px 10px;
+}
+.thinking-context-turn {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+.thinking-context-role {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.thinking-context-turn-assistant .thinking-context-role { color: var(--accent); }
+.thinking-context-copy {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.thinking-empty-step {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 body[data-scene] {
   --scene-accent: #995f4c;
@@ -2891,6 +3286,34 @@ body[data-scene] .block,
 .action:active:not(:disabled) {
   transform: scale(0.98);
 }
+
+/* Keep chat and thinking typography aligned with the shared scene hierarchy. */
+.plain-chat-user-role { font-size: 12px; }
+.plain-chat-user-copy { font-size: 15px; }
+.plain-chat-assistant-label { font-size: 12px; }
+.plain-chat-response-copy { font-size: 15px; }
+.plain-chat-context > summary { font-size: 13px; }
+.plain-chat-context-meta .meta { font-size: 12px; }
+.plain-chat-context-chevron { font-size: 13px; }
+.plain-chat-context[open] .plain-chat-context-chevron::before { font-size: 13px; }
+.plain-chat-role { font-size: 12px; }
+.plain-chat-turn-copy { font-size: 15px; }
+.plain-chat-hero h1 { font-size: 32px; }
+.plain-chat-hero .subtitle { font-size: 15px; }
+.thinking-hero h1 { font-size: 32px; }
+.thinking-hero .subtitle { font-size: 15px; }
+.thinking-request-label { font-size: 12px; }
+.thinking-request-copy { font-size: 15px; }
+.thinking-step-copy strong { font-size: 15px; }
+.thinking-step-copy p { font-size: 12px; }
+.thinking-step-status { font-size: 12px; }
+.thinking-context > summary { font-size: 13px; }
+.thinking-context-meta .meta { font-size: 12px; }
+.thinking-context-chevron { font-size: 13px; }
+.thinking-context[open] .thinking-context-chevron::before { font-size: 13px; }
+.thinking-context-role { font-size: 12px; }
+.thinking-context-copy { font-size: 15px; }
+.thinking-empty-step { font-size: 12px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -2982,6 +3405,9 @@ const HTML_HOME_JS: string = `
   function sceneKey() {
     var kind = text(data.kind);
     return kind.length > 0 ? kind : 'generic';
+  }
+  function isThinkingDocument() {
+    return scene === 'thinking' || (scene === 'generic' && text(data.source) === 'pending');
   }
   function blockKindLabel(value) {
     var kind = text(value);
@@ -3361,6 +3787,17 @@ const HTML_HOME_JS: string = `
     }
     return null;
   }
+  function latestUserBefore(history, assistant) {
+    var assistantIndex = history.indexOf(assistant);
+    var start = assistantIndex >= 0 ? assistantIndex - 1 : history.length - 1;
+    for (var index = start; index >= 0; index -= 1) {
+      var item = history[index];
+      if (text(item && item.role) === 'user' && text(item && item.content).trim().length > 0) {
+        return item;
+      }
+    }
+    return null;
+  }
   function isPlainChatScene(blocks, timeline, history) {
     return scene === 'generic' &&
       text(data.source) === 'model' &&
@@ -3371,9 +3808,19 @@ const HTML_HOME_JS: string = `
   function addPlainChat(parent, history) {
     var assistant = latestAssistant(history);
     if (!assistant) { return; }
+    var currentUser = latestUserBefore(history, assistant);
     var section = add(parent, 'section', 'section plain-chat');
+    if (currentUser) {
+      var userMessage = add(section, 'article', 'plain-chat-user-message');
+      add(userMessage, 'span', 'plain-chat-user-role', '你');
+      add(userMessage, 'p', 'plain-chat-user-copy', text(currentUser.content));
+    }
     var response = add(section, 'article', 'plain-chat-response');
-    add(response, 'p', 'plain-chat-response-copy', text(assistant.content));
+    add(response, 'div', 'plain-chat-assistant-mark', 'A');
+    var assistantCopy = add(response, 'div', 'plain-chat-assistant-copy');
+    add(assistantCopy, 'div', 'plain-chat-assistant-head');
+    add(assistantCopy.querySelector('.plain-chat-assistant-head'), 'span', 'plain-chat-assistant-label', 'Appless');
+    add(assistantCopy, 'p', 'plain-chat-response-copy', text(assistant.content));
     var contextItems = [];
     history.forEach(function (item) {
       if (item !== assistant) { contextItems.push(item); }
@@ -3381,8 +3828,12 @@ const HTML_HOME_JS: string = `
     if (contextItems.length === 0) { return; }
     var disclosure = add(section, 'details', 'plain-chat-context');
     var summary = add(disclosure, 'summary');
-    add(summary, 'span', '', '上下文');
-    add(summary, 'span', 'meta', String(contextItems.length) + ' 条');
+    var summaryLabel = add(summary, 'span', 'plain-chat-context-label');
+    add(summaryLabel, 'span', 'plain-chat-context-icon');
+    add(summaryLabel, 'span', '', '上下文');
+    var summaryMeta = add(summary, 'span', 'plain-chat-context-meta');
+    add(summaryMeta, 'span', 'meta', String(contextItems.length) + ' 条');
+    add(summaryMeta, 'span', 'plain-chat-context-chevron');
     var timelineWrap = add(disclosure, 'div', 'plain-chat-timeline');
     contextItems.forEach(function (item) {
       var role = text(item && item.role) === 'assistant' ? 'assistant' : 'user';
@@ -3392,12 +3843,110 @@ const HTML_HOME_JS: string = `
       add(turn, 'p', 'plain-chat-turn-copy', text(item && item.content));
     });
   }
+  function thinkingRequest(timeline, history) {
+    for (var index = 0; index < timeline.length; index += 1) {
+      var item = timeline[index];
+      if (text(item && item.title).toLowerCase() === 'prompt' && text(item && item.subtitle).trim().length > 0) {
+        return text(item.subtitle);
+      }
+    }
+    for (var historyIndex = history.length - 1; historyIndex >= 0; historyIndex -= 1) {
+      var historyItem = history[historyIndex];
+      if (text(historyItem && historyItem.role) === 'user' && text(historyItem && historyItem.content).trim().length > 0) {
+        return text(historyItem.content);
+      }
+    }
+    return text(data.subtitle).trim() || '已收到请求，正在整理执行步骤。';
+  }
+  function thinkingTitle() {
+    var title = text(data.title).trim();
+    if (title.length === 0 || title.toLowerCase() === 'generating' ||
+      (text(data.source) === 'pending' && (scene === 'generic' || title === 'Appless'))) {
+      return '正在整理结果';
+    }
+    return title;
+  }
+  function thinkingStepState(value) {
+    var key = text(value).toLowerCase().replace(/[ -]+/g, '_');
+    if (key === 'ready' || key === 'success' || key === 'done' || key === 'completed' || key === 'complete') {
+      return 'done';
+    }
+    if (key === 'pending' || key === 'thinking' || key === 'running' || key === 'in_progress' || key === 'executing') {
+      return 'running';
+    }
+    return 'waiting';
+  }
+  function thinkingStepLabel(value) {
+    var state = thinkingStepState(value);
+    if (state === 'done') { return '完成'; }
+    if (state === 'running') { return '进行中'; }
+    var raw = text(value).toLowerCase();
+    if (raw === 'waiting' || raw === 'queued' || raw === 'pending') { return '等待'; }
+    return text(value).trim().length > 0 ? statusLabel(value) : '等待';
+  }
+  function addThinkingHero(parent) {
+    var hero = add(parent, 'header', 'hero thinking-hero');
+    add(hero, 'div', 'thinking-hero-orbit');
+    var copy = add(hero, 'div', 'thinking-hero-copy');
+    var status = isBusy || text(data.source) === 'pending' ? '执行中' : (statusLabel(data.source) || '执行中');
+    add(copy, 'div', 'eyebrow', status);
+    add(copy, 'h1', '', thinkingTitle());
+    add(copy, 'p', 'subtitle', thinkingRequest(list(data.timeline), list(data.history)));
+  }
+  function addThinkingScene(parent, timeline, history) {
+    var section = add(parent, 'section', 'section thinking-scene');
+    var request = add(section, 'article', 'thinking-request-summary');
+    add(request, 'div', 'thinking-request-label', '用户请求');
+    add(request, 'p', 'thinking-request-copy', thinkingRequest(timeline, history));
+    var steps = [];
+    timeline.forEach(function (item) {
+      if (text(item && item.title).toLowerCase() !== 'prompt') {
+        steps.push(item);
+      }
+    });
+    var stepList = add(section, 'ol', 'thinking-steps');
+    if (steps.length === 0) {
+      var waitingStep = add(stepList, 'li', 'thinking-step thinking-step-waiting');
+      add(waitingStep, 'span', 'thinking-step-icon', '·');
+      var waitingCopy = add(waitingStep, 'div', 'thinking-step-copy');
+      add(waitingCopy, 'strong', '', '准备执行');
+      add(waitingCopy, 'p', '', '已收到请求，等待执行状态更新');
+      add(waitingStep, 'small', 'thinking-step-status', '等待');
+    } else {
+      steps.forEach(function (item) {
+        var state = thinkingStepState(item && item.status);
+        var step = add(stepList, 'li', 'thinking-step thinking-step-' + state);
+        add(step, 'span', 'thinking-step-icon', state === 'done' ? '✓' : (state === 'running' ? '•' : '·'));
+        var stepCopy = add(step, 'div', 'thinking-step-copy');
+        add(stepCopy, 'strong', '', text(item && item.title) || '执行步骤');
+        add(stepCopy, 'p', '', text(item && item.subtitle));
+        add(step, 'small', 'thinking-step-status', thinkingStepLabel(item && item.status));
+      });
+    }
+    if (history.length === 0) { return; }
+    var disclosure = add(section, 'details', 'thinking-context');
+    var summary = add(disclosure, 'summary');
+    var summaryLabel = add(summary, 'span', 'thinking-context-label');
+    add(summaryLabel, 'span', 'thinking-context-icon');
+    add(summaryLabel, 'span', '', '本次上下文');
+    var summaryMeta = add(summary, 'span', 'thinking-context-meta');
+    add(summaryMeta, 'span', 'meta', String(history.length) + ' 条');
+    add(summaryMeta, 'span', 'thinking-context-chevron');
+    var contextList = add(disclosure, 'div', 'thinking-context-list');
+    history.forEach(function (item) {
+      var role = text(item && item.role) === 'assistant' ? 'assistant' : 'user';
+      var turn = add(contextList, 'article', 'thinking-context-turn thinking-context-turn-' + role);
+      add(turn, 'div', 'thinking-context-role', role === 'assistant' ? 'Appless' : '你');
+      add(turn, 'p', 'thinking-context-copy', text(item && item.content));
+    });
+  }
   function addLegacyHero(parent) {
     var plainChat = isPlainChatScene(list(data.blocks), list(data.timeline), list(data.history));
     var hero = add(parent, 'header', plainChat ? 'hero plain-chat-hero' : 'hero');
     if (plainChat) {
+      add(hero, 'div', 'eyebrow', '基础对话');
       add(hero, 'h1', '', '和 Appless 聊聊');
-      add(hero, 'p', 'subtitle', '普通对话会直接显示在这里。');
+      add(hero, 'p', 'subtitle', '回答优先，历史内容按需展开');
       return;
     }
     var eyebrow = text(data.kind) === 'welcome' ? '' : kindLabel(data.kind);
@@ -3471,6 +4020,7 @@ const HTML_HOME_JS: string = `
     });
   }
   function renderSceneHero(parent) {
+    if (isThinkingDocument()) { addThinkingHero(parent); return; }
     if (!isEnhancedScene()) { addLegacyHero(parent); return; }
     if (scene === 'gmail') { addGmailHero(parent); return; }
     addLegacyHero(parent);
@@ -5333,7 +5883,10 @@ const HTML_HOME_JS: string = `
   var timeline = list(data.timeline);
   var history = list(data.history);
   var plainChat = isPlainChatScene(blocks, timeline, history);
-  if (plainChat) {
+  var thinkingScene = isThinkingDocument() && blocks.length === 0;
+  if (thinkingScene) {
+    addThinkingScene(shell, timeline, history);
+  } else if (plainChat) {
     addPlainChat(shell, history);
   } else if (blocks.length > 0) {
     var sectionClass = isEnhancedScene() ? 'section blocks-' + scene : 'section';
@@ -5481,7 +6034,7 @@ const HTML_HOME_JS: string = `
   } else {
     add(shell, 'section', 'empty', emptyCopy());
   }
-  if (scene !== 'luckin' && timeline.length > 0 && (blocks.length === 0 || isBusy)) {
+  if (!thinkingScene && !plainChat && scene !== 'luckin' && timeline.length > 0 && (blocks.length === 0 || isBusy)) {
     var timelineSection = add(shell, 'section', 'section');
     var timelineHead = add(timelineSection, 'div', 'section-head');
     add(timelineHead, 'h2', '', '执行轨迹');
@@ -5493,7 +6046,7 @@ const HTML_HOME_JS: string = `
       add(node, 'div', 'meta', statusLabel(item.status));
     });
   }
-  if (scene !== 'luckin' && history.length > 0 && !plainChat) {
+  if (!thinkingScene && scene !== 'luckin' && history.length > 0 && !plainChat) {
     var historySection = add(shell, 'section', 'section');
     var historyHead = add(historySection, 'div', 'section-head');
     add(historyHead, 'h2', '', '上下文');

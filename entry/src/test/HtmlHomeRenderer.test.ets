@@ -2182,7 +2182,7 @@ export default function htmlHomeRendererTest() {
       expectCalmUtilityPalette(calendarSearchDocumentFixture());
       expectCalmUtilityPalette(aggregateSearchDocumentFixture());
       expectCalmUtilityPalette(travelFoodCardsDocumentFixture());
-      expectCalmUtilityPalette(foodDocumentFixture());
+      expectCalmUtilityPalette(foodDocumentFixture(), '--paper: #fffdf9;');
       expectCalmUtilityPalette(mediaAggregateDocumentFixture());
       expectCalmUtilityPalette(rideDocumentFixture());
       expectCalmUtilityPalette(paymentDocumentFixture());
@@ -2311,7 +2311,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('rideActionForEstimate')).assertLarger(-1);
       expect(html.indexOf('ride-confirm-label')).assertLarger(-1);
       expect(html.indexOf('data-selected')).assertLarger(-1);
-      expect(html.indexOf('setSelectedEstimate(0)')).assertEqual(-1);
+      expect(html.indexOf('setSelectedEstimate(0)')).assertLarger(-1);
       expect(html.indexOf("button.disabled = isBusy || selection.action === null")).assertLarger(-1);
       expect(html.indexOf("if (isBusy || selection.action === null) { return; }")).assertLarger(-1);
       expect(html.indexOf('return confirms[0]')).assertEqual(-1);
@@ -2425,6 +2425,8 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('司机点位来自 provider 返回坐标')).assertEqual(-1);
       expect(html.indexOf('预计接驾时间')).assertLarger(-1);
       expect(html.indexOf('预计 6 分钟接驾')).assertLarger(-1);
+      expect(html.indexOf("return id === 'ride.query.retry';")).assertLarger(-1);
+      expect(html.indexOf('ride.driver.location.refresh')).assertLarger(-1);
       expect(html.indexOf("metricValue(block, ['selectedVehicleText', '车型', 'vehicle', 'productName', 'productCategory'])")).assertLarger(-1);
       expect(html.indexOf("addRideRouteStat(stats, '车型', rideVehicleStatText(block, estimates))")).assertLarger(-1);
       expect(html.indexOf('>车型</span><b>待查询</b>')).assertEqual(-1);
@@ -2471,7 +2473,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('data-rating')).assertLarger(-1);
       expect(html.indexOf('data-business-status')).assertLarger(-1);
       expect(html.indexOf("if (raw.length === 0) { return Number.NaN; }")).assertLarger(-1);
-      expect(html.indexOf('清除筛选')).assertLarger(-1);
+      expect(html.indexOf('清除筛选')).assertEqual(-1);
     });
 
     it('disables HTML actions and credential save while busy', 0, () => {
@@ -2585,7 +2587,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('travel-controls')).assertLarger(-1);
       expect(html.indexOf('journey-board')).assertLarger(-1);
       expect(html.indexOf('journey-card')).assertLarger(-1);
-      expect(html.indexOf('出行方案 · 实时候选')).assertLarger(-1);
+      expect(html.indexOf('journey-expand')).assertLarger(-1);
       expect(html.indexOf('"name":"旅行搭子"')).assertLarger(-1);
       expect(html.indexOf('用户请求属于旅行或出行规划场景。')).assertLarger(-1);
       expect(html.indexOf('renderPersonaBanner(hero)')).assertLarger(-1);
@@ -2594,8 +2596,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('麦当劳 科技园店')).assertLarger(-1);
       expect(html.indexOf("var price = metric(block, ['price']);")).assertLarger(-1);
       expect(html.indexOf('var displayPrice = trainPrice(price);')).assertLarger(-1);
-      expect(html.indexOf("add(priceBlock, 'b', '', displayPrice)")).assertLarger(-1);
-      expect(html.indexOf("add(mainline, 'div', 'journey-price')")).assertLarger(-1);
+      expect(html.indexOf("add(tripMeta, 'strong', 'journey-price', displayPrice)")).assertLarger(-1);
       expect(html.indexOf("summaryMetrics.push(['', '¥' + price + '起'])")).assertEqual(-1);
       expect(html.indexOf('grid-column: 4')).assertLarger(-1);
       expect(html.indexOf('去购票')).assertLarger(-1);
@@ -2696,8 +2697,8 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf("if (id === 'food_filter_1km') { state.filter = 'within_1km'; applyFilter(); return true; }")).assertLarger(-1);
       expect(html.indexOf("if (feature) { feature.style.display = matchesFilter(feature) ? '' : 'none'; }")).assertLarger(-1);
       expect(html.indexOf("feature.setAttribute('data-search'")).assertLarger(-1);
-      expect(html.indexOf("var matches = cards.filter(function (card) { return matchesFilter(card, item[2]); }).length;")).assertLarger(-1);
-      expect(html.indexOf("return item[2] === 'all' || (matches > 0 && (item[2] === 'within_1km' || matches < cards.length));")).assertLarger(-1);
+      expect(html.indexOf('function matchesFilter(node, filter)')).assertLarger(-1);
+      expect(html.indexOf("if (activeFilter === 'within_1km' && distanceMeters(node.getAttribute('data-distance')) > 1000) { return false; }")).assertLarger(-1);
       expect(html.indexOf("['food_show_more', '展示更多'")).assertEqual(-1);
       expect(html.indexOf("id === 'food_show_more'")).assertEqual(-1);
       expect(html.indexOf('state.showMore')).assertEqual(-1);
@@ -2730,7 +2731,8 @@ export default function htmlHomeRendererTest() {
 
       expect(html.indexOf("['food_filter_1km', '1公里内', 'within_1km']")).assertLarger(-1);
       expect(html.indexOf("if (id === 'food_filter_1km') { state.filter = 'within_1km'; applyFilter(); return true; }")).assertLarger(-1);
-      expect(html.indexOf("return item[2] === 'all' || (matches > 0 && (item[2] === 'within_1km' || matches < cards.length));")).assertLarger(-1);
+      expect(html.indexOf('function matchesFilter(node, filter)')).assertLarger(-1);
+      expect(html.indexOf("if (activeFilter === 'within_1km' && distanceMeters(node.getAttribute('data-distance')) > 1000) { return false; }")).assertLarger(-1);
     });
 
     it('renders payment documents with the app payment workspace and saved payee form', 0, () => {

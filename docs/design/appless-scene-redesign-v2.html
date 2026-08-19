@@ -1,0 +1,1518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Appless Scene Redesign V2</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Appless Scene Redesign V2" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Appless Scene Redesign V2&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: var(--border-radius-lg, 12.5px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;appless-scene-redesign-v2&quot;&gt;
+  &lt;nav class=&quot;appless-v2-preview-nav&quot; aria-label=&quot;切换场景设计&quot; role=&quot;tablist&quot;&gt;
+    &lt;button type=&quot;button&quot; role=&quot;tab&quot; aria-selected=&quot;true&quot; data-v2-target=&quot;travel&quot;&gt;&lt;i data-lucide=&quot;train-front&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;出行&lt;/button&gt;
+    &lt;button type=&quot;button&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-v2-target=&quot;ride&quot;&gt;&lt;i data-lucide=&quot;car-front&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;打车&lt;/button&gt;
+    &lt;button type=&quot;button&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-v2-target=&quot;food&quot;&gt;&lt;i data-lucide=&quot;utensils&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;点餐&lt;/button&gt;
+    &lt;button type=&quot;button&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-v2-target=&quot;chat&quot;&gt;&lt;i data-lucide=&quot;message-circle&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;基础对话&lt;/button&gt;
+    &lt;button type=&quot;button&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-v2-target=&quot;thinking&quot;&gt;&lt;i data-lucide=&quot;sparkles&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;思考过程&lt;/button&gt;
+  &lt;/nav&gt;
+
+  &lt;section class=&quot;appless-v2-device&quot; aria-label=&quot;Appless 场景内容区重新设计&quot;&gt;
+    &lt;div class=&quot;appless-v2-backdrop&quot; aria-hidden=&quot;true&quot;&gt;&lt;/div&gt;
+    &lt;header class=&quot;appless-v2-locked-header&quot; aria-label=&quot;保持不变的主页面顶部区域&quot;&gt;
+      &lt;div class=&quot;appless-v2-logo&quot;&gt;A&lt;span&gt;&lt;/span&gt;&lt;/div&gt;
+      &lt;span class=&quot;appless-v2-ai&quot;&gt;AI生成&lt;/span&gt;
+      &lt;div class=&quot;appless-v2-header-actions&quot;&gt;
+        &lt;button type=&quot;button&quot; aria-label=&quot;心上事&quot;&gt;&lt;i data-lucide=&quot;heart&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;b&gt;3&lt;/b&gt;&lt;/button&gt;
+        &lt;button type=&quot;button&quot; aria-label=&quot;历史&quot;&gt;&lt;i data-lucide=&quot;history&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+        &lt;button type=&quot;button&quot; aria-label=&quot;重置&quot;&gt;&lt;i data-lucide=&quot;undo-2&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+        &lt;button type=&quot;button&quot; aria-label=&quot;画像&quot;&gt;&lt;i data-lucide=&quot;user-round&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+        &lt;button type=&quot;button&quot; aria-label=&quot;设置&quot;&gt;&lt;i data-lucide=&quot;settings&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+      &lt;/div&gt;
+    &lt;/header&gt;
+
+    &lt;main class=&quot;appless-v2-content&quot;&gt;
+      &lt;section class=&quot;appless-v2-scene is-active&quot; data-v2-scene=&quot;travel&quot;&gt;
+        &lt;div class=&quot;appless-v2-scene-title&quot;&gt;
+          &lt;div&gt;&lt;small&gt;8月28日 · 周五&lt;/small&gt;&lt;h1&gt;深圳 → 上海&lt;/h1&gt;&lt;p&gt;31 个方案 · 最快 2小时0分&lt;/p&gt;&lt;/div&gt;
+          &lt;button type=&quot;button&quot; class=&quot;appless-v2-icon-action&quot; aria-label=&quot;换日期&quot;&gt;&lt;i data-lucide=&quot;calendar-days&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+        &lt;/div&gt;
+
+        &lt;section class=&quot;appless-v2-route-summary&quot;&gt;
+          &lt;div&gt;&lt;small&gt;出发&lt;/small&gt;&lt;strong&gt;深圳宝安&lt;/strong&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-route-arrow&quot;&gt;&lt;i data-lucide=&quot;plane&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;&lt;/span&gt;&lt;/div&gt;
+          &lt;div&gt;&lt;small&gt;到达&lt;/small&gt;&lt;strong&gt;上海虹桥&lt;/strong&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-route-metrics&quot;&gt;&lt;span&gt;&lt;small&gt;高铁 / 航班&lt;/small&gt;&lt;b&gt;23 / 8&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;small&gt;当前显示&lt;/small&gt;&lt;b&gt;14 / 31&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;small&gt;日历冲突&lt;/small&gt;&lt;b&gt;1 个&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;
+        &lt;/section&gt;
+
+        &lt;div class=&quot;appless-v2-primary-tabs&quot; role=&quot;group&quot; aria-label=&quot;出行类型&quot;&gt;
+          &lt;button type=&quot;button&quot; class=&quot;active&quot;&gt;全部&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;高铁 23&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;飞机 8&lt;/button&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;appless-v2-tool-row&quot; aria-label=&quot;出行筛选功能&quot;&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;zap&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;最快&lt;/button&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;ticket-check&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;有票&lt;/button&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;list-filter&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;更多&lt;/button&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;calendar-sync&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;换日期&lt;/button&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;refresh-cw&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;重新查询&lt;/button&gt;
+        &lt;/div&gt;
+
+        &lt;article class=&quot;appless-v2-travel-card&quot;&gt;
+          &lt;div class=&quot;appless-v2-card-head&quot;&gt;
+            &lt;span class=&quot;appless-v2-provider flight&quot;&gt;&lt;i data-lucide=&quot;plane&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;飞机 · 飞常准&lt;/span&gt;
+            &lt;button type=&quot;button&quot; class=&quot;appless-v2-expand&quot; aria-expanded=&quot;true&quot;&gt;收起 &lt;i data-lucide=&quot;chevron-up&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;appless-v2-trip-main&quot;&gt;
+            &lt;div&gt;&lt;strong&gt;05:55&lt;/strong&gt;&lt;span&gt;深圳宝安 T3&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;appless-v2-trip-line&quot;&gt;&lt;small&gt;2小时0分&lt;/small&gt;&lt;span&gt;&lt;/span&gt;&lt;i data-lucide=&quot;plane&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;small&gt;直飞&lt;/small&gt;&lt;/div&gt;
+            &lt;div&gt;&lt;strong&gt;07:55&lt;/strong&gt;&lt;span&gt;上海虹桥 T2&lt;/span&gt;&lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;appless-v2-trip-meta&quot;&gt;&lt;span&gt;9C7556&lt;/span&gt;&lt;span&gt;春秋航空&lt;/span&gt;&lt;strong&gt;¥640 起&lt;/strong&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-conflict&quot;&gt;&lt;i data-lucide=&quot;calendar-x&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;&lt;b&gt;时间冲突&lt;/b&gt; · 与“晨会”重叠 25 分钟&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-expanded-grid&quot;&gt;&lt;span&gt;&lt;small&gt;准点率&lt;/small&gt;&lt;b&gt;89%&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;small&gt;行李额&lt;/small&gt;&lt;b&gt;20kg&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;small&gt;来源&lt;/small&gt;&lt;b&gt;飞常准&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-card-actions&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;primary&quot;&gt;去携程订票&lt;/button&gt;
+            &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;calendar-plus&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;加入日历&lt;/button&gt;
+            &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;pin&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;固定到桌面&lt;/button&gt;
+          &lt;/div&gt;
+        &lt;/article&gt;
+        &lt;article class=&quot;appless-v2-travel-card compact&quot;&gt;
+          &lt;div class=&quot;appless-v2-card-head&quot;&gt;&lt;span class=&quot;appless-v2-provider train&quot;&gt;&lt;i data-lucide=&quot;train-front&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;高铁 · 12306&lt;/span&gt;&lt;button type=&quot;button&quot; class=&quot;appless-v2-expand&quot;&gt;展开 &lt;i data-lucide=&quot;chevron-down&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-trip-main&quot;&gt;&lt;div&gt;&lt;strong&gt;07:12&lt;/strong&gt;&lt;span&gt;深圳北&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;appless-v2-trip-line&quot;&gt;&lt;small&gt;7小时48分&lt;/small&gt;&lt;span&gt;&lt;/span&gt;&lt;i data-lucide=&quot;train-front&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;small&gt;直达&lt;/small&gt;&lt;/div&gt;&lt;div&gt;&lt;strong&gt;15:00&lt;/strong&gt;&lt;span&gt;上海虹桥&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-trip-meta&quot;&gt;&lt;span&gt;G100&lt;/span&gt;&lt;span&gt;二等座有票&lt;/span&gt;&lt;strong&gt;¥623&lt;/strong&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-card-actions compact-actions&quot;&gt;&lt;button type=&quot;button&quot; class=&quot;primary&quot;&gt;去购票&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;支付宝购票&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;加入日历&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;固定到桌面&lt;/button&gt;&lt;/div&gt;
+        &lt;/article&gt;
+      &lt;/section&gt;
+
+      &lt;section class=&quot;appless-v2-scene&quot; data-v2-scene=&quot;ride&quot; hidden&gt;
+        &lt;div class=&quot;appless-v2-scene-title&quot;&gt;
+          &lt;div&gt;&lt;small&gt;打车方案 · 实时叫车&lt;/small&gt;&lt;h1&gt;去陆家嘴中心&lt;/h1&gt;&lt;p&gt;徐汇滨江 → 陆家嘴中心&lt;/p&gt;&lt;/div&gt;
+          &lt;span class=&quot;appless-v2-live&quot;&gt;待确认&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;section class=&quot;appless-v2-ride-route&quot;&gt;
+          &lt;div class=&quot;appless-v2-ride-point&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;div&gt;&lt;small&gt;上车点&lt;/small&gt;&lt;strong&gt;徐汇滨江&lt;/strong&gt;&lt;p&gt;龙腾大道 2600 号&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-ride-path&quot;&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-ride-point destination&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;div&gt;&lt;small&gt;目的地&lt;/small&gt;&lt;strong&gt;陆家嘴中心&lt;/strong&gt;&lt;p&gt;浦东南路 899 号&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-route-metrics ride&quot;&gt;&lt;span&gt;&lt;small&gt;状态&lt;/small&gt;&lt;b&gt;待确认&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;small&gt;车型&lt;/small&gt;&lt;b&gt;4 种&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;small&gt;接驾&lt;/small&gt;&lt;b&gt;约 3 分钟&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;
+        &lt;/section&gt;
+        &lt;div class=&quot;appless-v2-section-head&quot;&gt;&lt;div&gt;&lt;small&gt;滴滴实时预估&lt;/small&gt;&lt;h2&gt;选择车型&lt;/h2&gt;&lt;/div&gt;&lt;button type=&quot;button&quot;&gt;重新查询&lt;/button&gt;&lt;/div&gt;
+        &lt;div class=&quot;appless-v2-vehicle-grid&quot;&gt;
+          &lt;button type=&quot;button&quot; class=&quot;selected&quot;&gt;&lt;i data-lucide=&quot;car-taxi-front&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;strong&gt;特惠快车&lt;/strong&gt;&lt;span&gt;约 3 分钟&lt;/span&gt;&lt;b&gt;¥36.00&lt;/b&gt;&lt;/button&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;car-front&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;strong&gt;快车&lt;/strong&gt;&lt;span&gt;约 4 分钟&lt;/span&gt;&lt;b&gt;¥42.00&lt;/b&gt;&lt;/button&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;car&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;strong&gt;专车&lt;/strong&gt;&lt;span&gt;约 6 分钟&lt;/span&gt;&lt;b&gt;¥68.00&lt;/b&gt;&lt;/button&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;gem&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;strong&gt;豪华车&lt;/strong&gt;&lt;span&gt;约 8 分钟&lt;/span&gt;&lt;b&gt;¥108.00&lt;/b&gt;&lt;/button&gt;
+        &lt;/div&gt;
+        &lt;button type=&quot;button&quot; class=&quot;appless-v2-full-action&quot;&gt;确认叫车 · 特惠快车 ¥36.00&lt;/button&gt;
+        &lt;div class=&quot;appless-v2-handoff&quot;&gt;&lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;external-link&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;打开滴滴&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;map&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;打开高德&lt;/button&gt;&lt;/div&gt;
+        &lt;section class=&quot;appless-v2-ride-followup&quot;&gt;
+          &lt;div&gt;&lt;span&gt;&lt;i data-lucide=&quot;map-pinned&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;div&gt;&lt;small&gt;下单后的订单卡片&lt;/small&gt;&lt;strong&gt;地图、司机位置与接驾时间继续在原位更新&lt;/strong&gt;&lt;/div&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-card-actions compact-actions&quot;&gt;&lt;button type=&quot;button&quot;&gt;全屏地图&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;刷新司机位置&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;换车型&lt;/button&gt;&lt;button type=&quot;button&quot; class=&quot;danger&quot;&gt;取消订单&lt;/button&gt;&lt;/div&gt;
+        &lt;/section&gt;
+      &lt;/section&gt;
+
+      &lt;section class=&quot;appless-v2-scene&quot; data-v2-scene=&quot;food&quot; hidden&gt;
+        &lt;div class=&quot;appless-v2-scene-title food-title&quot;&gt;
+          &lt;div&gt;&lt;small&gt;附近餐饮 · 11 条结果&lt;/small&gt;&lt;h1&gt;今天附近值得吃&lt;/h1&gt;&lt;p&gt;6 家可导航 · 来源结果已合并&lt;/p&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;section class=&quot;appless-v2-location-bar&quot;&gt;
+          &lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;map-pin&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;&lt;small&gt;当前搜索位置&lt;/small&gt;&lt;strong&gt;深圳坂田华为基地&lt;/strong&gt;&lt;/span&gt;&lt;i data-lucide=&quot;chevron-right&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+          &lt;button type=&quot;button&quot; aria-label=&quot;地图选点&quot;&gt;&lt;i data-lucide=&quot;map&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+        &lt;/section&gt;
+        &lt;div class=&quot;appless-v2-food-tabs&quot;&gt;&lt;button type=&quot;button&quot; class=&quot;active&quot;&gt;全部&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;精选&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;1公里内&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;来源&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;咖啡&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;深夜&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;聚餐&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;轻食&lt;/button&gt;&lt;/div&gt;
+        &lt;div class=&quot;appless-v2-food-filters&quot;&gt;&lt;button type=&quot;button&quot;&gt;价格 &lt;i data-lucide=&quot;chevron-down&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;评分 &lt;i data-lucide=&quot;chevron-down&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;营业 &lt;i data-lucide=&quot;chevron-down&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;排序 &lt;i data-lucide=&quot;chevron-down&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;清除筛选&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;换关键词&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;展示更多&lt;/button&gt;&lt;/div&gt;
+        &lt;article class=&quot;appless-v2-food-card featured&quot;&gt;
+          &lt;div class=&quot;appless-v2-food-photo&quot;&gt;&lt;span&gt;今日编辑&lt;/span&gt;&lt;i data-lucide=&quot;coffee&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/div&gt;
+          &lt;div class=&quot;appless-v2-food-copy&quot;&gt;
+            &lt;div class=&quot;appless-v2-card-head&quot;&gt;&lt;div&gt;&lt;small&gt;高德 · 腾讯地图&lt;/small&gt;&lt;h2&gt;山岚咖啡 · 坂田店&lt;/h2&gt;&lt;/div&gt;&lt;button type=&quot;button&quot; class=&quot;appless-v2-expand&quot; aria-expanded=&quot;true&quot;&gt;收起 &lt;i data-lucide=&quot;chevron-up&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;/div&gt;
+            &lt;p&gt;咖啡 · 0.6km · 评分 4.8 · 人均 ¥32 · 营业中&lt;/p&gt;
+            &lt;div class=&quot;appless-v2-food-detail&quot;&gt;&lt;span&gt;&lt;small&gt;地址&lt;/small&gt;&lt;b&gt;坂田街道稼先路 8 号&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;small&gt;今日营业&lt;/small&gt;&lt;b&gt;08:00–22:00&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;small&gt;电话&lt;/small&gt;&lt;b&gt;0755-8888 6622&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;appless-v2-card-actions food-actions&quot;&gt;&lt;button type=&quot;button&quot; class=&quot;primary&quot;&gt;&lt;i data-lucide=&quot;navigation&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;导航去&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;phone&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;拨打电话&lt;/button&gt;&lt;button type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;pin&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;固定到桌面&lt;/button&gt;&lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/article&gt;
+        &lt;article class=&quot;appless-v2-food-list-card&quot;&gt;&lt;span&gt;&lt;i data-lucide=&quot;salad&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;div&gt;&lt;strong&gt;野树轻食&lt;/strong&gt;&lt;p&gt;轻食 · 0.7km · 4.7 · 人均 ¥46&lt;/p&gt;&lt;small&gt;美团 · 高德地图&lt;/small&gt;&lt;/div&gt;&lt;button type=&quot;button&quot;&gt;展开&lt;/button&gt;&lt;/article&gt;
+        &lt;section class=&quot;appless-v2-address-functions&quot;&gt;&lt;i data-lucide=&quot;map-pin-house&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;div&gt;&lt;strong&gt;位置与地址簿功能保持&lt;/strong&gt;&lt;p&gt;地址搜索、地图选点、重新定位、保存地址、使用常用地址、删除地址&lt;/p&gt;&lt;/div&gt;&lt;button type=&quot;button&quot;&gt;换位置&lt;/button&gt;&lt;/section&gt;
+      &lt;/section&gt;
+
+      &lt;section class=&quot;appless-v2-scene&quot; data-v2-scene=&quot;chat&quot; hidden&gt;
+        &lt;div class=&quot;appless-v2-chat-title&quot;&gt;&lt;small&gt;基础对话&lt;/small&gt;&lt;h1&gt;和 Appless 聊聊&lt;/h1&gt;&lt;p&gt;回答优先，历史内容按需展开&lt;/p&gt;&lt;/div&gt;
+        &lt;div class=&quot;appless-v2-user-prompt&quot;&gt;&lt;span&gt;你&lt;/span&gt;&lt;p&gt;你好&lt;/p&gt;&lt;/div&gt;
+        &lt;article class=&quot;appless-v2-answer&quot;&gt;
+          &lt;div class=&quot;appless-v2-answer-mark&quot;&gt;A&lt;/div&gt;
+          &lt;div&gt;&lt;small&gt;Appless&lt;/small&gt;&lt;p&gt;你好！我是你的智能助手，很高兴见到你。有什么我可以帮你的吗？无论是查信息、安排行程、处理工作，还是找点娱乐内容，都可以告诉我。&lt;/p&gt;&lt;/div&gt;
+        &lt;/article&gt;
+        &lt;details class=&quot;appless-v2-context&quot;&gt;
+          &lt;summary&gt;&lt;span&gt;&lt;i data-lucide=&quot;messages-square&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;上下文&lt;/span&gt;&lt;small&gt;1 条&lt;/small&gt;&lt;i data-lucide=&quot;chevron-down&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/summary&gt;
+          &lt;div&gt;&lt;span&gt;你&lt;/span&gt;&lt;p&gt;你好&lt;/p&gt;&lt;/div&gt;
+        &lt;/details&gt;
+      &lt;/section&gt;
+
+      &lt;section class=&quot;appless-v2-scene&quot; data-v2-scene=&quot;thinking&quot; hidden&gt;
+        &lt;div class=&quot;appless-v2-thinking-head&quot;&gt;
+          &lt;div class=&quot;appless-v2-thinking-orbit&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;i data-lucide=&quot;sparkles&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/div&gt;
+          &lt;div&gt;&lt;small&gt;执行中&lt;/small&gt;&lt;h1&gt;正在查询出行方案&lt;/h1&gt;&lt;p&gt;深圳到上海 · 8月28日&lt;/p&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;section class=&quot;appless-v2-request-summary&quot;&gt;&lt;small&gt;用户请求&lt;/small&gt;&lt;p&gt;查询8月28日从深圳到上海的出行方案&lt;/p&gt;&lt;/section&gt;
+        &lt;ol class=&quot;appless-v2-thinking-steps&quot;&gt;
+          &lt;li class=&quot;done&quot;&gt;&lt;span&gt;&lt;i data-lucide=&quot;check&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;div&gt;&lt;strong&gt;理解出发地、目的地和日期&lt;/strong&gt;&lt;p&gt;深圳 → 上海 · 8月28日&lt;/p&gt;&lt;/div&gt;&lt;small&gt;完成&lt;/small&gt;&lt;/li&gt;
+          &lt;li class=&quot;done&quot;&gt;&lt;span&gt;&lt;i data-lucide=&quot;check&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;div&gt;&lt;strong&gt;查询 12306 高铁余票&lt;/strong&gt;&lt;p&gt;已返回 23 个可展示车次&lt;/p&gt;&lt;/div&gt;&lt;small&gt;完成&lt;/small&gt;&lt;/li&gt;
+          &lt;li class=&quot;running&quot;&gt;&lt;span&gt;&lt;i data-lucide=&quot;plane&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;div&gt;&lt;strong&gt;查询飞常准航班&lt;/strong&gt;&lt;p&gt;正在等待实时航班数据&lt;/p&gt;&lt;/div&gt;&lt;small&gt;进行中&lt;/small&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;span&gt;&lt;i data-lucide=&quot;list-checks&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;div&gt;&lt;strong&gt;比较耗时、余票与日历冲突&lt;/strong&gt;&lt;p&gt;数据齐全后自动整理&lt;/p&gt;&lt;/div&gt;&lt;small&gt;等待&lt;/small&gt;&lt;/li&gt;
+        &lt;/ol&gt;
+        &lt;details class=&quot;appless-v2-context thinking-context&quot;&gt;
+          &lt;summary&gt;&lt;span&gt;&lt;i data-lucide=&quot;messages-square&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;本次上下文&lt;/span&gt;&lt;small&gt;3 条&lt;/small&gt;&lt;i data-lucide=&quot;chevron-down&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/summary&gt;
+          &lt;div&gt;&lt;span&gt;你&lt;/span&gt;&lt;p&gt;查询8月28日从深圳到上海的出行方案&lt;/p&gt;&lt;/div&gt;
+        &lt;/details&gt;
+      &lt;/section&gt;
+    &lt;/main&gt;
+
+    &lt;footer class=&quot;appless-v2-locked-composer&quot; aria-label=&quot;保持不变的底部输入框&quot;&gt;
+      &lt;span id=&quot;applessV2Composer&quot;&gt;点击输入或按住说话&lt;/span&gt;
+      &lt;button type=&quot;button&quot; aria-label=&quot;发送&quot;&gt;&lt;i data-lucide=&quot;arrow-up&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+    &lt;/footer&gt;
+  &lt;/section&gt;
+&lt;/div&gt;
+
+&lt;style&gt;
+#appless-scene-redesign-v2 { width: 100%; display: grid; justify-items: center; gap: 14px; padding: 2px 0 12px; color: #2a211c; font-family: -apple-system, BlinkMacSystemFont, &quot;PingFang SC&quot;, &quot;Noto Sans SC&quot;, sans-serif; }
+#appless-scene-redesign-v2 * { box-sizing: border-box; }
+.appless-v2-preview-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; width: 100%; }
+.appless-v2-preview-nav button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 8px 12px; border: 1px solid light-dark(rgba(74,52,40,.14),rgba(255,255,255,.18)); border-radius: 999px; background: light-dark(rgba(255,255,255,.74),rgba(45,38,34,.82)); color: light-dark(#5f4a3e,#f8f1eb); font: inherit; font-weight: 500; }
+.appless-v2-preview-nav button[aria-selected=&quot;true&quot;] { border-color: #995f4c; background: #995f4c; color: #fff; }
+.appless-v2-device { position: relative; width: min(100%, 480px); min-height: 880px; overflow: hidden; border: 1px solid rgba(98,72,55,.18); border-radius: 36px; background: #fffdf9; box-shadow: 0 24px 68px rgba(88,65,49,.18); isolation: isolate; }
+.appless-v2-backdrop { position: absolute; inset: 0; z-index: -2; background: radial-gradient(ellipse at 88% 30%,rgba(255,188,115,.34),transparent 29%),radial-gradient(ellipse at 4% 48%,rgba(224,207,255,.34),transparent 34%),radial-gradient(ellipse at 78% 84%,rgba(189,217,255,.4),transparent 35%),linear-gradient(145deg,#fffdf9 0%,#fff9f3 50%,#f8fbff 100%); }
+.appless-v2-backdrop::after { content: &quot;&quot;; position: absolute; inset: 0; background: rgba(255,253,249,.24); backdrop-filter: blur(15px); }
+.appless-v2-locked-header { display: flex; align-items: center; min-height: 66px; gap: 8px; padding: 12px 15px 8px; }
+.appless-v2-logo { position: relative; display: grid; place-items: center; width: 35px; height: 35px; color: #9b5f4b; font-family: Georgia,serif; font-size: 23px; font-style: italic; font-weight: 500; }
+.appless-v2-logo span { position: absolute; right: 1px; bottom: 8px; width: 5px; height: 5px; border-radius: 50%; background: #2e2b29; }
+.appless-v2-ai { min-height: 26px; padding: 5px 9px; border: 1px solid rgba(153,95,76,.22); border-radius: 999px; background: rgba(255,251,247,.6); color: #795c4a; font-size: 11px; }
+.appless-v2-header-actions { display: flex; gap: 5px; margin-left: auto; }
+.appless-v2-header-actions button, .appless-v2-icon-action { position: relative; display: grid; place-items: center; width: 35px; height: 35px; padding: 0; border: 1px solid rgba(126,96,77,.14); border-radius: 50%; background: rgba(255,255,255,.78); color: #49382e; box-shadow: 0 4px 12px rgba(85,61,45,.08); }
+.appless-v2-header-actions b { position: absolute; font-size: 9px; font-weight: 500; }
+.appless-v2-content { padding: 10px 15px 104px; }
+.appless-v2-scene { animation: appless-v2-rise 230ms ease-out; }
+@keyframes appless-v2-rise { from { opacity: .25; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.appless-v2-scene-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 11px 3px 16px; }
+.appless-v2-scene-title small, .appless-v2-chat-title small, .appless-v2-thinking-head small { display: block; margin-bottom: 6px; color: #8b7d73; font-size: 11px; }
+.appless-v2-scene-title h1, .appless-v2-chat-title h1, .appless-v2-thinking-head h1 { margin: 0; color: #3f2f27; font-size: 28px; line-height: 1.15; font-weight: 500; letter-spacing: -.025em; }
+.appless-v2-scene-title p, .appless-v2-chat-title p, .appless-v2-thinking-head p { margin: 6px 0 0; color: #74665c; font-size: 12px; line-height: 1.45; }
+.appless-v2-route-summary, .appless-v2-ride-route { display: grid; grid-template-columns: minmax(0,1fr) 54px minmax(0,1fr); align-items: center; gap: 8px; padding: 15px; border: 1px solid rgba(106,78,60,.12); border-radius: 23px; background: rgba(255,255,255,.67); box-shadow: 0 10px 28px rgba(91,65,48,.07); backdrop-filter: blur(22px); }
+.appless-v2-route-summary &gt; div:last-of-type { text-align: right; }
+.appless-v2-route-summary small, .appless-v2-ride-route small { display: block; color: #8b7d73; font-size: 10px; }
+.appless-v2-route-summary strong, .appless-v2-ride-route strong { display: block; margin-top: 4px; font-size: 16px; font-weight: 500; }
+.appless-v2-route-arrow { display: grid; justify-items: center; color: #995f4c; }
+.appless-v2-route-arrow span { width: 48px; height: 1px; margin-top: -8px; background: linear-gradient(90deg,#397a55,#476f9f,#995f4c); }
+.appless-v2-route-metrics { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 10px; padding-top: 11px; border-top: 1px solid rgba(73,63,56,.08); }
+.appless-v2-route-metrics span { padding: 8px; border-radius: 12px; background: rgba(245,240,235,.72); text-align: left; }
+.appless-v2-route-metrics b { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; }
+.appless-v2-primary-tabs { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; margin-top: 12px; padding: 4px; border-radius: 15px; background: rgba(92,70,57,.08); }
+.appless-v2-primary-tabs button { min-height: 36px; border: 0; border-radius: 11px; background: transparent; color: #75665c; font: inherit; font-size: 11px; }
+.appless-v2-primary-tabs button.active { background: rgba(255,255,255,.86); color: #3f2f27; box-shadow: 0 3px 10px rgba(75,53,40,.06); }
+.appless-v2-tool-row, .appless-v2-food-tabs, .appless-v2-food-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.appless-v2-tool-row button, .appless-v2-food-tabs button, .appless-v2-food-filters button, .appless-v2-followups button { display: inline-flex; align-items: center; gap: 5px; min-height: 31px; padding: 6px 9px; border: 1px solid rgba(73,63,56,.1); border-radius: 999px; background: rgba(255,255,255,.57); color: #68584e; font: inherit; font-size: 10px; }
+.appless-v2-travel-card, .appless-v2-food-card, .appless-v2-answer, .appless-v2-request-summary { margin-top: 10px; border: 1px solid rgba(73,63,56,.11); border-radius: 21px; background: rgba(255,255,255,.69); box-shadow: 0 10px 26px rgba(82,59,44,.07); backdrop-filter: blur(22px); }
+.appless-v2-travel-card { padding: 14px; }
+.appless-v2-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.appless-v2-provider { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 4px 7px; border-radius: 999px; font-size: 9px; }
+.appless-v2-provider.flight { background: rgba(71,111,159,.1); color: #476f9f; }
+.appless-v2-provider.train { background: rgba(57,122,85,.1); color: #397a55; }
+.appless-v2-expand { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: #995f4c; font: inherit; font-size: 10px; }
+.appless-v2-trip-main { display: grid; grid-template-columns: 1fr 92px 1fr; align-items: center; margin-top: 13px; }
+.appless-v2-trip-main &gt; div:last-child { text-align: right; }
+.appless-v2-trip-main strong { display: block; font-size: 22px; line-height: 1; font-weight: 500; }
+.appless-v2-trip-main span { display: block; margin-top: 5px; color: #786a60; font-size: 10px; }
+.appless-v2-trip-line { display: grid; justify-items: center; color: #8b7d73; }
+.appless-v2-trip-line small { font-size: 8px; }
+.appless-v2-trip-line span { width: 74px; height: 1px; margin: 3px 0 -8px; background: rgba(71,111,159,.35); }
+.appless-v2-trip-line svg { color: #476f9f; }
+.appless-v2-trip-meta { display: flex; align-items: center; gap: 8px; margin-top: 13px; padding-top: 10px; border-top: 1px solid rgba(73,63,56,.08); color: #7a6e64; font-size: 10px; }
+.appless-v2-trip-meta strong { margin-left: auto; color: #3f2f27; font-size: 13px; font-weight: 500; }
+.appless-v2-conflict { display: flex; align-items: center; gap: 7px; margin-top: 9px; padding: 8px 9px; border-radius: 11px; background: rgba(176,74,66,.08); color: #9b4f48; font-size: 9px; }
+.appless-v2-conflict b { font-weight: 500; }
+.appless-v2-expanded-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 9px; }
+.appless-v2-expanded-grid span { padding: 8px; border-radius: 11px; background: rgba(245,240,235,.64); }
+.appless-v2-expanded-grid small { display: block; color: #8b7d73; font-size: 8px; }
+.appless-v2-expanded-grid b { display: block; margin-top: 3px; font-size: 10px; font-weight: 500; }
+.appless-v2-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.appless-v2-card-actions button, .appless-v2-handoff button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px; padding: 7px 10px; border: 1px solid rgba(153,95,76,.16); border-radius: 11px; background: rgba(255,255,255,.72); color: #795c4a; font: inherit; font-size: 9px; }
+.appless-v2-card-actions button.primary { border-color: #995f4c; background: #995f4c; color: #fff; }
+.appless-v2-card-actions button.danger { border-color: rgba(176,74,66,.22); color: #b04a42; }
+.appless-v2-travel-card.compact { box-shadow: none; }
+.appless-v2-compact .appless-v2-card-actions { display: none; }
+.appless-v2-compact-actions { margin-top: 8px; }
+.appless-v2-live { padding: 6px 9px; border-radius: 999px; background: rgba(167,120,22,.1); color: #946b1c; font-size: 10px; }
+.appless-v2-ride-route { grid-template-columns: 1fr; gap: 2px; }
+.appless-v2-ride-point { display: grid; grid-template-columns: 12px 1fr; gap: 9px; align-items: start; }
+.appless-v2-ride-point &gt; span { width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: #995f4c; box-shadow: 0 0 0 4px rgba(153,95,76,.1); }
+.appless-v2-ride-point.destination &gt; span { background: #476f9f; box-shadow: 0 0 0 4px rgba(71,111,159,.1); }
+.appless-v2-ride-point p { margin: 3px 0 0; color: #8b7d73; font-size: 9px; }
+.appless-v2-ride-path { width: 1px; height: 14px; margin-left: 4px; background: rgba(73,63,56,.18); }
+.appless-v2-section-head { display: flex; align-items: end; justify-content: space-between; gap: 10px; margin: 17px 3px 9px; }
+.appless-v2-section-head small { color: #8b7d73; font-size: 9px; }
+.appless-v2-section-head h2 { margin: 3px 0 0; font-size: 16px; font-weight: 500; }
+.appless-v2-section-head button { border: 0; background: transparent; color: #995f4c; font: inherit; font-size: 10px; }
+.appless-v2-vehicle-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; }
+.appless-v2-vehicle-grid button { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 2px 8px; min-height: 66px; padding: 9px; border: 1px solid rgba(73,63,56,.09); border-radius: 16px; background: rgba(255,255,255,.58); color: #493f38; text-align: left; }
+.appless-v2-vehicle-grid button.selected { border-color: rgba(153,95,76,.42); background: rgba(255,247,243,.78); }
+.appless-v2-vehicle-grid svg { grid-row: 1 / 3; width: 25px; height: 25px; color: #995f4c; }
+.appless-v2-vehicle-grid strong { font-size: 11px; font-weight: 500; }
+.appless-v2-vehicle-grid span { color: #8b7d73; font-size: 8px; }
+.appless-v2-vehicle-grid b { grid-column: 3; grid-row: 1 / 3; font-size: 12px; font-weight: 500; }
+.appless-v2-full-action { width: 100%; min-height: 43px; margin-top: 10px; border: 0; border-radius: 15px; background: #995f4c; color: #fff; font: inherit; font-size: 12px; font-weight: 500; box-shadow: 0 8px 18px rgba(153,95,76,.2); }
+.appless-v2-handoff { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 7px; }
+.appless-v2-handoff button { width: 100%; }
+.appless-v2-ride-followup, .appless-v2-address-functions { margin-top: 10px; padding: 11px; border-radius: 17px; background: rgba(255,255,255,.5); }
+.appless-v2-ride-followup &gt; div:first-child, .appless-v2-address-functions { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center; gap: 9px; }
+.appless-v2-ride-followup &gt; div:first-child &gt; span, .appless-v2-address-functions &gt; i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: rgba(71,111,159,.1); color: #476f9f; }
+.appless-v2-ride-followup small { color: #8b7d73; font-size: 8px; }
+.appless-v2-ride-followup strong, .appless-v2-address-functions strong { display: block; margin-top: 2px; font-size: 10px; font-weight: 500; }
+.appless-v2-location-bar { display: grid; grid-template-columns: 1fr 40px; gap: 7px; margin-bottom: 10px; }
+.appless-v2-location-bar button { display: flex; align-items: center; gap: 8px; min-height: 47px; padding: 8px 10px; border: 1px solid rgba(73,63,56,.1); border-radius: 15px; background: rgba(255,255,255,.62); color: #5e4d43; text-align: left; }
+.appless-v2-location-bar button:last-child { justify-content: center; padding: 0; }
+.appless-v2-location-bar span { flex: 1; }
+.appless-v2-location-bar small { display: block; color: #8b7d73; font-size: 8px; }
+.appless-v2-location-bar strong { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; }
+.appless-v2-food-tabs { flex-wrap: nowrap; overflow: hidden; }
+.appless-v2-food-tabs button { flex: 0 0 auto; }
+.appless-v2-food-tabs button.active { border-color: #995f4c; background: #995f4c; color: #fff; }
+.appless-v2-food-filters { margin-top: 6px; }
+.appless-v2-food-filters button { border-style: dashed; }
+.appless-v2-food-card { overflow: hidden; }
+.appless-v2-food-photo { position: relative; display: grid; place-items: center; min-height: 94px; background: radial-gradient(circle at 52% 45%,rgba(255,246,225,.95),transparent 22%),linear-gradient(135deg,#d8b493,#a8795d); color: #fff; }
+.appless-v2-food-photo &gt; span { position: absolute; top: 9px; left: 9px; padding: 4px 7px; border-radius: 999px; background: rgba(255,255,255,.75); color: #795c4a; font-size: 8px; }
+.appless-v2-food-photo svg { width: 30px; height: 30px; }
+.appless-v2-food-copy { padding: 12px; }
+.appless-v2-food-copy h2 { margin: 3px 0 0; font-size: 15px; font-weight: 500; }
+.appless-v2-food-copy small { color: #995f4c; font-size: 8px; }
+.appless-v2-food-copy &gt; p { margin: 7px 0 0; color: #786a60; font-size: 9px; }
+.appless-v2-food-detail { display: grid; grid-template-columns: 1.2fr .9fr .9fr; gap: 6px; margin-top: 9px; }
+.appless-v2-food-detail span { padding: 7px; border-radius: 10px; background: rgba(245,240,235,.66); }
+.appless-v2-food-detail small { color: #8b7d73; }
+.appless-v2-food-detail b { display: block; margin-top: 3px; overflow: hidden; font-size: 9px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.appless-v2-food-list-card { display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 9px; margin-top: 9px; padding: 9px; border-radius: 15px; background: rgba(255,255,255,.5); }
+.appless-v2-food-list-card &gt; span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: rgba(57,122,85,.1); color: #397a55; }
+.appless-v2-food-list-card strong { font-size: 11px; font-weight: 500; }
+.appless-v2-food-list-card p { margin: 3px 0; color: #7a6e64; font-size: 8px; }
+.appless-v2-food-list-card small { color: #995f4c; font-size: 8px; }
+.appless-v2-food-list-card button, .appless-v2-address-functions button { border: 0; background: transparent; color: #995f4c; font: inherit; font-size: 9px; }
+.appless-v2-address-functions p { margin: 3px 0 0; color: #8b7d73; font-size: 8px; line-height: 1.4; }
+.appless-v2-chat-title { padding: 24px 4px 20px; }
+.appless-v2-user-prompt { justify-self: end; display: grid; grid-template-columns: 24px auto; align-items: center; gap: 7px; max-width: 84%; margin-left: auto; }
+.appless-v2-user-prompt span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: rgba(153,95,76,.1); color: #995f4c; font-size: 9px; }
+.appless-v2-user-prompt p { margin: 0; padding: 10px 12px; border-radius: 16px 16px 5px 16px; background: rgba(153,95,76,.11); color: #49382e; font-size: 12px; }
+.appless-v2-answer { display: grid; grid-template-columns: 32px minmax(0,1fr); gap: 10px; margin-top: 16px; padding: 17px; }
+.appless-v2-answer-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: rgba(153,95,76,.1); color: #995f4c; font-family: Georgia,serif; font-style: italic; }
+.appless-v2-answer small { color: #995f4c; font-size: 9px; }
+.appless-v2-answer p { margin: 6px 0 0; color: #493f38; font-size: 12px; line-height: 1.72; }
+.appless-v2-context { margin-top: 15px; border-top: 1px solid rgba(73,63,56,.1); }
+.appless-v2-context summary { display: flex; align-items: center; gap: 7px; padding: 12px 2px; color: #68584e; cursor: pointer; list-style: none; font-size: 10px; }
+.appless-v2-context summary span { display: flex; align-items: center; gap: 6px; }
+.appless-v2-context summary small { margin-left: auto; color: #8b7d73; }
+.appless-v2-context &gt; div { display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 0 2px 10px; }
+.appless-v2-context &gt; div span { color: #995f4c; font-size: 9px; }
+.appless-v2-context &gt; div p { margin: 0; color: #74665c; font-size: 10px; }
+.appless-v2-followups { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.appless-v2-thinking-head { display: grid; grid-template-columns: 52px minmax(0,1fr); align-items: center; gap: 13px; padding: 20px 4px 16px; }
+.appless-v2-thinking-orbit { position: relative; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: rgba(153,95,76,.1); color: #995f4c; }
+.appless-v2-thinking-orbit &gt; span { position: absolute; inset: 4px; border: 1px dashed rgba(153,95,76,.38); border-radius: 50%; animation: appless-v2-spin 6s linear infinite; }
+@keyframes appless-v2-spin { to { transform: rotate(360deg); } }
+.appless-v2-request-summary { padding: 13px 14px; }
+.appless-v2-request-summary small { color: #995f4c; font-size: 9px; }
+.appless-v2-request-summary p { margin: 5px 0 0; color: #493f38; font-size: 12px; }
+.appless-v2-thinking-steps { position: relative; display: grid; gap: 0; margin: 17px 0 0; padding: 0; list-style: none; }
+.appless-v2-thinking-steps::before { content: &quot;&quot;; position: absolute; top: 19px; bottom: 19px; left: 17px; width: 1px; background: rgba(73,63,56,.13); }
+.appless-v2-thinking-steps li { position: relative; display: grid; grid-template-columns: 35px minmax(0,1fr) auto; align-items: center; gap: 9px; min-height: 65px; padding: 8px 3px; }
+.appless-v2-thinking-steps li &gt; span { z-index: 1; display: grid; place-items: center; width: 35px; height: 35px; border-radius: 50%; background: rgba(240,234,228,.98); color: #8b7d73; }
+.appless-v2-thinking-steps li.done &gt; span { background: #e4f1e8; color: #2f7754; }
+.appless-v2-thinking-steps li.running &gt; span { background: #efe2dc; color: #995f4c; box-shadow: 0 0 0 5px rgba(153,95,76,.07); }
+.appless-v2-thinking-steps strong { font-size: 11px; font-weight: 500; }
+.appless-v2-thinking-steps p { margin: 4px 0 0; color: #8b7d73; font-size: 9px; }
+.appless-v2-thinking-steps li &gt; small { color: #8b7d73; font-size: 8px; }
+.appless-v2-thinking-steps li.done &gt; small { color: #2f7754; }
+.appless-v2-thinking-steps li.running &gt; small { color: #995f4c; }
+.appless-v2-locked-composer { position: absolute; left: 14px; right: 14px; bottom: 14px; display: grid; grid-template-columns: minmax(0,1fr) 45px; align-items: center; min-height: 62px; padding: 7px 7px 7px 18px; border: 1px solid rgba(126,96,77,.12); border-radius: 31px; background: rgba(255,255,255,.83); box-shadow: 0 10px 28px rgba(87,64,48,.14); backdrop-filter: blur(24px); }
+.appless-v2-locked-composer &gt; span { color: #9c9189; font-size: 13px; text-align: center; }
+.appless-v2-locked-composer button { display: grid; place-items: center; width: 45px; height: 45px; border: 0; border-radius: 50%; background: #d0ccc7; color: #fff; }
+@media (max-width: 430px) {
+  .appless-v2-device { border-radius: 28px; }
+  .appless-v2-content { padding-left: 11px; padding-right: 11px; }
+  .appless-v2-locked-header { padding-left: 10px; padding-right: 10px; }
+  .appless-v2-header-actions { gap: 3px; }
+  .appless-v2-header-actions button { width: 31px; height: 31px; }
+  .appless-v2-ai { display: none; }
+  .appless-v2-trip-main { grid-template-columns: 1fr 70px 1fr; }
+  .appless-v2-food-detail { grid-template-columns: 1fr 1fr; }
+  .appless-v2-food-detail span:first-child { grid-column: 1 / -1; }
+  .appless-v2-address-functions { grid-template-columns: 32px minmax(0,1fr); }
+  .appless-v2-address-functions button { grid-column: 2; justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) { .appless-v2-scene { animation: none; } .appless-v2-thinking-orbit &gt; span { animation: none; } }
+&lt;/style&gt;
+
+&lt;script&gt;
+(function () {
+  const root = document.getElementById(&#x27;appless-scene-redesign-v2&#x27;);
+  const composer = root.querySelector(&#x27;#applessV2Composer&#x27;);
+  const composerLabels = {
+    travel: &#x27;点击输入或按住说话&#x27;,
+    ride: &#x27;点击输入或按住说话&#x27;,
+    food: &#x27;点击输入或按住说话&#x27;,
+    chat: &#x27;点击输入或按住说话&#x27;,
+    thinking: &#x27;点击输入或按住说话&#x27;
+  };
+  root.querySelectorAll(&#x27;[data-v2-target]&#x27;).forEach(function (button) {
+    button.addEventListener(&#x27;click&#x27;, function () {
+      const target = button.getAttribute(&#x27;data-v2-target&#x27;);
+      root.querySelectorAll(&#x27;[data-v2-target]&#x27;).forEach(function (item) {
+        item.setAttribute(&#x27;aria-selected&#x27;, item === button ? &#x27;true&#x27; : &#x27;false&#x27;);
+      });
+      root.querySelectorAll(&#x27;[data-v2-scene]&#x27;).forEach(function (scene) {
+        const active = scene.getAttribute(&#x27;data-v2-scene&#x27;) === target;
+        scene.hidden = !active;
+        scene.classList.toggle(&#x27;is-active&#x27;, active);
+      });
+      composer.textContent = composerLabels[target];
+      if (window.lucide) { window.lucide.createIcons({ attrs: { width: 16, height: 16 } }); }
+    });
+  });
+})();
+&lt;/script&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

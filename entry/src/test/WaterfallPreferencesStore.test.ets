@@ -1,6 +1,10 @@
 import { preferences } from '@kit.ArkData';
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  aggregateSearchSourcesFromArgs,
+  configureWaterfallEnabledSourcesForRuntime
+} from '@loop/agent-core';
+import {
   emptyWaterfallPreferenceProfile,
   WATERFALL_PREFERENCES_KEY,
   WaterfallBehaviorEvidence,
@@ -29,6 +33,10 @@ class MemoryPreferences {
   }
 }
 
+interface SearchSourceArgs {
+  sources: string[];
+}
+
 function event(
   behavior: 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip',
   timestamp: number,
@@ -54,19 +62,43 @@ function weight(profile: WaterfallPreferenceProfile, key: string): number {
 
 export default function waterfallPreferencesStoreTest() {
   describe('waterfallPreferencesStore', () => {
-    it('recovers malformed profiles and round-trips deduplicated enabled sources', 0, () => {
+    it('migrates v1 enabled sources and round-trips v2 discovery sources', 0, () => {
       const native = new MemoryPreferences();
       native.putSync(WATERFALL_PREFERENCES_KEY, '{');
       const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
-      expect(store.load().version).assertEqual(1);
+      expect(store.load().version).assertEqual(2);
+      native.putSync(WATERFALL_PREFERENCES_KEY, JSON.stringify({
+        version: 1,
+        topicWeights: [],
+        sourceWeights: [],
+        formatWeights: [],
+        explicitRules: [],
+        recentEvidence: [],
+        enabledSources: ['youtube', 'x'],
+        updatedAt: 7
+      }));
+      const migrated = new WaterfallPreferencesStore(native as Object as preferences.Preferences).load();
+      expect(migrated.version).assertEqual(2);
+      expect(migrated.discoveryEnabledSources.join(',')).assertEqual('youtube,x');
+
       native.putSync(WATERFALL_PREFERENCES_KEY, JSON.stringify({ version: 2 }));
       expect(new WaterfallPreferencesStore(native as Object as preferences.Preferences).load().recentEvidence.length)
         .assertEqual(0);
 
-      const saved = store.saveEnabledSources(['youtube', 'youtube', 'x']);
-      expect(saved.enabledSources.join(',')).assertEqual('youtube,x');
+      const saved = store.saveDiscoveryEnabledSources(['youtube', 'youtube', 'reddit']);
+      expect(saved.discoveryEnabledSources.join(',')).assertEqual('youtube,reddit');
       const reopened = new WaterfallPreferencesStore(native as Object as preferences.Preferences).load();
-      expect(reopened.enabledSources.join(',')).assertEqual('youtube,x');
+      expect(reopened.discoveryEnabledSources.join(',')).assertEqual('youtube,reddit');
+    });
+
+    it('never filters search sources through discovery runtime settings', 0, () => {
+      configureWaterfallEnabledSourcesForRuntime(['youtube']);
+      const args: SearchSourceArgs = { sources: ['reddit', 'x'] };
+      expect(aggregateSearchSourcesFromArgs(args).join(','))
+        .assertEqual('reddit,x');
+      configureWaterfallEnabledSourcesForRuntime([]);
+      expect(aggregateSearchSourcesFromArgs(null).join(','))
+        .assertEqual('youtube,bilibili,x,hackernews,reddit,zhihu');
     });
 
     it('applies behavior weights, half-life, repeated quick-skip and clamps dimensions', 0, () => {
@@ -118,7 +150,7 @@ export default function waterfallPreferencesStoreTest() {
       expect(profile.explicitRules.length).assertEqual(1);
       expect(profile.explicitRules[0].effect).assertEqual('boost');
       expect(weight(profile, 'AI')).assertEqual(1);
-      expect(emptyWaterfallPreferenceProfile().enabledSources.length).assertEqual(6);
+      expect(emptyWaterfallPreferenceProfile().discoveryEnabledSources.length).assertEqual(6);
     });
   });
 }

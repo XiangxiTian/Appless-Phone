@@ -14507,8 +14507,10 @@ export async function callConfiguredWaterfallInterestRecall(
   for (let requestIndex = 0; requestIndex < requests.length; requestIndex += 1) {
     const recall = requests[requestIndex];
     if (recall.route === 'popular' && recall.sources.indexOf('youtube') >= 0) {
-      const dynamic = await callYouTubeMostPopularVideos(localProviderConfig.youtubeApiKey, 10);
-      const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic);
+      const token = recall.continuation !== undefined && recall.continuation !== null &&
+        recall.continuation.kind === 'cursor' ? recall.continuation.value : '';
+      const dynamic = await callYouTubeMostPopularVideos(localProviderConfig.youtubeApiKey, 10, token);
+      const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic, recall.continuation ?? null, 10);
       onBatch({
         request: recall,
         batch,
@@ -14519,11 +14521,13 @@ export async function callConfiguredWaterfallInterestRecall(
     }
     const loads: WaterfallLoadRequest[] = recall.sources.map((source: string): WaterfallLoadRequest => ({
       source,
-      continuation: null,
+      continuation: recall.continuation ?? null,
       limit: 10,
       phase: 'loading',
       message: '',
-      mode: 'search'
+      mode: 'search',
+      query: recall.query,
+      route: recall.route
     }));
     await callConfiguredAggregateSearchContinuation(
       recall.query,

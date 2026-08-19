@@ -1,4 +1,5 @@
 import { webview } from '@kit.ArkWeb';
+import { common } from '@kit.AbilityKit';
 import { A2uiAction } from '@loop/agent-core';
 import { aiLogError, aiLogInfo } from '@loop/agent-core';
 import { sha256Digest } from '@loop/agent-core';
@@ -8,9 +9,14 @@ type HtmlHomeActionValue = Object | string | number | boolean | null | undefined
 
 type HtmlHomePostedAction = Record<string, HtmlHomeActionValue>;
 
+export function waterfallLayerFullscreen(rendererFullscreen: boolean, popupVisible: boolean): boolean {
+  return rendererFullscreen || popupVisible;
+}
+
 class HtmlHomeActionBridge {
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
+  onWaterfallSourceOpen: (url: string) => void = (_url: string) => {};
 
   postAction(raw: string): void {
     const action = parseHtmlHomeAction(raw);
@@ -36,6 +42,11 @@ class HtmlHomeActionBridge {
   setWaterfallFullscreen(raw: string): void {
     this.onWaterfallFullscreenChange(raw === 'true');
   }
+
+  openWaterfallSource(raw: string): void {
+    const url = raw.trim();
+    if (url.startsWith('https://') || url.startsWith('http://')) this.onWaterfallSourceOpen(url);
+  }
 }
 
 @Component
@@ -45,6 +56,7 @@ export struct HtmlHomeSurfaceView {
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadTick: number = 0;
   @Prop @Watch('onWaterfallPayloadChange') waterfallPayloadJson: string = '';
   @Prop @Watch('onWaterfallPayloadChange') waterfallPayloadTick: number = 0;
+  @Prop @Watch('onWaterfallBackRequest') waterfallBackRequestTick: number = 0;
   @Prop @Watch('onMailDetailEventChange') mailDetailEventJson: string = '';
   @Prop @Watch('onMailReplyEventChange') mailReplyEventJson: string = '';
   @Prop @Watch('onMailCalendarEventChange') mailCalendarEventJson: string = '';
@@ -66,22 +78,65 @@ export struct HtmlHomeSurfaceView {
   private lastMultiTaskPayloadTick: number = -1;
   private lastWaterfallPayloadJson: string = '';
   private lastWaterfallPayloadTick: number = -1;
+  private appliedWaterfallBackRequestTick: number = 0;
   private waterfallPayloadPushInFlight: boolean = false;
   private appliedLuckinPatchTick: number = -1;
+  private rendererWaterfallFullscreen: boolean = false;
   @State private popupVisible: boolean = false;
   @State private popupTitle: string = '支付确认';
+  @State private popupUrl: string = 'about:blank';
 
   aboutToAppear(): void {
     this.bridge.onAction = (action: A2uiAction): void => {
       this.onAction(action);
     };
     this.bridge.onWaterfallFullscreenChange = (active: boolean): void => {
-      this.onWaterfallFullscreenChange(active);
+      this.rendererWaterfallFullscreen = active;
+      this.publishWaterfallFullscreen();
+    };
+    this.bridge.onWaterfallSourceOpen = (url: string): void => {
+      if (shouldOpenWaterfallSourceExternally(url)) {
+        this.openExternalWaterfallSource(url);
+        return;
+      }
+      this.popupTitle = popupTitleFromUrl(url);
+      this.popupUrl = url;
+      this.popupVisible = true;
+      this.publishWaterfallFullscreen();
     };
   }
 
+  private publishWaterfallFullscreen(): void {
+    this.onWaterfallFullscreenChange(waterfallLayerFullscreen(
+      this.rendererWaterfallFullscreen, this.popupVisible));
+  }
+
+  private async openExternalWaterfallSource(url: string): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      try {
+        await context.openLink(url);
+      } catch (_linkError) {
+        await context.startAbility({
+          action: 'ohos.want.action.viewData',
+          entities: ['entity.system.browsable'],
+          uri: url
+        });
+      }
+      aiLogInfo('[AIPhone][HtmlHomeWaterfallSourceExternal] ok=true urlChars=' + url.length.toString());
+    } catch (error) {
+      aiLogError('[AIPhone][HtmlHomeWaterfallSourceExternalError] ' + JSON.stringify(error));
+      this.popupTitle = popupTitleFromUrl(url);
+      this.popupUrl = url;
+      this.popupVisible = true;
+      this.publishWaterfallFullscreen();
+    }
+  }
+
   aboutToDisappear(): void {
-    this.onWaterfallFullscreenChange(false);
+    this.rendererWaterfallFullscreen = false;
+    this.popupVisible = false;
+    this.publishWaterfallFullscreen();
   }
 
   private loadHtmlIfNeeded(): void {
@@ -98,7 +153,8 @@ export struct HtmlHomeSurfaceView {
     }
     try {
       this.webReady = false;
-      this.onWaterfallFullscreenChange(false);
+      this.rendererWaterfallFullscreen = false;
+      this.publishWaterfallFullscreen();
       this.controller.loadData(this.html, 'text/html', 'UTF-8', 'https://aiphone.local/');
       this.loadedKey = this.html;
       this.lastMailDetailEventJson = '';
@@ -128,6 +184,29 @@ export struct HtmlHomeSurfaceView {
 
   onWaterfallPayloadChange(): void {
     this.pushWaterfallPayloadIfNeeded();
+  }
+
+  onWaterfallBackRequest(): void {
+    if (this.waterfallBackRequestTick <= this.appliedWaterfallBackRequestTick ||
+      (!this.webReady && !this.popupVisible)) return;
+    this.appliedWaterfallBackRequestTick = this.waterfallBackRequestTick;
+    if (this.popupVisible) {
+      if (this.popupController.accessBackward()) {
+        this.popupController.backward();
+      } else {
+        this.popupVisible = false;
+        this.popupUrl = 'about:blank';
+        this.publishWaterfallFullscreen();
+      }
+      return;
+    }
+    try {
+      this.controller.runJavaScript(
+        'try{if(window.__aiphoneHandleWaterfallBack){window.__aiphoneHandleWaterfallBack();}}catch(e){}'
+      );
+    } catch (error) {
+      aiLogError('[AIPhone][HtmlHomeWaterfallBackError] ' + JSON.stringify(error));
+    }
   }
 
   private pushWaterfallPayloadIfNeeded(): void {
@@ -328,7 +407,10 @@ export struct HtmlHomeSurfaceView {
         .javaScriptProxy({
           object: this.bridge,
           name: 'AIPhoneHome',
-          methodList: ['postAction', 'setWaterfallFullscreen'],
+          // Synchronous proxy calls block the page's JS thread on a cross-process round trip,
+          // which stalls scrolling and taps. None of these results are read from the page.
+          methodList: [],
+          asyncMethodList: ['postAction', 'setWaterfallFullscreen', 'openWaterfallSource'],
           controller: this.controller
         })
         .width('100%')
@@ -340,6 +422,7 @@ export struct HtmlHomeSurfaceView {
           this.loadHtmlIfNeeded();
           this.pushMultiTaskPayloadIfNeeded();
           this.pushWaterfallPayloadIfNeeded();
+          this.onWaterfallBackRequest();
           this.pushMailDetailEventIfNeeded();
           this.pushMailReplyEventIfNeeded();
           this.pushMailCalendarEventIfNeeded();
@@ -347,7 +430,9 @@ export struct HtmlHomeSurfaceView {
         })
         .onWindowNew((event: OnWindowNewEvent) => {
           this.popupTitle = popupTitleFromUrl(event.targetUrl);
+          this.popupUrl = 'about:blank';
           this.popupVisible = true;
+          this.publishWaterfallFullscreen();
           event.handler.setWebController(this.popupController);
           aiLogInfo('[AIPhone][HtmlHomeWindowNew] targetChars=' + event.targetUrl.length.toString() +
             ' userTrigger=' + event.isUserTrigger.toString());
@@ -387,6 +472,8 @@ export struct HtmlHomeSurfaceView {
                   this.popupController.backward();
                 } else {
                   this.popupVisible = false;
+                  this.popupUrl = 'about:blank';
+                  this.publishWaterfallFullscreen();
                 }
               })
           }
@@ -396,7 +483,7 @@ export struct HtmlHomeSurfaceView {
           .alignItems(VerticalAlign.Center)
           .backgroundColor('#FFFAF4')
 
-          Web({ src: 'about:blank', controller: this.popupController })
+          Web({ src: this.popupUrl, controller: this.popupController })
             .javaScriptAccess(true)
             .domStorageAccess(true)
             .multiWindowAccess(true)
@@ -406,6 +493,8 @@ export struct HtmlHomeSurfaceView {
             .backgroundColor(COLOR_PAGE)
             .onWindowExit(() => {
               this.popupVisible = false;
+              this.popupUrl = 'about:blank';
+              this.publishWaterfallFullscreen();
               aiLogInfo('[AIPhone][HtmlHomeWindowExit]');
             })
         }
@@ -474,6 +563,14 @@ function actionObject(value: HtmlHomeActionValue): Object | undefined {
     return undefined;
   }
   return value;
+}
+
+export function shouldOpenWaterfallSourceExternally(raw: string): boolean {
+  const url = raw.trim().toLowerCase();
+  return url.startsWith('https://b23.tv/') || url.startsWith('http://b23.tv/') ||
+    url.startsWith('https://bilibili.com/') || url.startsWith('http://bilibili.com/') ||
+    url.startsWith('https://www.bilibili.com/') || url.startsWith('http://www.bilibili.com/') ||
+    url.startsWith('https://m.bilibili.com/') || url.startsWith('http://m.bilibili.com/');
 }
 
 export function popupTitleFromUrl(url: string): string {

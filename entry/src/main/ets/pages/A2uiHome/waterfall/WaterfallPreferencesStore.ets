@@ -24,20 +24,31 @@ export interface WaterfallBehaviorEvidence {
 }
 
 export interface WaterfallPreferenceProfile extends WaterfallPreferenceSnapshot {
-  version: 1;
+  version: 2;
   recentEvidence: WaterfallBehaviorEvidence[];
+  discoveryEnabledSources: string[];
+  // Compatibility alias for callers migrating to discoveryEnabledSources.
   enabledSources: string[];
+  updatedAt: number;
+}
+
+interface StoredWaterfallPreferenceProfile extends WaterfallPreferenceSnapshot {
+  version: number;
+  recentEvidence: WaterfallBehaviorEvidence[];
+  discoveryEnabledSources?: string[];
+  enabledSources?: string[];
   updatedAt: number;
 }
 
 export function emptyWaterfallPreferenceProfile(): WaterfallPreferenceProfile {
   return {
-    version: 1,
+    version: 2,
     topicWeights: [],
     sourceWeights: [],
     formatWeights: [],
     explicitRules: [],
     recentEvidence: [],
+    discoveryEnabledSources: DEFAULT_SOURCES.slice(),
     enabledSources: DEFAULT_SOURCES.slice(),
     updatedAt: 0
   };
@@ -67,19 +78,25 @@ function validEvidence(value: WaterfallBehaviorEvidence): boolean {
     typeof value.timestamp === 'number' && isFinite(value.timestamp);
 }
 
-function validProfile(value: WaterfallPreferenceProfile): boolean {
-  if (value === null || value.version !== 1 || !Array.isArray(value.topicWeights) ||
+function validSources(value: string[] | undefined): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.every((item: string): boolean => DEFAULT_SOURCES.indexOf(item) >= 0);
+}
+
+function validProfile(value: StoredWaterfallPreferenceProfile): boolean {
+  if (value === null || (value.version !== 1 && value.version !== 2) || !Array.isArray(value.topicWeights) ||
     !Array.isArray(value.sourceWeights) || !Array.isArray(value.formatWeights) ||
     !Array.isArray(value.explicitRules) || !Array.isArray(value.recentEvidence) ||
-    !Array.isArray(value.enabledSources) || typeof value.updatedAt !== 'number') {
+    typeof value.updatedAt !== 'number') {
     return false;
   }
-  return value.topicWeights.every((item: WaterfallPreferenceWeight): boolean => validWeight(item)) &&
+  const sources = value.version === 2 ? value.discoveryEnabledSources : value.enabledSources;
+  return validSources(sources) &&
+    value.topicWeights.every((item: WaterfallPreferenceWeight): boolean => validWeight(item)) &&
     value.sourceWeights.every((item: WaterfallPreferenceWeight): boolean => validWeight(item)) &&
     value.formatWeights.every((item: WaterfallPreferenceWeight): boolean => validWeight(item)) &&
     value.explicitRules.every((item: WaterfallExplicitPreference): boolean => validRule(item)) &&
-    value.recentEvidence.every((item: WaterfallBehaviorEvidence): boolean => validEvidence(item)) &&
-    value.enabledSources.every((item: string): boolean => DEFAULT_SOURCES.indexOf(item) >= 0);
+    value.recentEvidence.every((item: WaterfallBehaviorEvidence): boolean => validEvidence(item));
 }
 
 function copyWeight(value: WaterfallPreferenceWeight): WaterfallPreferenceWeight {
@@ -104,13 +121,29 @@ function copyEvidence(value: WaterfallBehaviorEvidence): WaterfallBehaviorEviden
 
 function copyProfile(value: WaterfallPreferenceProfile): WaterfallPreferenceProfile {
   return {
-    version: 1,
+    version: 2,
     topicWeights: value.topicWeights.map(copyWeight),
     sourceWeights: value.sourceWeights.map(copyWeight),
     formatWeights: value.formatWeights.map(copyWeight),
     explicitRules: value.explicitRules.map(copyRule),
     recentEvidence: value.recentEvidence.map(copyEvidence),
-    enabledSources: value.enabledSources.slice(),
+    discoveryEnabledSources: value.discoveryEnabledSources.slice(),
+    enabledSources: value.discoveryEnabledSources.slice(),
+    updatedAt: value.updatedAt
+  };
+}
+
+function migrateProfile(value: StoredWaterfallPreferenceProfile): WaterfallPreferenceProfile {
+  const sources = value.version === 2 ? value.discoveryEnabledSources as string[] : value.enabledSources as string[];
+  return {
+    version: 2,
+    topicWeights: value.topicWeights.map(copyWeight),
+    sourceWeights: value.sourceWeights.map(copyWeight),
+    formatWeights: value.formatWeights.map(copyWeight),
+    explicitRules: value.explicitRules.map(copyRule),
+    recentEvidence: value.recentEvidence.map(copyEvidence),
+    discoveryEnabledSources: sources.slice(),
+    enabledSources: sources.slice(),
     updatedAt: value.updatedAt
   };
 }
@@ -118,8 +151,8 @@ function copyProfile(value: WaterfallPreferenceProfile): WaterfallPreferenceProf
 function parsedProfile(raw: string): WaterfallPreferenceProfile {
   if (raw.trim().length === 0) return emptyWaterfallPreferenceProfile();
   try {
-    const value = JSON.parse(raw) as WaterfallPreferenceProfile;
-    return validProfile(value) ? copyProfile(value) : emptyWaterfallPreferenceProfile();
+    const value = JSON.parse(raw) as StoredWaterfallPreferenceProfile;
+    return validProfile(value) ? migrateProfile(value) : emptyWaterfallPreferenceProfile();
   } catch (_error) {
     return emptyWaterfallPreferenceProfile();
   }
@@ -242,11 +275,16 @@ export class WaterfallPreferencesStore {
     return this.save(profile);
   }
 
-  saveEnabledSources(sources: string[]): WaterfallPreferenceProfile {
+  saveDiscoveryEnabledSources(sources: string[]): WaterfallPreferenceProfile {
     const profile = this.load();
-    profile.enabledSources = dedupeStrings(sources).filter((source: string): boolean =>
+    profile.discoveryEnabledSources = dedupeStrings(sources).filter((source: string): boolean =>
       DEFAULT_SOURCES.indexOf(source) >= 0);
+    profile.enabledSources = profile.discoveryEnabledSources.slice();
     profile.updatedAt = Date.now();
     return this.save(profile);
+  }
+
+  saveEnabledSources(sources: string[]): WaterfallPreferenceProfile {
+    return this.saveDiscoveryEnabledSources(sources);
   }
 }

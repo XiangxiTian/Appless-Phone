@@ -209,6 +209,7 @@ export struct HomePage {
   @Prop multiTaskPayloadTick: number = 0;
   @Prop waterfallPayloadJson: string = '';
   @Prop waterfallPayloadTick: number = 0;
+  @Prop waterfallBackRequestTick: number = 0;
   @Prop mailDetailEventJson: string = '';
   @Prop mailReplyEventJson: string = '';
   @Prop mailCalendarEventJson: string = '';
@@ -271,6 +272,7 @@ export struct HomePage {
   onRememberBim: () => void = () => {};
   onReturnDailyBrief: () => void = () => {};
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
+  onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
 
   aboutToAppear(): void {
     const uiContext = this.getUIContext();
@@ -739,6 +741,7 @@ export struct HomePage {
             multiTaskPayloadTick: this.multiTaskPayloadTick,
             waterfallPayloadJson: this.waterfallPayloadJson,
             waterfallPayloadTick: this.waterfallPayloadTick,
+            waterfallBackRequestTick: this.waterfallBackRequestTick,
             mailDetailEventJson: this.mailDetailEventJson,
             mailReplyEventJson: this.mailReplyEventJson,
             mailCalendarEventJson: this.mailCalendarEventJson,
@@ -749,6 +752,7 @@ export struct HomePage {
             onAction: this.onAction,
             onWaterfallFullscreenChange: (active: boolean): void => {
               this.waterfallFullscreen = active;
+              this.onWaterfallFullscreenChange(active);
             }
           })
           .layoutWeight(1)

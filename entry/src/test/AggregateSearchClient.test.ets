@@ -229,13 +229,14 @@ export default function aggregateSearchClientTest() {
       expect(aggregateSearchSourcesFromArgs(null).join(',')).assertEqual('youtube,bilibili,x,hackernews,reddit,zhihu');
     });
 
-    it('intersects requested sources with the persisted runtime allow-list', 0, () => {
+    it('keeps discovery runtime settings out of search source selection', 0, () => {
       configureWaterfallEnabledSourcesForRuntime(['youtube', 'x']);
       const args: QueryArgsFixture = { query: 'AI', sources: ['youtube', 'reddit', 'x'] };
       expect(aggregateSearchSourcesFromArgs(args).join(','))
-        .assertEqual('youtube,x');
+        .assertEqual('youtube,reddit,x');
       configureWaterfallEnabledSourcesForRuntime([]);
-      expect(aggregateSearchSourcesFromArgs(null).length).assertEqual(0);
+      expect(aggregateSearchSourcesFromArgs(null).join(','))
+        .assertEqual('youtube,bilibili,x,hackernews,reddit,zhihu');
       configureWaterfallEnabledSourcesForRuntime(['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu']);
     });
 
@@ -788,7 +789,41 @@ export default function aggregateSearchClientTest() {
       expect(ranked.filter((item: WaterfallRankedCandidate): boolean => item.id.indexOf('dup-') === 0).length).assertEqual(1);
     });
 
-    it('plans bounded 60 30 10 interest recall through enabled sources', 0, () => {
+    it('ranks a full personalized multi-source batch inside the UI watchdog budget', 0, () => {
+      const sourceNames = ['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu'];
+      const candidates: WaterfallCandidate[] = [];
+      const profile = emptyPreferenceProfile();
+      for (let index = 0; index < 500; index += 1) {
+        profile.topicWeights.push({
+          key: '偏好主题-' + index.toString(),
+          weight: index % 2 === 0 ? 1 : -0.5,
+          updatedAt: WATERFALL_NOW_MS
+        });
+      }
+      for (let index = 0; index < 60; index += 1) {
+        const candidate = traditionalCandidate(
+          'stress-' + index.toString(),
+          sourceNames[index % sourceNames.length],
+          'OpenAI Codex 性能回归 ' + index.toString(),
+          '偏好主题-' + index.toString() + ' 端侧交互排序摘要',
+          'https://stress.test/' + index.toString(),
+          index + 1,
+          index
+        );
+        candidate.topics = ['偏好主题-' + index.toString(), '端侧交互'];
+        candidates.push(candidate);
+      }
+      const startedAt = Date.now();
+      const ranked = rankWaterfallCandidates({
+        query: 'OpenAI Codex', candidates, enabledSources: sourceNames, shownIds: [], stableIds: [],
+        preferenceDescription: '', mode: 'search', surfaceId: 'surface-stress', profile
+      }, WATERFALL_NOW_MS);
+
+      expect(ranked.length).assertEqual(60);
+      expect(Date.now() - startedAt).assertLess(2000);
+    });
+
+    it('plans one equal-priority interest request per enabled source', 0, () => {
       const profile = emptyPreferenceProfile();
       profile.topicWeights = [
         { key: '科幻', weight: 8, updatedAt: WATERFALL_NOW_MS },
@@ -802,25 +837,27 @@ export default function aggregateSearchClientTest() {
       recent[1].topics = ['足球'];
       const requests: WaterfallInterestRecallRequest[] =
         planWaterfallInterestRecall(profile, recent, ['youtube', 'x', 'reddit']);
-      const weightFor = (route: string): number => requests.filter(
-        (request: WaterfallInterestRecallRequest): boolean => request.route === route)
-        .reduce((total: number, request: WaterfallInterestRecallRequest): number => total + request.weight, 0);
-      expect(weightFor('similar')).assertEqual(60);
-      expect(weightFor('profile')).assertEqual(30);
-      expect(weightFor('explore') + weightFor('popular')).assertEqual(10);
+      expect(requests.length).assertEqual(3);
       expect(requests.every((request: WaterfallInterestRecallRequest): boolean =>
-        request.sources.every((source: string): boolean =>
-        ['youtube', 'x', 'reddit'].indexOf(source) >= 0))).assertTrue();
-      expect(requests.length <= 7).assertTrue();
+        request.sources.length === 1 && request.weight === 1 && request.continuation === null &&
+        request.query.length <= 24)).assertTrue();
+      expect(requests.map((request: WaterfallInterestRecallRequest): string => request.sources[0]).join(','))
+        .assertEqual('youtube,x,reddit');
+      expect(requests.map((request: WaterfallInterestRecallRequest): string => request.route).join(','))
+        .assertEqual('popular,similar,similar');
     });
 
-    it('uses honest popular plus broad exploration for an empty profile', 0, () => {
+    it('uses honest popular plus rotating exploration for an empty profile', 0, () => {
       const requests: WaterfallInterestRecallRequest[] =
         planWaterfallInterestRecall(emptyPreferenceProfile(), [], ['youtube', 'x']);
+      const nextRound: WaterfallInterestRecallRequest[] =
+        planWaterfallInterestRecall(emptyPreferenceProfile(), [], ['youtube', 'x'], 1);
       expect(requests.some((request: WaterfallInterestRecallRequest): boolean => request.route === 'popular' &&
         request.sources.join(',') === 'youtube')).assertTrue();
       expect(requests.some((request: WaterfallInterestRecallRequest): boolean => request.route === 'explore' &&
-        request.query === 'AI 科技 电影 体育 游戏' && request.sources.join(',') === 'x')).assertTrue();
+        request.query === '科技新知' && request.sources.join(',') === 'x')).assertTrue();
+      expect(nextRound.some((request: WaterfallInterestRecallRequest): boolean => request.route === 'explore' &&
+        request.query === '影视文化' && request.sources.join(',') === 'x')).assertTrue();
       expect(requests.every((request: WaterfallInterestRecallRequest): boolean =>
         request.sources.indexOf('reddit') < 0)).assertTrue();
     });

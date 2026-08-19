@@ -201,7 +201,6 @@ interface AggregateHttpResult {
 }
 
 const DEFAULT_SOURCES: AggregateSearchSource[] = ['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu'];
-let runtimeEnabledSources: AggregateSearchSource[] = DEFAULT_SOURCES.slice();
 let runtimePreferenceProfile: WaterfallPreferenceSnapshot | undefined = undefined;
 const X_PUBLIC_SEARCH_MARKER: string = 'X 公开 post 搜索关键词:';
 const ZHIHU_SEARCH_URL: string = 'https://developer.zhihu.com/api/v1/content/zhihu_search';
@@ -273,15 +272,12 @@ export function aggregateSearchQueryFromArgs(prompt: string, args: Object | null
 }
 
 export function aggregateSearchSourcesFromArgs(args: Object | null): AggregateSearchSource[] {
-  let requested: AggregateSearchSource[] = [];
   if (args === null) {
-    requested = DEFAULT_SOURCES.slice();
-    return requested.filter((source: AggregateSearchSource): boolean => runtimeEnabledSources.indexOf(source) >= 0);
+    return DEFAULT_SOURCES.slice();
   }
   const raw = (args as AggregateArgRecord).sources;
   if (!Array.isArray(raw)) {
-    requested = DEFAULT_SOURCES.slice();
-    return requested.filter((source: AggregateSearchSource): boolean => runtimeEnabledSources.indexOf(source) >= 0);
+    return DEFAULT_SOURCES.slice();
   }
   const sources: AggregateSearchSource[] = [];
   raw.forEach((item: AggregateArgValue) => {
@@ -303,17 +299,10 @@ export function aggregateSearchSourcesFromArgs(args: Object | null): AggregateSe
       sources.push(value as AggregateSearchSource);
     }
   });
-  requested = sources.length > 0 ? sources : DEFAULT_SOURCES.slice();
-  return requested.filter((source: AggregateSearchSource): boolean => runtimeEnabledSources.indexOf(source) >= 0);
+  return sources.length > 0 ? sources : DEFAULT_SOURCES.slice();
 }
 
-export function configureWaterfallEnabledSourcesForRuntime(sources: AggregateSearchSource[]): void {
-  runtimeEnabledSources = [];
-  sources.forEach((source: AggregateSearchSource): void => {
-    if (DEFAULT_SOURCES.indexOf(source) >= 0 && runtimeEnabledSources.indexOf(source) < 0) {
-      runtimeEnabledSources.push(source);
-    }
-  });
+export function configureWaterfallEnabledSourcesForRuntime(_sources: AggregateSearchSource[]): void {
 }
 
 export function configureWaterfallPreferenceProfileForRuntime(

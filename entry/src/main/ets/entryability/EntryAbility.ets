@@ -60,6 +60,7 @@ const COMPOSIO_CALLBACK_URI_HINTS: string[] = [
 export const TRAIN_PRESALE_TASKS_KEY: string = 'tasks';
 export const TRAIN_PRESALE_PENDING_TASK_KEY: string = 'pending_execution_task_id';
 export const TRAIN_PRESALE_HANDOFF_EVENT: string = 'trainPresaleHandoffChanged';
+export const WATERFALL_CONVERSATION_TYPED_TEST_EVENT: string = 'waterfallConversationTypedTest';
 const TRAIN_PRESALE_REPLACED_REASON: string = '新的开售提醒已到达；请重新打开此任务继续。';
 
 export interface TrainPresaleHandoffClaimResult {
@@ -70,6 +71,10 @@ export interface TrainPresaleHandoffClaimResult {
 export interface TrainPresaleHandoffTransitionResult {
   task: TrainPresaleTask | undefined;
   cleared: boolean;
+}
+
+export interface WaterfallConversationTypedTestPayload {
+  prompt: string;
 }
 
 function hasUriHint(uri: string, hints: string[]): boolean {
@@ -228,6 +233,15 @@ export function queueBimSentinelMockFromWant(want: Want): boolean {
   }
   queueBimSentinelMockHandoff();
   return true;
+}
+
+export function waterfallConversationTypedTestPromptFromWant(want: Want): string {
+  const params = want.parameters;
+  if (params === undefined || params === null) return '';
+  const value = params['waterfallConversationPrompt'];
+  if (typeof value !== 'string') return '';
+  const prompt = value.trim();
+  return prompt.length > 0 && prompt.length <= 240 ? prompt : '';
 }
 
 function trainPresaleTasks(store: preferences.Preferences): TrainPresaleTask[] {
@@ -407,6 +421,7 @@ export default class EntryAbility extends UIAbility {
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onNewWant');
     const bimSentinelMock = queueBimSentinelMockFromWant(want);
+    const waterfallPrompt = waterfallConversationTypedTestPromptFromWant(want);
     const uri = oauthUriFromWant(want);
     loadProviderRuntimeConfig(this.context, !isComposioCallbackUri(uri));
     this.loadPersonaPacks();
@@ -417,6 +432,10 @@ export default class EntryAbility extends UIAbility {
     }
     if (bimSentinelMock) {
       this.context.getApplicationContext().eventHub.emit(BIM_SENTINEL_MOCK_EVENT);
+    }
+    if (waterfallPrompt.length > 0) {
+      const payload: WaterfallConversationTypedTestPayload = { prompt: waterfallPrompt };
+      this.context.getApplicationContext().eventHub.emit(WATERFALL_CONVERSATION_TYPED_TEST_EVENT, payload);
     }
   }
 

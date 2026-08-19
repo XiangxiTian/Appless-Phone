@@ -3394,7 +3394,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('waterfall-entry-floating')).assertLarger(-1);
       expect(html.indexOf('waterfall-cinema-card')).assertLarger(-1);
       expect(html.indexOf('waterfall-card-shell')).assertLarger(-1);
-      expect(html.indexOf('waterfall-top-hotzone')).assertLarger(-1);
+      expect(html.indexOf('waterfall-top-hotzone')).assertEqual(-1);
       expect(html.indexOf('waterfall-card--video')).assertLarger(-1);
       expect(html.indexOf('waterfall-card--image-text')).assertLarger(-1);
       expect(html.indexOf('waterfall-card--text')).assertLarger(-1);

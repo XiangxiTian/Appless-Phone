@@ -50,6 +50,7 @@ interface YouTubeThumbnail {
 export interface YouTubeSearchOptions {
   order: string;
   maxResults: number;
+  relevanceLanguage?: string;
   pageToken?: string;
 }
 
@@ -87,11 +88,31 @@ function normalizedYouTubeMaxResults(value: number): number {
 export function defaultYouTubeSearchOptions(): YouTubeSearchOptions {
   return {
     order: 'relevance',
-    maxResults: 10
+    maxResults: 10,
+    relevanceLanguage: '',
+    pageToken: ''
   };
 }
 
-export function youtubeSearchUrl(query: string, apiKey: string, order: string = 'relevance', maxResults: number = 10, pageToken: string = ''): string {
+export function normalizeYouTubeRelevanceLanguage(value: string): string {
+  const normalized = value.trim().toLowerCase().replace('_', '-');
+  if (normalized === 'zh' || normalized === 'zh-hans' || normalized === 'zh-cn') {
+    return 'zh-Hans';
+  }
+  if (normalized === 'en') {
+    return 'en';
+  }
+  return '';
+}
+
+export function youtubeSearchUrl(
+  query: string,
+  apiKey: string,
+  order: string = 'relevance',
+  maxResults: number = 10,
+  relevanceLanguageOrPageToken: string = '',
+  pageToken: string = ''
+): string {
   const params: string[][] = [
     ['part', 'snippet'],
     ['type', 'video'],
@@ -100,8 +121,17 @@ export function youtubeSearchUrl(query: string, apiKey: string, order: string = 
     ['q', query],
     ['key', apiKey]
   ];
-  if (pageToken.trim().length > 0) {
-    params.push(['pageToken', pageToken.trim()]);
+  const normalizedLanguage = normalizeYouTubeRelevanceLanguage(relevanceLanguageOrPageToken);
+  if (normalizedLanguage.length > 0) {
+    params.push(['relevanceLanguage', normalizedLanguage]);
+  }
+  // Upstream used the fifth argument for pageToken while this branch used it for language.
+  // Accept both call shapes; internal callers pass an explicit sixth argument for pageToken.
+  const legacyPageToken = normalizedLanguage.length === 0 &&
+    relevanceLanguageOrPageToken.trim().toLowerCase() !== 'auto' ? relevanceLanguageOrPageToken.trim() : '';
+  const normalizedPageToken = pageToken.trim().length > 0 ? pageToken.trim() : legacyPageToken;
+  if (normalizedPageToken.length > 0) {
+    params.push(['pageToken', normalizedPageToken]);
   }
   return YOUTUBE_SEARCH_URL + '?' + params.map((pair: string[]) => encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1])).join('&');
 }
@@ -245,7 +275,12 @@ export async function callYouTubeVideoSearch(query: string, apiKey: string, opti
   const request = http.createHttp();
   try {
     const response = await request.request(youtubeSearchUrl(
-      query, apiKey.trim(), options.order, options.maxResults, options.pageToken ?? ''
+      query,
+      apiKey.trim(),
+      options.order,
+      options.maxResults,
+      options.relevanceLanguage === undefined ? '' : options.relevanceLanguage,
+      options.pageToken === undefined ? '' : options.pageToken
     ), {
       method: http.RequestMethod.GET,
       header: { 'Accept': 'application/json' },

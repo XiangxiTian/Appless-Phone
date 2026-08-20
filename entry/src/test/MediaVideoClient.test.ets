@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { DynamicGenericToolResult } from '@loop/agent-core';
-import { callMediaVideoSearch, mediaSourcesFromArgs, mediaVideoQueryFromArgs, mediaVideoSearchQuery, mergeMediaVideoProviderResults } from '@loop/agent-core';
+import { callMediaVideoSearch, mediaRelevanceLanguageFromArgs, mediaSourcesFromArgs, mediaVideoQueryFromArgs, mediaVideoSearchQuery, mergeMediaVideoProviderResults } from '@loop/agent-core';
 
 function row(source: string, title: string, status: string = 'success'): DynamicGenericToolResult {
   return {
@@ -20,6 +20,7 @@ interface QueryArgsFixture {
 
 interface SourceArgsFixture {
   sources: string[];
+  language?: string;
 }
 
 export default function mediaVideoClientTest() {
@@ -27,12 +28,16 @@ export default function mediaVideoClientTest() {
     it('extracts query and source args without keyword heuristics', 0, () => {
       const queryArgs: QueryArgsFixture = { query: 'qwen max 官方介绍' };
       const sourceArgs: SourceArgsFixture = { sources: ['bilibili'] };
+      const chineseYouTubeArgs: SourceArgsFixture = { sources: ['youtube'], language: 'zh-CN' };
+      const unrestrictedYouTubeArgs: SourceArgsFixture = { sources: ['youtube'], language: '' };
 
       expect(mediaVideoQueryFromArgs('帮我搜视频', queryArgs)).assertEqual('qwen max 官方介绍');
       expect(mediaVideoQueryFromArgs('帮我搜视频', null)).assertEqual('视频');
       expect(mediaVideoSearchQuery('帮我在b站和youtube里搜索qwen max 的官方视频')).assertEqual('qwen max 的官方视频');
       expect(mediaSourcesFromArgs(sourceArgs).join(',')).assertEqual('bilibili');
       expect(mediaSourcesFromArgs(null).join(',')).assertEqual('youtube,bilibili');
+      expect(mediaRelevanceLanguageFromArgs(chineseYouTubeArgs)).assertEqual('zh-Hans');
+      expect(mediaRelevanceLanguageFromArgs(unrestrictedYouTubeArgs)).assertEqual('');
     });
 
     it('merges provider rows and normalizes toolName for aggregate search', 0, () => {

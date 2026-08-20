@@ -1,5 +1,11 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { A2uiAction, A2uiComponent, WaterfallFeedState, WaterfallRankedCandidate } from '@loop/agent-core';
+import {
+  A2uiAction,
+  A2uiComponent,
+  aggregateSearchSearchSourceIds,
+  WaterfallFeedState,
+  WaterfallRankedCandidate
+} from '@loop/agent-core';
 import {
   buildDailyBriefFixtureSections,
   createDailyBriefErrorSurface,
@@ -588,7 +594,7 @@ export default function dailyBriefCoreTest() {
       const projected = projectDailyBriefDiscovery(waterfallState(first, [second], []));
 
       expect(input.query).assertEqual('AI 产品 HarmonyOS Agent 推荐系统 个人日报 Demo');
-      expect(input.sources.join(',')).assertEqual('youtube,bilibili,x,hackernews,reddit,zhihu');
+      expect(input.sources.join(',')).assertEqual(aggregateSearchSearchSourceIds().join(','));
       expect(input.preferenceDescription).assertEqual(
         '中文优先；15 分钟内；图文 > 短视频 > 长视频；降低重复内容和只有热度、缺少信息量的内容'
       );

@@ -1,6 +1,6 @@
 # 当前工具能力总表
 
-更新时间：2026-08-10
+更新时间：2026-08-14
 
 来源：`agent_core/src/main/ets/aiphone/AiphoneToolDefinitions.ets`、`agent_core/src/main/ets/aiphone/runtime/ToolDefinitionRegistry.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentRuntime.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets`、`agent_core/src/main/ets/aiphone/runtime/AggregateSearchClient.ets`、`agent_core/src/main/ets/aiphone/runtime/ComposioDynamicBackend.ets`、`scripts/aiphone-device-smoke.mjs`、支付/Composio 相关单测。
 
@@ -115,7 +115,8 @@ UI Lab 的 GitHub 用户看板是 `dynamic.search` 的宿主受信 profile，不
 | Gmail | `gmail.open.web` | `帮我打开 Gmail 网页版` | 打开 Gmail Web 让用户手动处理 | `confirm_required` | 系统 intent / Web session | 通常需要 VPN | 否 | 规则/动作链路 |
 | Gmail | `gmail.message.send` | 当前 Gmail 回复卡片点击“发送回复” | 仅复用当前可见回复卡片的一次确认，固定执行 `GMAIL_REPLY_TO_THREAD`；provider 未返回明确成功证据时显示真实错误，不声称已发送 | `confirm_required` | Composio Gmail connected account + 当前 thread/message/requestKey/recipient/body；M01 还要求安全 thread/recipient 环境变量 | 通常需要外网/VPN | 是 | 参数/身份/重放/失败单测；`--gmail-send-manual --list-cases` 仅列手工门禁，不自动发送 |
 | 视频 | `media.video.search` | `帮我在b站和youtube里搜索qwen的官方视频` | B 站 + YouTube 多源视频结果或真实 provider 错误 | `read` | `YOUTUBE_API_KEY`；B 站公开接口/页面 | YouTube 通常需要；B 站通常不需要 | 否 | 默认 smoke |
-| 聚合搜索 | `media.aggregate.search` | `我想看看有关 openai codex 的相关新闻和讨论` | YouTube/B 站视频 + X/HN/Reddit/知乎讨论聚合；provider 返回的社交图片/可播放视频会进入对应卡片，纯文本首条可补最多 2 条真实评论摘录；只有 `[video]` 标记但无可播放地址时仍按文本展示 | `read` | `YOUTUBE_API_KEY`、`COMPOSIO_API_KEY` / `COMPOSIO_USER_ID` + X/Reddit/HN connected account；B 站/知乎公开访问 | YouTube/X/Reddit/HN 通常需要；B 站/知乎通常不需要 | X/Reddit/HN 走 Composio；评论或媒体补充失败不伪造内容 | 默认 smoke |
+| 聚合搜索 | `media.aggregate.search` | `我想看看有关 openai codex 的相关新闻和讨论` | 从统一来源注册表中仅选择具备 `search` capability 的视频、图文、播客和公开讨论来源并进入 waterfall；Apple Podcasts 提供节目且卡片仅保留“查看来源”，Twitch 不进入普通工具来源枚举、参数归一化或调度。provider 失败、缺配置或无结果都保留真实状态，不伪造内容 | `read` | Apple Podcasts 匿名直连；其余来源沿用现有 YouTube/Composio/公开接口配置 | Apple/部分外网来源通常需外网；B 站/知乎通常不需要 | X/Reddit/HN 继续走 Composio；Apple 为 iTunes Search API | C08；Apple 真机变体待复核 |
+| 发现流 | 宿主兴趣召回（无独立 tool ID） | 左滑进入“发现流” | 从统一来源注册表中选择具备 `interest` capability 的来源；默认以 `AI 科技` 召回非 Twitch 内容。Twitch 仅在此场景出现，并由 provider 无查询词发现：批量解析 Science & Technology、Software and Game Development、Makers & Crafting 分类后取最多 3 个科技热门直播，再从 Top Games 中优先选择带 `igdb_id` 的实际游戏并取该游戏最高热度的 1 个直播。`igdb_id` 仅是工程启发式，不是 Twitch 对分类语义的保证；无匹配时回退 Top Games 第一项。科技分类缓存 24 小时，热门游戏缓存 10 分钟；关闭多语言时 Streams 请求传 `language=zh`，开启时不传。普通聚合搜索不暴露 Twitch | `read` | Twitch demo 端侧需 `TWITCH_CLIENT_ID` + `TWITCH_CLIENT_SECRET`；其他来源沿用聚合搜索配置 | Twitch/部分外网来源通常需外网 | Twitch 真机直连 Helix，HAP 以 client_credentials 获取、缓存并提前刷新 app token；冷启动通常 4 个 Helix 请求（分类、科技直播、Top Games、游戏直播），科技分类缓存后 3 个，两类缓存均命中后 2 个；demo 接受 client secret 进入 HAP、可被逆向提取，生产环境应改回可信服务端 | Twitch manual-only；热门分类没有中文直播时不会伪造结果；直播间点击/内置播放问题不在本轮范围 |
 | 世界杯 | `worldcup.open` | `我想看世界杯下一场比赛和赛程` | 打开 App 内世界杯专页；不把静态页冒充实时比赛结果 | `read` | 无 | 页面本身不需要 | 否 | core C12 |
 | 电影 | `movie.open` | `我想看看现在热映电影、票房和明星动态` | 打开 App 内电影娱乐专页；展示真实公开素材与 2026-08-06 固定数据快照，不冒充实时接口 | `read` | 无 | 视频与远程图片需要网络 | 否 | core C23 |
 | YouTube | `youtube.video.search` | `帮我在 YouTube 搜索 世界杯相关视频` | YouTube-only 公开视频搜索；可用 API 热门排序 | `read` | `YOUTUBE_API_KEY` | 通常需要 VPN | 否 | `--google-apps` |

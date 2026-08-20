@@ -4,6 +4,7 @@ import {
   ActionExecutionResult,
   ConversationTurnMessage,
   CurrentSurfaceSummary,
+  DataResult,
   LlmProvider,
   LocalModel,
   LocalModelSettings,
@@ -22,18 +23,28 @@ import { isRollingGoHotelBookingUrl, validHotelBookingOpenArgs } from '@loop/age
 import {
   advanceWaterfallFeed,
   applyWaterfallProfile,
+  aggregateSearchInterestSourceIds,
+  aggregateSearchSearchSourceIds,
   applyWaterfallExpandedQuery,
   applyWaterfallSourceSelection,
   callConfiguredAggregateSearchContinuation,
   callConfiguredWaterfallInterestRecall,
+  AggregateSearchSource,
   AggregateSearchSourceBatch,
+  ApplePodcastEpisodeAudio,
+  ApplePodcastResolverFailure,
+  applePodcastResolverFailure,
+  configureWaterfallEnabledSourcesForRuntime,
   configureWaterfallPreferenceProfileForRuntime,
+  configureWaterfallSearchPolicyForRuntime,
   failWaterfallExpansion,
+  finalizeInterestWaterfallRecallRanking,
   mergeAggregateSearchContinuationBatch,
-  mergeWaterfallBatch,
+  mergeWaterfallBatchDeferredRanking,
   mergeWaterfallFeedSnapshot,
   planWaterfallInterestRecall,
   planWaterfallContinuation,
+  resolveApplePodcastEpisode,
   parseWaterfallExpandedQuery,
   WaterfallFeedState,
   WaterfallFeedUpdate,
@@ -45,7 +56,8 @@ import {
   WaterfallRankedCandidate,
   WaterfallSourcePhase,
   WaterfallSourceState,
-  waterfallExpansionPrompt
+  waterfallExpansionPrompt,
+  waterfallSearchPolicyForRuntime
 } from '@loop/agent-core';
 import router from '@ohos.router';
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
@@ -328,6 +340,7 @@ import { buildMultiTaskHomePayload, renderHtmlHomeDocument } from './html/HtmlHo
 import {
   buildWaterfallHomePayload,
   renderAggregateSearchHomeDocument,
+  waterfallApplePodcastCandidateFromAction,
   waterfallAdvanceCurrentFromAction,
   waterfallBehaviorFromAction,
   waterfallEnabledSourcesFromAction
@@ -368,6 +381,10 @@ import {
   normalizeFoodPartialThrottleMs,
   normalizeFoodProviderDelayMs
 } from './state/A2uiHomeDebugSettings';
+import {
+  aggregateSearchArgsWithPolicy,
+  DEFAULT_AGGREGATE_SEARCH_POLICY
+} from './state/AggregateSearchPolicy';
 import {
   ConnectionPanelState,
   createInitialConnectionPanelState,
@@ -451,6 +468,9 @@ const COMPOSIO_AUTH_STORE_NAME: string = 'aiphone_composio_auth_store';
 const COMPOSIO_USER_ID_KEY: string = 'composio_user_id';
 const MODEL_PRESET_STORE_NAME: string = 'aiphone_model_preset_store';
 const MODEL_PRESET_KEY: string = 'model_preset';
+const AGGREGATE_SEARCH_POLICY_STORE_NAME: string = 'aiphone_aggregate_search_policy_store';
+const AGGREGATE_DOMESTIC_ONLY_KEY: string = 'only_domestic_sources';
+const AGGREGATE_MULTILINGUAL_KEY: string = 'include_multilingual_results';
 const ANYTHING_DEMO_ROUTE_URL: string = 'pages/A2uiHome/AnythingDemo';
 const MOVIE_DEMO_ROUTE_URL: string = 'pages/A2uiHome/MovieDemo';
 const UI_AGENT_LAB_ROUTE_URL: string = 'pages/A2uiHome/UiAgentLab';
@@ -863,6 +883,11 @@ function calendarPermissionGranted(permissions: string[], authResults: number[])
     authResults[readIndex] === 0 && authResults[writeIndex] === 0;
 }
 
+function waterfallSourcesForContext(enabledSources: string[], availableSources: AggregateSearchSource[]): string[] {
+  return enabledSources.filter((source: string): boolean =>
+    availableSources.indexOf(source as AggregateSearchSource) >= 0);
+}
+
 @Entry
 @Component
 struct Index {
@@ -874,6 +899,8 @@ struct Index {
   @State apiKey: string = defaultLocalModelSettings().apiKey;
   @State selectedModel: string = defaultLocalModelSettings().model;
   @State customParametersJson: string = defaultLocalModelSettings().customParametersJson;
+  @State aggregateDomesticOnly: boolean = DEFAULT_AGGREGATE_SEARCH_POLICY.onlyDomesticSources;
+  @State aggregateMultilingual: boolean = DEFAULT_AGGREGATE_SEARCH_POLICY.includeMultilingualResults;
   @State foodProviderDelayEnabled: boolean = false;
   @State foodProviderDelayMs: string = '0';
   @State foodPartialThrottleMs: string = A2UI_FOOD_PARTIAL_THROTTLE_DEFAULT_MS.toString();
@@ -1661,15 +1688,23 @@ struct Index {
   private runInterestRecallRequests(requests: WaterfallInterestRecallRequest[]): void {
     if (requests.length === 0 || this.interestWaterfallFeedState === null) return;
     const generation = this.interestWaterfallGeneration;
-    const requestedSources = requests.map((request: WaterfallInterestRecallRequest): string => request.sources[0]);
+    const requestedSources: string[] = [];
+    requests.forEach((request: WaterfallInterestRecallRequest): void => {
+      request.sources.forEach((source: string): void => {
+        if (requestedSources.indexOf(source) < 0) requestedSources.push(source);
+      });
+    });
     const requestSequences: Map<string, number> = new Map<string, number>();
     requestedSources.forEach((source: string): void => {
       const sequence = (this.interestSourceRequestSeq.get(source) ?? 0) + 1;
       this.interestSourceRequestSeq.set(source, sequence);
       requestSequences.set(source, sequence);
     });
+    const policy = waterfallSearchPolicyForRuntime();
     aiLogInfo('[AIPhone][WaterfallInterestRecallStart] generation=' + generation.toString() +
-      ' requests=' + requests.length.toString());
+      ' requests=' + requests.length.toString() +
+      ' domesticOnly=' + (policy.domesticOnly ? 'true' : 'false') +
+      ' multilingual=' + (policy.multilingual ? 'true' : 'false'));
     callConfiguredWaterfallInterestRecall(requests, (result: WaterfallInterestRecallBatch): void => {
       let current = this.interestWaterfallFeedState;
       if (current === null || generation !== this.interestWaterfallGeneration) return;
@@ -1682,12 +1717,12 @@ struct Index {
       } else if (result.batch.status.status !== 'success' && explorationIndex >= 0) {
         this.interestExplorationSources.splice(explorationIndex, 1);
       }
-      current = mergeWaterfallBatch(
-        current, result.candidates, this.interestSourceState(result), Date.now(), false).state;
+      current = mergeWaterfallBatchDeferredRanking(
+        current, result.candidates, this.interestSourceState(result)).state;
       this.interestWaterfallFeedState = current;
       this.publishInterestWaterfallPayload();
     }).then((): void => {
-      const current = this.interestWaterfallFeedState;
+      let current = this.interestWaterfallFeedState;
       if (current === null || generation !== this.interestWaterfallGeneration) return;
       current.sources.forEach((source: WaterfallSourceState): void => {
         if (requestedSources.indexOf(source.source) >= 0 &&
@@ -1699,6 +1734,8 @@ struct Index {
           source.reservedCount = 0;
         }
       });
+      current = finalizeInterestWaterfallRecallRanking(current, Date.now());
+      this.interestWaterfallFeedState = current;
       this.applyInterestWaterfallUpdate(planWaterfallContinuation(current));
       aiLogInfo('[AIPhone][WaterfallInterestRecallReady] generation=' + generation.toString());
     }).catch((error: Error): void => {
@@ -1713,7 +1750,9 @@ struct Index {
             source.message = '内容补充失败';
           }
         });
-        this.applyInterestWaterfallUpdate(planWaterfallContinuation(current));
+        const finalized = finalizeInterestWaterfallRecallRanking(current, Date.now());
+        this.interestWaterfallFeedState = finalized;
+        this.applyInterestWaterfallUpdate(planWaterfallContinuation(finalized));
       }
       aiLogError('[AIPhone][WaterfallInterestRecallFailed] generation=' + generation.toString() +
         ' error=' + error.message.substring(0, 240));
@@ -1723,7 +1762,8 @@ struct Index {
   private runInterestRecall(sources: string[] | null = null): void {
     const state = this.interestWaterfallFeedState;
     if (state === null) return;
-    const enabledSources = sources === null ? state.enabledSources : sources;
+    const enabledSources = waterfallSourcesForContext(
+      sources === null ? state.enabledSources : sources, aggregateSearchInterestSourceIds());
     state.sources.forEach((source: WaterfallSourceState): void => {
       if (enabledSources.indexOf(source.source) < 0 || state.enabledSources.indexOf(source.source) < 0) return;
       source.phase = 'loading';
@@ -1743,7 +1783,9 @@ struct Index {
       this.interestWaterfallGeneration += 1;
       this.interestRecallRound = 0;
       this.interestExplorationSources = [];
-      const enabledSources = this.waterfallPreferenceProfile.discoveryEnabledSources.slice();
+      const interestSources = aggregateSearchInterestSourceIds();
+      const enabledSources = waterfallSourcesForContext(
+        this.waterfallPreferenceProfile.discoveryEnabledSources, interestSources);
       this.interestWaterfallFeedState = {
         mode: 'interest',
         interestFallbackStarted: true,
@@ -1759,7 +1801,7 @@ struct Index {
         stable: [],
         tail: [],
         reserve: [],
-        sources: ['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu'].map(
+        sources: interestSources.map(
           (source: string): WaterfallSourceState => ({
           source,
           phase: enabledSources.indexOf(source) >= 0 ? 'loading' : 'exhausted',
@@ -1878,7 +1920,7 @@ struct Index {
 
   private handleWaterfallClientAction(action: A2uiAction): boolean {
     if (action.id !== 'waterfall.sources.select' && action.id !== 'waterfall.feed.advance' &&
-      action.id !== 'waterfall.behavior.record') {
+      action.id !== 'waterfall.behavior.record' && action.id !== 'waterfall.applepodcasts.resolve') {
       return false;
     }
     const document = this.currentHtmlHomeDocument();
@@ -1891,16 +1933,28 @@ struct Index {
       this.waterfallFeedState = document.waterfall;
       this.waterfallFeedSurfaceId = surfaceId;
     }
+    if (action.id === 'waterfall.applepodcasts.resolve') {
+      const candidateId = waterfallApplePodcastCandidateFromAction(action, surfaceId);
+      const candidate = candidateId === null ? null : this.waterfallCandidate(candidateId, this.waterfallFeedState);
+      if (candidateId === null || candidate === null || candidate.source !== 'applepodcasts' ||
+        (candidate.feedUrl ?? '').trim().length === 0) {
+        this.logHtmlHomeActionError(action, 'invalid_apple_podcast_candidate');
+        return true;
+      }
+      this.resolveApplePodcastCandidate('search', surfaceId, candidate);
+      return true;
+    }
     if (action.id === 'waterfall.sources.select') {
-      const enabledSources = waterfallEnabledSourcesFromAction(action, surfaceId);
-      if (enabledSources === null) {
+      const selectedSources = waterfallEnabledSourcesFromAction(action, surfaceId);
+      if (selectedSources === null) {
         this.logHtmlHomeActionError(action, 'invalid_waterfall_source_selection');
         return true;
       }
+      const searchEnabledSources = waterfallSourcesForContext(selectedSources, aggregateSearchSearchSourceIds());
       const feedState = this.waterfallFeedState as WaterfallFeedState;
       const next = applyWaterfallSourceSelection(
         feedState,
-        enabledSources,
+        searchEnabledSources,
         Date.now()
       );
       this.applyWaterfallUpdate(document, next);
@@ -1939,13 +1993,28 @@ struct Index {
       return;
     }
     if (state === null) return;
+    if (action.id === 'waterfall.applepodcasts.resolve') {
+      const candidateId = waterfallApplePodcastCandidateFromAction(action, surfaceId);
+      const candidate = candidateId === null ? null : this.waterfallCandidate(candidateId, state);
+      if (candidate !== null && candidate.source === 'applepodcasts' &&
+        (candidate.feedUrl ?? '').trim().length > 0) {
+        this.resolveApplePodcastCandidate('interest', surfaceId, candidate);
+      } else {
+        this.logHtmlHomeActionError(action, 'invalid_apple_podcast_candidate');
+      }
+      return;
+    }
     if (action.id === 'waterfall.sources.select') {
-      const enabledSources = waterfallEnabledSourcesFromAction(action, surfaceId);
-      if (enabledSources === null) return;
-      const addedSources = enabledSources.filter((source: string): boolean =>
+      const selectedSources = waterfallEnabledSourcesFromAction(action, surfaceId);
+      if (selectedSources === null) return;
+      const interestEnabledSources = waterfallSourcesForContext(
+        selectedSources, aggregateSearchInterestSourceIds());
+      const addedSources = interestEnabledSources.filter((source: string): boolean =>
         state.enabledSources.indexOf(source) < 0);
-      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().saveDiscoveryEnabledSources(enabledSources);
-      const update = applyWaterfallSourceSelection(state, enabledSources, Date.now());
+      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().saveDiscoveryEnabledSources(
+        interestEnabledSources);
+      configureWaterfallEnabledSourcesForRuntime(interestEnabledSources as AggregateSearchSource[]);
+      const update = applyWaterfallSourceSelection(state, interestEnabledSources, Date.now());
       const plannedSources = update.loadRequests.map((request: WaterfallLoadRequest): string => request.source);
       const recallSources = addedSources.filter((source: string): boolean => plannedSources.indexOf(source) < 0);
       this.applyInterestWaterfallUpdate(update);
@@ -1989,6 +2058,90 @@ struct Index {
       if (values[index].id === candidateId) return values[index];
     }
     return null;
+  }
+
+  private activeApplePodcastCandidate(
+    target: 'search' | 'interest',
+    surfaceId: string,
+    candidateId: string,
+    feedUrl: string,
+    runtimeOwner: RuntimeOwner,
+    runtimeGeneration: number,
+    interestGeneration: number
+  ): WaterfallRankedCandidate | null {
+    if (target === 'search') {
+      if (!runtimeCallbackIsCurrent(
+        this.activeRuntimeOwner, this.runtimeGeneration, runtimeOwner, runtimeGeneration)) return null;
+      const document = this.currentHtmlHomeDocument();
+      if (this.waterfallFeedSurfaceId !== surfaceId || document.kind !== 'aggregate-search' ||
+        (document.surfaceId ?? '') !== surfaceId) return null;
+    } else if (surfaceId !== 'waterfall-interest-home' ||
+      this.interestWaterfallGeneration !== interestGeneration) {
+      return null;
+    }
+    const state = target === 'search' ? this.waterfallFeedState : this.interestWaterfallFeedState;
+    const candidate = this.waterfallCandidate(candidateId, state);
+    if (candidate === null || candidate.source !== 'applepodcasts' || (candidate.feedUrl ?? '').trim() !== feedUrl) {
+      return null;
+    }
+    return candidate;
+  }
+
+  private publishApplePodcastCandidate(target: 'search' | 'interest', surfaceId: string): void {
+    if (target === 'interest') {
+      if (surfaceId === 'waterfall-interest-home') this.publishInterestWaterfallPayload();
+      return;
+    }
+    const document = this.currentHtmlHomeDocument();
+    if (this.waterfallFeedSurfaceId === surfaceId && document.kind === 'aggregate-search' &&
+      (document.surfaceId ?? '') === surfaceId) this.publishWaterfallPayload(document);
+  }
+
+  private resolveApplePodcastCandidate(
+    target: 'search' | 'interest',
+    surfaceId: string,
+    candidate: WaterfallRankedCandidate
+  ): void {
+    const feedUrl = (candidate.feedUrl ?? '').trim();
+    if (feedUrl.length === 0 || candidate.audioLoadState === 'loading') return;
+    const candidateId = candidate.id;
+    const runtimeOwner = this.activeRuntimeOwner;
+    const runtimeGeneration = this.runtimeGeneration;
+    const interestGeneration = this.interestWaterfallGeneration;
+    candidate.audioLoadState = 'loading';
+    candidate.audioError = '';
+    candidate.audioRetryable = true;
+    this.publishApplePodcastCandidate(target, surfaceId);
+    aiLogInfo('[AIPhone][ApplePodcastResolve] phase=loading surface=' + surfaceId + ' candidate=' + candidateId);
+    resolveApplePodcastEpisode(feedUrl).then((episode: ApplePodcastEpisodeAudio): void => {
+      const current = this.activeApplePodcastCandidate(
+        target, surfaceId, candidateId, feedUrl, runtimeOwner, runtimeGeneration, interestGeneration);
+      if (current === null) {
+        aiLogInfo('[AIPhone][ApplePodcastResolve] phase=stale surface=' + surfaceId + ' candidate=' + candidateId);
+        return;
+      }
+      current.mediaUrl = episode.mediaUrl;
+      current.audioTitle = episode.audioTitle;
+      current.audioMimeType = episode.audioMimeType;
+      current.audioDuration = episode.audioDuration;
+      current.audioPublishedAt = episode.audioPublishedAt;
+      current.audioLoadState = 'ready';
+      current.audioError = '';
+      current.audioRetryable = false;
+      this.publishApplePodcastCandidate(target, surfaceId);
+      aiLogInfo('[AIPhone][ApplePodcastResolve] phase=ready surface=' + surfaceId + ' candidate=' + candidateId);
+    }).catch((error: Error): void => {
+      const current = this.activeApplePodcastCandidate(
+        target, surfaceId, candidateId, feedUrl, runtimeOwner, runtimeGeneration, interestGeneration);
+      if (current === null) return;
+      const failure: ApplePodcastResolverFailure = applePodcastResolverFailure(error);
+      current.audioLoadState = 'error';
+      current.audioError = failure.message;
+      current.audioRetryable = failure.retryable;
+      this.publishApplePodcastCandidate(target, surfaceId);
+      aiLogError('[AIPhone][ApplePodcastResolve] phase=error surface=' + surfaceId + ' candidate=' + candidateId +
+        ' code=' + failure.code);
+    });
   }
 
   private recordWaterfallBehavior(
@@ -2166,6 +2319,7 @@ struct Index {
 
   aboutToAppear(): void {
     this.loadModelPreset();
+    this.loadAggregateSearchPolicy();
     this.loadBimMotionPreference();
     this.readDebugBuildState();
     this.configureComposioRuntimeForCurrentUser();
@@ -3048,6 +3202,64 @@ struct Index {
     }
   }
 
+  private aggregateSearchPolicyPreferences(): preferences.Preferences | null {
+    const context = this.getUIContext().getHostContext() as common.Context;
+    try {
+      return preferences.getPreferencesSync(context, { name: AGGREGATE_SEARCH_POLICY_STORE_NAME });
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  private preferenceBoolean(value: preferences.ValueType | boolean, fallback: boolean): boolean {
+    return typeof value === 'boolean' ? value : fallback;
+  }
+
+  private syncAggregateSearchRuntimePolicy(): void {
+    configureWaterfallSearchPolicyForRuntime({
+      domesticOnly: this.aggregateDomesticOnly,
+      multilingual: this.aggregateMultilingual
+    });
+  }
+
+  private loadAggregateSearchPolicy(): void {
+    const store = this.aggregateSearchPolicyPreferences();
+    if (store === null) {
+      this.aggregateDomesticOnly = DEFAULT_AGGREGATE_SEARCH_POLICY.onlyDomesticSources;
+      this.aggregateMultilingual = DEFAULT_AGGREGATE_SEARCH_POLICY.includeMultilingualResults;
+      this.syncAggregateSearchRuntimePolicy();
+      return;
+    }
+    try {
+      this.aggregateDomesticOnly = this.preferenceBoolean(store.getSync(
+        AGGREGATE_DOMESTIC_ONLY_KEY,
+        DEFAULT_AGGREGATE_SEARCH_POLICY.onlyDomesticSources
+      ), DEFAULT_AGGREGATE_SEARCH_POLICY.onlyDomesticSources);
+      this.aggregateMultilingual = this.preferenceBoolean(store.getSync(
+        AGGREGATE_MULTILINGUAL_KEY,
+        DEFAULT_AGGREGATE_SEARCH_POLICY.includeMultilingualResults
+      ), DEFAULT_AGGREGATE_SEARCH_POLICY.includeMultilingualResults);
+    } catch (_error) {
+      this.aggregateDomesticOnly = DEFAULT_AGGREGATE_SEARCH_POLICY.onlyDomesticSources;
+      this.aggregateMultilingual = DEFAULT_AGGREGATE_SEARCH_POLICY.includeMultilingualResults;
+    }
+    this.syncAggregateSearchRuntimePolicy();
+  }
+
+  private saveAggregateSearchPolicy(): void {
+    this.syncAggregateSearchRuntimePolicy();
+    const store = this.aggregateSearchPolicyPreferences();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(AGGREGATE_DOMESTIC_ONLY_KEY, this.aggregateDomesticOnly);
+      store.putSync(AGGREGATE_MULTILINGUAL_KEY, this.aggregateMultilingual);
+      store.flushSync();
+    } catch (_error) {
+    }
+  }
+
   private currentLocalDate(): string {
     const now = new Date();
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
@@ -3076,6 +3288,7 @@ struct Index {
   private currentWaterfallPreferenceProfile(includeConversation: boolean = true): WaterfallPreferenceProfile {
     return {
       version: 2,
+      sourceRegistryVersion: this.waterfallPreferenceProfile.sourceRegistryVersion,
       topicWeights: this.waterfallPreferenceProfile.topicWeights.slice(),
       sourceWeights: this.waterfallPreferenceProfile.sourceWeights.slice(),
       formatWeights: this.waterfallPreferenceProfile.formatWeights.slice(),
@@ -3093,7 +3306,7 @@ struct Index {
 
   private loadWaterfallPreferences(): void {
     try {
-      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().load();
+      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().loadForNewSession();
     } catch (_error) {
       this.waterfallPreferenceProfile = emptyWaterfallPreferenceProfile();
     }
@@ -3103,6 +3316,8 @@ struct Index {
     } catch (_error) {
       aiLogError('[AIPhone][WaterfallPreferenceProjection] ok=false source=startup');
     }
+    configureWaterfallEnabledSourcesForRuntime(
+      this.waterfallPreferenceProfile.discoveryEnabledSources as AggregateSearchSource[]);
     configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile(false));
   }
 
@@ -3376,6 +3591,20 @@ struct Index {
     const options: MultiAgentCanaryOptions = {
       model: model,
       opener: opener,
+      structuredToolCall: (
+        toolId: string,
+        prompt: string,
+        args: Object,
+        onPartial?: (result: DataResult) => void
+      ): Promise<DataResult> => callStructuredTool(
+        toolId,
+        prompt,
+        aggregateSearchArgsWithPolicy(toolId, args, {
+          onlyDomesticSources: this.aggregateDomesticOnly,
+          includeMultilingualResults: this.aggregateMultilingual
+        }),
+        onPartial
+      ),
       onSurface: (surface: A2uiSurfaceState, generation: number): boolean => {
         const accepted = this.applyRuntimeSurface(surface, 'multi_agent', generation);
         if (accepted) {
@@ -6123,28 +6352,32 @@ struct Index {
   }
 
   private async argsWithCurrentLocationForTool(toolId: string, args: Object | null): Promise<Object | null> {
+    const requestArgs = aggregateSearchArgsWithPolicy(toolId, args, {
+      onlyDomesticSources: this.aggregateDomesticOnly,
+      includeMultilingualResults: this.aggregateMultilingual
+    });
     if (toolId !== 'luckin.order.preview') {
-      return args;
+      return requestArgs;
     }
-    if (args !== null) {
-      const raw = args as Record<string, Object | string | number | boolean | null | undefined>;
+    if (requestArgs !== null) {
+      const raw = requestArgs as Record<string, Object | string | number | boolean | null | undefined>;
       const selectedDeptId = raw.deptId;
       if (this.actionText(selectedDeptId).length > 0) {
-        return args;
+        return requestArgs;
       }
       const forceRefresh = this.actionText(raw.locationSource) === 'refresh';
       const existingLocation = this.actionText(raw.location);
       if (existingLocation.length > 0 && !forceRefresh) {
-        return args;
+        return requestArgs;
       }
     }
     try {
       const location = await this.currentDeviceLocation();
       aiLogInfo('[AIPhone][LuckinCurrentLocation] source=device chars=' + location.length.toString());
-      return this.mergeLuckinLocationArgs(args, location);
+      return this.mergeLuckinLocationArgs(requestArgs, location);
     } catch (error) {
       aiLogError('[AIPhone][LuckinCurrentLocation] ok=false reason=' + (error instanceof Error ? error.message : JSON.stringify(error)));
-      return args;
+      return requestArgs;
     }
   }
 
@@ -8644,6 +8877,8 @@ struct Index {
         apiKey: $apiKey,
         selectedModel: $selectedModel,
         customParametersJson: $customParametersJson,
+        aggregateDomesticOnly: $aggregateDomesticOnly,
+        aggregateMultilingual: $aggregateMultilingual,
         foodProviderDelayEnabled: $foodProviderDelayEnabled,
         foodProviderDelayMs: $foodProviderDelayMs,
         foodPartialThrottleMs: $foodPartialThrottleMs,
@@ -8694,6 +8929,14 @@ struct Index {
         },
         onToggleDidiMcpSandbox: (isOn: boolean) => {
           this.configureDidiMcpSandboxRuntime(isOn);
+        },
+        onToggleAggregateDomesticOnly: (isOn: boolean) => {
+          this.aggregateDomesticOnly = isOn;
+          this.saveAggregateSearchPolicy();
+        },
+        onToggleAggregateMultilingual: (isOn: boolean) => {
+          this.aggregateMultilingual = isOn;
+          this.saveAggregateSearchPolicy();
         }
       })
     } else {

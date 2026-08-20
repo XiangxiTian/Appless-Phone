@@ -7,17 +7,40 @@ import {
 } from './ComposioDynamicBackend';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 import { callMediaVideoSearch } from './MediaVideoClient';
+import { searchApplePodcasts } from './ApplePodcastClient';
 import {
+  DoubanPlaywrightMcpClient,
+  DoubanPlaywrightMcpConfig,
+  DoubanPublicSearchItem
+} from './DoubanPlaywrightMcpClient';
+import {
+  discoverTwitchInterestStreams,
+  TwitchChannelSearchBatch,
+  TwitchChannelSearchItem,
+  TwitchSearchConfig
+} from './TwitchSearchClient';
+import { aiLogInfo } from './AiphoneLogger';
+import {
+  AggregateSearchPolicy,
   AggregateSearchPost,
   AggregateSearchResult,
   AggregateSearchRowData,
   AggregateSearchSource,
+  AggregateSearchSourceContext,
+  AggregateSearchSourceMetadata,
   AggregateSearchStatus,
   AggregateSearchSourceStatus,
   AggregateSearchVideo,
   aggregateSourceLabel,
   AggregateSearchSourceBatch
 } from './AggregateSearchTypes';
+import {
+  aggregateSearchRegistryMetadata,
+  aggregateSearchRegistryMetadataFor,
+  aggregateSearchRegistrySourceIds,
+  aggregateSearchSearchSourceIds,
+  aggregateSearchSourceIdsForContext
+} from './AggregateSearchSourceRegistry';
 import {
   WaterfallCandidate,
   WaterfallContinuation,
@@ -29,7 +52,9 @@ import {
   WaterfallRecallRoute,
   WaterfallSourceState,
   WaterfallSourcePhase,
+  finalizeDeferredWaterfallRanking,
   mergeWaterfallBatch,
+  mergeWaterfallBatchDeferredRanking,
   waterfallTextTokens
 } from './WaterfallAnythingCore';
 
@@ -44,6 +69,7 @@ interface AggregateMediaSearchArgs {
   limit: number;
   page?: number;
   pageToken?: string;
+  language?: string;
 }
 
 interface AggregateXSearchArgs {
@@ -176,6 +202,7 @@ export function aggregateMediaCandidates(
       url: post.url,
       coverUrl: coverUrl,
       mediaUrl: mediaUrl,
+      feedUrl: post.feedUrl,
       publishedAt: post.publishedAt,
       originalIndex: batchIndex * 1000 + videos.length + index,
       searchQuery: searchQuery,
@@ -195,13 +222,31 @@ export interface AggregateZhihuConfig {
   apiKey: string;
 }
 
+export interface AggregateExternalProviderConfig {
+  doubanPlaywright: DoubanPlaywrightMcpConfig;
+  twitch: TwitchSearchConfig;
+}
+
 interface AggregateHttpResult {
   code: number;
   text: string;
 }
 
-const DEFAULT_SOURCES: AggregateSearchSource[] = ['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu'];
+const DEFAULT_AGGREGATE_SEARCH_POLICY: AggregateSearchPolicy = {
+  domesticOnly: true,
+  multilingual: false
+};
+export const AGGREGATE_SEARCH_PARTIAL_THROTTLE_MS: number = 5000;
+let runtimeEnabledSources: AggregateSearchSource[] = aggregateSearchRegistrySourceIds();
+let runtimeExternalProviderConfig: AggregateExternalProviderConfig = {
+  doubanPlaywright: { mcpUrl: '', bearerToken: '' },
+  twitch: { clientId: '', clientSecret: '' }
+};
 let runtimePreferenceProfile: WaterfallPreferenceSnapshot | undefined = undefined;
+let runtimeSearchPolicy: AggregateSearchPolicy = {
+  domesticOnly: DEFAULT_AGGREGATE_SEARCH_POLICY.domesticOnly,
+  multilingual: DEFAULT_AGGREGATE_SEARCH_POLICY.multilingual
+};
 const X_PUBLIC_SEARCH_MARKER: string = 'X 公开 post 搜索关键词:';
 const ZHIHU_SEARCH_URL: string = 'https://developer.zhihu.com/api/v1/content/zhihu_search';
 
@@ -271,38 +316,169 @@ export function aggregateSearchQueryFromArgs(prompt: string, args: Object | null
   return cleanAggregateSearchQuery(prompt);
 }
 
-export function aggregateSearchSourcesFromArgs(args: Object | null): AggregateSearchSource[] {
-  if (args === null) {
-    return DEFAULT_SOURCES.slice();
+function booleanArg(value: AggregateArgValue, fallback: boolean): boolean {
+  if (typeof value === 'boolean') {
+    return value;
   }
-  const raw = (args as AggregateArgRecord).sources;
-  if (!Array.isArray(raw)) {
-    return DEFAULT_SOURCES.slice();
+  const normalized = textOf(value).trim().toLowerCase();
+  if (normalized === 'true') {
+    return true;
   }
-  const sources: AggregateSearchSource[] = [];
-  raw.forEach((item: AggregateArgValue) => {
-    let value = textOf(item).trim().toLowerCase();
-    if (value === 'hn' || value === 'hacknews' || value === 'hacker news') {
-      value = 'hackernews';
-    }
-    if (value === 'b站' || value === 'b 站') {
-      value = 'bilibili';
-    }
-    if (value === '知乎') {
-      value = 'zhihu';
-    }
-    if (value === '红迪') {
-      value = 'reddit';
-    }
-    if (DEFAULT_SOURCES.indexOf(value as AggregateSearchSource) >= 0 &&
-      sources.indexOf(value as AggregateSearchSource) < 0) {
-      sources.push(value as AggregateSearchSource);
-    }
-  });
-  return sources.length > 0 ? sources : DEFAULT_SOURCES.slice();
+  if (normalized === 'false') {
+    return false;
+  }
+  return fallback;
 }
 
-export function configureWaterfallEnabledSourcesForRuntime(_sources: AggregateSearchSource[]): void {
+export function defaultAggregateSearchPolicy(): AggregateSearchPolicy {
+  return {
+    domesticOnly: DEFAULT_AGGREGATE_SEARCH_POLICY.domesticOnly,
+    multilingual: DEFAULT_AGGREGATE_SEARCH_POLICY.multilingual
+  };
+}
+
+export function aggregateSearchPolicyFromArgs(args: Object | null): AggregateSearchPolicy {
+  if (args === null) {
+    return defaultAggregateSearchPolicy();
+  }
+  const record = args as AggregateArgRecord;
+  return {
+    domesticOnly: booleanArg(record.onlyDomesticSources,
+      booleanArg(record.domesticOnly, DEFAULT_AGGREGATE_SEARCH_POLICY.domesticOnly)),
+    multilingual: booleanArg(record.includeMultilingualResults,
+      booleanArg(record.multilingual, DEFAULT_AGGREGATE_SEARCH_POLICY.multilingual))
+  };
+}
+
+function aggregateSearchArgsContainPolicy(args: Object | null): boolean {
+  if (args === null) {
+    return false;
+  }
+  const record = args as AggregateArgRecord;
+  return record.onlyDomesticSources !== undefined || record.domesticOnly !== undefined ||
+    record.includeMultilingualResults !== undefined || record.multilingual !== undefined;
+}
+
+function aggregateSearchPolicyForCall(args: Object | null): AggregateSearchPolicy {
+  return aggregateSearchArgsContainPolicy(args) ? aggregateSearchPolicyFromArgs(args) : waterfallSearchPolicyForRuntime();
+}
+
+export function aggregateSearchSourceMetadata(): AggregateSearchSourceMetadata[] {
+  return aggregateSearchRegistryMetadata();
+}
+
+function metadataForSource(source: AggregateSearchSource): AggregateSearchSourceMetadata {
+  return aggregateSearchRegistryMetadataFor(source);
+}
+
+function sourceAllowedByPolicy(source: AggregateSearchSource, policy: AggregateSearchPolicy): boolean {
+  const metadata = metadataForSource(source);
+  if (policy.domesticOnly && metadata.isExternal) {
+    return false;
+  }
+  if (policy.multilingual || !metadata.isExternal) {
+    return true;
+  }
+  return (metadata.languageFilterMode === 'native' || metadata.languageFilterMode === 'regional' ||
+    metadata.languageFilterMode === 'post_filter') &&
+    (metadata.languages.indexOf('zh-Hans') >= 0 || metadata.languages.indexOf('zh-Hant') >= 0);
+}
+
+export function waterfallInterestSourceAllowedForRuntime(source: string): boolean {
+  const candidate = source as AggregateSearchSource;
+  return aggregateSearchSourceIdsForContext('interest').indexOf(candidate) >= 0 &&
+    runtimeEnabledSources.indexOf(candidate) >= 0 && sourceAllowedByPolicy(candidate, runtimeSearchPolicy);
+}
+
+export function configureAggregateExternalProvidersForRuntime(config: AggregateExternalProviderConfig): void {
+  runtimeExternalProviderConfig = {
+    doubanPlaywright: {
+      mcpUrl: config.doubanPlaywright.mcpUrl.trim(),
+      bearerToken: config.doubanPlaywright.bearerToken.trim()
+    },
+    twitch: {
+      clientId: config.twitch.clientId.trim(),
+      clientSecret: config.twitch.clientSecret.trim()
+    }
+  };
+}
+
+function normalizedAggregateSource(value: string): AggregateSearchSource | null {
+  let normalized = value.trim().toLowerCase();
+  if (normalized === 'hn' || normalized === 'hacknews' || normalized === 'hacker news') {
+    normalized = 'hackernews';
+  }
+  if (normalized === 'b站' || normalized === 'b 站') {
+    normalized = 'bilibili';
+  }
+  if (normalized === '知乎') {
+    normalized = 'zhihu';
+  }
+  if (normalized === '红迪') {
+    normalized = 'reddit';
+  }
+  return aggregateSearchSearchSourceIds().indexOf(normalized as AggregateSearchSource) >= 0 ?
+    normalized as AggregateSearchSource : null;
+}
+
+export function aggregateSearchSourcesFromArgs(
+  args: Object | null,
+  policy: AggregateSearchPolicy = aggregateSearchPolicyFromArgs(args)
+): AggregateSearchSource[] {
+  const raw = args === null ? undefined : (args as AggregateArgRecord).sources;
+  const explicitSources: AggregateSearchSource[] = [];
+  if (Array.isArray(raw)) {
+    (raw as AggregateArgValue[]).forEach((item: AggregateArgValue) => {
+      const source = normalizedAggregateSource(textOf(item));
+      if (source !== null && explicitSources.indexOf(source) < 0) {
+        explicitSources.push(source);
+      }
+    });
+  }
+  const candidates: AggregateSearchSource[] = !Array.isArray(raw) || explicitSources.length === 0 ?
+    aggregateSearchSearchSourceIds() : explicitSources;
+  const sources: AggregateSearchSource[] = [];
+  candidates.forEach((source: AggregateSearchSource) => {
+    if (sourceAllowedByPolicy(source, policy)) {
+      sources.push(source);
+    }
+  });
+  return sources;
+}
+
+export function aggregateYouTubeRelevanceLanguage(policy: AggregateSearchPolicy): string {
+  // Multilingual mode intentionally leaves YouTube unconstrained; relevanceLanguage is a preference, not a hard filter.
+  return policy.multilingual ? '' : 'zh-Hans';
+}
+
+export function aggregateXSearchQuery(query: string, policy: AggregateSearchPolicy): string {
+  const languageQuery = policy.multilingual ?
+    '(lang:zh-CN OR lang:zh-TW OR lang:en)' :
+    '(lang:zh-CN OR lang:zh-TW)';
+  return query.trim() + ' ' + languageQuery;
+}
+
+export function configureWaterfallEnabledSourcesForRuntime(sources: AggregateSearchSource[]): void {
+  runtimeEnabledSources = [];
+  sources.forEach((source: AggregateSearchSource): void => {
+    if (aggregateSearchRegistrySourceIds().indexOf(source) >= 0 && runtimeEnabledSources.indexOf(source) < 0) {
+      runtimeEnabledSources.push(source);
+    }
+  });
+}
+
+export function configureWaterfallSearchPolicyForRuntime(policy: AggregateSearchPolicy): void {
+  runtimeSearchPolicy = {
+    domesticOnly: policy.domesticOnly,
+    multilingual: policy.multilingual
+  };
+}
+
+export function waterfallSearchPolicyForRuntime(): AggregateSearchPolicy {
+  return {
+    domesticOnly: runtimeSearchPolicy.domesticOnly,
+    multilingual: runtimeSearchPolicy.multilingual
+  };
 }
 
 export function configureWaterfallPreferenceProfileForRuntime(
@@ -383,6 +559,9 @@ export function normalizeAggregateSearchStatus(status: string, count: number): A
   }
   if (status === 'needs_auth' || status === 'auth_required') {
     return 'needs_auth';
+  }
+  if (status === 'unsupported') {
+    return 'unsupported';
   }
   return 'error';
 }
@@ -1247,6 +1426,57 @@ function emptyZhihuConfig(): AggregateZhihuConfig {
 
 export type AggregateSearchPartialObserver = (result: AggregateSearchResult) => void;
 
+class AggregateSearchPartialThrottle {
+  private readonly intervalMs: number;
+  private readonly observer: AggregateSearchPartialObserver;
+  private leadingPublished: boolean = false;
+  private timerId: number = -1;
+  private pending: AggregateSearchResult | null = null;
+
+  constructor(intervalMs: number, observer: AggregateSearchPartialObserver) {
+    this.intervalMs = intervalMs > 0 ? intervalMs : 0;
+    this.observer = observer;
+  }
+
+  publish(snapshot: AggregateSearchResult): void {
+    if (this.intervalMs === 0) {
+      this.observer(snapshot);
+      return;
+    }
+    if (!this.leadingPublished) {
+      this.leadingPublished = true;
+      this.observer(snapshot);
+      return;
+    }
+    this.pending = snapshot;
+    this.restartTimer();
+  }
+
+  finish(): void {
+    this.leadingPublished = false;
+    if (this.timerId >= 0) {
+      clearTimeout(this.timerId);
+      this.timerId = -1;
+    }
+    this.pending = null;
+  }
+
+  private restartTimer(): void {
+    if (this.timerId >= 0) {
+      clearTimeout(this.timerId);
+    }
+    this.timerId = setTimeout((): void => {
+      this.timerId = -1;
+      const pending = this.pending;
+      this.pending = null;
+      if (pending === null) {
+        return;
+      }
+      this.observer(pending);
+    }, this.intervalMs);
+  }
+}
+
 function waterfallPhaseFor(status: AggregateSearchStatus): WaterfallSourcePhase {
   if (status === 'success') {
     return 'success';
@@ -1356,7 +1586,8 @@ export async function streamAggregateSearchSourceBatches(
   tasks: Promise<AggregateSearchSourceBatch>[],
   onPartial: AggregateSearchPartialObserver,
   nowMs: number,
-  preferenceDescription: string = ''
+  preferenceDescription: string = '',
+  partialThrottleMs: number = AGGREGATE_SEARCH_PARTIAL_THROTTLE_MS
 ): Promise<AggregateSearchResult> {
   const videos: AggregateSearchVideo[] = [];
   const posts: AggregateSearchPost[] = [];
@@ -1364,6 +1595,7 @@ export async function streamAggregateSearchSourceBatches(
   let waterfall = loadingWaterfallState(query, requestedSources, preferenceDescription);
   let batchIndex = 0;
   let partialChain: Promise<void> = Promise.resolve();
+  const partialThrottle = new AggregateSearchPartialThrottle(partialThrottleMs, onPartial);
   const wrappedTasks: Promise<void>[] = [];
   for (let index = 0; index < tasks.length; index++) {
     const source = requestedSources[index];
@@ -1376,36 +1608,39 @@ export async function streamAggregateSearchSourceBatches(
           posts.push(post);
         });
         replaceAggregateStatus(statuses, batch.status);
-        waterfall = mergeWaterfallBatch(
+        waterfall = mergeWaterfallBatchDeferredRanking(
           waterfall,
           aggregateMediaCandidates(
             batch.videos.slice(0, 10), batch.posts.slice(0, 10), batchIndex, query, 'original'
           ),
-          sourceStateFor(batch),
-          nowMs,
-          false
+          sourceStateFor(batch)
         ).state;
         batchIndex += 1;
         const snapshot = aggregateSearchResultFromParts(query, videos, posts, orderedAggregateStatuses(requestedSources, statuses));
         snapshot.waterfall = waterfall;
-        onPartial(snapshot);
+        partialThrottle.publish(snapshot);
       });
       return partialChain;
     }).catch((error: Error | Object | string | number | boolean | null | undefined): Promise<void> => {
       const failed = failedAggregateBatch(source, error);
       partialChain = partialChain.then((): void => {
         replaceAggregateStatus(statuses, failed.status);
-        waterfall = mergeWaterfallBatch(waterfall, [], sourceStateFor(failed), nowMs, false).state;
+        waterfall = mergeWaterfallBatchDeferredRanking(waterfall, [], sourceStateFor(failed)).state;
         batchIndex += 1;
         const snapshot = aggregateSearchResultFromParts(query, videos, posts, orderedAggregateStatuses(requestedSources, statuses));
         snapshot.waterfall = waterfall;
-        onPartial(snapshot);
+        partialThrottle.publish(snapshot);
       });
       return partialChain;
     }));
   }
-  await Promise.all(wrappedTasks);
-  await partialChain;
+  try {
+    await Promise.all(wrappedTasks);
+    await partialChain;
+  } finally {
+    partialThrottle.finish();
+  }
+  waterfall = finalizeDeferredWaterfallRanking(waterfall, nowMs);
   const result = aggregateSearchResultFromParts(query, videos, posts, orderedAggregateStatuses(requestedSources, statuses));
   result.waterfall = waterfall;
   return result;
@@ -1416,9 +1651,15 @@ async function aggregateMediaSourceBatch(
   query: string,
   youtubeApiKey: string,
   continuation: WaterfallContinuation | null = null,
-  limit: number = 10
+  limit: number = 10,
+  policy: AggregateSearchPolicy = runtimeSearchPolicy
 ): Promise<AggregateSearchSourceBatch> {
-  const mediaArgs: AggregateMediaSearchArgs = { query: query, sources: [source], limit: limit };
+  const mediaArgs: AggregateMediaSearchArgs = {
+    query: query,
+    sources: [source],
+    limit: limit,
+    language: source === 'youtube' ? aggregateYouTubeRelevanceLanguage(policy) : ''
+  };
   if (source === 'youtube' && continuation !== null && continuation.kind === 'cursor') {
     mediaArgs.pageToken = continuation.value;
   }
@@ -1620,20 +1861,174 @@ async function aggregateZhihuSourceBatch(config: AggregateZhihuConfig, query: st
   };
 }
 
+function doubanPost(item: DoubanPublicSearchItem): AggregateSearchPost {
+  const rows: AggregateSearchRowData[] = [];
+  if (item.imageUrl.length > 0) {
+    rows.push({ label: 'Cover', value: item.imageUrl });
+  }
+  rows.push({ label: 'Content type', value: item.kind });
+  if (item.rating.length > 0) {
+    rows.push({ label: 'Rating', value: item.rating });
+  }
+  if (item.ratingCount.length > 0) {
+    rows.push({ label: 'Rating count', value: item.ratingCount });
+  }
+  if (item.metadata.length > 0 && item.metadata !== item.summary) {
+    rows.push({ label: 'Metadata', value: item.metadata });
+  }
+  return {
+    id: item.id,
+    source: 'douban',
+    provider: '豆瓣公开书影音（Experimental）',
+    title: item.title,
+    author: '',
+    handle: '',
+    text: item.summary,
+    url: item.url,
+    publishedAt: '',
+    score: item.rating,
+    commentCount: '',
+    status: 'success',
+    rows: rows
+  };
+}
+
+async function aggregateDoubanSourceBatch(query: string, limit: number): Promise<AggregateSearchSourceBatch> {
+  const result = await new DoubanPlaywrightMcpClient().search(runtimeExternalProviderConfig.doubanPlaywright, {
+    query: query,
+    kinds: ['book', 'movie', 'music'],
+    limit: limit,
+    start: 0
+  });
+  const posts = result.items.map((item: DoubanPublicSearchItem): AggregateSearchPost => doubanPost(item));
+  const status: AggregateSearchStatus = result.status === 'disabled' ? 'unsupported' : result.status;
+  return {
+    source: 'douban',
+    videos: [],
+    posts: posts,
+    status: statusFor('douban', status, result.message, posts.length),
+    continuation: null
+  };
+}
+
+function twitchItemAllowedByPolicy(item: TwitchChannelSearchItem, policy: AggregateSearchPolicy): boolean {
+  if (policy.multilingual) {
+    return true;
+  }
+  const language = item.language.trim().toLowerCase();
+  return language.length === 0 || language === 'zh' || language.indexOf('zh-') === 0;
+}
+
+function twitchPost(item: TwitchChannelSearchItem): AggregateSearchPost {
+  const rows: AggregateSearchRowData[] = [];
+  if (item.thumbnailUrl.length > 0) {
+    rows.push({ label: 'Thumbnail', value: item.thumbnailUrl });
+  }
+  rows.push({ label: 'Live', value: item.isLive ? 'true' : 'false' });
+  rows.push({ label: 'Kind', value: item.kind });
+  rows.push({ label: 'Viewers', value: item.viewerCount.toString() });
+  if (item.gameName.length > 0) {
+    rows.push({ label: 'Game', value: item.gameName });
+  }
+  if (item.language.length > 0) {
+    rows.push({ label: 'Language', value: item.language });
+  }
+  if (item.startedAt.length > 0) {
+    rows.push({ label: 'Started', value: item.startedAt });
+  }
+  if (item.tags.length > 0) {
+    rows.push({ label: 'Tags', value: item.tags.join(' / ') });
+  }
+  const details: string[] = [item.isLive ? '正在直播' : '近期频道'];
+  if (item.kind === 'tech') {
+    details.push('科技热门');
+  } else if (item.kind === 'game') {
+    details.push('游戏热门');
+  }
+  if (item.gameName.length > 0) {
+    details.push(item.gameName);
+  }
+  return {
+    id: 'twitch-' + item.id,
+    source: 'twitch',
+    provider: 'Twitch',
+    title: item.title.length > 0 ? item.title : item.broadcasterName,
+    author: item.broadcasterName,
+    handle: item.broadcasterLogin,
+    text: details.join(' · '),
+    url: item.url,
+    publishedAt: item.startedAt,
+    score: item.viewerCount.toString(),
+    commentCount: '',
+    status: 'success',
+    rows: rows
+  };
+}
+
+async function aggregateTwitchSourceBatch(
+  query: string,
+  continuation: WaterfallContinuation | null,
+  limit: number,
+  policy: AggregateSearchPolicy,
+  context: AggregateSearchSourceContext
+): Promise<AggregateSearchSourceBatch> {
+  if (context !== 'interest') {
+    return {
+      source: 'twitch', videos: [], posts: [],
+      status: statusFor('twitch', 'unsupported', 'Twitch 仅用于发现流，普通聚合搜索不会发起请求。', 0),
+      continuation: null, rawCount: 0
+    };
+  }
+  const result: TwitchChannelSearchBatch = await discoverTwitchInterestStreams(
+    runtimeExternalProviderConfig.twitch,
+    { multilingual: policy.multilingual, technologyLimit: 3 }
+  );
+  const posts = result.items.filter((item: TwitchChannelSearchItem): boolean =>
+    twitchItemAllowedByPolicy(item, policy)).map((item: TwitchChannelSearchItem): AggregateSearchPost =>
+    twitchPost(item));
+  let message = result.message;
+  if (!policy.multilingual && result.items.length > posts.length) {
+    message += ' 中文频道过滤后保留 ' + posts.length.toString() + ' 条。';
+  }
+  aiLogInfo('[AIPhone][TwitchPostFilter] multilingual=' + (policy.multilingual ? 'true' : 'false') +
+    ' raw=' + result.items.length.toString() + ' kept=' + posts.length.toString() +
+    ' status=' + result.status);
+  const status: AggregateSearchStatus = result.status === 'success' && posts.length === 0 ? 'empty' : result.status;
+  return {
+    source: 'twitch',
+    videos: [],
+    posts: posts,
+    status: statusFor('twitch', status, message, posts.length),
+    continuation: result.continuation === null ? null : { kind: 'cursor', value: result.continuation },
+    rawCount: result.items.length
+  };
+}
+
 function aggregateSourceBatch(
   source: AggregateSearchSource,
   query: string,
   youtubeApiKey: string,
   zhihuConfig: AggregateZhihuConfig,
   continuation: WaterfallContinuation | null,
-  limit: number
+  limit: number,
+  policy: AggregateSearchPolicy = runtimeSearchPolicy,
+  context: AggregateSearchSourceContext = 'search'
 ): Promise<AggregateSearchSourceBatch> {
   if (source === 'youtube' || source === 'bilibili') {
-    return aggregateMediaSourceBatch(source, query, youtubeApiKey, continuation, limit);
+    return aggregateMediaSourceBatch(source, query, youtubeApiKey, continuation, limit, policy);
+  }
+  if (source === 'applepodcasts') {
+    return searchApplePodcasts(query, policy, limit);
+  }
+  if (source === 'douban') {
+    return aggregateDoubanSourceBatch(query, limit);
+  }
+  if (source === 'twitch') {
+    return aggregateTwitchSourceBatch(query, continuation, limit, policy, context);
   }
   if (source === 'x') {
     const args: AggregateXSearchArgs = {
-      query: query,
+      query: aggregateXSearchQuery(query, policy),
       pageSize: limit,
       expansions: 'attachments.media_keys,author_id',
       mediaFields: 'media_key,type,url,preview_image_url,variants,width,height',
@@ -1676,7 +2071,9 @@ export type AggregateSearchSourceLoader = (
   youtubeApiKey: string,
   zhihuConfig: AggregateZhihuConfig,
   continuation: WaterfallContinuation | null,
-  limit: number
+  limit: number,
+  policy: AggregateSearchPolicy,
+  context?: AggregateSearchSourceContext
 ) => Promise<AggregateSearchSourceBatch>;
 
 export async function callAggregateSearchContinuation(
@@ -1687,7 +2084,29 @@ export async function callAggregateSearchContinuation(
   onBatch: AggregateSearchBatchObserver,
   loadSource: AggregateSearchSourceLoader = aggregateSourceBatch
 ): Promise<void> {
-  await Promise.all(requests.map((request: WaterfallLoadRequest): Promise<void> => {
+  return callAggregateSearchContinuationForContext(
+    'search', query, requests, youtubeApiKey, zhihuConfig, onBatch, loadSource
+  );
+}
+
+export async function callAggregateSearchContinuationForContext(
+  context: 'search' | 'interest',
+  query: string,
+  requests: WaterfallLoadRequest[],
+  youtubeApiKey: string,
+  zhihuConfig: AggregateZhihuConfig,
+  onBatch: AggregateSearchBatchObserver,
+  loadSource: AggregateSearchSourceLoader = aggregateSourceBatch
+): Promise<void> {
+  const availableSources = aggregateSearchSourceIdsForContext(context);
+  const availableRequests = requests.filter((request: WaterfallLoadRequest): boolean => {
+    const source = request.source as AggregateSearchSource;
+    if (availableSources.indexOf(source) < 0) {
+      return false;
+    }
+    return context !== 'interest' || waterfallInterestSourceAllowedForRuntime(source);
+  });
+  await Promise.all(availableRequests.map((request: WaterfallLoadRequest): Promise<void> => {
     if (request.mode === 'native' && request.continuation === null) {
       onBatch(exhaustedAggregateBatch(request));
       return Promise.resolve();
@@ -1698,7 +2117,9 @@ export async function callAggregateSearchContinuation(
       youtubeApiKey,
       zhihuConfig,
       request.continuation,
-      request.limit
+      request.limit,
+      runtimeSearchPolicy,
+      context
     ).then((batch: AggregateSearchSourceBatch): void => onBatch(batch)).catch(
       (error: Error | Object | string | number | boolean | null | undefined): void => {
         const failed = failedAggregateBatch(request.source as AggregateSearchSource, error);
@@ -1738,11 +2159,13 @@ export async function callAggregateSearch(
   nowMs: number = Date.now()
 ): Promise<AggregateSearchResult> {
   const query = aggregateSearchQueryFromArgs(prompt, args);
-  const sources = aggregateSearchSourcesFromArgs(args);
+  const policy = aggregateSearchPolicyForCall(args);
+  const sources = aggregateSearchSourcesFromArgs(args, policy);
+  configureWaterfallSearchPolicyForRuntime(policy);
   const preferenceDescription = args === null ? '' : textOf((args as AggregateArgRecord).preferenceDescription).trim();
   const tasks: Promise<AggregateSearchSourceBatch>[] = [];
   sources.forEach((source: AggregateSearchSource): void => {
-    tasks.push(aggregateSourceBatch(source, query, youtubeApiKey, zhihuConfig, null, 10));
+    tasks.push(aggregateSourceBatch(source, query, youtubeApiKey, zhihuConfig, null, 10, policy));
   });
   const observer: AggregateSearchPartialObserver = onPartial === null ? (() => {}) : onPartial;
   return streamAggregateSearchSourceBatches(query, sources, tasks, observer, nowMs, preferenceDescription);

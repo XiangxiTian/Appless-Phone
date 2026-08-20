@@ -1,7 +1,31 @@
 import { WaterfallContinuation, WaterfallFeedState } from './WaterfallAnythingCore';
 
-export type AggregateSearchSource = 'youtube' | 'bilibili' | 'x' | 'hackernews' | 'reddit' | 'zhihu';
+export type AggregateSearchSource = 'youtube' | 'bilibili' | 'x' | 'hackernews' | 'reddit' | 'zhihu' |
+  'douban' | 'applepodcasts' | 'twitch';
 export type AggregateSearchStatus = 'success' | 'empty' | 'needs_auth' | 'unsupported' | 'error';
+export type AggregateSearchLanguageTag = 'zh-Hans' | 'zh-Hant' | 'en';
+export type AggregateSearchLanguageFilterMode = 'intrinsic' | 'native' | 'regional' | 'post_filter' | 'none';
+export type AggregateSearchSourceContext = 'search' | 'interest';
+
+export interface AggregateSearchSourceCapabilities {
+  search: boolean;
+  interest: boolean;
+}
+
+export interface AggregateSearchPolicy {
+  domesticOnly: boolean;
+  multilingual: boolean;
+}
+
+export interface AggregateSearchSourceMetadata {
+  source: AggregateSearchSource;
+  isExternal: boolean;
+  languages: AggregateSearchLanguageTag[];
+  languageFilterMode: AggregateSearchLanguageFilterMode;
+  introducedInRegistryVersion: number;
+  defaultEnabled: boolean;
+  capabilities: AggregateSearchSourceCapabilities;
+}
 
 export interface AggregateSearchRowData {
   label: string;
@@ -44,6 +68,7 @@ export interface AggregateSearchPost {
   commentCount: string;
   status: AggregateSearchStatus;
   rows: AggregateSearchRowData[];
+  feedUrl?: string;
 }
 
 export interface AggregateSearchResult {
@@ -61,6 +86,7 @@ export interface AggregateSearchSourceBatch {
   posts: AggregateSearchPost[];
   status: AggregateSearchSourceStatus;
   continuation: WaterfallContinuation | null;
+  rawCount?: number;
 }
 
 export function emptyAggregateSearchResult(): AggregateSearchResult {
@@ -89,5 +115,14 @@ export function aggregateSourceLabel(source: AggregateSearchSource): string {
   if (source === 'reddit') {
     return 'Reddit';
   }
-  return '知乎';
+  if (source === 'zhihu') {
+    return '知乎';
+  }
+  if (source === 'douban') {
+    return '豆瓣';
+  }
+  if (source === 'applepodcasts') {
+    return 'Apple Podcasts';
+  }
+  return 'Twitch';
 }

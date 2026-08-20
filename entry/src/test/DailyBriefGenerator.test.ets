@@ -6,6 +6,7 @@ import {
   A2uiGenericToolResultData,
   A2uiGenericToolResultRowData,
   A2uiSurfaceState,
+  aggregateSearchSearchSourceIds,
   AggregateSearchResult,
   AggregateSearchSourceStatus,
   WaterfallFeedState
@@ -713,13 +714,13 @@ export default function dailyBriefGeneratorTest() {
       expect(JSON.stringify(first).indexOf('mail-1 visible summary')).assertLarger(-1);
     });
 
-    it('derives six ordered Waterfall sources and visible preference query', 0, () => {
+    it('derives all registered Waterfall sources and visible preference query', 0, () => {
       const preference: DailyBriefPreference = defaultDailyBriefPreference();
       preference.topics = ['AI 产品', 'HarmonyOS'];
 
       const input = dailyBriefWaterfallInput(preference, '个人日报 Demo');
 
-      expect(input.sources.join(',')).assertEqual('youtube,bilibili,x,hackernews,reddit,zhihu');
+      expect(input.sources.join(',')).assertEqual(aggregateSearchSearchSourceIds().join(','));
       expect(input.query).assertEqual('AI 产品 HarmonyOS 个人日报 Demo');
       expect(input.preferenceDescription.indexOf('中文优先')).assertLarger(-1);
       expect(input.preferenceDescription.indexOf('15 分钟内')).assertLarger(-1);

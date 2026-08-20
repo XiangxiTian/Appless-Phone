@@ -44,6 +44,8 @@ export struct ConfigPage {
   @Link apiKey: string;
   @Link selectedModel: string;
   @Link customParametersJson: string;
+  @Link aggregateDomesticOnly: boolean;
+  @Link aggregateMultilingual: boolean;
   @Link foodProviderDelayEnabled: boolean;
   @Link foodProviderDelayMs: string;
   @Link foodPartialThrottleMs: string;
@@ -81,6 +83,8 @@ export struct ConfigPage {
   onResetPersona: () => void = () => {};
   onExportHtmlHomeDocument: () => void = () => {};
   onToggleDidiMcpSandbox: (isOn: boolean) => void = (_isOn: boolean) => {};
+  onToggleAggregateDomesticOnly: (isOn: boolean) => void = (_isOn: boolean) => {};
+  onToggleAggregateMultilingual: (isOn: boolean) => void = (_isOn: boolean) => {};
 
   @Builder
   InputLabel(label: string, top: number) {
@@ -861,6 +865,62 @@ export struct ConfigPage {
             .onChange((value: string) => {
               this.selectedModel = value;
             })
+
+          Divider()
+            .color(COLOR_LINE)
+            .margin({ top: 16, bottom: 12 })
+
+          Row() {
+            Column() {
+              Text('仅聚合国内来源')
+                .fontSize(13)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(COLOR_INK)
+              Text('默认只查询标记为国内来源的内容；关闭后启用外网来源')
+                .fontSize(12)
+                .fontColor(COLOR_MUTED)
+                .margin({ top: 4 })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            Toggle({ type: ToggleType.Switch, isOn: this.aggregateDomesticOnly })
+              .selectedColor(COLOR_ACCENT)
+              .onChange((isOn: boolean) => {
+                this.aggregateDomesticOnly = isOn;
+                this.onToggleAggregateDomesticOnly(isOn);
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Divider()
+            .color(COLOR_LINE)
+            .margin({ top: 16, bottom: 12 })
+
+          Row() {
+            Column() {
+              Text('获取多语言结果')
+                .fontSize(13)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(COLOR_INK)
+              Text('开启后允许简体中文、繁体中文和英文结果')
+                .fontSize(12)
+                .fontColor(COLOR_MUTED)
+                .margin({ top: 4 })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            Toggle({ type: ToggleType.Switch, isOn: this.aggregateMultilingual })
+              .selectedColor(COLOR_ACCENT)
+              .onChange((isOn: boolean) => {
+                this.aggregateMultilingual = isOn;
+                this.onToggleAggregateMultilingual(isOn);
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
 
           Row() {
             Text('高级设置')

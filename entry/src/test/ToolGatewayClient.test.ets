@@ -131,6 +131,7 @@ import {
   trainStructuredDataResult,
   travelStructuredDataA2ui,
   travelStructuredDataResult,
+  waterfallInterestRecallLimitForSource,
   FoodProviderPartialSnapshot,
   FoodProviderResult,
   MailSearchStructuredData
@@ -538,6 +539,12 @@ function trainRowForPrice(
 
 export default function toolGatewayClientTest() {
   describe('toolGatewayClient', () => {
+    it('allocates the Twitch provider-owned three-plus-one interest composition', 0, () => {
+      expect(waterfallInterestRecallLimitForSource('twitch')).assertEqual(4);
+      expect(waterfallInterestRecallLimitForSource('youtube')).assertEqual(10);
+      expect(waterfallInterestRecallLimitForSource('applepodcasts')).assertEqual(10);
+    });
+
     it('uses the lowest priced seat that is currently available', 0, () => {
       const row = trainRowForPrice(
         '9174800000M093300000O055300000',
@@ -3315,6 +3322,37 @@ export default function toolGatewayClientTest() {
         const summary = localProviderConfigDebugSummary();
         expect(summary.indexOf('zhihuApiKey=present(13)')).assertLarger(-1);
         expect(summary.indexOf('zhihu-api-key')).assertEqual(-1);
+      } finally {
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
+
+    it('loads aggregate browser and Twitch demo credentials without logging their values', 0, () => {
+      try {
+        configureLocalProviderConfigFromRawJson(JSON.stringify({
+          TOOL_GATEWAY_API_KEY: 'gateway-api-key',
+          DOUBAN_PLAYWRIGHT_MCP_URL: 'https://playwright.example.test/mcp',
+          DOUBAN_PLAYWRIGHT_MCP_TOKEN: 'douban-ingress-token',
+          TWITCH_CLIENT_ID: 'twitch-client',
+          TWITCH_CLIENT_SECRET: 'twitch-client-secret',
+          TWITCH_APP_ACCESS_TOKEN: 'ignored-static-token',
+          TWITCH_GATEWAY_URL: 'https://ignored-gateway.example.test'
+        }));
+
+        const summary = localProviderConfigDebugSummary();
+        expect(summary.indexOf('doubanMcpUrl=present')).assertLarger(-1);
+        expect(summary.indexOf('doubanMcpToken=present(20)')).assertLarger(-1);
+        expect(summary.indexOf('toolGatewayApiKey=present(15)')).assertLarger(-1);
+        expect(summary.indexOf('twitchClientId=present(13)')).assertLarger(-1);
+        expect(summary.indexOf('twitchClientSecret=present(20)')).assertLarger(-1);
+        expect(summary.indexOf('twitchAppAccessToken')).assertEqual(-1);
+        expect(summary.indexOf('twitchGatewayUrl')).assertEqual(-1);
+        expect(summary.indexOf('douban-ingress-token')).assertEqual(-1);
+        expect(summary.indexOf('gateway-api-key')).assertEqual(-1);
+        expect(summary.indexOf('twitch-client')).assertEqual(-1);
+        expect(summary.indexOf('twitch-client-secret')).assertEqual(-1);
+        expect(summary.indexOf('ignored-static-token')).assertEqual(-1);
+        expect(summary.indexOf('ignored-gateway')).assertEqual(-1);
       } finally {
         configureLocalProviderConfigFromRawJson('{}');
       }

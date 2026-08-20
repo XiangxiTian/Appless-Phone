@@ -190,7 +190,11 @@ import {
   aggregateMediaCandidates,
   aggregateVideoSourceBatchFromDynamicResults,
   callAggregateSearch,
-  callAggregateSearchContinuation
+  callAggregateSearchContinuation,
+  callAggregateSearchContinuationForContext,
+  configureAggregateExternalProvidersForRuntime,
+  waterfallInterestSourceAllowedForRuntime,
+  waterfallSearchPolicyForRuntime
 } from './AggregateSearchClient';
 import {
   AggregateSearchResult,
@@ -542,6 +546,10 @@ interface LocalProviderConfig {
   gmailMcpUserProject: string;
   youtubeApiKey: string;
   zhihuApiKey: string;
+  doubanPlaywrightMcpUrl: string;
+  doubanPlaywrightMcpToken: string;
+  twitchClientId: string;
+  twitchClientSecret: string;
   qqMailAddress: string;
   qqMailAuthCode: string;
   qqMailImapHost: string;
@@ -618,6 +626,10 @@ interface LocalProviderRawConfig {
   GOOGLE_CLOUD_PROJECT?: string;
   YOUTUBE_API_KEY?: string;
   ZHIHU_API_KEY?: string;
+  DOUBAN_PLAYWRIGHT_MCP_URL?: string;
+  DOUBAN_PLAYWRIGHT_MCP_TOKEN?: string;
+  TWITCH_CLIENT_ID?: string;
+  TWITCH_CLIENT_SECRET?: string;
   QQ_MAIL_ADDRESS?: string;
   QQ_MAIL_AUTH_CODE?: string;
   QQ_MAIL_IMAP_HOST?: string;
@@ -686,6 +698,10 @@ interface LocalProviderRawConfig {
   gmailMcpUserProject?: string;
   youtubeApiKey?: string;
   zhihuApiKey?: string;
+  doubanPlaywrightMcpUrl?: string;
+  doubanPlaywrightMcpToken?: string;
+  twitchClientId?: string;
+  twitchClientSecret?: string;
   qqMailAddress?: string;
   qqMailAuthCode?: string;
   qqMailImapHost?: string;
@@ -1542,6 +1558,10 @@ let localProviderConfig: LocalProviderConfig = {
   gmailMcpUserProject: '',
   youtubeApiKey: '',
   zhihuApiKey: '',
+  doubanPlaywrightMcpUrl: '',
+  doubanPlaywrightMcpToken: '',
+  twitchClientId: '',
+  twitchClientSecret: '',
   qqMailAddress: '',
   qqMailAuthCode: '',
   qqMailImapHost: 'imap.qq.com',
@@ -1949,6 +1969,10 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     gmailMcpUserProject: config.gmailMcpUserProject.trim(),
     youtubeApiKey: config.youtubeApiKey.trim(),
     zhihuApiKey: config.zhihuApiKey.trim(),
+    doubanPlaywrightMcpUrl: config.doubanPlaywrightMcpUrl.trim(),
+    doubanPlaywrightMcpToken: config.doubanPlaywrightMcpToken.trim(),
+    twitchClientId: config.twitchClientId.trim(),
+    twitchClientSecret: config.twitchClientSecret.trim(),
     qqMailAddress: config.qqMailAddress.trim(),
     qqMailAuthCode: config.qqMailAuthCode.trim(),
     qqMailImapHost: config.qqMailImapHost.trim().length > 0 ? config.qqMailImapHost.trim() : 'imap.qq.com',
@@ -1974,6 +1998,16 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     paymentLiveAllowedStripeAccountIds: config.paymentLiveAllowedStripeAccountIds.trim(),
     paymentLiveMaxAmountMinor: config.paymentLiveMaxAmountMinor.trim().length > 0 ? config.paymentLiveMaxAmountMinor.trim() : '100'
   };
+  configureAggregateExternalProvidersForRuntime({
+    doubanPlaywright: {
+      mcpUrl: localProviderConfig.doubanPlaywrightMcpUrl,
+      bearerToken: localProviderConfig.doubanPlaywrightMcpToken
+    },
+    twitch: {
+      clientId: localProviderConfig.twitchClientId,
+      clientSecret: localProviderConfig.twitchClientSecret
+    }
+  });
   aiLogInfo('[AIPhone][LocalProviderConfig] rawfile=' + LOCAL_PROVIDER_CONFIG_RAWFILE +
     ' toolGatewayApiKeyChars=' + localProviderConfig.toolGatewayApiKey.length.toString() +
     ' flightKeyChars=' + localProviderConfig.flightMcpKey.length.toString() +
@@ -2000,6 +2034,10 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     ' gmailOauthClientSecretChars=' + localProviderConfig.gmailOauthClientSecret.length.toString() +
     ' youtubeApiKeyChars=' + localProviderConfig.youtubeApiKey.length.toString() +
     ' zhihuApiKeyChars=' + localProviderConfig.zhihuApiKey.length.toString() +
+    ' doubanMcpUrlPresent=' + (localProviderConfig.doubanPlaywrightMcpUrl.length > 0 ? 'true' : 'false') +
+    ' doubanMcpTokenChars=' + localProviderConfig.doubanPlaywrightMcpToken.length.toString() +
+    ' twitchClientIdChars=' + localProviderConfig.twitchClientId.length.toString() +
+    ' twitchClientSecretChars=' + localProviderConfig.twitchClientSecret.length.toString() +
     ' gmailMcpUserProjectPresent=' + (localProviderConfig.gmailMcpUserProject.length > 0 ? 'true' : 'false') +
     ' qqMailAddressPresent=' + (localProviderConfig.qqMailAddress.length > 0 ? 'true' : 'false') +
     ' qqMailAuthCodeChars=' + localProviderConfig.qqMailAuthCode.length.toString() +
@@ -2080,6 +2118,10 @@ export function configureLocalProviderConfigFromRawJson(rawJson: string): void {
     gmailMcpUserProject: firstText([parsed.GMAIL_MCP_USER_PROJECT, parsed.GOOGLE_CLOUD_PROJECT, parsed.gmailMcpUserProject]),
     youtubeApiKey: firstText([parsed.YOUTUBE_API_KEY, parsed.youtubeApiKey]),
     zhihuApiKey: firstText([parsed.ZHIHU_API_KEY, parsed.zhihuApiKey]),
+    doubanPlaywrightMcpUrl: firstText([parsed.DOUBAN_PLAYWRIGHT_MCP_URL, parsed.doubanPlaywrightMcpUrl]),
+    doubanPlaywrightMcpToken: firstText([parsed.DOUBAN_PLAYWRIGHT_MCP_TOKEN, parsed.doubanPlaywrightMcpToken]),
+    twitchClientId: firstText([parsed.TWITCH_CLIENT_ID, parsed.twitchClientId]),
+    twitchClientSecret: firstText([parsed.TWITCH_CLIENT_SECRET, parsed.twitchClientSecret]),
     qqMailAddress: firstText([parsed.QQ_MAIL_ADDRESS, parsed.qqMailAddress]),
     qqMailAuthCode: firstText([parsed.QQ_MAIL_AUTH_CODE, parsed.qqMailAuthCode]),
     qqMailImapHost: firstText([parsed.QQ_MAIL_IMAP_HOST, parsed.qqMailImapHost]),
@@ -2136,6 +2178,10 @@ export function localProviderConfigDebugSummary(): string {
     ', gmailOauthClientSecret=' + (localProviderConfig.gmailOauthClientSecret.length > 0 ? 'present(' + localProviderConfig.gmailOauthClientSecret.length.toString() + ')' : 'missing') +
     ', youtubeApiKey=' + (localProviderConfig.youtubeApiKey.length > 0 ? 'present(' + localProviderConfig.youtubeApiKey.length.toString() + ')' : 'missing') +
     ', zhihuApiKey=' + (localProviderConfig.zhihuApiKey.length > 0 ? 'present(' + localProviderConfig.zhihuApiKey.length.toString() + ')' : 'missing') +
+    ', doubanMcpUrl=' + (localProviderConfig.doubanPlaywrightMcpUrl.length > 0 ? 'present' : 'missing') +
+    ', doubanMcpToken=' + (localProviderConfig.doubanPlaywrightMcpToken.length > 0 ? 'present(' + localProviderConfig.doubanPlaywrightMcpToken.length.toString() + ')' : 'missing') +
+    ', twitchClientId=' + (localProviderConfig.twitchClientId.length > 0 ? 'present(' + localProviderConfig.twitchClientId.length.toString() + ')' : 'missing') +
+    ', twitchClientSecret=' + (localProviderConfig.twitchClientSecret.length > 0 ? 'present(' + localProviderConfig.twitchClientSecret.length.toString() + ')' : 'missing') +
     ', gmailMcpUserProject=' + (localProviderConfig.gmailMcpUserProject.length > 0 ? 'present' : 'missing') +
     ', qqMailAddress=' + (localProviderConfig.qqMailAddress.length > 0 ? 'present' : 'missing') +
     ', qqMailAuthCode=' + (localProviderConfig.qqMailAuthCode.length > 0 ? 'present(' + localProviderConfig.qqMailAuthCode.length.toString() + ')' : 'missing') +
@@ -14499,6 +14545,32 @@ export interface WaterfallInterestRecallBatch {
 
 export type WaterfallInterestRecallObserver = (result: WaterfallInterestRecallBatch) => void;
 
+export function waterfallInterestRecallLimitForSource(source: string): number {
+  // Twitch interest discovery owns its 3 technology + 1 game composition internally.
+  return source === 'twitch' ? 4 : 10;
+}
+
+function waterfallInterestDiagnosticText(value: string, limit: number = 160): string {
+  const trimmed = value.replace(/https?:\/\/[^\s]*/gi, '<url>').replace(/[\r\n\t]+/g, ' ').trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.indexOf('client_secret=') >= 0 || lower.indexOf('access_token=') >= 0 ||
+    lower.indexOf('authorization:') >= 0 || lower.indexOf('bearer ') >= 0) {
+    return '<redacted>';
+  }
+  return trimmed.length <= limit ? trimmed : trimmed.substring(0, limit) + '...<truncated>';
+}
+
+function logWaterfallInterestBatch(recall: WaterfallInterestRecallRequest, batch: AggregateSearchSourceBatch): void {
+  const kept = batch.videos.length + batch.posts.length;
+  const raw = batch.rawCount === undefined ? kept : batch.rawCount;
+  const policy = waterfallSearchPolicyForRuntime();
+  const twitchFields = batch.source === 'twitch' ?
+    ' multilingual=' + (policy.multilingual ? 'true' : 'false') + ' exact=false' : '';
+  aiLogInfo('[AIPhone][WaterfallInterestRecallBatch] route=' + recall.route + ' source=' + batch.source +
+    ' status=' + batch.status.status + ' raw=' + raw.toString() + ' kept=' + kept.toString() +
+    twitchFields + ' message=' + waterfallInterestDiagnosticText(batch.status.message));
+}
+
 export async function callConfiguredWaterfallInterestRecall(
   requests: WaterfallInterestRecallRequest[],
   onBatch: WaterfallInterestRecallObserver
@@ -14506,11 +14578,20 @@ export async function callConfiguredWaterfallInterestRecall(
   let batchIndex = 0;
   for (let requestIndex = 0; requestIndex < requests.length; requestIndex += 1) {
     const recall = requests[requestIndex];
-    if (recall.route === 'popular' && recall.sources.indexOf('youtube') >= 0) {
+    const allowedSources = recall.sources.filter((source: string): boolean =>
+      waterfallInterestSourceAllowedForRuntime(source));
+    allowedSources.forEach((source: string): void => {
+      aiLogInfo('[AIPhone][WaterfallInterestRecallRequest] route=' + recall.route + ' source=' + source +
+        ' limit=' + waterfallInterestRecallLimitForSource(source).toString() +
+        (source === 'twitch' ? ' mode=provider-discovery' :
+          ' query=' + waterfallInterestDiagnosticText(recall.query, 80)));
+    });
+    if (recall.route === 'popular' && allowedSources.indexOf('youtube') >= 0) {
       const token = recall.continuation !== undefined && recall.continuation !== null &&
         recall.continuation.kind === 'cursor' ? recall.continuation.value : '';
       const dynamic = await callYouTubeMostPopularVideos(localProviderConfig.youtubeApiKey, 10, token);
       const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic, recall.continuation ?? null, 10);
+      logWaterfallInterestBatch(recall, batch);
       onBatch({
         request: recall,
         batch,
@@ -14519,20 +14600,24 @@ export async function callConfiguredWaterfallInterestRecall(
       });
       continue;
     }
-    const loads: WaterfallLoadRequest[] = recall.sources.map((source: string): WaterfallLoadRequest => ({
+    const loads: WaterfallLoadRequest[] = allowedSources.map((source: string): WaterfallLoadRequest => ({
       source,
       continuation: recall.continuation ?? null,
-      limit: 10,
+      limit: waterfallInterestRecallLimitForSource(source),
       phase: 'loading',
       message: '',
       mode: 'search',
       query: recall.query,
       route: recall.route
     }));
-    await callConfiguredAggregateSearchContinuation(
+    await callAggregateSearchContinuationForContext(
+      'interest',
       recall.query,
       loads,
+      localProviderConfig.youtubeApiKey,
+      { apiKey: localProviderConfig.zhihuApiKey },
       (batch: AggregateSearchSourceBatch): void => {
+        logWaterfallInterestBatch(recall, batch);
         onBatch({
           request: recall,
           batch,

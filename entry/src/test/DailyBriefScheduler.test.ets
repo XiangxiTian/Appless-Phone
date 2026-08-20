@@ -69,16 +69,18 @@ export default function dailyBriefSchedulerTest() {
       expect(nextYear.getDate()).assertEqual(1);
     });
 
-    it('preserves local target time across the China daylight-saving boundary', 0, () => {
+    it('preserves local target time across historical timezone offset boundaries', 0, () => {
       const now = new Date(1986, 4, 3, 9, 0, 0, 0);
       const target = nextDailyBriefTarget(now, '08:30');
+      const wallClockDelay = 23 * 60 * 60 * 1000 + 30 * 60 * 1000;
+      const offsetAdjustment = (target.getTimezoneOffset() - now.getTimezoneOffset()) * 60 * 1000;
 
       expect(target.getFullYear()).assertEqual(1986);
       expect(target.getMonth()).assertEqual(4);
       expect(target.getDate()).assertEqual(4);
       expect(target.getHours()).assertEqual(8);
       expect(target.getMinutes()).assertEqual(30);
-      expect(target.getTime() - now.getTime()).assertEqual(22 * 60 * 60 * 1000 + 30 * 60 * 1000);
+      expect(target.getTime() - now.getTime()).assertEqual(wallClockDelay + offsetAdjustment);
     });
 
     it('builds provider-backed persisted work with any network and a non-negative delay', 0, () => {

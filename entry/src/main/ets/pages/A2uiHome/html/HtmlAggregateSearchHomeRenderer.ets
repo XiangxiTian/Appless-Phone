@@ -1,5 +1,10 @@
 import {
   A2uiAction,
+  AggregateSearchSource,
+  aggregateSearchInterestSourceIds,
+  aggregateSearchRegistrySourceIds,
+  aggregateSearchSearchSourceIds,
+  aggregateSourceLabel as registryAggregateSourceLabel,
   WaterfallFeedState,
   WaterfallRankedCandidate,
   WaterfallSourceState
@@ -13,13 +18,33 @@ import {
   WaterfallHomePayload
 } from './HtmlHomeTypes';
 import {
+  APP_LOGO_APPLE_PODCASTS,
   APP_LOGO_BILIBILI,
+  APP_LOGO_DOUBAN,
   APP_LOGO_HACKERNEWS,
   APP_LOGO_REDDIT,
+  APP_LOGO_TWITCH,
   APP_LOGO_X,
   APP_LOGO_YOUTUBE,
   APP_LOGO_ZHIHU
 } from './AppLogoDataUri';
+
+interface WaterfallSourceDisplayMetadata {
+  source: AggregateSearchSource;
+  label: string;
+}
+
+const WATERFALL_SOURCE_ONLY_SOURCES: AggregateSearchSource[] = ['applepodcasts', 'twitch'];
+const WATERFALL_SOURCE_ONLY_SOURCES_JSON: string = JSON.stringify(WATERFALL_SOURCE_ONLY_SOURCES);
+const WATERFALL_SEARCH_SOURCE_IDS_JSON: string = JSON.stringify(aggregateSearchSearchSourceIds());
+const WATERFALL_INTEREST_SOURCE_IDS_JSON: string = JSON.stringify(aggregateSearchInterestSourceIds());
+
+const WATERFALL_SOURCE_LABELS_JSON: string = JSON.stringify(
+  aggregateSearchRegistrySourceIds().map((source: AggregateSearchSource): WaterfallSourceDisplayMetadata => ({
+    source: source,
+    label: registryAggregateSourceLabel(source)
+  }))
+);
 
 const AGGREGATE_CSS: string = `
 :root {
@@ -844,6 +869,39 @@ const WATERFALL_CSS: string = `
   position: absolute; z-index: 2; inset: 0; display: block; width: 100%; height: 100%;
   border: 0; background: #e8edf2; pointer-events: auto;
 }
+.waterfall-inline-play {
+  position: absolute; z-index: 4; left: 50%; top: 50%; display: inline-flex; min-width: 72px; min-height: 48px;
+  align-items: center; justify-content: center; transform: translate(-50%, -50%);
+  border: 1px solid rgba(255, 255, 255, 0.62); border-radius: 999px;
+  background: rgba(22, 28, 34, 0.84); box-shadow: 0 10px 30px rgba(12, 18, 24, 0.28);
+  color: #fff; padding: 0 18px; font-size: 13px; font-weight: 780; cursor: pointer;
+  backdrop-filter: blur(12px); transition: transform 140ms var(--ease-out), background-color 180ms ease;
+}
+.waterfall-inline-play:active { transform: translate(-50%, -50%) scale(0.96); }
+.waterfall-inline-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.waterfall-inline-play[hidden] { display: none; }
+.waterfall-inline-audio {
+  position: absolute; z-index: 4; left: 18px; right: 18px; top: 50%; bottom: auto; display: block;
+  transform: translateY(-50%);
+  width: calc(100% - 36px); min-height: 48px;
+}
+.waterfall-inline-error {
+  position: absolute; z-index: 4; left: 18px; right: 18px; bottom: 18px;
+  overflow: hidden; color: #fff; font-size: 12px; line-height: 1.4; text-align: center;
+  text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.72);
+}
+.waterfall-toast {
+  position: fixed; z-index: 8; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
+  max-width: calc(100vw - 40px); padding: 12px 16px; border-radius: 14px;
+  background: rgba(28, 34, 40, 0.94); color: #fff; font-size: 13px; line-height: 1.45; text-align: center;
+  pointer-events: none; opacity: 0; transform: translate(-50%, 12px);
+  transition: opacity 160ms var(--ease-out), transform 180ms var(--ease-out);
+}
+.waterfall-toast.active { opacity: 1; transform: translate(-50%, 0); }
+.waterfall-card--inline-twitch .waterfall-cinema-stage { height: 300px; min-height: 300px; }
+.waterfall-card--inline-twitch .waterfall-inline-media-frame {
+  width: 100%; min-width: 0; height: 300px; min-height: 300px;
+}
 .waterfall-cinema-stage::after {
   content: ''; position: absolute; z-index: 3; inset: 68% 0 0;
   background: linear-gradient(180deg, rgba(244, 246, 248, 0), rgba(244, 246, 248, 0.32));
@@ -899,11 +957,14 @@ const WATERFALL_CSS: string = `
   display: flex; flex-direction: column; justify-content: flex-start;
 }
 .waterfall-cinema-card h2 {
-  display: block; max-width: none; margin-top: 0; overflow: visible;
+  display: -webkit-box; max-width: none; margin-top: 0; overflow: hidden;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 4;
   color: var(--ink); font-size: clamp(26px, 7vw, 36px); line-height: 1.08; letter-spacing: -0.028em;
   font-weight: 800; overflow-wrap: anywhere; text-wrap: balance;
 }
-.waterfall-card--text h2 { max-width: 16ch; font-size: clamp(32px, 9vw, 46px); }
+.waterfall-card--text h2 {
+  max-width: 16ch; font-size: clamp(32px, 9vw, 46px); -webkit-line-clamp: 6;
+}
 .waterfall-cinema-card p {
   display: block; min-height: 0; max-width: none; flex: 1 1 auto; margin-top: 10px; overflow: hidden;
   color: #525c67; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere;
@@ -989,9 +1050,11 @@ const WATERFALL_CSS: string = `
 .waterfall-preferences label,
 .waterfall-cinema-card a,
 .waterfall-read-button,
+.waterfall-inline-play,
 .waterfall-reader-head button,
 .waterfall-reader-head a,
-.waterfall-empty button {
+.waterfall-empty button,
+.waterfall-status button {
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .waterfall-toolbar-primary {
@@ -1016,13 +1079,14 @@ const WATERFALL_CSS: string = `
 .waterfall-video-fullscreen-toggle:active,
 .waterfall-cinema-card a:active,
 .waterfall-read-button:active,
+.waterfall-inline-play:active,
 .waterfall-reader-head button:active {
   transform: scale(0.97);
 }
 .waterfall-video-fullscreen-toggle:focus-visible,
 .waterfall-toolbar button:focus-visible, .waterfall-entry button:focus-visible,
 .waterfall-preferences button:focus-visible, .waterfall-preferences input:focus-visible,
-.waterfall-empty button:focus-visible, .waterfall-read-button:focus-visible,
+.waterfall-empty button:focus-visible, .waterfall-status button:focus-visible, .waterfall-read-button:focus-visible,
 .waterfall-reader-head button:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 3px;
 }
@@ -1036,6 +1100,10 @@ const WATERFALL_CSS: string = `
 }
 .waterfall-preferences.active {
   pointer-events: auto; visibility: visible; opacity: 1; transition-delay: 0s;
+}
+.waterfall-preferences:not(.active),
+.waterfall-preferences:not(.active) * {
+  pointer-events: none !important;
 }
 .waterfall-preferences .waterfall-toolbar {
   position: static; inset: auto; display: grid; grid-template-columns: 44px 1fr auto; gap: 8px;
@@ -1058,13 +1126,17 @@ const WATERFALL_CSS: string = `
   min-height: calc(100dvh - 150px); display: grid; place-items: center; align-content: center; gap: 14px;
   color: var(--muted); font-size: 16px; line-height: 1.5; padding: 20px; text-align: center;
 }
-.waterfall-empty button {
+.waterfall-empty button, .waterfall-status button {
   min-height: 48px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel);
   color: var(--ink); padding: 0 16px; font-size: 14px; font-weight: 720; cursor: pointer;
   transition: transform 140ms ease-out, box-shadow 180ms ease-out;
 }
-.waterfall-empty button:active { transform: scale(0.97); }
+.waterfall-empty button:active, .waterfall-status button:active { transform: scale(0.97); }
 .waterfall-status { color: var(--muted); font-size: 14px; line-height: 1.5; padding: 18px 20px 0; text-align: center; }
+.waterfall-status--empty {
+  min-height: calc(100dvh - 150px); display: grid; place-items: center; align-content: center; gap: 14px;
+  padding: 20px;
+}
 .waterfall-tail-status {
   min-height: 100dvh; display: grid; place-items: center; scroll-snap-align: start;
   color: var(--muted); font-size: 14px; line-height: 1.5; padding: 24px; text-align: center;
@@ -1106,13 +1178,21 @@ const WATERFALL_CSS: string = `
   background: #fbfcfd;
   color: var(--card-ink);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 12px 30px var(--card-shadow);
-  cursor: pointer; touch-action: pan-y;
+  cursor: default; touch-action: pan-y;
   transition: transform 140ms var(--ease-out), box-shadow 180ms ease-out;
 }
+.waterfall-card-shell,
+.waterfall-card-shell * {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.waterfall-card-shell--interactive { cursor: pointer; }
 .waterfall-card--video .waterfall-card-shell { background: #fbfcfd; }
 .waterfall-card--text .waterfall-card-shell { background: var(--card-soft); }
-.waterfall-card-shell:active { transform: scale(0.992); }
-.waterfall-card-shell:focus-visible,
+.waterfall-card-shell--interactive:active,
+.waterfall-card-shell--interactive.is-pressed { transform: scale(0.992); }
+.waterfall-card-shell--interactive:focus-visible,
 .waterfall-source-action:focus-visible,
 .waterfall-reader-head a:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 3px;
@@ -1341,7 +1421,8 @@ const WATERFALL_CSS: string = `
   .waterfall-overlay.active { animation: waterfall-overlay-in 140ms var(--ease-out) both !important; }
   .waterfall-overlay.active.closing { animation: none !important; }
   .waterfall-entry button, .waterfall-toolbar button, .waterfall-preferences button,
-  .waterfall-preferences label, .waterfall-empty button { transition: none; }
+  .waterfall-preferences label, .waterfall-empty button, .waterfall-status button,
+  .waterfall-inline-play { transition: none; }
   .waterfall-reader {
     transform: none;
     transition: none !important;
@@ -1366,6 +1447,7 @@ const WATERFALL_CSS: string = `
   .waterfall-card-shell,
   .waterfall-cinema-card a,
   .waterfall-read-button,
+  .waterfall-inline-play,
   .waterfall-reader-head button,
   .waterfall-reader-head a,
   .waterfall-reader-head,
@@ -1375,9 +1457,11 @@ const WATERFALL_CSS: string = `
   .waterfall-entry button:active, .waterfall-toolbar button:active, .waterfall-preferences button:active,
   .waterfall-preferences label:active, .waterfall-empty button:active { transform: none; }
   .waterfall-video-fullscreen-toggle:active,
-  .waterfall-card-shell:active,
+  .waterfall-card-shell--interactive:active,
+  .waterfall-card-shell--interactive.is-pressed,
   .waterfall-cinema-card a:active,
   .waterfall-read-button:active,
+  .waterfall-inline-play:active,
   .waterfall-reader-head button:active { transform: none; opacity: 0.82; }
   .waterfall-reader-head,
   .waterfall-toolbar { transform: none !important; }
@@ -1394,6 +1478,7 @@ const WATERFALL_JS: string = `
   var preferences = document.getElementById('waterfall-preferences');
   var reader = document.getElementById('waterfall-reader');
   var toolbar = document.getElementById('waterfall-toolbar');
+  var toast = document.getElementById('waterfall-toast');
   var state = window.__aiphoneWaterfallInitial || null;
   var directDiscovery = window.__aiphoneWaterfallDirect === true;
   var mode = directDiscovery ? 'discovering' : 'entry';
@@ -1460,6 +1545,12 @@ const WATERFALL_JS: string = `
     resumeCurrentBehavior();
     return true;
   }
+  var activeInlinePlayer = null;
+  var activeInlineButton = null;
+  var activeInlineCard = null;
+  var activeInlineCandidateId = '';
+  var shownAudioErrors = {};
+  var toastTimer = null;
   function text(value) { return value === null || value === undefined ? '' : String(value); }
   function escapeHtml(value) { return text(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
   function cleanSummary(value) {
@@ -1467,8 +1558,11 @@ const WATERFALL_JS: string = `
   }
   function publishedLabel(value) { return text(value).trim().replace(/^(\\d{4}-\\d{2}-\\d{2})T.*$/, '$1'); }
   function sourceLabel(source) {
-    var labels = { youtube: 'YouTube', bilibili: 'B 站', x: 'X', hackernews: 'HN', reddit: 'Reddit', zhihu: '知乎' };
-    return labels[source] || source;
+    var labels = ${WATERFALL_SOURCE_LABELS_JSON};
+    for (var index = 0; index < labels.length; index++) {
+      if (labels[index].source === source) return labels[index].label;
+    }
+    return source;
   }
   function sourceTone(source) {
     var key = text(source).trim().toLowerCase();
@@ -1628,6 +1722,187 @@ const WATERFALL_JS: string = `
       }
       if (handler(event) && typeof event.preventDefault === 'function') event.preventDefault();
     });
+  }
+
+  function showNewAudioError(items) {
+    if (!toast) return;
+    for (var resetIndex = 0; resetIndex < items.length; resetIndex++) {
+      var loadingItem = items[resetIndex];
+      if (loadingItem.source === 'applepodcasts' && loadingItem.audioLoadState === 'loading') {
+        shownAudioErrors[text(loadingItem.id)] = '';
+      }
+    }
+    for (var index = 0; index < items.length; index++) {
+      var item = items[index];
+      var message = text(item.audioError).trim();
+      if (item.source !== 'applepodcasts' || item.audioLoadState !== 'error' || !message) continue;
+      var key = text(item.id);
+      if (shownAudioErrors[key] === message) continue;
+      shownAudioErrors[key] = message;
+      toast.textContent = message;
+      toast.classList.add('active');
+      if (toastTimer !== null) clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () {
+        toast.classList.remove('active');
+        toastTimer = null;
+      }, 2600);
+      return;
+    }
+  }
+  function twitchEmbedForUrl(value) {
+    var raw = text(value).trim();
+    if (!raw) return '';
+    try {
+      var parsed = new URL(raw);
+      var host = parsed.hostname.toLowerCase();
+      var parts = parsed.pathname.split('/').filter(Boolean);
+      var login = parts.length === 1 ? parts[0] : '';
+      var reserved = ['directory', 'downloads', 'jobs', 'p', 'search', 'settings', 'subscriptions', 'videos'];
+      var parent = text(window.location && window.location.hostname).trim().toLowerCase();
+      if (parsed.protocol !== 'https:' || (host !== 'twitch.tv' && host !== 'www.twitch.tv') ||
+        parsed.port || parsed.username || parsed.password || parsed.search || parsed.hash ||
+        !/^[a-z0-9_]{1,25}$/i.test(login) || reserved.indexOf(login.toLowerCase()) >= 0 ||
+        !/^[a-z0-9.-]+$/i.test(parent)) return '';
+      return 'https://player.twitch.tv/?channel=' + encodeURIComponent(login.toLowerCase()) +
+        '&parent=' + encodeURIComponent(parent) + '&autoplay=false&muted=false';
+    } catch (_error) {}
+    return '';
+  }
+  function resolvedAudioUrl(value) {
+    var raw = text(value).trim();
+    if (!raw) return '';
+    try {
+      var parsed = new URL(raw);
+      var host = parsed.hostname.toLowerCase();
+      if (parsed.protocol !== 'https:' || parsed.port || parsed.username || parsed.password || !host ||
+        host === 'localhost' || host.slice(-10) === '.localhost' || host.slice(-6) === '.local' ||
+        host.indexOf(':') >= 0 || /^[0-9]+(?:\\.[0-9]+){3}$/.test(host)) return '';
+      return raw;
+    } catch (_error) {}
+    return '';
+  }
+  function cardById(id) {
+    if (!track || typeof track.querySelectorAll !== 'function') return null;
+    var cards = track.querySelectorAll('[data-waterfall-id]');
+    for (var index = 0; index < cards.length; index++) {
+      if (typeof cards[index].getAttribute === 'function' && text(cards[index].getAttribute('data-waterfall-id')) === text(id)) {
+        return cards[index];
+      }
+    }
+    return null;
+  }
+  function destroyInlinePlayer(clearCandidate) {
+    var player = activeInlinePlayer;
+    var button = activeInlineButton;
+    activeInlinePlayer = null;
+    activeInlineButton = null;
+    activeInlineCard = null;
+    if (clearCandidate !== false) activeInlineCandidateId = '';
+    if (player && typeof player.pause === 'function') player.pause();
+    if (player && typeof player.remove === 'function') player.remove();
+    if (button) {
+      button.hidden = false;
+      button.disabled = false;
+    }
+  }
+  function mountTwitchPlayer(item, button, card, stage) {
+    var embedUrl = twitchEmbedForUrl(item.url);
+    if (!embedUrl || !button || !card || !stage || typeof document.createElement !== 'function') return;
+    destroyInlinePlayer(false);
+    var frame = document.createElement('iframe');
+    frame.className = 'waterfall-media-frame waterfall-inline-media-frame';
+    frame.setAttribute('data-inline-source', 'twitch');
+    frame.setAttribute('title', 'Twitch 直播播放器');
+    frame.setAttribute('loading', 'eager');
+    frame.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
+    frame.setAttribute('allowfullscreen', '');
+    frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    if (typeof frame.addEventListener === 'function') {
+      frame.addEventListener('error', function () {
+        if (activeInlinePlayer === frame) destroyInlinePlayer();
+      }, { once: true });
+    }
+    frame.setAttribute('src', embedUrl);
+    stage.appendChild(frame);
+    activeInlinePlayer = frame;
+    activeInlineButton = button;
+    activeInlineCard = card;
+    button.hidden = true;
+  }
+  function mountApplePodcastAudio(item, button, card, stage) {
+    var mediaUrl = resolvedAudioUrl(item.mediaUrl);
+    if (!mediaUrl || !button || !card || !stage || typeof document.createElement !== 'function') return;
+    destroyInlinePlayer(false);
+    var audio = document.createElement('audio');
+    audio.className = 'waterfall-inline-audio';
+    audio.setAttribute('controls', '');
+    audio.setAttribute('preload', 'none');
+    audio.setAttribute('playsinline', '');
+    audio.setAttribute('title', text(item.audioTitle).trim() || 'Apple Podcasts 音频');
+    if (typeof audio.addEventListener === 'function') {
+      audio.addEventListener('error', function () {
+        if (activeInlinePlayer === audio) {
+          destroyInlinePlayer();
+          button.textContent = '重试';
+        }
+      }, { once: true });
+    }
+    audio.setAttribute('src', mediaUrl);
+    stage.appendChild(audio);
+    activeInlinePlayer = audio;
+    activeInlineButton = button;
+    activeInlineCard = card;
+    button.hidden = true;
+  }
+  function syncActiveInlinePlayer() {
+    if (!activeInlineCandidateId || activeInlinePlayer) return;
+    var item = candidateById(activeInlineCandidateId);
+    var card = cardById(activeInlineCandidateId);
+    if (!item || !card) {
+      destroyInlinePlayer();
+      return;
+    }
+    if (typeof card.querySelector !== 'function') return;
+    var stage = card.querySelector('.waterfall-cinema-stage');
+    if (!stage) return;
+    if (item.source === 'twitch') {
+      mountTwitchPlayer(item, card.querySelector('[data-waterfall-inline-play]'), card, stage);
+    } else if (item.source === 'applepodcasts' && item.audioLoadState === 'ready') {
+      mountApplePodcastAudio(item, card.querySelector('[data-waterfall-apple-play]'), card, stage);
+    }
+  }
+  function activateTwitchPlayer(button) {
+    if (!button || typeof button.getAttribute !== 'function' || typeof button.closest !== 'function') return;
+    var candidateId = text(button.getAttribute('data-waterfall-inline-play'));
+    var item = candidateById(candidateId);
+    var stage = button.closest('.waterfall-cinema-stage');
+    var card = button.closest('[data-waterfall-id]');
+    if (!item || item.source !== 'twitch' || !stage || !card) return;
+    destroyInlinePlayer();
+    activeInlineCandidateId = candidateId;
+    mountTwitchPlayer(item, button, card, stage);
+  }
+  function postApplePodcastResolve(candidateId) {
+    if (!state || !window.AIPhoneHome || typeof window.AIPhoneHome.postAction !== 'function') return;
+    window.AIPhoneHome.postAction(JSON.stringify({
+      id: 'waterfall.applepodcasts.resolve', label: '加载播客', prompt: '', variant: 'secondary', kind: 'client',
+      args: { surfaceId: state.surfaceId || '', candidateId: candidateId }
+    }));
+  }
+  function activateApplePodcast(button) {
+    if (!button || typeof button.getAttribute !== 'function' || typeof button.closest !== 'function') return;
+    var candidateId = text(button.getAttribute('data-waterfall-apple-play'));
+    var item = candidateById(candidateId);
+    if (!item || item.source !== 'applepodcasts' || !text(item.feedUrl).trim()) return;
+    destroyInlinePlayer();
+    activeInlineCandidateId = candidateId;
+    if (item.audioLoadState === 'ready' && resolvedAudioUrl(item.mediaUrl)) {
+      syncActiveInlinePlayer();
+      return;
+    }
+    button.disabled = true;
+    button.textContent = '加载中';
+    postApplePodcastResolve(candidateId);
   }
   function setFullscreen(active) {
     if (window.AIPhoneHome && typeof window.AIPhoneHome.setWaterfallFullscreen === 'function') {
@@ -1821,6 +2096,8 @@ const WATERFALL_JS: string = `
   function cleanupInactivePlayers() {
     if (!track || mode !== 'discovering' || typeof track.querySelectorAll !== 'function') return;
     var nodes = track.querySelectorAll('[data-waterfall-id]');
+    var inlineCard = activeInlineCard || cardById(activeInlineCandidateId);
+    if (activeInlineCandidateId && nodes[presentedIndex] !== inlineCard) destroyInlinePlayer();
     for (var index = 0; index < nodes.length; index += 1) {
       if (index === presentedIndex || typeof nodes[index].querySelector !== 'function') continue;
       var stage = nodes[index].querySelector('.waterfall-reader-video-stage.is-playing');
@@ -1962,6 +2239,7 @@ const WATERFALL_JS: string = `
   }
   function closeReader() {
     if (!reader || reader.classList.contains('closing')) return;
+    destroyInlinePlayer();
     reader.classList.add('closing');
     ignoreNextFeedOpen = true;
     mode = 'reader_closing';
@@ -1997,7 +2275,8 @@ const WATERFALL_JS: string = `
   function openReader(id) {
     if (!reader || !track) return;
     var item = candidates(state).find(function (candidate) { return text(candidate.id) === text(id); });
-    if (!item) return;
+    if (!item || ${WATERFALL_SOURCE_ONLY_SOURCES_JSON}.indexOf(item.source) >= 0) return;
+    destroyInlinePlayer();
     var format = candidateFormat(item);
     var summary = cleanSummary(item.summary) || cleanSummary(item.reason);
     var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
@@ -2075,8 +2354,10 @@ const WATERFALL_JS: string = `
   }
   function renderCandidate(item, index) {
     var format = candidateFormat(item);
+    var sourceOnly = ${WATERFALL_SOURCE_ONLY_SOURCES_JSON}.indexOf(item.source) >= 0;
+    var coverFailure = sourceOnly ? 'this.hidden=true' : 'this.parentElement.hidden=true';
     var cover = item.coverUrl ? '<img class="waterfall-media-cover" src="' + escapeHtml(item.coverUrl) + '" alt="' + escapeHtml(item.title) +
-      '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.parentElement.hidden=true" />' : '';
+      '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="' + coverFailure + '" />' : '';
     var rawSummary = cleanSummary(item.summary);
     var summary = rawSummary || cleanSummary(item.reason);
     var reasonText = rawSummary && cleanSummary(item.reason) !== rawSummary ? cleanSummary(item.reason) : '';
@@ -2086,13 +2367,31 @@ const WATERFALL_JS: string = `
     var cardClass = cardClassName(item);
     var meta = '<div class="waterfall-cinema-meta">' + sourceLogoMarkup(item.source) + '<span>' +
       escapeHtml(sourceLabel(item.source)) + '</span></div>';
+    var twitchEmbedUrl = item.source === 'twitch' ? twitchEmbedForUrl(text(item.url)) : '';
+    var inlinePlay = twitchEmbedUrl ? '<button type="button" class="waterfall-inline-play" data-waterfall-inline-play="' +
+      escapeHtml(item.id) + '" aria-label="播放 Twitch 直播">播放</button>' : '';
+    var applePlayable = item.source === 'applepodcasts' && text(item.feedUrl).trim().length > 0;
+    var appleLoading = item.audioLoadState === 'loading';
+    var appleRetryable = item.audioRetryable !== false;
+    var applePlay = applePlayable && !(item.audioLoadState === 'error' && !appleRetryable) ?
+      '<button type="button" class="waterfall-inline-play" data-waterfall-apple-play="' +
+      escapeHtml(item.id) + '" aria-label="播放 Apple Podcasts"' + (appleLoading ? ' disabled' : '') + '>' +
+      (appleLoading ? '加载中' : (item.audioLoadState === 'error' ? '重试' :
+        (item.audioLoadState === 'ready' ? '播放' : '加载节目'))) + '</button>' : '';
+    var appleError = applePlayable && item.audioLoadState === 'error' && text(item.audioError).trim() ?
+      '<span class="waterfall-inline-error">' + escapeHtml(item.audioError) + '</span>' : '';
+    var inlineControls = inlinePlay + applePlay + appleError;
     var stage = item.mediaType === 'video' ? videoStageMarkup(item, title,
       'waterfall-cinema-stage', 'waterfall-media-cover') :
-      (cover ? '<div class="waterfall-cinema-stage">' + cover + '</div>' : '');
+      ((cover || inlineControls) ? '<div class="waterfall-cinema-stage">' + cover + inlineControls + '</div>' : '');
     var reason = reasonText ? '<span class="waterfall-recommendation" aria-label="推荐理由" data-waterfall-reason>' +
       escapeHtml(reasonText) + '</span>' : '<span></span>';
+    var openAttributes = sourceOnly ? '' : ' role="button" tabindex="0" data-waterfall-open="' +
+      escapeHtml(item.id) + '"';
+    var shellClass = 'waterfall-card-shell' + (sourceOnly ? '' : ' waterfall-card-shell--interactive');
+    if (twitchEmbedUrl) cardClass += ' waterfall-card--inline-player waterfall-card--inline-twitch';
     return '<article class="' + cardClass + '" data-waterfall-id="' + escapeHtml(item.id) + '" data-waterfall-media-type="' +
-      escapeHtml(item.mediaType) + '"><div class="waterfall-card-shell" role="button" tabindex="0" data-waterfall-open="' + escapeHtml(item.id) + '">' +
+      escapeHtml(item.mediaType) + '"><div class="' + shellClass + '"' + openAttributes + '>' +
       stage + '<div class="waterfall-cinema-copy">' + meta + '<h2>' + escapeHtml(title) + '</h2>' +
       (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') +
       (item.publishedAt ? '<div class="waterfall-meta">' + escapeHtml(publishedLabel(item.publishedAt)) + '</div>' : '') +
@@ -2101,7 +2400,8 @@ const WATERFALL_JS: string = `
   }
   function renderPreferences() {
     if (!preferences || !state) return;
-    var sourceNames = ['youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu'];
+    destroyInlinePlayer();
+    var sourceNames = directDiscovery ? ${WATERFALL_INTEREST_SOURCE_IDS_JSON} : ${WATERFALL_SEARCH_SOURCE_IDS_JSON};
     if (preferenceApplyTimer !== null) clearTimeout(preferenceApplyTimer);
     preferenceApplyTimer = null;
     preferenceBaseline = enabledSources.join('|');
@@ -2136,6 +2436,7 @@ const WATERFALL_JS: string = `
   }
   function closePreferences() {
     if (!preferences || mode !== 'source_preferences') return;
+    destroyInlinePlayer();
     var changed = preferenceBaseline !== enabledSources.join('|');
     var selectedSources = enabledSources.slice();
     preferences.classList.remove('active');
@@ -2157,6 +2458,7 @@ const WATERFALL_JS: string = `
   function render() {
     if (!track || !state) return false;
     var items = renderedOrderCandidates(state);
+    showNewAudioError(items);
     var nextCurrentId = state ? text(state.currentId) : '';
     var nextScrollTop = track.scrollTop;
     var viewportHeight = Math.max(1, track.clientHeight);
@@ -2166,7 +2468,8 @@ const WATERFALL_JS: string = `
     var empty = enabledSources.length === 0 ? '<div class="waterfall-empty"><span>至少开启一个来源</span><button type="button" data-waterfall-empty-sources>打开内容来源</button></div>' : '';
     var status = '';
     if (enabledSources.length > 0 && items.length === 0) {
-      status = state.exhausted ? '<div class="waterfall-status">\\u672c\\u8f6e\\u5185\\u5bb9\\u5df2\\u7ed3\\u675f</div>' :
+      status = state.exhausted ? '<div class="waterfall-status waterfall-status--empty"><span>\\u672c\\u8f6e\\u5185\\u5bb9\\u5df2\\u7ed3\\u675f</span>' +
+        '<button type="button" data-waterfall-empty-sources>调整内容来源</button></div>' :
         (state.replenishing ? '<div class="waterfall-status">\\u6b63\\u5728\\u8865\\u5145\\u5185\\u5bb9</div>' :
           '<div class="waterfall-status">\\u6b63\\u5728\\u6c47\\u96c6\\u5185\\u5bb9\\u2026</div>');
     }
@@ -2185,7 +2488,13 @@ const WATERFALL_JS: string = `
     if (canPatch) {
       for (var j = 0; j < items.length; j++) {
         if (j < renderedCards.length) {
-          continue;
+          if (items[j].source === 'applepodcasts' && renderedCards[j].html !== cardHtml[j]) {
+            if (activeInlineCard === nodes[j] || text(items[j].id) === activeInlineCandidateId) {
+              destroyInlinePlayer(false);
+            }
+            nodes[j].outerHTML = cardHtml[j];
+            renderedCards[j].html = cardHtml[j];
+          }
         } else {
           var tail = track.querySelector('.waterfall-tail-status');
           if (tail) tail.insertAdjacentHTML('beforebegin', cardHtml[j]);
@@ -2195,6 +2504,10 @@ const WATERFALL_JS: string = `
         }
       }
     } else if (track.innerHTML !== nextHtml) {
+      var keepInlineCandidate = activeInlineCandidateId && items.some(function (item) {
+        return text(item.id) === activeInlineCandidateId;
+      });
+      destroyInlinePlayer(keepInlineCandidate ? false : true);
       track.innerHTML = nextHtml;
       domChanged = true;
       renderedCards = items.map(function (item, index) {
@@ -2225,6 +2538,7 @@ const WATERFALL_JS: string = `
     }
     if (domChanged) syncCardsAfterPaint();
     else updateCardPresentation(false);
+    syncActiveInlinePlayer();
     return domChanged;
   }
   function dropRenderedCardsMissingFrom(items, nodes) {
@@ -2239,6 +2553,7 @@ const WATERFALL_JS: string = `
         continue;
       }
       var node = nodes[rendered];
+      if (renderedCards[rendered].id === activeInlineCandidateId) destroyInlinePlayer();
       if (node && node.parentNode && typeof node.parentNode.removeChild === 'function') {
         node.parentNode.removeChild(node);
       }
@@ -2323,8 +2638,19 @@ const WATERFALL_JS: string = `
   bindFastTap(track, function (event) {
     var target = event.target;
     if (!target || typeof target.closest !== 'function') return false;
+    var applePlay = target.closest('[data-waterfall-apple-play]');
+    if (applePlay) {
+      activateApplePodcast(applePlay);
+      return true;
+    }
+    var inlinePlay = target.closest('[data-waterfall-inline-play]');
+    if (inlinePlay) {
+      activateTwitchPlayer(inlinePlay);
+      return true;
+    }
     var source = target.closest('.waterfall-source-action');
     if (source) {
+      destroyInlinePlayer();
       openSource(source, event);
       return true;
     }
@@ -2429,6 +2755,7 @@ const WATERFALL_JS: string = `
     });
   });
   function closeDiscovery() {
+    destroyInlinePlayer();
     if (directDiscovery && state && window.AIPhoneHome &&
       typeof window.AIPhoneHome.postAction === 'function') {
       pauseCurrentBehavior(false);
@@ -2484,6 +2811,7 @@ const WATERFALL_JS: string = `
   });
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
+      destroyInlinePlayer();
       pauseCurrentBehavior(false);
       if (readerCandidateId && readerStartedAt > 0) {
         readerDurationMs += Math.max(0, Date.now() - readerStartedAt);
@@ -2557,6 +2885,16 @@ export function waterfallAdvanceCurrentFromAction(action: A2uiAction, surfaceId:
   }
   const currentId = (args['currentId'] as string).trim();
   return currentId.length > 0 ? currentId : null;
+}
+
+export function waterfallApplePodcastCandidateFromAction(action: A2uiAction, surfaceId: string): string | null {
+  const args = waterfallArgsFromAction(action, 'waterfall.applepodcasts.resolve', surfaceId);
+  if (args === null || Object.keys(args).sort().join(',') !== 'candidateId,surfaceId' ||
+    typeof args['candidateId'] !== 'string') {
+    return null;
+  }
+  const candidateId = (args['candidateId'] as string).trim();
+  return candidateId.length > 0 ? candidateId : null;
 }
 
 export function waterfallBehaviorFromAction(
@@ -2732,7 +3070,9 @@ export function renderAggregateSearchHomeDocument(
     x: APP_LOGO_X,
     hackernews: APP_LOGO_HACKERNEWS,
     reddit: APP_LOGO_REDDIT,
-    zhihu: APP_LOGO_ZHIHU
+    zhihu: APP_LOGO_ZHIHU,
+    applepodcasts: APP_LOGO_APPLE_PODCASTS,
+    twitch: APP_LOGO_TWITCH
   }).replace(/</g, '\\u003c');
   const uiIconsJson = JSON.stringify({
     back: waterfallUiIconMarkup('back'),
@@ -2765,7 +3105,8 @@ export function renderAggregateSearchHomeDocument(
       '<span class="waterfall-toolbar-label">设置</span></button></div></div>' +
       '<div id="waterfall-track" class="waterfall-track">' + waterfallStatus + '</div>' +
       '<div id="waterfall-preferences" class="waterfall-preferences"></div>' +
-      '<div id="waterfall-reader" class="waterfall-reader"></div></section>' : '',
+      '<div id="waterfall-reader" class="waterfall-reader"></div>' +
+      '<div id="waterfall-toast" class="waterfall-toast" role="status" aria-live="polite"></div></section>' : '',
     '<script>', AGGREGATE_JS, waterfall !== null ? 'window.__aiphoneWaterfallDirect=' +
       (startInDiscovery ? 'true' : 'false') + ';window.__aiphoneWaterfallSourceLogos=' + sourceLogosJson +
       ';window.__aiphoneWaterfallUiIcons=' + uiIconsJson +
@@ -2948,7 +3289,7 @@ function renderPostLink(block: HtmlHomeBlock): string {
     return '';
   }
   return '<a class="aggregate-link-preview" href="' + escapeAttribute(url) +
-    '" target="_self" rel="noopener noreferrer"><span class="aggregate-link-host">' +
+    '" target="_blank" rel="noopener noreferrer"><span class="aggregate-link-host">' +
     escapeHtml(hostLabel(url)) + '</span><b>打开原文</b></a>';
 }
 
@@ -3024,14 +3365,27 @@ function sourceLogoUrl(source: string): string {
   if (source === 'zhihu') {
     return APP_LOGO_ZHIHU;
   }
+  if (source === 'douban') {
+    return APP_LOGO_DOUBAN;
+  }
+  if (source === 'applepodcasts') {
+    return APP_LOGO_APPLE_PODCASTS;
+  }
+  if (source === 'twitch') {
+    return APP_LOGO_TWITCH;
+  }
   return '';
+}
+
+export function shouldShowWaterfallReaderAction(source: AggregateSearchSource, _mediaType: string): boolean {
+  return WATERFALL_SOURCE_ONLY_SOURCES.indexOf(source) < 0;
 }
 
 function sourceCssValue(source: string): string {
   const clean = source.trim().toLowerCase();
   if (clean === 'youtube' || clean === 'bilibili' || clean === 'x' || clean === 'hackernews' ||
-    clean === 'reddit' ||
-    clean === 'zhihu') {
+    clean === 'reddit' || clean === 'zhihu' || clean === 'douban' || clean === 'applepodcasts' ||
+    clean === 'twitch') {
     return clean;
   }
   return 'unknown';
@@ -3055,6 +3409,15 @@ function aggregateSourceLabel(source: string, fallback: string): string {
   }
   if (source === 'zhihu') {
     return '知乎';
+  }
+  if (source === 'douban') {
+    return '豆瓣';
+  }
+  if (source === 'applepodcasts') {
+    return 'Apple Podcasts';
+  }
+  if (source === 'twitch') {
+    return 'Twitch';
   }
   return fallback;
 }

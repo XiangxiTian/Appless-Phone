@@ -100,8 +100,22 @@ export function mediaSourcesFromArgs(args: Object | null): string[] {
   return kept.length > 0 ? kept : ['youtube', 'bilibili'];
 }
 
+export function mediaRelevanceLanguageFromArgs(args: Object | null): string {
+  if (args === null) {
+    return '';
+  }
+  const language = textOf((args as MediaArgRecord).language).trim().toLowerCase().replace('_', '-');
+  if (language === 'zh' || language === 'zh-cn' || language === 'zh-hans') {
+    return 'zh-Hans';
+  }
+  if (language === 'en') {
+    return 'en';
+  }
+  return '';
+}
+
 export function mergeMediaVideoProviderResults(results: DynamicGenericToolResult[]): DynamicGenericToolResult[] {
-  return results.map((result: DynamicGenericToolResult) => {
+  return results.map((result: DynamicGenericToolResult): DynamicGenericToolResult => {
     const normalized: DynamicGenericToolResult = {
       sourceTag: result.sourceTag,
       toolName: 'media.video.search',
@@ -130,10 +144,14 @@ export async function callMediaVideoSearch(
   const sources = mediaSourcesFromArgs(args);
   const record = args === null ? new Object() as MediaArgRecord : args as MediaArgRecord;
   const limit = numberFrom(record.limit, 10);
+  const relevanceLanguage = mediaRelevanceLanguageFromArgs(args);
   const tasks: Promise<DynamicGenericToolResult[]>[] = [];
   if (sources.indexOf('youtube') >= 0) {
     tasks.push(callYouTubeVideoSearch(query, youtubeApiKey, {
-      order: 'relevance', maxResults: limit, pageToken: textOf(record.pageToken).trim()
+      order: 'relevance',
+      maxResults: limit,
+      relevanceLanguage: relevanceLanguage,
+      pageToken: textOf(record.pageToken).trim()
     }));
   }
   if (sources.indexOf('bilibili') >= 0) {

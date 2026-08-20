@@ -13,8 +13,9 @@ import {
   RuntimeOwner,
   StripeReceivingAccountCardData,
   UserInputPayload,
-  cloudModelSettingsForPreset,
   defaultLocalModelSettings,
+  deepSeekModelSettings,
+  resolvedCloudChatModel,
   summarizeAppliedA2uiSurface
 } from '@loop/agent-core';
 import { isRollingGoHotelBookingUrl, validHotelBookingOpenArgs } from '@loop/agent-core';
@@ -3032,11 +3033,10 @@ struct Index {
   private loadModelPreset(): void {
     const store = this.modelPresetPreferences();
     const preset = store === null ? '' : this.preferenceText(store.getSync(MODEL_PRESET_KEY, ''));
-    const settings = cloudModelSettingsForPreset(preset);
-    if (settings === null) return;
+    const settings = deepSeekModelSettings();
     this.baseUrl = settings.baseUrl;
     this.apiKey = settings.apiKey;
-    this.selectedModel = settings.model;
+    this.selectedModel = resolvedCloudChatModel(preset);
     this.customParametersJson = settings.customParametersJson;
   }
 
@@ -8743,9 +8743,6 @@ struct Index {
         bimRememberState: this.bimRememberState,
         bimRememberError: this.bimRememberError,
         reduceMotion: this.bimReduceMotion,
-        onToggleHistory: () => {
-          this.showHistory = !this.showHistory;
-        },
         onOpenConfig: () => {
           this.showConfigPage = true;
         },

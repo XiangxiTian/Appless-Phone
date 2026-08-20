@@ -1,7 +1,6 @@
 import {
   COLOR_ACCENT,
   COLOR_ACCENT_DEEP,
-  COLOR_ACCENT_SOFT,
   COLOR_CARD_EDGE,
   COLOR_INK,
   COLOR_MUTED,
@@ -254,7 +253,6 @@ export struct HomePage {
   private voiceHoldTimerId: number = -1;
   private voiceHoldActive: boolean = false;
   private previousKeyboardAvoidMode: KeyboardAvoidMode = KeyboardAvoidMode.OFFSET;
-  onToggleHistory: () => void = () => {};
   onOpenConfig: () => void = () => {};
   onOpenPublicPersona: () => void = () => {};
   onSendPrompt: () => void = () => {};
@@ -602,25 +600,6 @@ export struct HomePage {
 
           Blank()
             .layoutWeight(1)
-
-          A2uiButtonView({
-            icon: $r('app.media.icon_history'),
-            hasIcon: true,
-            shape: 'circle',
-            circleSize: A2UI_HEADER_BUTTON_SIZE,
-            iconSize: A2UI_HEADER_BUTTON_ICON_SIZE,
-            tone: 'secondary',
-            active: this.showHistory,
-            customBackgroundColor: this.showHistory ? COLOR_ACCENT_SOFT : A2UI_HOME_HEADER_BUTTON_BACKGROUND,
-            customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
-            shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
-            shadowRadius: 8,
-            shadowOffsetY: 3
-          })
-            .onClick(() => {
-              this.onToggleHistory();
-            })
-            .margin({ left: A2UI_HEADER_BUTTON_GAP })
 
           A2uiButtonView({
             icon: $r('app.media.icon_reset'),

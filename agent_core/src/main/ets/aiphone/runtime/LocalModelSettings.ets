@@ -14,12 +14,16 @@ interface LocalModelRawConfig {
 }
 
 const DEEPSEEK_PROVIDER: string = 'CSI.AI';
-const DEFAULT_DEEPSEEK_BASE_URL: string = 'https://api.jiuwenappless.com/v1/chat/completions';
-const DEEPSEEK_MODEL: string = 'Deepseek-V4-Flash-0731';
+const DEFAULT_DEEPSEEK_BASE_URL: string = 'https://39.96.220.235/v1/chat/completions';
+export const CLOUD_CHAT_MODEL_DSV4: string = 'Deepseek-V4-Flash-0731';
+const DEEPSEEK_MODEL: string = CLOUD_CHAT_MODEL_DSV4;
 const DASHSCOPE_PROVIDER: string = 'DashScope';
 const DASHSCOPE_BASE_URL: string = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
 const DASHSCOPE_MODEL: string = 'deepseek-v4-flash-0731';
 const DEFAULT_CUSTOM_PARAMETERS_JSON: string = '{"enable_thinking":false}';
+export const CLOUD_CHAT_MODEL_GLM52: string = 'GLM-5.2';
+export const CLOUD_CHAT_MODEL_QWEN37_PLUS: string = 'Qwen3.7-Plus';
+export const CLOUD_CHAT_MODEL_QWEN37_MAX: string = 'Qwen3.7-Max';
 
 let dashScopeApiKey: string = '';
 let deepSeekApiKey: string = '';
@@ -82,4 +86,13 @@ export function cloudModelSettingsForPreset(preset: string): LocalModelSettings 
 
 export function defaultLocalModelSettings(): LocalModelSettings {
   return deepSeekModelSettings();
+}
+
+export function resolvedCloudChatModel(persistedValue: string): string {
+  if (persistedValue === CLOUD_CHAT_MODEL_GLM52 ||
+    persistedValue === CLOUD_CHAT_MODEL_QWEN37_PLUS ||
+    persistedValue === CLOUD_CHAT_MODEL_QWEN37_MAX) {
+    return persistedValue;
+  }
+  return CLOUD_CHAT_MODEL_DSV4;
 }

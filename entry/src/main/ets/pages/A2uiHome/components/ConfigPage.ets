@@ -19,7 +19,13 @@ import {
   statusBackground,
   statusColor
 } from '../style/A2uiHomeTheme';
-import { ComposioAuthConfigItem, dashScopeModelSettings, deepSeekModelSettings } from '@loop/agent-core';
+import {
+  ComposioAuthConfigItem,
+  CLOUD_CHAT_MODEL_DSV4,
+  CLOUD_CHAT_MODEL_GLM52,
+  CLOUD_CHAT_MODEL_QWEN37_MAX,
+  CLOUD_CHAT_MODEL_QWEN37_PLUS
+} from '@loop/agent-core';
 import { PersonaPack } from '../../../model/PersonaTypes';
 import { parsePersonaMarkdown, PersonaMarkdownSection, PersonaSkillMarkdown } from '../../../model/PersonaMarkdown';
 import { connectionStatusLabel } from '../state/A2uiHomeState';
@@ -105,18 +111,8 @@ export struct ConfigPage {
     return this.personaPacks.length > 0 ? this.personaPacks[0] : null;
   }
 
-  private isDeepSeekPresetSelected(): boolean {
-    return this.selectedModel === 'Deepseek-V4-Flash-0731' &&
-      this.baseUrl === 'https://api.jiuwenappless.com/v1/chat/completions';
-  }
-
-  private isDashScopePresetSelected(): boolean {
-    return this.selectedModel === 'deepseek-v4-flash-0731' &&
-      this.baseUrl === 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
-  }
-
-  private isLocalPresetSelected(): boolean {
-    return this.selectedModel === 'Qwen3-8B' && this.baseUrl === 'http://127.0.0.1:11434';
+  private isCloudChatModelSelected(model: string): boolean {
+    return this.selectedModel === model;
   }
 
   private sectionBody(sections: PersonaMarkdownSection[], title: string): string {
@@ -774,55 +770,76 @@ export struct ConfigPage {
 
           Column() {
             Row() {
-              Button('CSI DSV4')
+              Button('DSV4')
                 .height(36)
                 .layoutWeight(1)
                 .fontSize(11)
-                .fontColor(this.isDeepSeekPresetSelected() ? COLOR_BUTTON_TEXT : COLOR_INK)
-                .backgroundColor(this.isDeepSeekPresetSelected() ? COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
+                .fontColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_DSV4) ? COLOR_BUTTON_TEXT : COLOR_INK)
+                .backgroundColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_DSV4) ?
+                  COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
                 .borderRadius(9)
-                .border({ width: 1, color: this.isDeepSeekPresetSelected() ? COLOR_ACCENT : COLOR_CARD_EDGE })
+                .border({
+                  width: 1,
+                  color: this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_DSV4) ? COLOR_ACCENT : COLOR_CARD_EDGE
+                })
                 .margin({ right: 8 })
                 .onClick(() => {
-                  const settings = deepSeekModelSettings();
-                  this.apiKey = settings.apiKey;
-                  this.baseUrl = settings.baseUrl;
-                  this.selectedModel = settings.model;
-                  this.customParametersJson = settings.customParametersJson;
-                  this.onSelectModelPreset('deepseek');
+                  this.selectedModel = CLOUD_CHAT_MODEL_DSV4;
+                  this.onSelectModelPreset(CLOUD_CHAT_MODEL_DSV4);
                 })
-              Button('DashScope DSV4')
+              Button(CLOUD_CHAT_MODEL_GLM52)
                 .height(36)
                 .layoutWeight(1)
                 .fontSize(11)
-                .fontColor(this.isDashScopePresetSelected() ? COLOR_BUTTON_TEXT : COLOR_INK)
-                .backgroundColor(this.isDashScopePresetSelected() ? COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
+                .fontColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_GLM52) ? COLOR_BUTTON_TEXT : COLOR_INK)
+                .backgroundColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_GLM52) ?
+                  COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
                 .borderRadius(9)
-                .border({ width: 1, color: this.isDashScopePresetSelected() ? COLOR_ACCENT : COLOR_CARD_EDGE })
+                .border({
+                  width: 1,
+                  color: this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_GLM52) ? COLOR_ACCENT : COLOR_CARD_EDGE
+                })
                 .onClick(() => {
-                  const settings = dashScopeModelSettings();
-                  this.apiKey = settings.apiKey;
-                  this.baseUrl = settings.baseUrl;
-                  this.selectedModel = settings.model;
-                  this.customParametersJson = settings.customParametersJson;
-                  this.onSelectModelPreset('dashscope-dsv4');
+                  this.selectedModel = CLOUD_CHAT_MODEL_GLM52;
+                  this.onSelectModelPreset(CLOUD_CHAT_MODEL_GLM52);
                 })
             }
             .width('100%')
             Row() {
-              Button('本地 Qwen')
+              Button(CLOUD_CHAT_MODEL_QWEN37_PLUS)
                 .height(36)
-                .width('100%')
+                .layoutWeight(1)
                 .fontSize(11)
-                .fontColor(this.isLocalPresetSelected() ? COLOR_BUTTON_TEXT : COLOR_INK)
-                .backgroundColor(this.isLocalPresetSelected() ? COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
+                .fontColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_PLUS) ?
+                  COLOR_BUTTON_TEXT : COLOR_INK)
+                .backgroundColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_PLUS) ?
+                  COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
                 .borderRadius(9)
-                .border({ width: 1, color: this.isLocalPresetSelected() ? COLOR_ACCENT : COLOR_CARD_EDGE })
+                .border({
+                  width: 1,
+                  color: this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_PLUS) ? COLOR_ACCENT : COLOR_CARD_EDGE
+                })
+                .margin({ right: 8 })
                 .onClick(() => {
-                  this.baseUrl = 'http://127.0.0.1:11434';
-                  this.selectedModel = 'Qwen3-8B';
-                  this.customParametersJson = '';
-                  this.onSelectModelPreset('local-qwen');
+                  this.selectedModel = CLOUD_CHAT_MODEL_QWEN37_PLUS;
+                  this.onSelectModelPreset(CLOUD_CHAT_MODEL_QWEN37_PLUS);
+                })
+              Button(CLOUD_CHAT_MODEL_QWEN37_MAX)
+                .height(36)
+                .layoutWeight(1)
+                .fontSize(11)
+                .fontColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_MAX) ?
+                  COLOR_BUTTON_TEXT : COLOR_INK)
+                .backgroundColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_MAX) ?
+                  COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
+                .borderRadius(9)
+                .border({
+                  width: 1,
+                  color: this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_MAX) ? COLOR_ACCENT : COLOR_CARD_EDGE
+                })
+                .onClick(() => {
+                  this.selectedModel = CLOUD_CHAT_MODEL_QWEN37_MAX;
+                  this.onSelectModelPreset(CLOUD_CHAT_MODEL_QWEN37_MAX);
                 })
             }
             .width('100%')
@@ -845,20 +862,6 @@ export struct ConfigPage {
               this.selectedModel = value;
             })
 
-          this.InputLabel('Base URL', 12)
-          TextInput({ text: this.baseUrl, placeholder: 'http://127.0.0.1:11434' })
-            .height(42)
-            .fontSize(13)
-            .fontColor(COLOR_TEXT)
-            .placeholderColor(COLOR_MUTED)
-            .backgroundColor(COLOR_FIELD)
-            .borderRadius(9)
-            .border({ width: 1, color: COLOR_CARD_EDGE })
-            .padding({ left: 10, right: 10 })
-            .onChange((value: string) => {
-              this.baseUrl = value;
-            })
-
           Row() {
             Text('高级设置')
               .fontSize(13)
@@ -876,7 +879,21 @@ export struct ConfigPage {
           })
 
           if (this.showAdvancedSettings) {
-            this.InputLabel('API Key（可选）', 0)
+            this.InputLabel('Base URL', 0)
+            TextInput({ text: this.baseUrl, placeholder: 'http://127.0.0.1:11434' })
+              .height(42)
+              .fontSize(13)
+              .fontColor(COLOR_TEXT)
+              .placeholderColor(COLOR_MUTED)
+              .backgroundColor(COLOR_FIELD)
+              .borderRadius(9)
+              .border({ width: 1, color: COLOR_CARD_EDGE })
+              .padding({ left: 10, right: 10 })
+              .onChange((value: string) => {
+                this.baseUrl = value;
+              })
+
+            this.InputLabel('API Key（可选）', 12)
             TextInput({ text: this.apiKey, placeholder: '如果接口要求鉴权，在这里填写' })
               .height(42)
               .fontSize(13)
@@ -886,6 +903,8 @@ export struct ConfigPage {
               .borderRadius(9)
               .border({ width: 1, color: COLOR_CARD_EDGE })
               .padding({ left: 10, right: 10 })
+              .type(InputType.Password)
+              .showPasswordIcon(true)
               .onChange((value: string) => {
                 this.apiKey = value;
               })

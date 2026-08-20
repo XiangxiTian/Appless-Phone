@@ -7,7 +7,8 @@ import {
   cloudModelSettingsForPreset,
   configureLocalModelSettingsFromRawJson,
   dashScopeModelSettings,
-  defaultLocalModelSettings
+  defaultLocalModelSettings,
+  resolvedCloudChatModel
 } from '@loop/agent-core';
 
 export default function localModelClientTest() {
@@ -47,8 +48,19 @@ export default function localModelClientTest() {
       expect(cloudModelSettingsForPreset('unknown')).assertNull();
       configureLocalModelSettingsFromRawJson('{"DEEPSEEK_API_KEY":"new-key",' +
         '"DEEPSEEK_BASE_URL":"javascript:alert(1)"}');
-      expect(defaultLocalModelSettings().baseUrl).assertEqual('https://api.jiuwenappless.com/v1/chat/completions');
+      expect(defaultLocalModelSettings().baseUrl).assertEqual('https://39.96.220.235/v1/chat/completions');
       configureLocalModelSettingsFromRawJson('{}');
+    });
+
+    it('restores selectable CSI chat models and falls back to default DSV4', 0, () => {
+      expect(resolvedCloudChatModel('Deepseek-V4-Flash-0731')).assertEqual('Deepseek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('GLM-5.2')).assertEqual('GLM-5.2');
+      expect(resolvedCloudChatModel('Qwen3.7-Plus')).assertEqual('Qwen3.7-Plus');
+      expect(resolvedCloudChatModel('Qwen3.7-Max')).assertEqual('Qwen3.7-Max');
+      expect(resolvedCloudChatModel('deepseek')).assertEqual('Deepseek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('dashscope-dsv4')).assertEqual('Deepseek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('local-qwen')).assertEqual('Deepseek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('')).assertEqual('Deepseek-V4-Flash-0731');
     });
   });
 }

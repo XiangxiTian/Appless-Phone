@@ -78,6 +78,8 @@ export interface HtmlHomeBlock {
   mediaEmbed?: HtmlHomeMediaEmbed;
   stripeReceiving?: HtmlHomeStripeReceiving;
   embeddedDocument?: HtmlHomeDocument;
+  foodFavoriteId?: string;
+  foodFavorite?: boolean;
 }
 
 export interface HtmlHomeHistoryItem {

@@ -1,4 +1,4 @@
-import { aiLogInfo, buildFoodPhoneUri } from '@loop/agent-core';
+import { aiLogInfo, buildFoodPhoneUri, foodCardHasLuckinSource, foodCardHasMcDonaldsSource } from '@loop/agent-core';
 import {
   A2UI_COMPONENT_ACTION_BAR,
   A2UI_COMPONENT_AGGREGATE_SEARCH,
@@ -909,6 +909,13 @@ function appendFoodBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState,
     });
     block.actions.push(clientAction('html_pin_food', '固定到桌面', payload, component.id));
     block.actions.push(clientAction('html_open_food_map', '导航去', payload, component.id));
+    if (foodCardHasLuckinSource(item)) {
+      block.actions.push(clientAction('food_luckin_menu_open', '查询菜单', payload, component.id));
+    }
+    if (foodCardHasMcDonaldsSource(item)) {
+      block.actions.push(clientAction('food_mcd_menu_open', '查询菜单', payload, component.id));
+    }
+    block.actions.push(clientAction('food_favorite_toggle', '收藏门店', payload, component.id));
     if (phoneUri.length > 0) {
       block.actions.push(clientAction('html_call_food', '拨打电话', payload, component.id));
     }

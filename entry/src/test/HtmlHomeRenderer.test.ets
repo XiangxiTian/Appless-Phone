@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   A2uiAction,
+  A2uiFoodData,
   A2uiSurfaceState,
   A2uiSurfaceStore,
   HotelSearchResult,
@@ -21,6 +22,11 @@ import {
 import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer';
 import { createFirecrawlPendingDocument } from '../main/ets/pages/A2uiHome/html/HtmlFirecrawlHomeRenderer';
 import { createHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeSnapshot';
+import {
+  findFoodFavoriteIndex,
+  FoodFavoriteViewModel,
+  foodFavoriteId
+} from '../main/ets/pages/A2uiHome/FoodFavoritesStore';
 import {
   buildDailyBriefFixtureDiscovery,
   buildDailyBriefFixtureSections,
@@ -903,6 +909,13 @@ function foodDocumentFixture(): HtmlHomeDocument {
       { id: 'html_call_food', label: '拨打电话', prompt: '{"index":3,"name":"未知坐标小吃档","address":"坂田街道附近","location":"","distance":"900米"}', variant: 'secondary', kind: 'client' }
     ]
   }];
+  doc.blocks.forEach((block: HtmlHomeBlock): void => {
+    const prompt = block.actions.length > 0 ? block.actions[0].prompt : '';
+    block.actions.push({
+      id: 'food_favorite_toggle', label: '收藏门店', prompt: prompt,
+      variant: 'secondary', kind: 'client'
+    });
+  });
   doc.history = [];
   return doc;
 }
@@ -2640,13 +2653,55 @@ export default function htmlHomeRendererTest() {
     });
 
     it('renders food documents with the food scene template and preserves actions', 0, () => {
+      const favoriteFood: A2uiFoodData = {
+        name: '三津汤包 (深圳北站店)',
+        category: '餐饮服务; 餐饮相关场所; 餐饮相关',
+        address: '民治街道深圳北站（深圳北站地铁D口旁）',
+        distance: '21米',
+        location: '114.029506,22.609878',
+        sourceTags: ['高德', '腾讯地图'],
+        phone: '0755-12345678',
+        phoneSource: '高德',
+        openHoursToday: '08:00-22:00',
+        openHoursWeek: '周一至周日 08:00-22:00',
+        pricePerPerson: 32,
+        priceText: '人均¥32',
+        priceSource: '腾讯地图',
+        rating: 4.7,
+        ratingText: '4.7分',
+        ratingSource: '高德',
+        businessStatus: 'open',
+        businessStatusLabel: '营业中'
+      };
+      const favorite: FoodFavoriteViewModel = {
+        favoriteId: foodFavoriteId(favoriteFood),
+        savedAt: 1,
+        name: favoriteFood.name,
+        category: favoriteFood.category,
+        address: favoriteFood.address,
+        distance: favoriteFood.distance,
+        location: favoriteFood.location,
+        sourceTags: favoriteFood.sourceTags,
+        phone: favoriteFood.phone,
+        phoneSource: favoriteFood.phoneSource,
+        openHoursToday: favoriteFood.openHoursToday,
+        openHoursWeek: favoriteFood.openHoursWeek,
+        pricePerPerson: favoriteFood.pricePerPerson,
+        priceText: favoriteFood.priceText,
+        priceSource: favoriteFood.priceSource,
+        rating: favoriteFood.rating,
+        ratingText: favoriteFood.ratingText,
+        ratingSource: favoriteFood.ratingSource,
+        businessStatus: favoriteFood.businessStatus,
+        businessStatusLabel: favoriteFood.businessStatusLabel
+      };
       const html = renderHtmlHomeDocument(foodDocumentFixture(), false, {
         longitude: 114.063873,
         latitude: 22.631273,
         radiusMeters: 3000,
         name: '坂田',
         address: '深圳市龙岗区坂田街道'
-      });
+      }, [], [favorite]);
 
       expect(html.indexOf('editorial-food-shell')).assertLarger(-1);
       expect(html.indexOf('editorial-cover')).assertLarger(-1);
@@ -2655,6 +2710,50 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('food_address_book')).assertLarger(-1);
       expect(html.indexOf('food_address_book_save')).assertLarger(-1);
       expect(html.indexOf('food_address_book_delete')).assertLarger(-1);
+      expect(html.indexOf('food-favorites-icon')).assertLarger(-1);
+      expect(html.indexOf('food-favorites-overlay')).assertLarger(-1);
+      expect(html.indexOf('food-menu-overlay')).assertLarger(-1);
+      expect(html.indexOf('AIPhoneFoodMenu')).assertLarger(-1);
+      expect(html.indexOf('function applyMenuPatch(patchJson)')).assertLarger(-1);
+      expect(html.indexOf("text(patch.kind) !== 'food-menu'")).assertLarger(-1);
+      expect(html.indexOf("正在匹配' + brandName + '门店并查询菜单")).assertLarger(-1);
+      expect(html.indexOf('food_luckin_menu_open')).assertLarger(-1);
+      expect(html.indexOf('food_mcd_menu_open')).assertLarger(-1);
+      expect(html.indexOf("brandName = isMcDonalds ? '麦当劳' : '瑞幸'")).assertLarger(-1);
+      expect(html.indexOf('editorial-action mcd-menu')).assertLarger(-1);
+      expect(html.indexOf('food_luckin_order_preview')).assertLarger(-1);
+      expect(html.indexOf('food_mcd_menu_detail')).assertLarger(-1);
+      expect(html.indexOf('food_mcd_order_quote')).assertLarger(-1);
+      expect(html.indexOf('food_mcd_order_create')).assertLarger(-1);
+      expect(html.indexOf('food_mcd_order_status')).assertLarger(-1);
+      expect(html.indexOf('food_mcd_pay_open')).assertLarger(-1);
+      expect(html.indexOf('确认下单（将创建真实订单）')).assertLarger(-1);
+      expect(html.indexOf('food-menu-order')).assertLarger(-1);
+      expect(html.indexOf('去点餐')).assertLarger(-1);
+      expect(html.indexOf('openFoodMenu(featureBlock, action)')).assertLarger(-1);
+      expect(html.indexOf('menuAction && !foodMenuActionAllowed(featureBlock, id)')).assertLarger(-1);
+      expect(html.indexOf('menuAction && !foodMenuActionAllowed(block, id)')).assertLarger(-1);
+      expect(html.indexOf('food_favorite_toggle')).assertLarger(-1);
+      expect(html.indexOf('"foodFavorite":true')).assertLarger(-1);
+      expect(html.indexOf('function applyFavoriteState(block, active)')).assertLarger(-1);
+      expect(html.indexOf("button.setAttribute('aria-pressed', active ? 'true' : 'false')")).assertLarger(-1);
+      expect(html.indexOf('favoriteEntries = favoriteEntries.filter')).assertLarger(-1);
+      expect(html.indexOf('renderFavoriteEntries();')).assertLarger(-1);
+      expect(html.indexOf('function favoriteBlock(favorite, index)')).assertLarger(-1);
+      expect(html.indexOf('function renderFoodCardDetail(card, block, includeActions)')).assertLarger(-1);
+      expect(html.indexOf('renderFoodCardDetail(savedCard, block, true)')).assertLarger(-1);
+      expect(html.indexOf('data-favorite-card-key')).assertLarger(-1);
+      expect(html.indexOf('food-card-head-actions')).assertLarger(-1);
+      expect(html.indexOf('function addFavoriteRemoveButton(parent, favorite, block)')).assertLarger(-1);
+      expect(html.indexOf("id: 'food_favorite_remove'")).assertLarger(-1);
+      expect(html.indexOf("id: 'food_favorite_map'")).assertLarger(-1);
+      expect(html.indexOf("id: 'food_favorite_pin'")).assertLarger(-1);
+      expect(html.indexOf("id: 'food_favorite_call'")).assertLarger(-1);
+      expect(html.indexOf('0755-12345678')).assertLarger(-1);
+      expect(html.indexOf('周一至周日 08:00-22:00')).assertLarger(-1);
+      expect(html.indexOf('人均¥32')).assertLarger(-1);
+      expect(html.indexOf('4.7分')).assertLarger(-1);
+      expect(html.indexOf('我的收藏')).assertLarger(-1);
       expect(html.indexOf('AIPhoneFoodLocationPickerBridge')).assertLarger(-1);
       expect(html.indexOf('editorial-tabs')).assertLarger(-1);
       expect(html.indexOf('editorial-feature')).assertLarger(-1);
@@ -2711,13 +2810,98 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf("card.setAttribute('data-source-key', sourceKey(block))")).assertLarger(-1);
       expect(html.indexOf("raw.indexOf('美团')")).assertLarger(-1);
       expect(html.indexOf("raw.indexOf('麦当劳')")).assertLarger(-1);
-      expect(html.indexOf("id === 'html_call_food' ? '拨打电话' : '固定到桌面'")).assertLarger(-1);
+      expect(html.indexOf("menuAction ? '查询菜单' : (mapAction ? '导航去' : (callAction ? '拨打电话' : '固定到桌面'))")).assertLarger(-1);
       expect(html.indexOf('var canNavigate = hasLocation(block)')).assertLarger(-1);
-      expect(html.indexOf("if (id !== 'html_call_food' && !canNavigate) { return false; }")).assertLarger(-1);
+      expect(html.indexOf('if (!callAction && !menuAction && !canNavigate) { return false; }')).assertLarger(-1);
       expect(html.indexOf('setExpanded(key)')).assertLarger(-1);
       expect(html.indexOf('Food Field')).assertEqual(-1);
       expect(html.indexOf('附近餐饮探索')).assertEqual(-1);
       expect(html.indexOf('ReactDOM')).assertEqual(-1);
+    });
+
+    it('puts favorites first in the initial smart order without adding client-side favorite reordering', 0, () => {
+      const favoriteFood: A2uiFoodData = {
+        name: '麦当劳 (深圳北站店)',
+        category: '麦当劳门店',
+        address: '深圳北站商业区',
+        distance: '180米',
+        location: '114.030000,22.610000',
+        sourceTags: ['麦当劳']
+      };
+      const favorite: FoodFavoriteViewModel = {
+        favoriteId: foodFavoriteId(favoriteFood),
+        savedAt: 1,
+        name: favoriteFood.name,
+        category: favoriteFood.category,
+        address: favoriteFood.address,
+        distance: favoriteFood.distance,
+        location: favoriteFood.location,
+        sourceTags: favoriteFood.sourceTags
+      };
+
+      const html = renderHtmlHomeDocument(foodDocumentFixture(), false, undefined, [], [favorite]);
+      const favoriteTitle = html.indexOf('\"title\":\"麦当劳 (深圳北站店)\"');
+      const firstOriginalTitle = html.indexOf('\"title\":\"三津汤包 (深圳北站店)\"');
+      const secondOriginalTitle = html.indexOf('\"title\":\"N多寿司 (深圳北站店)\"');
+
+      expect(favoriteTitle).assertLarger(-1);
+      expect(favoriteTitle).assertLess(firstOriginalTitle);
+      expect(firstOriginalTitle).assertLess(secondOriginalTitle);
+      expect(html.indexOf('applyFavoriteState(block, nextActive);')).assertLarger(-1);
+      expect(html.indexOf('applyFavoriteState(block, nextActive); applyFilter();')).assertEqual(-1);
+    });
+
+    it('keeps same-named stores at different coordinates independently favorite', 0, () => {
+      const savedFood: A2uiFoodData = {
+        name: '麦当劳',
+        category: '麦当劳门店',
+        address: '龙华富士康店',
+        distance: '180米',
+        location: '114.030000,22.610000',
+        sourceTags: ['麦当劳']
+      };
+      const otherFood: A2uiFoodData = {
+        name: '麦当劳',
+        category: '麦当劳门店',
+        address: '民治店',
+        distance: '220米',
+        location: '114.080000,22.620000',
+        sourceTags: ['麦当劳']
+      };
+      const favorite: FoodFavoriteViewModel = {
+        favoriteId: foodFavoriteId(savedFood),
+        savedAt: 1,
+        name: savedFood.name,
+        category: savedFood.category,
+        address: savedFood.address,
+        distance: savedFood.distance,
+        location: savedFood.location,
+        sourceTags: savedFood.sourceTags
+      };
+      const doc = foodDocumentFixture();
+      doc.blocks = doc.blocks.slice(0, 2);
+      doc.blocks[0].title = savedFood.name;
+      doc.blocks[0].metrics = [
+        { label: 'category', value: savedFood.category },
+        { label: 'address', value: savedFood.address },
+        { label: 'distance', value: savedFood.distance },
+        { label: 'location', value: savedFood.location as string }
+      ];
+      doc.blocks[1].title = otherFood.name;
+      doc.blocks[1].metrics = [
+        { label: 'category', value: otherFood.category },
+        { label: 'address', value: otherFood.address },
+        { label: 'distance', value: otherFood.distance },
+        { label: 'location', value: otherFood.location as string }
+      ];
+
+      expect(foodFavoriteId(savedFood) === foodFavoriteId(otherFood)).assertFalse();
+      expect(findFoodFavoriteIndex([favorite], savedFood)).assertEqual(0);
+      expect(findFoodFavoriteIndex([favorite], otherFood)).assertEqual(-1);
+
+      const html = renderHtmlHomeDocument(doc, false, undefined, [], [favorite]);
+      expect(html.split('"foodFavorite":true').length - 1).assertEqual(1);
+      expect(html.split('"foodFavorite":false').length - 1).assertEqual(1);
     });
 
     it('does not render a call action when the food document has none', 0, () => {

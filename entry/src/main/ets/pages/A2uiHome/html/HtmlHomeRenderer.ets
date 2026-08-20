@@ -8,6 +8,7 @@ import {
   shouldRenderFoodHomeDocument
 } from './HtmlFoodHomeRenderer';
 import { FoodLocationViewModel, FoodSavedAddressViewModel } from '../FoodAddressBookStore';
+import { FoodFavoriteViewModel } from '../FoodFavoritesStore';
 import { renderFirecrawlHomeDocument, shouldRenderFirecrawlHomeDocument } from './HtmlFirecrawlHomeRenderer';
 import { renderHotelHomeDocument, shouldRenderHotelHomeDocument } from './HtmlHotelHomeRenderer';
 import { renderMediaHomeDocument, shouldRenderMediaHomeDocument } from './HtmlMediaHomeRenderer';
@@ -6166,7 +6167,8 @@ export function renderHtmlHomeDocument(
   document: HtmlHomeDocument,
   isBusy: boolean = false,
   foodLocation?: FoodLocationViewModel,
-  foodAddressBook: FoodSavedAddressViewModel[] = []
+  foodAddressBook: FoodSavedAddressViewModel[] = [],
+  foodFavorites: FoodFavoriteViewModel[] = []
 ): string {
   if (shouldRenderMultiTaskHomeDocument(document)) {
     return renderMultiTaskHomeDocument(document, isBusy);
@@ -6193,7 +6195,7 @@ export function renderHtmlHomeDocument(
     return renderHotelHomeDocument(document, isBusy);
   }
   if (shouldRenderFoodHomeDocument(document)) {
-    return renderFoodHomeDocument(document, isBusy, foodLocation, foodAddressBook);
+    return renderFoodHomeDocument(document, isBusy, foodLocation, foodAddressBook, foodFavorites);
   }
   if (shouldRenderRideHailingHomeDocument(document)) {
     return renderRideHailingHomeDocument(document, isBusy);

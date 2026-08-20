@@ -136,6 +136,16 @@ import {
   normalizeComposioUserId,
   prepareGmailOAuthAuthorizationUrl,
   prepareGoogleOAuthAuthorizationUrl,
+  foodCardHasMcDonaldsSource,
+  foodCardHasLuckinSource,
+  LuckinFoodMenuProduct,
+  McDonaldsFoodMenuRow,
+  createMcDonaldsFoodMenuOrder,
+  queryMcDonaldsFoodMenuDetail,
+  queryMcDonaldsFoodMenuForCard,
+  queryMcDonaldsFoodMenuOrder,
+  quoteMcDonaldsFoodMenuOrder,
+  queryLuckinFoodMenuForCard,
   recheck12306TrainAvailability,
   resolveMultiTaskSlotId,
   resolveLuckinActionPrompt,
@@ -347,6 +357,7 @@ import {
 } from './html/HtmlAggregateSearchHomeRenderer';
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
 import { FoodAddressBookStore, FoodSavedAddressViewModel } from './FoodAddressBookStore';
+import { FoodFavoritesStore, FoodFavoriteViewModel } from './FoodFavoritesStore';
 import { isHtmlHomeActionAllowed } from './html/HtmlHomeActionPolicy';
 import {
   HtmlHomeAction,
@@ -753,6 +764,87 @@ interface LuckinPaymentStatusPatch {
   sectionId?: string;
 }
 
+interface FoodMenuPatch {
+  kind: 'food-menu';
+  brand: 'luckin' | 'mcdonalds';
+  status: 'ready' | 'error';
+  step?: 'menu' | 'detail' | 'quote' | 'order';
+  requestKey: string;
+  deptId: string;
+  storeName: string;
+  storeAddress: string;
+  storeLocation: string;
+  products: LuckinFoodMenuProduct[];
+  error: string;
+  selectedProductId?: string;
+  selectedProductName?: string;
+  selectedPictureUrl?: string;
+  selectedPriceText?: string;
+  quantity?: number;
+  rows?: McDonaldsFoodMenuRow[];
+  quoteToken?: string;
+  canCreate?: boolean;
+  orderId?: string;
+  payUrl?: string;
+  statusText?: string;
+}
+
+interface McDonaldsFoodMenuActionPayload {
+  surfaceId?: Object | string | number | boolean | null;
+  requestKey?: Object | string | number | boolean | null;
+  productId?: Object | string | number | boolean | null;
+  quantity?: Object | string | number | boolean | null;
+  quoteToken?: Object | string | number | boolean | null;
+  orderId?: Object | string | number | boolean | null;
+}
+
+interface McDonaldsFoodMenuQuoteContext {
+  productId: string;
+  quantity: number;
+  takeWayCode: string;
+  quoteToken: string;
+}
+
+interface McDonaldsFoodMenuContext {
+  surfaceId: string;
+  requestKey: string;
+  storeCode: string;
+  beCode: string;
+  storeName: string;
+  storeAddress: string;
+  storeLocation: string;
+  products: LuckinFoodMenuProduct[];
+  quote: McDonaldsFoodMenuQuoteContext | null;
+  orderId: string;
+  payUrl: string;
+}
+
+interface LuckinFoodMenuOrderPayload {
+  surfaceId?: Object | string | number | boolean | null;
+  requestKey?: Object | string | number | boolean | null;
+  deptId?: Object | string | number | boolean | null;
+  deptName?: Object | string | number | boolean | null;
+  address?: Object | string | number | boolean | null;
+  location?: Object | string | number | boolean | null;
+  productId?: Object | string | number | boolean | null;
+  productName?: Object | string | number | boolean | null;
+  skuCode?: Object | string | number | boolean | null;
+  pictureUrl?: Object | string | number | boolean | null;
+}
+
+interface LuckinFoodMenuPreviewArgs {
+  deptId: string;
+  deptName: string;
+  address: string;
+  location: string;
+  productId: string;
+  productName: string;
+  skuCode: string;
+  pictureUrl: string;
+  originalQuery: string;
+  previewPrompt: string;
+}
+
 interface InlineLuckinPaymentStatusPlan {
   mode: 'single' | 'multi-task';
   slotId: string;
@@ -999,6 +1091,8 @@ struct Index {
   private foodLocationOwnerSurfaceId: string = '';
   private foodSavedAddresses: FoodSavedAddressViewModel[] = [];
   private foodAddressBookStoreInstance: FoodAddressBookStore | null = null;
+  private foodFavorites: FoodFavoriteViewModel[] = [];
+  private foodFavoritesStoreInstance: FoodFavoritesStore | null = null;
   @State multiTaskPayloadJson: string = '';
   @State multiTaskShellHtml: string = '';
   @State multiTaskPayloadTick: number = 0;
@@ -1060,6 +1154,9 @@ struct Index {
   private activeRuntimeOwner: RuntimeOwner = 'legacy';
   @State luckinInlinePatchJson: string = '';
   @State luckinInlinePatchTick: number = 0;
+  private luckinFoodMenuContext: FoodMenuPatch | null = null;
+  private mcDonaldsFoodMenuContext: McDonaldsFoodMenuContext | null = null;
+  private mcDonaldsFoodMenuQuoteSequence: number = 0;
   private luckinOptionSwitchInFlight: boolean = false;
   private luckinOptionSwitchSeq: number = 0;
   private luckinOptionSwitchPending: LuckinOptionSwitchPending | null = null;
@@ -2314,6 +2411,8 @@ struct Index {
 
   private clearLuckinInlinePatchState(): void {
     this.luckinInlinePatchJson = '';
+    this.luckinFoodMenuContext = null;
+    this.mcDonaldsFoodMenuContext = null;
     this.clearLuckinOptionSwitchQueue();
   }
 
@@ -2325,6 +2424,7 @@ struct Index {
     this.configureComposioRuntimeForCurrentUser();
     this.loadWaterfallPreferences();
     this.loadFoodAddressBook();
+    this.loadFoodFavorites();
     void this.requestLocationPermissionOnLaunch();
     this.subscribeTrainPresaleHandoff();
     this.subscribeWaterfallConversationTypedTest();
@@ -3928,6 +4028,7 @@ struct Index {
       this.foodLocationName,
       this.foodLocationAddress,
       JSON.stringify(this.foodSavedAddresses),
+      JSON.stringify(this.foodFavorites),
       needsInputText ? this.inputText : ''
     ].join('|');
   }
@@ -3946,7 +4047,8 @@ struct Index {
         name: this.foodLocationName,
         address: this.foodLocationAddress
       } : undefined,
-      document.kind === 'food' ? this.foodSavedAddresses : []);
+      document.kind === 'food' ? this.foodSavedAddresses : [],
+      document.kind === 'food' ? this.foodFavorites : []);
     this.recordRenderedPageSnapshot(this.currentSurface, document);
     if (this.htmlHomeDebugExportEnabled) {
       this.writeHtmlHomeDebugExport(document, 'auto');
@@ -5745,6 +5847,11 @@ struct Index {
       this.logHtmlHomeActionError(action, 'missing_food_row');
       return true;
     }
+    await this.openFoodMapRow(action, row);
+    return true;
+  }
+
+  private async openFoodMapRow(action: A2uiAction, row: A2uiFoodData): Promise<void> {
     const uri = buildSystemFoodNavigationUri(this.actionText(row.location), '', row.name);
     if (uri.length === 0) {
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
@@ -5756,7 +5863,7 @@ struct Index {
         error: ''
       }));
       this.logHtmlHomeActionError(action, 'missing_food_coordinate');
-      return true;
+      return;
     }
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -5790,7 +5897,6 @@ struct Index {
       }));
       aiLogError('[AIPhone][HtmlHomeFoodMap] ok=false message=' + businessError.message);
     }
-    return true;
   }
 
   private updateHtmlFoodPhoneState(ok: boolean, message: string): void {
@@ -5833,6 +5939,10 @@ struct Index {
       aiLogInfo('[AIPhone][FoodPhoneAction] stage=validation result=blocked reason=missing_food_row');
       return true;
     }
+    return await this.callFoodRow(action, row);
+  }
+
+  private async callFoodRow(action: A2uiAction, row: A2uiFoodData): Promise<boolean> {
     const displayPhone = this.actionText(row.phone).trim();
     const uri = buildFoodPhoneUri(displayPhone);
     if (uri.length === 0) {
@@ -7301,6 +7411,49 @@ struct Index {
 
   private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
+    if (await this.handleStoredFoodFavoriteAction(action)) {
+      return;
+    }
+    if (action.id === 'food_luckin_menu_open') {
+      await this.openLuckinFoodMenu(action);
+      return;
+    }
+    if (action.id === 'food_mcd_menu_open') {
+      await this.openMcDonaldsFoodMenu(action);
+      return;
+    }
+    if (action.id === 'food_luckin_order_preview') {
+      await this.previewLuckinFoodMenuProduct(action);
+      return;
+    }
+    if (action.id === 'food_mcd_menu_detail') {
+      await this.openMcDonaldsFoodMenuDetail(action);
+      return;
+    }
+    if (action.id === 'food_mcd_order_quote') {
+      await this.quoteMcDonaldsFoodMenuProduct(action);
+      return;
+    }
+    if (action.id === 'food_mcd_order_create') {
+      await this.createMcDonaldsFoodMenuProductOrder(action);
+      return;
+    }
+    if (action.id === 'food_mcd_order_status') {
+      await this.refreshMcDonaldsFoodMenuOrder(action);
+      return;
+    }
+    if (action.id === 'food_mcd_pay_open') {
+      await this.openMcDonaldsFoodMenuPayment(action);
+      return;
+    }
+    if (action.id === 'food_favorite_remove') {
+      await this.removeFoodFavorite(action);
+      return;
+    }
+    if (action.id === 'food_favorite_toggle') {
+      await this.toggleFoodFavorite(action);
+      return;
+    }
     if (action.id === 'food_address_book_save') {
       await this.saveCurrentFoodAddress(action);
       return;
@@ -7622,6 +7775,480 @@ struct Index {
     this.htmlHomeCacheKey = '';
     this.htmlHomeCacheHtml = '';
     aiLogInfo('[AIPhone][FoodAddressBookLoaded] count=' + this.foodSavedAddresses.length.toString());
+  }
+
+  private foodFavoritesStore(): FoodFavoritesStore | null {
+    if (this.foodFavoritesStoreInstance !== null) {
+      return this.foodFavoritesStoreInstance;
+    }
+    try {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      this.foodFavoritesStoreInstance = new FoodFavoritesStore(context);
+      return this.foodFavoritesStoreInstance;
+    } catch (error) {
+      aiLogError('[AIPhone][FoodFavoritesStore] phase=open ok=false reason=' +
+        (error instanceof Error ? error.message : JSON.stringify(error)));
+      return null;
+    }
+  }
+
+  private loadFoodFavorites(): void {
+    const store = this.foodFavoritesStore();
+    this.foodFavorites = store === null ? [] : store.list();
+    this.htmlHomeCacheKey = '';
+    this.htmlHomeCacheHtml = '';
+    aiLogInfo('[AIPhone][FoodFavoritesLoaded] count=' + this.foodFavorites.length.toString());
+  }
+
+  private foodRowForLuckinMenuAction(action: A2uiAction): A2uiFoodData | null {
+    if (action.args !== undefined && action.args !== null) {
+      const favorite = this.storedFoodFavorite(action);
+      if (favorite !== null) {
+        return favorite;
+      }
+    }
+    const model = this.parsedDataModel();
+    if (model === null) {
+      return null;
+    }
+    const payload = this.htmlPinPayload(action);
+    return this.htmlPinFoodRow(model, payload, this.htmlActionIndex(action, payload));
+  }
+
+  private publishFoodMenuPatch(patch: FoodMenuPatch): void {
+    this.luckinFoodMenuContext = patch.brand === 'luckin' ? patch : null;
+    this.luckinInlinePatchJson = JSON.stringify(patch);
+    this.luckinInlinePatchTick = this.luckinInlinePatchTick + 1;
+    aiLogInfo('[AIPhone][FoodMenuPatch] brand=' + patch.brand + ' status=' + patch.status +
+      ' products=' + patch.products.length.toString());
+  }
+
+  private async openLuckinFoodMenu(action: A2uiAction): Promise<void> {
+    if (this.currentSurface.intent !== 'food') {
+      this.logHtmlHomeActionError(action, 'food_surface_required');
+      return;
+    }
+    const row = this.foodRowForLuckinMenuAction(action);
+    if (row === null || !foodCardHasLuckinSource(row)) {
+      this.logHtmlHomeActionError(action, row === null ? 'missing_food_row' : 'luckin_source_required');
+      return;
+    }
+    const surfaceId = this.currentSurface.surfaceId;
+    const requestKey = row.name + '|' + row.address;
+    const result = await queryLuckinFoodMenuForCard(row);
+    if (this.currentSurface.surfaceId !== surfaceId) {
+      aiLogInfo('[AIPhone][LuckinFoodMenuPatch] status=ignored reason=surface_changed');
+      return;
+    }
+    this.publishFoodMenuPatch({
+      kind: 'food-menu',
+      brand: 'luckin',
+      status: result.found ? 'ready' : 'error',
+      requestKey: requestKey,
+      deptId: result.deptId,
+      storeName: result.storeName.length > 0 ? result.storeName : row.name,
+      storeAddress: result.storeAddress.length > 0 ? result.storeAddress : row.address,
+      storeLocation: result.storeLocation.length > 0 ? result.storeLocation : (row.location ?? ''),
+      products: result.products,
+      error: result.error
+    });
+  }
+
+  private async openMcDonaldsFoodMenu(action: A2uiAction): Promise<void> {
+    if (this.currentSurface.intent !== 'food') {
+      this.logHtmlHomeActionError(action, 'food_surface_required');
+      return;
+    }
+    const row = this.foodRowForLuckinMenuAction(action);
+    if (row === null || !foodCardHasMcDonaldsSource(row)) {
+      this.logHtmlHomeActionError(action, row === null ? 'missing_food_row' : 'mcd_source_required');
+      return;
+    }
+    const surfaceId = this.currentSurface.surfaceId;
+    const requestKey = row.name + '|' + row.address;
+    const result = await queryMcDonaldsFoodMenuForCard(row);
+    if (this.currentSurface.surfaceId !== surfaceId) {
+      aiLogInfo('[AIPhone][McDonaldsFoodMenuPatch] status=ignored reason=surface_changed');
+      return;
+    }
+    this.mcDonaldsFoodMenuContext = {
+      surfaceId: surfaceId,
+      requestKey: requestKey,
+      storeCode: result.storeCode,
+      beCode: result.beCode,
+      storeName: result.storeName.length > 0 ? result.storeName : row.name,
+      storeAddress: result.storeAddress.length > 0 ? result.storeAddress : row.address,
+      storeLocation: result.storeLocation.length > 0 ? result.storeLocation : (row.location ?? ''),
+      products: result.products,
+      quote: null,
+      orderId: '',
+      payUrl: ''
+    };
+    this.publishFoodMenuPatch({
+      kind: 'food-menu',
+      brand: 'mcdonalds',
+      status: result.found ? 'ready' : 'error',
+      step: 'menu',
+      requestKey: requestKey,
+      deptId: '',
+      storeName: result.storeName.length > 0 ? result.storeName : row.name,
+      storeAddress: result.storeAddress.length > 0 ? result.storeAddress : row.address,
+      storeLocation: result.storeLocation.length > 0 ? result.storeLocation : (row.location ?? ''),
+      products: result.products,
+      error: result.error
+    });
+  }
+
+  private mcDonaldsFoodMenuProduct(
+    context: McDonaldsFoodMenuContext,
+    productId: string
+  ): LuckinFoodMenuProduct | null {
+    for (let index = 0; index < context.products.length; index += 1) {
+      if (context.products[index].productId === productId) {
+        return context.products[index];
+      }
+    }
+    return null;
+  }
+
+  private mcDonaldsFoodMenuPatch(
+    context: McDonaldsFoodMenuContext,
+    step: 'menu' | 'detail' | 'quote' | 'order',
+    status: 'ready' | 'error',
+    error: string
+  ): FoodMenuPatch {
+    return {
+      kind: 'food-menu',
+      brand: 'mcdonalds',
+      status: status,
+      step: step,
+      requestKey: context.requestKey,
+      deptId: '',
+      storeName: context.storeName,
+      storeAddress: context.storeAddress,
+      storeLocation: context.storeLocation,
+      products: context.products,
+      error: error
+    };
+  }
+
+  private mcDonaldsFoodMenuActionContext(action: A2uiAction): McDonaldsFoodMenuContext | null {
+    if (this.currentSurface.intent !== 'food' || action.args === undefined || action.args === null ||
+      this.mcDonaldsFoodMenuContext === null) {
+      this.logHtmlHomeActionError(action, 'mcd_food_menu_context_required');
+      return null;
+    }
+    const payload = action.args as McDonaldsFoodMenuActionPayload;
+    const surfaceId = this.actionText(payload.surfaceId).trim();
+    const requestKey = this.actionText(payload.requestKey).trim();
+    const context = this.mcDonaldsFoodMenuContext;
+    if (surfaceId !== this.currentSurface.surfaceId || surfaceId !== context.surfaceId ||
+      requestKey !== context.requestKey) {
+      this.logHtmlHomeActionError(action, 'invalid_mcd_food_menu_context');
+      return null;
+    }
+    return context;
+  }
+
+  private async openMcDonaldsFoodMenuDetail(action: A2uiAction): Promise<void> {
+    const context = this.mcDonaldsFoodMenuActionContext(action);
+    if (context === null || action.args === undefined || action.args === null) {
+      return;
+    }
+    const payload = action.args as McDonaldsFoodMenuActionPayload;
+    const productId = this.actionText(payload.productId).trim();
+    const product = this.mcDonaldsFoodMenuProduct(context, productId);
+    if (product === null) {
+      this.logHtmlHomeActionError(action, 'mcd_food_menu_product_not_found');
+      return;
+    }
+    const surfaceId = context.surfaceId;
+    const result = await queryMcDonaldsFoodMenuDetail(context.storeCode, context.beCode, product.productId);
+    if (this.currentSurface.surfaceId !== surfaceId || this.mcDonaldsFoodMenuContext !== context) {
+      aiLogInfo('[AIPhone][McDonaldsFoodMenuDetailPatch] status=ignored reason=surface_changed');
+      return;
+    }
+    context.quote = null;
+    // Some promotional products are absent from query-meal-detail even though
+    // query-meals marks them as orderable. Keep the trusted menu product usable
+    // with its default configuration and surface the provider warning in Web.
+    const patch = this.mcDonaldsFoodMenuPatch(context, 'detail', 'ready', result.error);
+    patch.selectedProductId = product.productId;
+    patch.selectedProductName = product.name;
+    patch.selectedPictureUrl = product.pictureUrl;
+    patch.selectedPriceText = result.priceText.length > 0 ? result.priceText : product.priceText;
+    patch.quantity = 1;
+    patch.rows = result.rows;
+    this.publishFoodMenuPatch(patch);
+  }
+
+  private async quoteMcDonaldsFoodMenuProduct(action: A2uiAction): Promise<void> {
+    const context = this.mcDonaldsFoodMenuActionContext(action);
+    if (context === null || action.args === undefined || action.args === null) {
+      return;
+    }
+    const payload = action.args as McDonaldsFoodMenuActionPayload;
+    const productId = this.actionText(payload.productId).trim();
+    const quantity = Number(this.actionText(payload.quantity));
+    const product = this.mcDonaldsFoodMenuProduct(context, productId);
+    if (product === null || !Number.isFinite(quantity) || quantity < 1 || quantity > 20 || Math.floor(quantity) !== quantity) {
+      this.logHtmlHomeActionError(action, 'invalid_mcd_food_menu_quote');
+      return;
+    }
+    const surfaceId = context.surfaceId;
+    const result = await quoteMcDonaldsFoodMenuOrder(
+      context.storeCode, context.beCode, product.productId, quantity
+    );
+    if (this.currentSurface.surfaceId !== surfaceId || this.mcDonaldsFoodMenuContext !== context) {
+      aiLogInfo('[AIPhone][McDonaldsFoodOrderQuotePatch] status=ignored reason=surface_changed');
+      return;
+    }
+    this.mcDonaldsFoodMenuQuoteSequence = this.mcDonaldsFoodMenuQuoteSequence + 1;
+    const quoteToken = surfaceId + ':' + this.mcDonaldsFoodMenuQuoteSequence.toString();
+    context.quote = result.ready && result.takeWayCode.length > 0 ? {
+      productId: product.productId,
+      quantity: result.quantity,
+      takeWayCode: result.takeWayCode,
+      quoteToken: quoteToken
+    } : null;
+    const patch = this.mcDonaldsFoodMenuPatch(context, 'quote', result.ready ? 'ready' : 'error', result.error);
+    patch.selectedProductId = product.productId;
+    patch.selectedProductName = product.name;
+    patch.selectedPictureUrl = product.pictureUrl;
+    patch.selectedPriceText = product.priceText;
+    patch.quantity = result.quantity;
+    patch.rows = result.rows;
+    patch.quoteToken = context.quote === null ? '' : context.quote.quoteToken;
+    patch.canCreate = context.quote !== null;
+    this.publishFoodMenuPatch(patch);
+  }
+
+  private async createMcDonaldsFoodMenuProductOrder(action: A2uiAction): Promise<void> {
+    const context = this.mcDonaldsFoodMenuActionContext(action);
+    if (context === null || action.args === undefined || action.args === null || context.quote === null) {
+      this.logHtmlHomeActionError(action, 'mcd_food_menu_quote_required');
+      return;
+    }
+    const payload = action.args as McDonaldsFoodMenuActionPayload;
+    const productId = this.actionText(payload.productId).trim();
+    const quantity = Number(this.actionText(payload.quantity));
+    const quoteToken = this.actionText(payload.quoteToken).trim();
+    const quote = context.quote;
+    const product = this.mcDonaldsFoodMenuProduct(context, productId);
+    if (product === null || productId !== quote.productId || quantity !== quote.quantity ||
+      quoteToken !== quote.quoteToken) {
+      this.logHtmlHomeActionError(action, 'invalid_mcd_food_menu_create');
+      return;
+    }
+    context.quote = null;
+    const surfaceId = context.surfaceId;
+    const result = await createMcDonaldsFoodMenuOrder(
+      context.storeCode, context.beCode, product.productId, quantity, quote.takeWayCode
+    );
+    if (this.currentSurface.surfaceId !== surfaceId || this.mcDonaldsFoodMenuContext !== context) {
+      aiLogInfo('[AIPhone][McDonaldsFoodOrderCreatePatch] status=ignored reason=surface_changed');
+      return;
+    }
+    context.orderId = result.orderId;
+    context.payUrl = result.payUrl;
+    const patch = this.mcDonaldsFoodMenuPatch(context, 'order', result.ready ? 'ready' : 'error', result.error);
+    patch.selectedProductId = product.productId;
+    patch.selectedProductName = product.name;
+    patch.selectedPictureUrl = product.pictureUrl;
+    patch.quantity = quantity;
+    patch.rows = result.rows;
+    patch.orderId = result.orderId;
+    patch.payUrl = result.payUrl;
+    patch.statusText = result.statusText;
+    this.publishFoodMenuPatch(patch);
+  }
+
+  private async refreshMcDonaldsFoodMenuOrder(action: A2uiAction): Promise<void> {
+    const context = this.mcDonaldsFoodMenuActionContext(action);
+    if (context === null || action.args === undefined || action.args === null) {
+      return;
+    }
+    const payload = action.args as McDonaldsFoodMenuActionPayload;
+    const orderId = this.actionText(payload.orderId).trim();
+    if (orderId.length === 0 || orderId !== context.orderId) {
+      this.logHtmlHomeActionError(action, 'invalid_mcd_food_menu_order_status');
+      return;
+    }
+    const surfaceId = context.surfaceId;
+    const result = await queryMcDonaldsFoodMenuOrder(orderId);
+    if (this.currentSurface.surfaceId !== surfaceId || this.mcDonaldsFoodMenuContext !== context) {
+      return;
+    }
+    if (result.payUrl.length > 0) {
+      context.payUrl = result.payUrl;
+    }
+    const patch = this.mcDonaldsFoodMenuPatch(context, 'order', result.ready ? 'ready' : 'error', result.error);
+    patch.rows = result.rows;
+    patch.orderId = context.orderId;
+    patch.payUrl = context.payUrl;
+    patch.statusText = result.statusText;
+    this.publishFoodMenuPatch(patch);
+  }
+
+  private async openMcDonaldsFoodMenuPayment(action: A2uiAction): Promise<void> {
+    const context = this.mcDonaldsFoodMenuActionContext(action);
+    if (context === null || action.args === undefined || action.args === null) {
+      return;
+    }
+    const payload = action.args as McDonaldsFoodMenuActionPayload;
+    const orderId = this.actionText(payload.orderId).trim();
+    if (orderId.length === 0 || orderId !== context.orderId || context.payUrl.length === 0) {
+      this.logHtmlHomeActionError(action, 'invalid_mcd_food_menu_payment');
+      return;
+    }
+    await this.openExternalUrl(context.payUrl, ['https']);
+  }
+
+  private async previewLuckinFoodMenuProduct(action: A2uiAction): Promise<void> {
+    if (this.currentSurface.intent !== 'food' || action.args === undefined || action.args === null ||
+      this.luckinFoodMenuContext === null) {
+      this.logHtmlHomeActionError(action, 'food_menu_context_required');
+      return;
+    }
+    const payload = action.args as LuckinFoodMenuOrderPayload;
+    const surfaceId = this.actionText(payload.surfaceId).trim();
+    const requestKey = this.actionText(payload.requestKey).trim();
+    const deptId = this.actionText(payload.deptId).trim();
+    const productId = this.actionText(payload.productId).trim();
+    const skuCode = this.actionText(payload.skuCode).trim();
+    const context = this.luckinFoodMenuContext;
+    if (surfaceId !== this.currentSurface.surfaceId || requestKey !== context.requestKey ||
+      deptId !== context.deptId || productId.length === 0 || skuCode.length === 0) {
+      this.logHtmlHomeActionError(action, 'invalid_food_menu_order_context');
+      return;
+    }
+    let product: LuckinFoodMenuProduct | null = null;
+    for (let index = 0; index < context.products.length; index++) {
+      const candidate = context.products[index];
+      if (candidate.productId === productId && candidate.skuCode === skuCode) {
+        product = candidate;
+        break;
+      }
+    }
+    if (product === null) {
+      this.logHtmlHomeActionError(action, 'food_menu_product_not_found');
+      return;
+    }
+    const prompt = '点一份' + product.name;
+    const previewArgs: LuckinFoodMenuPreviewArgs = {
+      deptId: context.deptId,
+      deptName: context.storeName,
+      address: context.storeAddress,
+      location: context.storeLocation,
+      productId: product.productId,
+      productName: product.name,
+      skuCode: product.skuCode,
+      pictureUrl: product.pictureUrl,
+      originalQuery: prompt,
+      previewPrompt: product.name
+    };
+    await this.callToolById('luckin.order.preview', prompt, action.id, previewArgs as Object);
+  }
+
+  private async toggleFoodFavorite(action: A2uiAction): Promise<void> {
+    if (this.currentSurface.intent !== 'food') {
+      this.logHtmlHomeActionError(action, 'food_surface_required');
+      return;
+    }
+    const model = this.parsedDataModel();
+    const payload = this.htmlPinPayload(action);
+    const index = this.htmlActionIndex(action, payload);
+    if (model === null) {
+      this.logHtmlHomeActionError(action, 'invalid_model');
+      return;
+    }
+    const row = this.htmlPinFoodRow(model, payload, index);
+    if (row === null) {
+      this.logHtmlHomeActionError(action, 'missing_food_row');
+      return;
+    }
+    const store = this.foodFavoritesStore();
+    if (store === null) {
+      this.logHtmlHomeActionError(action, 'food_favorites_store_unavailable');
+      return;
+    }
+    try {
+      const active = await store.toggle(row);
+      this.foodFavorites = store.list();
+      this.getUIContext().getPromptAction().showToast({ message: active ? '已收藏门店' : '已取消收藏' });
+      aiLogInfo('[AIPhone][FoodFavoriteToggle] active=' + (active ? 'true' : 'false') +
+        ' count=' + this.foodFavorites.length.toString() + ' name=' + row.name);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      aiLogError('[AIPhone][FoodFavoriteToggle] ok=false reason=' + message.substring(0, 220));
+      this.getUIContext().getPromptAction().showToast({ message: '收藏操作失败，请稍后重试。' });
+    }
+  }
+
+  private async removeFoodFavorite(action: A2uiAction): Promise<void> {
+    if (this.currentSurface.intent !== 'food' || action.args === undefined || action.args === null) {
+      this.logHtmlHomeActionError(action, 'food_surface_and_args_required');
+      return;
+    }
+    const args = action.args as Record<string, Object | string | number | boolean | null | undefined>;
+    const favoriteId = this.actionText(args['favoriteId']).trim();
+    if (favoriteId.length === 0) {
+      this.logHtmlHomeActionError(action, 'missing_favorite_id');
+      return;
+    }
+    const store = this.foodFavoritesStore();
+    if (store === null) {
+      this.logHtmlHomeActionError(action, 'food_favorites_store_unavailable');
+      return;
+    }
+    try {
+      const removed = await store.remove(favoriteId);
+      this.foodFavorites = store.list();
+      this.getUIContext().getPromptAction().showToast({ message: '已取消收藏' });
+      aiLogInfo('[AIPhone][FoodFavoriteRemove] removed=' + (removed ? 'true' : 'false') +
+        ' count=' + this.foodFavorites.length.toString());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      aiLogError('[AIPhone][FoodFavoriteRemove] ok=false reason=' + message.substring(0, 220));
+      this.getUIContext().getPromptAction().showToast({ message: '取消收藏失败，请稍后重试。' });
+    }
+  }
+
+  private storedFoodFavorite(action: A2uiAction): FoodFavoriteViewModel | null {
+    if (action.args === undefined || action.args === null) {
+      return null;
+    }
+    const args = action.args as Record<string, Object | string | number | boolean | null | undefined>;
+    const favoriteId = this.actionText(args['favoriteId']).trim();
+    const store = this.foodFavoritesStore();
+    return favoriteId.length === 0 || store === null ? null : store.find(favoriteId);
+  }
+
+  private async handleStoredFoodFavoriteAction(action: A2uiAction): Promise<boolean> {
+    if (action.id !== 'food_favorite_map' && action.id !== 'food_favorite_call' &&
+      action.id !== 'food_favorite_pin') {
+      return false;
+    }
+    if (this.currentSurface.intent !== 'food') {
+      this.logHtmlHomeActionError(action, 'food_surface_required');
+      return true;
+    }
+    const favorite = this.storedFoodFavorite(action);
+    if (favorite === null) {
+      this.logHtmlHomeActionError(action, 'missing_food_favorite');
+      this.getUIContext().getPromptAction().showToast({ message: '未找到这条收藏记录。' });
+      return true;
+    }
+    if (action.id === 'food_favorite_map') {
+      await this.openFoodMapRow(action, favorite);
+      return true;
+    }
+    if (action.id === 'food_favorite_call') {
+      await this.callFoodRow(action, favorite);
+      return true;
+    }
+    await this.pinNavigationCard(favorite);
+    return true;
   }
 
   private foodAddressActionArgs(action: A2uiAction): Record<string, Object | string | number | boolean | null | undefined> | null {

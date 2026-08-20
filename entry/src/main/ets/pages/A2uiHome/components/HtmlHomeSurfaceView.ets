@@ -344,7 +344,10 @@ export struct HtmlHomeSurfaceView {
     let script = '';
     try {
       const parsed = JSON.parse(this.luckinInlinePatchJson) as Record<string, Object | string | number | boolean | null | undefined>;
-      if (parsed.kind === 'payment-status') {
+      if (parsed.kind === 'food-menu') {
+        script = 'try{if(window.AIPhoneFoodMenu&&AIPhoneFoodMenu.applyPatch){AIPhoneFoodMenu.applyPatch(' +
+          JSON.stringify(this.luckinInlinePatchJson) + ');}}catch(e){}';
+      } else if (parsed.kind === 'payment-status') {
         const sectionId = typeof parsed.sectionId === 'string' ? parsed.sectionId.trim() : '';
         if (sectionId.length > 0) {
           script = 'try{if(window.__aiphonePatchEmbeddedLuckinPaymentStatus){window.__aiphonePatchEmbeddedLuckinPaymentStatus(' +

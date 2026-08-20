@@ -273,6 +273,80 @@ export default function htmlHomeActionPolicyTest() {
       expect(isHtmlHomeActionAllowed(doc, action('html_call_food', '{"index":0,"name":"Coffee"}'))).assertFalse();
     });
 
+    it('allows favorite actions only for the current food surface and a bounded food id', 0, () => {
+      const doc = documentFixture();
+      doc.kind = JSON.parse('"food"') as HtmlHomeKind;
+      doc.surfaceId = 'food-surface';
+      const allowedArgs = JSON.parse('{"surfaceId":"food-surface","favoriteId":"food:nicecoffee@114.1,22.5"}') as Object;
+      const wrongSurfaceArgs = JSON.parse('{"surfaceId":"other-surface","favoriteId":"food:nicecoffee@114.1,22.5"}') as Object;
+      const invalidIdArgs = JSON.parse('{"surfaceId":"food-surface","favoriteId":"hotel:123"}') as Object;
+
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_favorite_remove', '取消收藏门店', 'client', allowedArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_favorite_map', '导航到收藏门店', 'client', allowedArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_favorite_call', '拨打收藏门店电话', 'client', allowedArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_favorite_pin', '固定收藏门店', 'client', allowedArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_luckin_menu_open', '查询菜单', 'client', allowedArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_mcd_menu_open', '查询菜单', 'client', allowedArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_favorite_remove', '取消收藏门店', 'client', wrongSurfaceArgs))).assertFalse();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_favorite_remove', '取消收藏门店', 'client', invalidIdArgs))).assertFalse();
+    });
+
+    it('allows bounded Luckin menu preview actions only on the current food surface', 0, () => {
+      const doc = documentFixture();
+      doc.kind = JSON.parse('"food"') as HtmlHomeKind;
+      doc.surfaceId = 'food-surface';
+      const allowedArgs = JSON.parse('{"surfaceId":"food-surface","requestKey":"store|address",' +
+        '"deptId":"1001","location":"114.1,22.5","productId":"2002","skuCode":"sku-1"}') as Object;
+      const wrongSurfaceArgs = JSON.parse('{"surfaceId":"other-surface","requestKey":"store|address",' +
+        '"deptId":"1001","location":"114.1,22.5","productId":"2002","skuCode":"sku-1"}') as Object;
+      const invalidLocationArgs = JSON.parse('{"surfaceId":"food-surface","requestKey":"store|address",' +
+        '"deptId":"1001","location":"invalid","productId":"2002","skuCode":"sku-1"}') as Object;
+
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_luckin_order_preview', '去点餐', 'client', allowedArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_luckin_order_preview', '去点餐', 'client', wrongSurfaceArgs))).assertFalse();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_luckin_order_preview', '去点餐', 'client', invalidLocationArgs))).assertFalse();
+    });
+
+    it('allows bounded McDonalds Web ordering actions only on the current food surface', 0, () => {
+      const doc = documentFixture();
+      doc.kind = JSON.parse('"food"') as HtmlHomeKind;
+      doc.surfaceId = 'food-surface';
+      const detailArgs = JSON.parse('{"surfaceId":"food-surface","requestKey":"store|address",' +
+        '"productId":"9900008139"}') as Object;
+      const quoteArgs = JSON.parse('{"surfaceId":"food-surface","requestKey":"store|address",' +
+        '"productId":"9900008139","quantity":2}') as Object;
+      const createArgs = JSON.parse('{"surfaceId":"food-surface","requestKey":"store|address",' +
+        '"productId":"9900008139","quantity":2,"quoteToken":"food-surface:1"}') as Object;
+      const orderArgs = JSON.parse('{"surfaceId":"food-surface","requestKey":"store|address",' +
+        '"orderId":"order-1"}') as Object;
+      const invalidQuantity = JSON.parse('{"surfaceId":"food-surface","requestKey":"store|address",' +
+        '"productId":"9900008139","quantity":0}') as Object;
+
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_mcd_menu_detail', '查看详情', 'client', detailArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_mcd_order_quote', '核算价格', 'client', quoteArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_mcd_order_create', '确认下单', 'client', createArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_mcd_order_status', '刷新订单状态', 'client', orderArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_mcd_pay_open', '打开支付页面', 'client', orderArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_mcd_order_quote', '核算价格', 'client', invalidQuantity))).assertFalse();
+    });
+
     it('allows only visible Firecrawl source and monitor actions from the current document', 0, () => {
       const doc = documentFixture();
       const visibleMonitorArgs: FirecrawlMonitorArgsFixture = { id: 'monitor-current' };

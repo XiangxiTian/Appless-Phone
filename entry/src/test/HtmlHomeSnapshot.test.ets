@@ -796,6 +796,34 @@ export default function htmlHomeSnapshotTest() {
       expect(JSON.stringify(doc.blocks).indexOf('html_call_food')).assertEqual(-1);
     });
 
+    it('adds the menu action only for the exact Luckin source tag', 0, () => {
+      const food: A2uiComponent = { id: 'food', component: 'FoodChoices', dataPath: '/foods' };
+      const doc = createHtmlHomeDocument({
+        surface: surface('food', 'ready', [root('food'), food],
+          '{"foods":[{"name":"华创里临街店","address":"深圳市龙岗区坂田街道","distance":"500米",' +
+          '"location":"114.06,22.65","sourceTags":["瑞幸 "]},{"name":"瑞幸咖啡地图卡片",' +
+          '"address":"深圳市龙岗区","distance":"600米","location":"114.07,22.66","sourceTags":["高德"]}]}'),
+        messages: [], isBusy: false, isAwaitingFirstSurface: false
+      });
+
+      expect(JSON.stringify(doc.blocks[0].actions).indexOf('food_luckin_menu_open')).assertLarger(-1);
+      expect(JSON.stringify(doc.blocks[1].actions).indexOf('food_luckin_menu_open')).assertEqual(-1);
+    });
+
+    it('adds the menu action only for the exact McDonalds source tag', 0, () => {
+      const food: A2uiComponent = { id: 'food', component: 'FoodChoices', dataPath: '/foods' };
+      const doc = createHtmlHomeDocument({
+        surface: surface('food', 'ready', [root('food'), food],
+          '{"foods":[{"name":"麦当劳坂田餐厅","address":"深圳市龙岗区坂田街道","distance":"500米",' +
+          '"location":"114.06,22.65","sourceTags":["麦当劳"]},{"name":"麦当劳地图卡片",' +
+          '"address":"深圳市龙岗区","distance":"600米","location":"114.07,22.66","sourceTags":["高德"]}]}'),
+        messages: [], isBusy: false, isAwaitingFirstSurface: false
+      });
+
+      expect(JSON.stringify(doc.blocks[0].actions).indexOf('food_mcd_menu_open')).assertLarger(-1);
+      expect(JSON.stringify(doc.blocks[1].actions).indexOf('food_mcd_menu_open')).assertEqual(-1);
+    });
+
     it('adds Gmail AI reply draft action to real thread result blocks', 0, () => {
       const results: A2uiComponent = {
         id: 'gmail_results',

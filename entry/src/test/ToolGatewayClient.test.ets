@@ -63,6 +63,8 @@ import {
   foodStructuredDataResult,
   foodStructuredDataResultFromProviders,
   foodDistanceMeters,
+  foodCardHasMcDonaldsSource,
+  foodCardHasLuckinSource,
   foodCoordinateForTest,
   foodGoogleSearchQueryForTest,
   foodProviderProgressRows,
@@ -122,6 +124,9 @@ import {
   luckinPromptKeywordForTest,
   luckinMatchPromptPreferencesForTest,
   luckinRemarkFromPromptForTest,
+  LuckinShopIdCandidate,
+  LuckinShopIdLookupRequest,
+  matchLuckinShopIdCandidates,
   saveConfiguredMailDraft,
   sortTravelOptionsByDeparture,
   streamFoodProviderResultsWithPartials,
@@ -4149,7 +4154,7 @@ export default function toolGatewayClientTest() {
     it('keeps brand MCP adapters allowlisted', 0, () => {
       expect(isReadonlyBrandMcpTool('麦当劳', 'query-nearby-stores')).assertTrue();
       expect(isReadonlyBrandMcpTool('麦当劳', 'query-meals')).assertTrue();
-      expect(isReadonlyBrandMcpTool('麦当劳', 'create-order')).assertFalse();
+      expect(isReadonlyBrandMcpTool('麦当劳', 'create-order')).assertTrue();
       expect(isReadonlyBrandMcpTool('麦当劳', 'auto-bind-coupons')).assertFalse();
       expect(isReadonlyBrandMcpTool('瑞幸', 'queryShopList')).assertTrue();
       expect(isReadonlyBrandMcpTool('瑞幸', 'searchProductForMcp')).assertTrue();
@@ -4255,6 +4260,148 @@ export default function toolGatewayClientTest() {
       expect(products[0].address.indexOf('糖度:不另外加糖')).assertLarger(-1);
       expect(products[0].address.indexOf('温度:热')).assertEqual(-1);
       expect(products[0].address.indexOf('糖度:标准糖')).assertEqual(-1);
+    });
+
+    it('resolves a Luckin deptId from formatted store name, address, and location', 0, () => {
+      const request: LuckinShopIdLookupRequest = {
+        name: '瑞幸咖啡（深圳坂田华为店）',
+        address: '深圳市龙岗区坂田街道稼先路华为基地',
+        location: '114.06650,22.65720'
+      };
+      const candidates: LuckinShopIdCandidate[] = [
+        {
+          deptId: '10002',
+          name: '瑞幸咖啡（深圳坂田天安云谷店）',
+          address: '深圳市龙岗区坂田街道雪岗路天安云谷',
+          location: '114.07100,22.65000'
+        },
+        {
+          deptId: '10001',
+          name: '瑞幸咖啡-深圳坂田华为店',
+          address: '广东省深圳市龙岗区坂田稼先路华为基地',
+          location: '114.06654,22.65724'
+        }
+      ];
+
+      const result = matchLuckinShopIdCandidates(request, candidates);
+
+      expect(result.found).assertTrue();
+      expect(result.deptId).assertEqual('10001');
+      expect(result.matchType).assertEqual('name_address');
+      expect(result.candidateCount).assertEqual(2);
+    });
+
+    it('uses address and coordinates to disambiguate repeated Luckin store names', 0, () => {
+      const request: LuckinShopIdLookupRequest = {
+        name: '瑞幸咖啡（科技园店）',
+        address: '深圳市南山区科苑路15号',
+        location: '113.95010,22.54010'
+      };
+      const candidates: LuckinShopIdCandidate[] = [
+        {
+          deptId: '20001',
+          name: '瑞幸咖啡（科技园店）',
+          address: '深圳市南山区科苑路15号',
+          location: '113.95012,22.54012'
+        },
+        {
+          deptId: '20002',
+          name: '瑞幸咖啡（科技园店）',
+          address: '深圳市南山区科技南十二路2号',
+          location: '113.95800,22.53200'
+        }
+      ];
+
+      const result = matchLuckinShopIdCandidates(request, candidates);
+
+      expect(result.found).assertTrue();
+      expect(result.deptId).assertEqual('20001');
+      expect(result.matchType).assertEqual('name_address');
+    });
+
+    it('refuses to guess a Luckin deptId when candidates remain ambiguous', 0, () => {
+      const request: LuckinShopIdLookupRequest = {
+        name: '瑞幸咖啡（软件园店）',
+        address: '',
+        location: '118.18000,24.49000'
+      };
+      const candidates: LuckinShopIdCandidate[] = [
+        {
+          deptId: '30001',
+          name: '瑞幸咖啡（软件园店）',
+          address: '软件园一期 A 区',
+          location: '118.18010,24.49010'
+        },
+        {
+          deptId: '30002',
+          name: '瑞幸咖啡（软件园店）',
+          address: '软件园一期 B 区',
+          location: '118.17990,24.48990'
+        }
+      ];
+
+      const result = matchLuckinShopIdCandidates(request, candidates);
+
+      expect(result.found).assertFalse();
+      expect(result.matchType).assertEqual('ambiguous');
+      expect(result.deptId).assertEqual('');
+    });
+
+    it('ignores Luckin candidates that do not contain a deptId', 0, () => {
+      const request: LuckinShopIdLookupRequest = {
+        name: '瑞幸咖啡（万象城店）',
+        address: '深圳市罗湖区宝安南路1881号',
+        location: '114.10900,22.54200'
+      };
+      const candidates: LuckinShopIdCandidate[] = [
+        {
+          deptId: '',
+          name: '瑞幸咖啡（万象城店）',
+          address: '深圳市罗湖区宝安南路1881号',
+          location: '114.10900,22.54200'
+        }
+      ];
+
+      const result = matchLuckinShopIdCandidates(request, candidates);
+
+      expect(result.found).assertFalse();
+      expect(result.candidateCount).assertEqual(1);
+    });
+
+    it('enables Luckin lookup only for cards carrying the Luckin source tag', 0, () => {
+      const luckinCard: A2uiFoodData = {
+        name: '东华门大街店',
+        category: '瑞幸门店',
+        address: '东城区东华门大街26号',
+        distance: '100米',
+        location: '116.401,39.916',
+        sourceTags: ['高德', '瑞幸']
+      };
+      const mapOnlyCard: A2uiFoodData = {
+        name: '瑞幸咖啡（东华门店）',
+        category: '咖啡店',
+        address: '东城区东华门大街26号',
+        distance: '100米',
+        location: '116.401,39.916',
+        sourceTags: ['高德']
+      };
+
+      expect(foodCardHasLuckinSource(luckinCard)).assertTrue();
+      expect(foodCardHasLuckinSource(mapOnlyCard)).assertFalse();
+    });
+
+    it('enables McDonalds menus only for cards carrying the McDonalds source tag', 0, () => {
+      const mcdCard: A2uiFoodData = {
+        name: '麦当劳坂田餐厅', category: '快餐', address: '深圳市龙岗区坂田街道', distance: '200米',
+        location: '114.063,22.631', sourceTags: ['高德', '麦当劳']
+      };
+      const mapOnlyCard: A2uiFoodData = {
+        name: '麦当劳坂田餐厅', category: '快餐', address: '深圳市龙岗区坂田街道', distance: '200米',
+        location: '114.063,22.631', sourceTags: ['高德']
+      };
+
+      expect(foodCardHasMcDonaldsSource(mcdCard)).assertTrue();
+      expect(foodCardHasMcDonaldsSource(mapOnlyCard)).assertFalse();
     });
 
     it('builds system map food destination search', 0, () => {

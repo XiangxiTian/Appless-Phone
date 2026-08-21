@@ -1005,6 +1005,11 @@ export interface MeituanUnionCouponPackDetail {
 
 export interface MeituanUnionDeliverablePoiInfo {
   poiName?: string;
+  longitude?: string | number;
+  latitude?: string | number;
+  lng?: string | number;
+  lat?: string | number;
+  location?: string;
   deliveryDistance?: string;
   distributionCost?: string;
   deliveryDuration?: string;
@@ -1019,6 +1024,11 @@ export interface MeituanUnionRecord {
   name?: string;
   title?: string;
   categoryName?: string;
+  longitude?: string | number;
+  latitude?: string | number;
+  lng?: string | number;
+  lat?: string | number;
+  location?: string;
   deliveryDistance?: string;
   distributionCost?: string;
   deliveryDuration?: string;
@@ -1059,6 +1069,11 @@ export interface TaobaoFlashStoreRecord {
   delivery_price?: string | number;
   service_rating?: string | number;
   rating?: string | number;
+  longitude?: string | number;
+  latitude?: string | number;
+  lng?: string | number;
+  lat?: string | number;
+  location?: string;
   items?: TaobaoFlashItemRecord[];
   item_list?: TaobaoFlashItemRecord[];
 }
@@ -1340,6 +1355,11 @@ interface McDonaldsStoreRecord {
   name?: string;
   address?: string;
   distance?: string | number;
+  longitude?: string | number;
+  latitude?: string | number;
+  lng?: string | number;
+  lat?: string | number;
+  location?: string;
   storeCode?: string;
   beCode?: string;
   businessStatus?: boolean | string | number;
@@ -7649,6 +7669,38 @@ async function resolveFoodSearchLocation(place: string, key: string): Promise<Am
   return emptyAmapLocationResolution();
 }
 
+interface FoodRecordCoordinates {
+  longitude?: number;
+  latitude?: number;
+  location: string;
+}
+
+function optionalFoodRecordCoordinate(value: string | number | undefined, minimum: number,
+  maximum: number): number | undefined {
+  if (value === undefined || textOf(value).trim().length === 0) {
+    return undefined;
+  }
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum ? coordinate : undefined;
+}
+
+function foodRecordCoordinates(location: string, longitudeValue: string | number | undefined,
+  latitudeValue: string | number | undefined): FoodRecordCoordinates {
+  let longitude = optionalFoodRecordCoordinate(longitudeValue, -180, 180);
+  let latitude = optionalFoodRecordCoordinate(latitudeValue, -90, 90);
+  const parts = location.trim().split(',');
+  if ((longitude === undefined || latitude === undefined) && parts.length === 2) {
+    longitude = optionalFoodRecordCoordinate(parts[0], -180, 180);
+    latitude = optionalFoodRecordCoordinate(parts[1], -90, 90);
+  }
+  return {
+    longitude: longitude,
+    latitude: latitude,
+    location: longitude === undefined || latitude === undefined ? '' :
+      longitude.toString() + ',' + latitude.toString()
+  };
+}
+
 export function foodRecordFromAmapPoi(item: AmapPoi): A2uiFoodData {
   const distance = textOf(item.distance);
   const business = item.business;
@@ -7657,12 +7709,15 @@ export function foodRecordFromAmapPoi(item: AmapPoi): A2uiFoodData {
   const openHoursToday = business === undefined ? '' : textOf(business.opentime_today);
   const status = foodBusinessStatus(openHoursToday);
   const phone = normalizeFoodPhoneNumber(firstText([item.tel, business === undefined ? '' : business.tel]));
+  const coordinates = foodRecordCoordinates(textOf(item.location), undefined, undefined);
   return {
     name: textOf(item.name),
     category: textOf(item.type),
     address: textOf(item.address),
     distance: distance.length > 0 ? distance + '米' : '',
-    location: textOf(item.location),
+    longitude: coordinates.longitude,
+    latitude: coordinates.latitude,
+    location: coordinates.location,
     sourceTags: ['高德'],
     phone: phone,
     phoneSource: phone.length > 0 ? '高德' : undefined,
@@ -7693,12 +7748,15 @@ function mapPointLocation(point: FoodMapPoint | undefined): string {
 
 export function foodRecordFromTencentMapPlace(item: TencentMapPlace): A2uiFoodData {
   const phone = normalizeFoodPhoneNumber(firstText([item.tel, item.telephone]));
+  const coordinates = foodRecordCoordinates(mapPointLocation(item.location), undefined, undefined);
   return {
     name: textOf(item.title),
     category: textOf(item.category),
     address: textOf(item.address),
     distance: meterDistanceText(firstText([item._distance, item.distance])),
-    location: mapPointLocation(item.location),
+    longitude: coordinates.longitude,
+    latitude: coordinates.latitude,
+    location: coordinates.location,
     sourceTags: ['腾讯地图'],
     phone: phone,
     phoneSource: phone.length > 0 ? '腾讯地图' : undefined
@@ -7712,6 +7770,7 @@ export function foodRecordFromBaiduPlace(item: BaiduPlace): A2uiFoodData {
   const openHoursToday = detail === null ? '' : textOf(detail.shop_hours);
   const status = foodBusinessStatus(openHoursToday);
   const phone = normalizeFoodPhoneNumber(textOf(item.telephone));
+  const coordinates = foodRecordCoordinates(mapPointLocation(item.location), undefined, undefined);
   return {
     name: textOf(item.name),
     category: detail === null ? '' : textOf(detail.tag),
@@ -7723,7 +7782,9 @@ export function foodRecordFromBaiduPlace(item: BaiduPlace): A2uiFoodData {
     openHoursToday: openHoursToday,
     openHoursWeek: openHoursToday,
     distance: meterDistanceText(detail === null ? '' : detail.distance),
-    location: mapPointLocation(item.location),
+    longitude: coordinates.longitude,
+    latitude: coordinates.latitude,
+    location: coordinates.location,
     sourceTags: ['百度地图'],
     phone: phone,
     phoneSource: phone.length > 0 ? '百度地图' : undefined,
@@ -7892,6 +7953,11 @@ export function foodRecordFromMeituanUnion(item: MeituanUnionRecord): A2uiFoodDa
     poi === null ? '' : poi.deliveryDistance,
     item.deliveryDistance
   ]);
+  const coordinates = foodRecordCoordinates(
+    firstText([poi === null ? '' : poi.location, item.location]),
+    firstText([poi === null ? '' : poi.longitude, poi === null ? '' : poi.lng, item.longitude, item.lng]),
+    firstText([poi === null ? '' : poi.latitude, poi === null ? '' : poi.lat, item.latitude, item.lat])
+  );
   return {
     name: name,
     category: category,
@@ -7901,6 +7967,9 @@ export function foodRecordFromMeituanUnion(item: MeituanUnionRecord): A2uiFoodDa
       deliveryFeeText('起送', lastDeliveryFee)
     ]),
     distance: meituanDistanceText(distance),
+    longitude: coordinates.longitude,
+    latitude: coordinates.latitude,
+    location: coordinates.location,
     sourceTags: ['美团']
   };
 }
@@ -7911,6 +7980,11 @@ export function foodRecordFromTaobaoFlashStore(item: TaobaoFlashStoreRecord): A2
   const firstItem: TaobaoFlashItemRecord | null = items.length > 0 ? items[0] : null;
   const itemTitle = firstItem === null ? '' : textOf(firstItem.title);
   const itemPrice = firstItem === null ? '' : textOf(firstItem.price);
+  const coordinates = foodRecordCoordinates(
+    textOf(item.location),
+    firstText([item.longitude, item.lng]),
+    firstText([item.latitude, item.lat])
+  );
   return {
     name: firstText([item.title, item.shop_name, item.name]),
     category: joinFoodParts([
@@ -7924,6 +7998,9 @@ export function foodRecordFromTaobaoFlashStore(item: TaobaoFlashStoreRecord): A2
       minutesText('预计', item.delivery_time)
     ]),
     distance: meterDistanceText(firstText([item.delivery_distance, item.distance])),
+    longitude: coordinates.longitude,
+    latitude: coordinates.latitude,
+    location: coordinates.location,
     sourceTags: ['淘宝闪购']
   };
 }
@@ -8095,11 +8172,19 @@ function mcdStoreToFood(item: McDonaldsStoreRecord): A2uiFoodData {
   const status = boolStatusText(item.businessStatus, '营业中', '休息中');
   const hours = item.businessStartTime !== undefined && item.businessEndTime !== undefined ?
     item.businessStartTime + '-' + item.businessEndTime : '';
+  const coordinates = foodRecordCoordinates(
+    textOf(item.location),
+    firstText([item.longitude, item.lng]),
+    firstText([item.latitude, item.lat])
+  );
   return {
     name: firstText([item.storeName, item.name]),
     category: joinFoodParts(['麦当劳门店', status, hours]),
     address: textOf(item.address),
     distance: meterDistanceText(item.distance),
+    longitude: coordinates.longitude,
+    latitude: coordinates.latitude,
+    location: coordinates.location,
     sourceTags: ['麦当劳']
   };
 }
@@ -8325,12 +8410,19 @@ export function foodRecordsFromMcDonaldsMcpTool(toolName: string, value: Object)
 
 function luckinShopToFood(item: LuckinShopRecord): A2uiFoodData {
   const tags = item.deptTags !== undefined ? item.deptTags : (item.tags !== undefined ? item.tags : []);
+  const coordinates = foodRecordCoordinates(
+    '',
+    firstText([item.longitude, item.lng]),
+    firstText([item.latitude, item.lat])
+  );
   return {
     name: firstText([item.deptName, item.name]),
     category: joinFoodParts(['瑞幸门店', tags.join(' · '), item.workTimeStart !== undefined && item.workTimeEnd !== undefined ? item.workTimeStart + '-' + item.workTimeEnd : '']),
     address: textOf(item.address),
     distance: kmNumberDistanceText(item.distance),
-    location: mapPointLocation({ lng: item.longitude, lat: item.latitude }),
+    longitude: coordinates.longitude,
+    latitude: coordinates.latitude,
+    location: coordinates.location,
     sourceTags: ['瑞幸']
   };
 }
@@ -11063,12 +11155,16 @@ function foodTags(item: A2uiFoodData, fallbackProvider: string): string[] {
 
 function cloneFood(item: A2uiFoodData, fallbackProvider: string): A2uiFoodData {
   const phone = normalizeFoodPhoneNumber(item.phone === undefined ? '' : item.phone);
+  const coordinates = foodRecordCoordinates(item.location === undefined ? '' : item.location,
+    item.longitude, item.latitude);
   return {
     name: item.name,
     category: item.category,
     address: item.address,
     distance: item.distance,
-    location: item.location,
+    longitude: coordinates.location.length > 0 ? coordinates.longitude : undefined,
+    latitude: coordinates.location.length > 0 ? coordinates.latitude : undefined,
+    location: coordinates.location.length > 0 ? coordinates.location : undefined,
     sourceTags: foodTags(item, fallbackProvider),
     phone: phone,
     phoneSource: phone.length > 0 ? (item.phoneSource === undefined || item.phoneSource.length === 0 ? fallbackProvider : item.phoneSource) : undefined,
@@ -11086,6 +11182,8 @@ function cloneFood(item: A2uiFoodData, fallbackProvider: string): A2uiFoodData {
 }
 
 function mergeFoodInto(target: A2uiFoodData, item: A2uiFoodData, fallbackProvider: string): void {
+  const itemCoordinates = foodRecordCoordinates(item.location === undefined ? '' : item.location,
+    item.longitude, item.latitude);
   const tags = foodTags(item, fallbackProvider);
   const targetTags: string[] = target.sourceTags === undefined || target.sourceTags === null ? [] : target.sourceTags;
   for (let index = 0; index < tags.length; index++) {
@@ -11094,6 +11192,11 @@ function mergeFoodInto(target: A2uiFoodData, item: A2uiFoodData, fallbackProvide
     }
   }
   target.sourceTags = targetTags;
+  if (target.longitude === undefined && target.latitude === undefined && itemCoordinates.location.length > 0) {
+    target.longitude = itemCoordinates.longitude;
+    target.latitude = itemCoordinates.latitude;
+    target.location = itemCoordinates.location;
+  }
   const itemPhone = normalizeFoodPhoneNumber(item.phone === undefined ? '' : item.phone);
   const targetPhone = normalizeFoodPhoneNumber(target.phone === undefined ? '' : target.phone);
   if (targetPhone.length === 0 && itemPhone.length > 0) {
@@ -11133,11 +11236,11 @@ function mergeFoodInto(target: A2uiFoodData, item: A2uiFoodData, fallbackProvide
     }
   } else if (item.distance.length > 0 && foodDistanceMeters(item.distance) < foodDistanceMeters(target.distance)) {
     target.distance = item.distance;
-    if (item.location !== undefined && item.location.length > 0) {
-      target.location = item.location;
+    if (itemCoordinates.location.length > 0) {
+      target.location = itemCoordinates.location;
+      target.longitude = itemCoordinates.longitude;
+      target.latitude = itemCoordinates.latitude;
     }
-  } else if ((target.location === undefined || target.location.length === 0) && item.location !== undefined && item.location.length > 0) {
-    target.location = item.location;
   }
 }
 

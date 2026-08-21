@@ -17,6 +17,7 @@ import {
   defaultLocalModelSettings,
   deepSeekModelSettings,
   resolvedCloudChatModel,
+  rideAmapWebKeyForUi,
   summarizeAppliedA2uiSurface
 } from '@loop/agent-core';
 import { isRollingGoHotelBookingUrl, validHotelBookingOpenArgs } from '@loop/agent-core';
@@ -83,6 +84,7 @@ import {
   A2uiDynamicToolConnectData,
   A2uiFlightData,
   A2uiFoodData,
+  A2uiFoodSearchArea,
   A2uiGenericToolResultData,
   A2uiLabelValueData,
   A2uiMessage,
@@ -359,6 +361,7 @@ import {
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
 import { FoodAddressBookStore, FoodSavedAddressViewModel } from './FoodAddressBookStore';
 import { FoodFavoritesStore, FoodFavoriteViewModel } from './FoodFavoritesStore';
+import { buildFoodStoreMapSnapshot } from './FoodStoreMapSnapshot';
 import { isHtmlHomeActionAllowed } from './html/HtmlHomeActionPolicy';
 import {
   HtmlHomeAction,
@@ -460,6 +463,11 @@ import {
   clearUiLabModelSettings,
   configureUiLabModelSettings
 } from './lab/UiLabRuntimeConfig';
+
+interface FoodStoreMapLocationActionArgs {
+  surfaceId: string;
+  searchArea: A2uiFoodSearchArea;
+}
 
 const CONNECTION_TEST_PROMPT: string = '连接检查：请返回 A2UI v0.9.1 setup surface，说明 Local API 已可用。';
 const TRAVEL_STAGE55_DEVICE_FIXTURE_PURPOSE: string = '阶段5.5恢复验收样例';
@@ -1090,6 +1098,10 @@ struct Index {
   @State foodLocationName: string = '坂田';
   @State foodLocationAddress: string = '深圳市龙岗区坂田街道';
   private foodLocationOwnerSurfaceId: string = '';
+  @State foodStoreMapOpen: boolean = false;
+  @State foodStoreMapSnapshotJson: string = '';
+  @State foodStoreMapSnapshotTick: number = 0;
+  private foodStoreMapOwnerSurfaceId: string = '';
   private foodSavedAddresses: FoodSavedAddressViewModel[] = [];
   private foodAddressBookStoreInstance: FoodAddressBookStore | null = null;
   private foodFavorites: FoodFavoriteViewModel[] = [];
@@ -1568,10 +1580,17 @@ struct Index {
   private syncFoodLocationOwner(surface: A2uiSurfaceState): void {
     if (surface.intent !== 'food' || surface.surfaceId.length === 0) {
       this.foodLocationOwnerSurfaceId = '';
+      this.foodStoreMapOwnerSurfaceId = '';
+      this.foodStoreMapOpen = false;
+      this.foodStoreMapSnapshotJson = '';
       return;
     }
     const sessionCreated = this.foodLocationOwnerSurfaceId !== surface.surfaceId;
     this.foodLocationOwnerSurfaceId = surface.surfaceId;
+    if (this.foodStoreMapOwnerSurfaceId !== surface.surfaceId) {
+      this.foodStoreMapOwnerSurfaceId = surface.surfaceId;
+      this.foodStoreMapOpen = false;
+    }
     let locationUpdated = false;
     try {
       const model = JSON.parse(surface.dataModelJson) as A2uiRuntimeDataModel;
@@ -1601,9 +1620,28 @@ struct Index {
     }
   }
 
+  private syncFoodStoreMapSnapshot(surface: A2uiSurfaceState): void {
+    if (surface.intent !== 'food' || surface.surfaceId !== this.foodStoreMapOwnerSurfaceId) {
+      return;
+    }
+    const snapshotJson = JSON.stringify(buildFoodStoreMapSnapshot(
+      surface,
+      this.foodLocationLongitude,
+      this.foodLocationLatitude,
+      this.foodLocationName,
+      this.foodLocationAddress
+    ));
+    if (snapshotJson === this.foodStoreMapSnapshotJson) {
+      return;
+    }
+    this.foodStoreMapSnapshotJson = snapshotJson;
+    this.foodStoreMapSnapshotTick = this.foodStoreMapSnapshotTick + 1;
+  }
+
   private storeSurfaceSilently(surface: A2uiSurfaceState): void {
     this.currentSurface = this.surfaceSnapshot(surface);
     this.syncFoodLocationOwner(this.currentSurface);
+    this.syncFoodStoreMapSnapshot(this.currentSurface);
     aiLogInfo('[AIPhone][A2uiHomeSurfaceSilentUpdate] surfaceId=' + surface.surfaceId +
       ' sequence=' + surface.sequence.toString());
   }
@@ -4152,6 +4190,7 @@ struct Index {
     }
     this.currentSurface = next;
     this.syncFoodLocationOwner(next);
+    this.syncFoodStoreMapSnapshot(next);
     this.surfaceRenderTick = this.surfaceRenderTick + 1;
     this.clearLuckinInlinePatchState();
     this.syncHtmlHomeStableHtml();
@@ -4184,6 +4223,7 @@ struct Index {
     }
     this.currentSurface = next;
     this.syncFoodLocationOwner(next);
+    this.syncFoodStoreMapSnapshot(next);
     this.surfaceRenderTick = this.surfaceRenderTick + 1;
     this.clearLuckinInlinePatchState();
     this.syncHtmlHomeStableHtml();
@@ -7420,6 +7460,16 @@ struct Index {
 
   private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
+    if (action.id === 'food_store_map_open') {
+      const args = action.args as Record<string, Object | string | number | boolean | null | undefined> | undefined;
+      if (args !== undefined && this.actionText(args['surfaceId']) === this.currentSurface.surfaceId &&
+        this.currentSurface.intent === 'food') {
+        this.foodStoreMapOpen = true;
+        this.syncFoodStoreMapSnapshot(this.currentSurface);
+        aiLogInfo('[AIPhone][FoodStoreMapOpen] surfaceId=' + this.currentSurface.surfaceId);
+      }
+      return;
+    }
     if (await this.handleStoredFoodFavoriteAction(action)) {
       return;
     }
@@ -9584,6 +9634,10 @@ struct Index {
         messages: this.messages,
         currentSurface: this.currentSurface,
         htmlHomeHtml: this.htmlHomeHtmlForView(),
+        foodStoreMapOpen: this.foodStoreMapOpen,
+        foodStoreMapAmapKey: rideAmapWebKeyForUi(),
+        foodStoreMapSnapshotJson: this.foodStoreMapSnapshotJson,
+        foodStoreMapSnapshotTick: this.foodStoreMapSnapshotTick,
         multiTaskPayloadJson: this.multiTaskPayloadJson,
         multiTaskPayloadTick: this.multiTaskPayloadTick,
         waterfallPayloadJson: this.waterfallPayloadJson,
@@ -9627,6 +9681,33 @@ struct Index {
         },
         onResetSession: () => {
           this.resetCurrentSession();
+        },
+        onCloseFoodStoreMap: () => {
+          this.foodStoreMapOpen = false;
+        },
+        onFoodStoreMapLocationConfirm: (longitude: number, latitude: number,
+          name: string, address: string): void => {
+          this.foodStoreMapOpen = false;
+          const searchArea: A2uiFoodSearchArea = {
+            longitude: longitude,
+            latitude: latitude,
+            radiusMeters: this.foodLocationRadiusMeters,
+            name: name,
+            address: address
+          };
+          const args: FoodStoreMapLocationActionArgs = {
+            surfaceId: this.currentSurface.surfaceId,
+            searchArea: searchArea
+          };
+          const action: A2uiAction = {
+            id: 'food_change_location',
+            label: '使用这个位置',
+            prompt: '在新位置重新搜索餐饮',
+            variant: 'secondary',
+            kind: 'client',
+            args: args
+          };
+          void this.refreshFoodSearchAtLocation(action);
         },
         onSendPrompt: () => {
           this.sendPrompt();

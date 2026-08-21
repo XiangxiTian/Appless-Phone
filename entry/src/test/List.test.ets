@@ -73,6 +73,7 @@ import stripeReceivingAccountCoreTest from './StripeReceivingAccountCore.test';
 import htmlHomeSnapshotTest from './HtmlHomeSnapshot.test';
 import htmlHomeRendererTest from './HtmlHomeRenderer.test';
 import htmlHomeActionPolicyTest from './HtmlHomeActionPolicy.test';
+import foodStoreMapTest from './FoodStoreMap.test';
 import calendarApiClientTest from './CalendarApiClient.test';
 import mapsApiClientTest from './MapsApiClient.test';
 import socialHubTypesTest from './SocialHubTypes.test';
@@ -249,6 +250,7 @@ export default function testsuite() {
   htmlHomeSnapshotTest();
   htmlHomeRendererTest();
   htmlHomeActionPolicyTest();
+  foodStoreMapTest();
   capabilityRuntimeTest();
   publicPersonaTest();
   dailyBriefCoreTest();

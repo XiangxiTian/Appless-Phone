@@ -2410,6 +2410,10 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf("type: 'confirm'")).assertLarger(-1);
       expect(html.indexOf('114.063873')).assertLarger(-1);
       expect(html.indexOf('22.631273')).assertLarger(-1);
+      expect(html.indexOf('class="coord"')).assertEqual(-1);
+      expect(html.indexOf('id="coord"')).assertEqual(-1);
+      expect(html.indexOf("getElementById('coord')")).assertEqual(-1);
+      expect(html.indexOf('font-size: 20px')).assertLarger(-1);
     });
 
     it('renders ride driver map with fullscreen control and eta detail row', 0, () => {
@@ -2713,6 +2717,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('food_address_book_delete')).assertLarger(-1);
       expect(html.indexOf('food-favorites-icon')).assertLarger(-1);
       expect(html.indexOf('food-favorites-overlay')).assertLarger(-1);
+      expect(html.indexOf('food_store_map_open')).assertLarger(-1);
       expect(html.indexOf('food-menu-overlay')).assertLarger(-1);
       expect(html.indexOf('AIPhoneFoodMenu')).assertLarger(-1);
       expect(html.indexOf('function applyMenuPatch(patchJson)')).assertLarger(-1);

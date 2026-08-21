@@ -1932,11 +1932,8 @@ const FOOD_HOME_JS: string = `
   mapEntryButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></svg>';
   mapEntryButton.setAttribute('aria-label', '地图选点');
   mapEntryButton.addEventListener('click', function () {
-    var overlay = document.getElementById('food-map-overlay');
-    if (overlay && pickerFrame) {
-      pickerFrame.srcdoc = text(data.foodLocationPickerHtml);
-      overlay.classList.add('open');
-    }
+    postAction({ id: 'food_store_map_open', label: '打开店铺地图', prompt: '打开店铺地图',
+      kind: 'client', variant: 'secondary', args: { surfaceId: text(data.surfaceId) } });
   });
   var favoriteEntries = list(data.foodFavorites).slice();
   var favoriteExpandedId = '';

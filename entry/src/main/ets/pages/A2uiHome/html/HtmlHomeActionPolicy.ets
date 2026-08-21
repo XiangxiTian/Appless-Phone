@@ -127,6 +127,10 @@ function isHtmlHomeActionAllowedInDocument(document: HtmlHomeDocument, action: A
     foodSurfaceOwnedActionAllowed(document, action)) {
     return true;
   }
+  if (document.kind === 'food' && action.kind === 'client' && action.id === 'food_store_map_open' &&
+    foodSurfaceOwnedActionAllowed(document, action)) {
+    return true;
+  }
   if (document.kind === 'food' && action.kind === 'client' && action.id === 'food_luckin_order_preview' &&
     foodLuckinOrderPreviewAllowed(document, action)) {
     return true;

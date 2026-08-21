@@ -41,8 +41,7 @@ export function renderFoodLocationPickerHtml(options: FoodLocationPickerHtmlOpti
     .pin:after { content: ''; position: absolute; left: 9px; top: 8px; width: 7px; height: 7px; border-radius: 50%; background: #fff; }
     .panel { position: absolute; z-index: 5; left: 14px; right: 14px; bottom: 16px; padding: 14px; border-radius: 18px; background: rgba(255,255,255,.97); box-shadow: 0 8px 26px rgba(31,28,24,.2); }
     .hint { color: #706a62; font-size: 12px; }
-    .coord { margin-top: 5px; font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; }
-    .name { min-height: 20px; margin-top: 4px; color: #37322d; font-size: 14px; font-weight: 650; }
+    .name { min-height: 25px; margin-top: 5px; color: #37322d; font-size: 20px; font-weight: 800; line-height: 1.25; }
     .address { min-height: 18px; margin-top: 2px; overflow: hidden; color: #756f66; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
     .confirm { width: 100%; height: 46px; margin-top: 12px; color: #fff; background: #a75d49; font-size: 16px; }
     .confirm:disabled { opacity: .45; }
@@ -58,7 +57,6 @@ export function renderFoodLocationPickerHtml(options: FoodLocationPickerHtmlOpti
   <div class="pin"></div>
   <div class="panel">
     <div class="hint">移动地图或点击地图选择圆心</div>
-    <div class="coord" id="coord">--</div>
     <div class="name" id="name">等待地图加载</div>
     <div class="address" id="address"></div>
     <button class="confirm" id="confirm" disabled>使用这个位置</button>
@@ -170,7 +168,6 @@ export function renderFoodLocationPickerHtml(options: FoodLocationPickerHtmlOpti
         selected = { longitude: center.getLng(), latitude: center.getLat() };
         if (typeof name === 'string' && name.length > 0) selectedName = name;
         selectedAddress = '';
-        document.getElementById('coord').textContent = selected.longitude.toFixed(6) + ', ' + selected.latitude.toFixed(6);
         showSelection();
         document.getElementById('confirm').disabled = false;
         post({ type: 'selectionChanged', longitude: selected.longitude, latitude: selected.latitude, name: selectedName });

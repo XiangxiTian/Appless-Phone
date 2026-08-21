@@ -42,7 +42,10 @@ function normalizedLocation(value: string | undefined): string {
 
 export function foodFavoriteId(item: A2uiFoodData): string {
   const name = normalizedIdentityText(item.name);
-  const location = normalizedLocation(item.location);
+  const coordinateLocation = item.longitude === undefined || item.latitude === undefined ? undefined :
+    item.longitude.toString() + ',' + item.latitude.toString();
+  const location = normalizedLocation(item.location === undefined || item.location.length === 0 ?
+    coordinateLocation : item.location);
   if (location.length > 0) {
     return 'food:' + name + '@' + location;
   }
@@ -62,6 +65,8 @@ function copyFoodFavorite(value: FoodFavoriteViewModel): FoodFavoriteViewModel {
     category: value.category,
     address: value.address,
     distance: value.distance,
+    longitude: value.longitude,
+    latitude: value.latitude,
     location: value.location,
     sourceTags: value.sourceTags === undefined ? undefined : value.sourceTags.slice(),
     phone: value.phone,
@@ -88,6 +93,8 @@ function favoriteFromValue(value: Object | null | undefined): FoodFavoriteViewMo
   const address = typeof raw.address === 'string' ? raw.address : '';
   const category = typeof raw.category === 'string' ? raw.category : '';
   const distance = typeof raw.distance === 'string' ? raw.distance : '';
+  const longitude = typeof raw.longitude === 'number' && Number.isFinite(raw.longitude) ? raw.longitude : undefined;
+  const latitude = typeof raw.latitude === 'number' && Number.isFinite(raw.latitude) ? raw.latitude : undefined;
   const location = typeof raw.location === 'string' ? raw.location : undefined;
   const favoriteId = typeof raw.favoriteId === 'string' ? raw.favoriteId.trim() : '';
   const savedAt = typeof raw.savedAt === 'number' && Number.isFinite(raw.savedAt) ? raw.savedAt : 0;
@@ -109,6 +116,8 @@ function favoriteFromValue(value: Object | null | undefined): FoodFavoriteViewMo
     category: category,
     address: address,
     distance: distance,
+    longitude: longitude,
+    latitude: latitude,
     location: location,
     sourceTags: sourceTags,
     phone: typeof raw.phone === 'string' ? raw.phone : undefined,
@@ -149,7 +158,7 @@ function favoritesFromJson(raw: string): FoodFavoriteViewModel[] {
   }
 }
 
-function favoriteFromFood(item: A2uiFoodData): FoodFavoriteViewModel {
+export function favoriteFromFood(item: A2uiFoodData): FoodFavoriteViewModel {
   return {
     favoriteId: foodFavoriteId(item),
     savedAt: Date.now(),
@@ -157,6 +166,8 @@ function favoriteFromFood(item: A2uiFoodData): FoodFavoriteViewModel {
     category: item.category,
     address: item.address,
     distance: item.distance,
+    longitude: item.longitude,
+    latitude: item.latitude,
     location: item.location,
     sourceTags: item.sourceTags === undefined ? undefined : item.sourceTags.slice(),
     phone: item.phone,

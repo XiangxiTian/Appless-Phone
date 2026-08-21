@@ -299,6 +299,19 @@ export default function htmlHomeActionPolicyTest() {
         action('food_favorite_remove', '取消收藏门店', 'client', invalidIdArgs))).assertFalse();
     });
 
+    it('allows opening the store map only for the current food surface', 0, () => {
+      const doc = documentFixture();
+      doc.kind = JSON.parse('"food"') as HtmlHomeKind;
+      doc.surfaceId = 'food-surface';
+      const allowedArgs = JSON.parse('{"surfaceId":"food-surface"}') as Object;
+      const wrongSurfaceArgs = JSON.parse('{"surfaceId":"other-surface"}') as Object;
+
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_store_map_open', '打开店铺地图', 'client', allowedArgs))).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc,
+        action('food_store_map_open', '打开店铺地图', 'client', wrongSurfaceArgs))).assertFalse();
+    });
+
     it('allows bounded Luckin menu preview actions only on the current food surface', 0, () => {
       const doc = documentFixture();
       doc.kind = JSON.parse('"food"') as HtmlHomeKind;

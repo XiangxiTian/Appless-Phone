@@ -140,6 +140,8 @@ export interface A2uiFoodData {
   category: string;
   address: string;
   distance: string;
+  longitude?: number;
+  latitude?: number;
   location?: string;
   sourceTags?: string[];
   phone?: string;

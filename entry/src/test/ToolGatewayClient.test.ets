@@ -4517,6 +4517,8 @@ export default function toolGatewayClientTest() {
         },
         deliverablePoiInfo: {
           poiName: '茶百道 深圳科技园店',
+          longitude: 113.9542,
+          latitude: 22.5401,
           deliveryDistance: '1.2',
           distributionCost: '3.0',
           deliveryDuration: '30',
@@ -4528,6 +4530,8 @@ export default function toolGatewayClientTest() {
       expect(record.category.indexOf('双杯奶茶套餐兑换券')).assertLarger(-1);
       expect(record.address.indexOf('配送费3.0元')).assertLarger(-1);
       expect(record.distance).assertEqual('1.2千米');
+      expect(record.longitude).assertEqual(113.9542);
+      expect(record.latitude).assertEqual(22.5401);
       const tags = record.sourceTags === undefined ? [] : record.sourceTags;
       expect(tags[0]).assertEqual('美团');
     });
@@ -4540,6 +4544,8 @@ export default function toolGatewayClientTest() {
         delivery_time: 34,
         delivery_price: '4.0',
         service_rating: '4.6',
+        longitude: '113.9508',
+        latitude: '22.5386',
         items: [
           {
             title: '香辣鸡腿堡套餐',
@@ -4552,6 +4558,8 @@ export default function toolGatewayClientTest() {
       expect(record.category.indexOf('香辣鸡腿堡套餐')).assertLarger(-1);
       expect(record.address.indexOf('评分4.6')).assertLarger(-1);
       expect(record.distance).assertEqual('820米');
+      expect(record.longitude).assertEqual(113.9508);
+      expect(record.latitude).assertEqual(22.5386);
       const tags = record.sourceTags === undefined ? [] : record.sourceTags;
       expect(tags[0]).assertEqual('淘宝闪购');
     });
@@ -4761,6 +4769,35 @@ export default function toolGatewayClientTest() {
       expect(tags[2]).assertEqual('腾讯地图');
       expect(tags[3]).assertEqual('Google Maps');
       expect(providerIssueRows(merged.issues)[0].label).assertEqual('淘宝闪购');
+    });
+
+    it('does not synthesize a store coordinate from two partial provider records', 0, () => {
+      const merged = aggregateFoodProviderResults([{
+        provider: '高德',
+        foods: [{
+          name: '测试咖啡店',
+          category: '咖啡',
+          address: '深圳市龙岗区',
+          distance: '100米',
+          longitude: 114.06
+        }],
+        error: ''
+      }, {
+        provider: '腾讯地图',
+        foods: [{
+          name: '测试咖啡店',
+          category: '咖啡',
+          address: '深圳市龙岗区',
+          distance: '100米',
+          latitude: 22.63
+        }],
+        error: ''
+      }]);
+
+      expect(merged.foods.length).assertEqual(1);
+      expect(merged.foods[0].longitude).assertUndefined();
+      expect(merged.foods[0].latitude).assertUndefined();
+      expect(merged.foods[0].location).assertUndefined();
     });
 
     it('builds food provider progress rows for waiting, completed, and errored sources', 0, () => {

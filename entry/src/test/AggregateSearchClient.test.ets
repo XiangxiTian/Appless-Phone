@@ -551,6 +551,28 @@ export default function aggregateSearchClientTest() {
       expect(JSON.stringify(posts[0].rows).indexOf('reddit.png')).assertLarger(-1);
     });
 
+    it('uses decoded Reddit preview images instead of article links', 0, () => {
+      const posts = redditPostsFromComposioResult({
+        sourceTag: 'Composio',
+        toolName: 'REDDIT_SEARCH_POSTS',
+        title: 'Composio Reddit 结果',
+        status: 'success',
+        summary: '返回 1 条',
+        rows: [],
+        rawPreview: '{"data":{"children":[{"data":{"title":"Finally some good news in the IT industry!",' +
+          '"selftext":"","permalink":"/r/it/comments/1/news",' +
+          '"url":"https://example.com/article",' +
+          '"url_overridden_by_dest":"https://example.com/article","thumbnail":"default",' +
+          '"preview":{"images":[{"source":{"url":' +
+          '"https://preview.redd.it/cover.jpg?width=640&amp;format=pjpg&amp;auto=webp&s=abc"}}]}}}]}}'
+      });
+      const candidate = aggregateMediaCandidates([], posts, 0)[0];
+
+      expect(candidate.mediaType).assertEqual('image_text');
+      expect(candidate.coverUrl).assertEqual(
+        'https://preview.redd.it/cover.jpg?width=640&format=pjpg&auto=webp&s=abc');
+    });
+
     it('keeps distinct raw-preview posts through Waterfall ranking', 0, () => {
       const posts = redditPostsFromComposioResult({
         sourceTag: 'Composio',
@@ -860,6 +882,55 @@ export default function aggregateSearchClientTest() {
       expect(candidates[2].providerScore === undefined).assertTrue();
     });
 
+    it('carries provider metrics and author identity into Waterfall candidates', 0, () => {
+      const videos: AggregateSearchVideo[] = [{
+        id: 'bilibili-BV1', source: 'bilibili', provider: 'Bilibili', title: 'Video title',
+        summary: 'Video summary', url: 'https://www.bilibili.com/video/BV1',
+        thumbnail: 'https://img.test/video.jpg', publishedAt: '2026-08-06T10:00:00.000Z',
+        duration: '1:00', status: 'success', rows: [
+          { label: 'Author', value: '影像实验室' },
+          { label: 'Author Avatar', value: 'https://img.test/avatar.jpg' },
+          { label: 'Views', value: '98,659' },
+          { label: 'Likes', value: '361' },
+          { label: 'Favorites', value: '178' },
+          { label: 'Comments', value: '186' },
+          { label: 'Coins', value: '34' },
+          { label: 'Danmaku', value: '148' },
+          { label: 'Shares', value: '28' }
+        ]
+      }];
+      const posts = xPostsFromComposioResult({
+        sourceTag: 'Composio', toolName: 'x.post.search', title: 'X results',
+        status: 'success', summary: '1 result', rows: [],
+        rawPreview: '{"data":[{"id":"x-1","text":"Design signals","author_id":"user-1",' +
+          '"public_metrics":{"impression_count":126408,"like_count":3912,"reply_count":184,' +
+          '"retweet_count":726,"quote_count":93,"bookmark_count":1284}}],"includes":{"users":[' +
+          '{"id":"user-1","name":"Ava Chen","username":"avachen",' +
+          '"profile_image_url":"https://pbs.twimg.com/profile_images/avatar.jpg"}]}}'
+      });
+      const candidates = aggregateMediaCandidates(videos, posts, 0);
+      const videoCandidate =
+        JSON.parse(JSON.stringify(candidates[0])) as Record<string, Object | string | number | boolean | null>;
+      const postCandidate =
+        JSON.parse(JSON.stringify(candidates[1])) as Record<string, Object | string | number | boolean | null>;
+
+      expect(videoCandidate['authorName'] as string).assertEqual('影像实验室');
+      expect(videoCandidate['authorAvatarUrl'] as string).assertEqual('https://img.test/avatar.jpg');
+      expect(JSON.stringify(videoCandidate['metrics'])).assertEqual(
+        '[{"kind":"view","value":98659},{"kind":"like","value":361},' +
+        '{"kind":"favorite","value":178},{"kind":"comment","value":186},' +
+        '{"kind":"coin","value":34},{"kind":"danmaku","value":148},{"kind":"share","value":28}]'
+      );
+      expect(postCandidate['authorName'] as string).assertEqual('Ava Chen');
+      expect(postCandidate['authorAvatarUrl'] as string)
+        .assertEqual('https://pbs.twimg.com/profile_images/avatar.jpg');
+      expect(JSON.stringify(postCandidate['metrics'])).assertEqual(
+        '[{"kind":"view","value":126408},{"kind":"like","value":3912},' +
+        '{"kind":"comment","value":184},{"kind":"repost","value":726},' +
+        '{"kind":"quote","value":93},{"kind":"favorite","value":1284}]'
+      );
+    });
+
     it('keeps provider rank score topics format and recall provenance on candidates', 0, () => {
       const videos: AggregateSearchVideo[] = [
         {
@@ -1040,49 +1111,45 @@ export default function aggregateSearchClientTest() {
       const requests: WaterfallInterestRecallRequest[] =
         planWaterfallInterestRecall(profile, recent, ['youtube', 'x', 'reddit']);
       expect(requests.every((request: WaterfallInterestRecallRequest): boolean =>
-        request.sources.every((source: string): boolean =>
-        ['youtube', 'x', 'reddit'].indexOf(source) >= 0))).assertTrue();
-      expect(requests.length <= 7).assertTrue();
-      expect(requests.every((request: WaterfallInterestRecallRequest): boolean =>
-        request.sources.indexOf('twitch') < 0)).assertTrue();
+        request.sources.length === 1 && request.weight === 1 && request.continuation === null &&
+        request.query.length <= 24)).assertTrue();
+      expect(requests.map((request: WaterfallInterestRecallRequest): string => request.sources[0]).join(','))
+        .assertEqual('youtube,x,reddit');
+      expect(requests.map((request: WaterfallInterestRecallRequest): string => request.route).join(','))
+        .assertEqual('popular,explore,explore');
+      expect(requests[0].query).assertEqual('');
+      expect(requests[1].query).assertEqual('tech news');
+      expect(requests[2].query).assertEqual('artificial intelligence');
     });
 
     it('uses provider discovery for Twitch plus technology exploration for an empty profile', 0, () => {
       const requests: WaterfallInterestRecallRequest[] =
         planWaterfallInterestRecall(emptyPreferenceProfile(), [], ['youtube', 'x', 'twitch']);
-      expect(requests[0].query).assertEqual('AI 科技');
-      expect(requests[0].sources.join(',')).assertEqual('youtube,x');
-      expect(requests[1].query).assertEqual('');
-      expect(requests[1].sources.join(',')).assertEqual('twitch');
-      expect(requests.some((request: WaterfallInterestRecallRequest): boolean => request.route === 'explore' &&
-        request.query === 'AI 科技' && request.sources.join(',') === 'youtube,x')).assertTrue();
-      expect(requests.some((request: WaterfallInterestRecallRequest): boolean => request.route === 'explore' &&
-        request.query === '' && request.sources.join(',') === 'twitch')).assertTrue();
-      expect(requests.every((request: WaterfallInterestRecallRequest): boolean =>
-        request.sources.indexOf('reddit') < 0)).assertTrue();
+      expect(requests.map((request: WaterfallInterestRecallRequest): string => request.sources[0]).join(','))
+        .assertEqual('youtube,x,twitch');
+      expect(requests.map((request: WaterfallInterestRecallRequest): string => request.route).join(','))
+        .assertEqual('popular,explore,explore');
+      expect(requests.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
+        .assertEqual(',tech news,');
       expect(aggregateSearchSearchSourceIds().indexOf('twitch')).assertEqual(-1);
       expect(aggregateSearchInterestSourceIds().indexOf('twitch')).assertLarger(-1);
     });
 
-    it('dispatches Twitch provider discovery after personalized and technology recall', 0, () => {
+    it('keeps Twitch provider discovery separate from source exploration', 0, () => {
       const profile = emptyPreferenceProfile();
       profile.topicWeights = [{ key: '科幻', weight: 8, updatedAt: WATERFALL_NOW_MS }];
       const recent = [rankedWaterfallCandidate('recent-game', 'youtube', '游戏直播', 0)];
       recent[0].topics = ['游戏'];
       const requests = planWaterfallInterestRecall(profile, recent, ['youtube', 'x', 'twitch']);
 
-      expect(requests[0].route).assertEqual('similar');
-      expect(requests[0].query).assertEqual('游戏');
-      expect(requests[1].route).assertEqual('profile');
-      expect(requests[1].query).assertEqual('科幻');
+      expect(requests.length).assertEqual(3);
+      expect(requests[0].route).assertEqual('popular');
+      expect(requests[0].query).assertEqual('');
+      expect(requests[1].route).assertEqual('explore');
+      expect(requests[1].query).assertEqual('tech news');
       expect(requests[2].route).assertEqual('explore');
-      expect(requests[2].query).assertEqual('AI 科技');
-      expect(requests[3].route).assertEqual('explore');
-      expect(requests[3].query).assertEqual('');
-      expect(requests[3].sources.join(',')).assertEqual('twitch');
-      expect(requests.filter((request: WaterfallInterestRecallRequest): boolean => request.route === 'explore')
-        .reduce((sum: number, request: WaterfallInterestRecallRequest): number => sum + request.weight, 0))
-        .assertEqual(10);
+      expect(requests[2].query).assertEqual('');
+      expect(requests[2].sources.join(',')).assertEqual('twitch');
     });
 
     it('keeps interest batches on the shared ranker without starting search expansion', 0, () => {
@@ -1229,6 +1296,32 @@ export default function aggregateSearchClientTest() {
       expect(update.state.tail.map((item) => item.id).join(',')).assertEqual('late-exact,tail-old');
     });
 
+    it('lets a later source appear immediately after the two frozen cards', 0, () => {
+      const current = rankedWaterfallCandidate('zh-0', 'zhihu', '知乎 人工智能 讨论', 0);
+      const nextOne = rankedWaterfallCandidate('zh-1', 'zhihu', '知乎 科技数码 一', 1);
+      const nextTwo = rankedWaterfallCandidate('zh-2', 'zhihu', '知乎 科技数码 二', 2);
+      const tail: WaterfallRankedCandidate[] = [];
+      for (let index = 3; index < 10; index += 1) {
+        tail.push(rankedWaterfallCandidate(
+          'zh-' + index.toString(), 'zhihu', '知乎 科技数码 ' + index.toString(), index));
+      }
+      const state = feedState(current, [nextOne, nextTwo], tail, [
+        sourceState('zhihu', null), sourceState('bilibili', null)
+      ]);
+      state.mode = 'interest';
+      const incoming: WaterfallCandidate[] = [];
+      for (let index = 0; index < 6; index += 1) {
+        incoming.push(waterfallCandidate(
+          'bi-' + index.toString(), 'bilibili', 'B站 编程开发 ' + index.toString(), '',
+          'https://bilibili.test/bi-' + index.toString(), '2026-08-06T11:00:00.000Z', index));
+      }
+      const update = mergeWaterfallBatch(state, incoming, sourceState('bilibili', null), WATERFALL_NOW_MS);
+
+      expect(update.state.current?.id).assertEqual('zh-0');
+      expect(update.state.stable.map((item) => item.id).join(',')).assertEqual('zh-1,zh-2');
+      expect(update.state.tail[0].source).assertEqual('bilibili');
+    });
+
     it('moves the two-item stable window after advancing', 0, () => {
       const state = feedState(
         rankedWaterfallCandidate('current-1', 'youtube', 'OpenAI Codex current', 1),
@@ -1244,7 +1337,7 @@ export default function aggregateSearchClientTest() {
       expect(update.state.tail.length).assertEqual(0);
     });
 
-    it('reranks the remaining interest inventory from the latest behavior profile after advancing', 0, () => {
+    it('does not let a behavior update replace the already visible interest card', 0, () => {
       const consumed = rankedWaterfallCandidate('consumed', 'youtube', 'OpenAI Codex watched', 0);
       const youtubeNext = rankedWaterfallCandidate('youtube-next', 'youtube', 'OpenAI Codex video', 1);
       const xNext = rankedWaterfallCandidate('x-next', 'x', 'OpenAI Codex discussion', 2);
@@ -1263,8 +1356,8 @@ export default function aggregateSearchClientTest() {
       expect(beforeBehavior.current?.id).assertEqual('youtube-next');
       expect(update.state.shown.map((item: WaterfallRankedCandidate): string => item.id).join(','))
         .assertEqual('consumed');
-      expect(update.state.current?.id).assertEqual('x-next');
-      expect(update.state.current?.id === beforeBehavior.current?.id).assertFalse();
+      expect(update.state.current?.id).assertEqual('youtube-next');
+      expect(update.state.current?.id === beforeBehavior.current?.id).assertTrue();
       expect(waterfallInventoryIds(update.state).indexOf('consumed')).assertEqual(0);
       expect(update.state.stable.concat(update.state.tail, update.state.reserve ?? [])
         .some((item: WaterfallRankedCandidate): boolean => item.id === 'consumed')).assertFalse();
@@ -1324,6 +1417,22 @@ export default function aggregateSearchClientTest() {
       expect(first.shown.map((item: WaterfallRankedCandidate): string => item.id).join(','))
         .assertEqual('bounded-current');
       expect(third.shown.length).assertEqual(3);
+    });
+
+    it('catches the native current up to the visible card in one advance', 0, () => {
+      const state = feedState(
+        rankedWaterfallCandidate('current-1', 'youtube', 'OpenAI Codex current', 1),
+        [rankedWaterfallCandidate('next-1', 'youtube', 'OpenAI Codex next one', 2),
+          rankedWaterfallCandidate('next-2', 'youtube', 'OpenAI Codex next two', 3)],
+        [rankedWaterfallCandidate('tail-old', 'youtube', 'OpenAI Codex old tail', 4),
+          rankedWaterfallCandidate('tail-later', 'youtube', 'OpenAI Codex later tail', 5)],
+        [sourceState('youtube', null)]
+      );
+      const update = advanceWaterfallFeed(state, WATERFALL_NOW_MS, 'tail-old');
+
+      expect(update.state.shown.map((item) => item.id).join(',')).assertEqual('current-1,next-1,next-2');
+      expect(update.state.current?.id).assertEqual('tail-old');
+      expect(update.state.stable.map((item) => item.id).join(',')).assertEqual('tail-later');
     });
 
     it('reorders all unshown items after an explicit source toggle', 0, () => {
@@ -1507,14 +1616,14 @@ export default function aggregateSearchClientTest() {
       const repeated = mergeWaterfallFeedSnapshot(seeded.state, seeded.state, WATERFALL_NOW_MS, false);
       expect(repeated.state.reserve?.length).assertEqual(40);
       let state = seeded.state;
-      for (let index = 0; index < 17; index++) {
+      for (let index = 0; index < 12; index++) {
         state = advanceWaterfallFeed(state, WATERFALL_NOW_MS).state;
       }
       const fromReserve = planWaterfallContinuation(state);
 
       expect(fromReserve.loadRequests.length).assertEqual(0);
       expect((fromReserve.state.current === null ? 0 : 1) + fromReserve.state.stable.length + fromReserve.state.tail.length).assertEqual(20);
-      expect(fromReserve.state.reserve?.length).assertEqual(23);
+      expect(fromReserve.state.reserve?.length).assertEqual(28);
 
       const low = feedState(
         rankedWaterfallCandidate('low-current', 'youtube', 'OpenAI Codex current', 100),

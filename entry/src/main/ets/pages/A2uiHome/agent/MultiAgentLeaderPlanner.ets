@@ -1575,6 +1575,9 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     round: number
   ): LeaderDecision {
     let trimmed: string = output.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}"')) {
+      trimmed = trimmed.substring(0, trimmed.length - 1);
+    }
     if (trimmed.startsWith('{') && !trimmed.endsWith('}')) {
       trimmed += '}';
     }

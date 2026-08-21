@@ -12,9 +12,9 @@ interface AggregatePolicyArgsFixture {
 
 export default function aggregateSearchPolicyTest(): void {
   describe('aggregateSearchPolicy', () => {
-    it('defaults to domestic-only Chinese aggregation', 0, () => {
-      expect(DEFAULT_AGGREGATE_SEARCH_POLICY.onlyDomesticSources).assertTrue();
-      expect(DEFAULT_AGGREGATE_SEARCH_POLICY.includeMultilingualResults).assertFalse();
+    it('defaults to all enabled discovery sources', 0, () => {
+      expect(DEFAULT_AGGREGATE_SEARCH_POLICY.onlyDomesticSources).assertFalse();
+      expect(DEFAULT_AGGREGATE_SEARCH_POLICY.includeMultilingualResults).assertTrue();
     });
 
     it('injects the host policy into aggregate search args', 0, () => {

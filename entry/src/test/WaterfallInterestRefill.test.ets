@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   WaterfallFeedState,
+  WaterfallCandidate,
   WaterfallContinuation,
   WaterfallInterestRecallRequest,
   WaterfallPreferenceSnapshot,
@@ -11,6 +12,7 @@ import {
   applyWaterfallProfile,
   applyWaterfallSourceSelection,
   mergeWaterfallBatch,
+  mergeWaterfallBatchDeferredRanking,
   planWaterfallContinuation,
   planWaterfallInterestRecall,
   waterfallInterestRecallLimitForSource
@@ -82,12 +84,16 @@ export default function waterfallInterestRefillTest() {
       const state = interestState([
         source('youtube', 'success', { kind: 'cursor', value: 'next-youtube' })
       ]);
-      state.reserve = [candidate('reserve', 'bilibili')];
+      const reserved: WaterfallRankedCandidate[] = [];
+      for (let index = 0; index < 9; index += 1) {
+        reserved.push(candidate('reserve-' + index.toString(), 'bilibili'));
+      }
+      state.reserve = reserved;
 
       const update = planWaterfallContinuation(state);
 
       expect(update.state.tail.map((item: WaterfallRankedCandidate): string => item.id).join(','))
-        .assertEqual('reserve');
+        .assertEqual(reserved.map((item: WaterfallRankedCandidate): string => item.id).join(','));
       expect(update.loadRequests.length).assertEqual(0);
       expect(update.expansionRequest === undefined).assertTrue();
     });
@@ -246,7 +252,6 @@ export default function waterfallInterestRefillTest() {
 
       const requests: WaterfallInterestRecallRequest[] = planWaterfallInterestRecall(
         profile, recent, ['youtube', 'x', 'reddit', 'zhihu', 'bilibili', 'twitch']);
-      const nonTwitchSources = 'youtube,x,reddit,zhihu,bilibili';
       const nonTwitchRequests = requests.filter((request: WaterfallInterestRecallRequest): boolean =>
         request.sources.indexOf('twitch') < 0);
       const twitchRequests = requests.filter((request: WaterfallInterestRecallRequest): boolean =>
@@ -254,11 +259,12 @@ export default function waterfallInterestRefillTest() {
 
       expect(nonTwitchRequests.length).assertEqual(5);
       expect(nonTwitchRequests.every((request: WaterfallInterestRecallRequest): boolean =>
-        request.sources.join(',') === nonTwitchSources && request.query.length > 0 && request.query.length <= 24 &&
-        request.sources.every((source: string): boolean =>
-          waterfallInterestRecallLimitForSource(source) === 10))).assertTrue();
+        request.sources.length === 1 && request.weight === 1 && request.continuation === null &&
+        request.query.length <= 24 && waterfallInterestRecallLimitForSource(request.sources[0]) === 10)).assertTrue();
+      expect(nonTwitchRequests.map((request: WaterfallInterestRecallRequest): string =>
+        request.sources[0]).join(',')).assertEqual('youtube,x,reddit,zhihu,bilibili');
       expect(nonTwitchRequests.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
-        .assertEqual('AI,足球,科幻,摄影,AI 科技');
+        .assertEqual(',tech news,artificial intelligence,编程开发,科学科普');
       expect(twitchRequests.length).assertEqual(1);
       expect(twitchRequests[0].query).assertEqual('');
       expect(twitchRequests[0].sources.join(',')).assertEqual('twitch');
@@ -266,7 +272,7 @@ export default function waterfallInterestRefillTest() {
       expect(requests[requests.length - 1].sources.join(',')).assertEqual('twitch');
     });
 
-    it('waits for every initial discovery source before fixing the visible window', 0, () => {
+    it('shows the first displayable discovery source without waiting for slower peers', 0, () => {
       let state = interestState([
         source('youtube', 'loading', null, true),
         source('reddit', 'loading', null, true)
@@ -280,14 +286,14 @@ export default function waterfallInterestRefillTest() {
       state = mergeWaterfallBatch(
         state, [youtube], source('youtube', 'exhausted'), Date.parse('2026-08-19T01:00:00.000Z'), false
       ).state;
-      expect(state.current === null).assertTrue();
+      expect(state.current?.id ?? '').assertEqual('youtube-old');
 
       state = mergeWaterfallBatch(
         state, [reddit], source('reddit', 'exhausted'), Date.parse('2026-08-19T01:00:00.000Z'), false
       ).state;
-      expect(state.current?.source ?? '').assertEqual('reddit');
-      expect(state.stable.map((item: WaterfallRankedCandidate): string => item.source).join(','))
-        .assertEqual('youtube');
+      expect(state.current?.id ?? '').assertEqual('youtube-old');
+      expect((state.stable.concat(state.tail).some((item: WaterfallRankedCandidate): boolean =>
+        item.source === 'reddit'))).assertTrue();
     });
 
     it('shows collected discovery candidates when the remaining sources terminate', 0, () => {
@@ -302,6 +308,34 @@ export default function waterfallInterestRefillTest() {
 
       expect(update.state.current?.id ?? '').assertEqual('youtube-ready');
       expect(update.loadRequests.length).assertEqual(0);
+    });
+
+    it('keeps author and metrics while deferring discovery ranking', 0, () => {
+      const state = interestState([source('youtube', 'loading', null, true)]);
+      state.current = null;
+      state.stable = [];
+      const incoming: WaterfallCandidate = {
+        id: 'youtube-enriched',
+        source: 'youtube',
+        mediaType: 'video',
+        title: 'Enriched card',
+        summary: '',
+        url: 'https://youtube.test/watch?v=enriched',
+        coverUrl: '',
+        publishedAt: '2026-08-19T00:00:00.000Z',
+        originalIndex: 0,
+        authorName: 'Creator',
+        authorAvatarUrl: 'https://youtube.test/avatar.jpg',
+        metrics: [{ kind: 'view', value: 12345 }]
+      };
+
+      const update = mergeWaterfallBatchDeferredRanking(
+        state, [incoming], source('youtube', 'success'), true
+      );
+
+      expect(update.state.current?.authorName ?? '').assertEqual('Creator');
+      expect(update.state.current?.authorAvatarUrl ?? '').assertEqual('https://youtube.test/avatar.jpg');
+      expect(update.state.current?.metrics?.[0].value ?? 0).assertEqual(12345);
     });
 
     it('applies a session profile only to the unseen tail', 0, () => {

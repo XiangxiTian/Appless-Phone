@@ -1,3 +1,13 @@
+import {
+  COLOR_ACCENT,
+  COLOR_ACCENT_DEEP,
+  COLOR_ACCENT_SOFT,
+  COLOR_CARD,
+  COLOR_CARD_EDGE,
+  COLOR_CARD_SHADOW,
+  COLOR_MUTED
+} from '../style/A2uiHomeTheme';
+
 @Component
 export struct WaterfallVoiceDock {
   @Prop isListening: boolean = false;
@@ -15,6 +25,19 @@ export struct WaterfallVoiceDock {
     return '按住聊聊';
   }
 
+  private fillColor(): string {
+    if (this.isListening || this.pressed) return COLOR_ACCENT_SOFT;
+    return COLOR_CARD;
+  }
+
+  private edgeColor(): string {
+    return this.isListening ? COLOR_ACCENT : COLOR_CARD_EDGE;
+  }
+
+  private iconColor(): string {
+    return this.isBusy ? COLOR_MUTED : COLOR_ACCENT_DEEP;
+  }
+
   private handleTouch(event: TouchEvent): void {
     if (this.isBusy) return;
     if (event.type === TouchType.Down) {
@@ -30,44 +53,29 @@ export struct WaterfallVoiceDock {
   }
 
   build() {
-    Row({ space: 8 }) {
-      Stack({ alignContent: Alignment.Center }) {
-        Image($r('app.media.icon_microphone'))
-          .width(16)
-          .height(16)
-          .fillColor(this.isListening ? '#FFFFFF' : '#252522')
-      }
-      .width(30)
-      .height(30)
-      .borderRadius(10)
-      .backgroundColor(this.isListening ? '#FFFFFF1F' : '#E9E8E3')
-
-      Text(this.label())
-        .layoutWeight(1)
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.isListening ? '#F8F7F3' : '#252522')
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-
-      if (this.isListening) {
-        Text('松开生效')
-          .fontSize(11)
-          .fontColor('#CECDC7')
-      }
+    Stack({ alignContent: Alignment.Center }) {
+      Image($r('app.media.icon_microphone'))
+        .width(20)
+        .height(20)
+        .fillColor(this.iconColor())
     }
-    .width(216)
-    .height(46)
-    .padding({ left: 7, right: 12 })
-    .backgroundColor(this.isListening ? '#252522' : '#F8F7F3')
-    .border({ width: 1, color: this.isListening ? '#252522' : '#DAD9D3' })
-    .borderRadius(16)
-    .shadow({ radius: 8, color: '#1C262312', offsetX: 0, offsetY: 2 })
-    .scale({ x: this.pressed ? 0.98 : 1, y: this.pressed ? 0.98 : 1 })
+    .width(48)
+    .height(48)
+    .borderRadius(24)
+    .backgroundColor(this.fillColor())
+    .border({ width: 1, color: this.edgeColor() })
+    .shadow({
+      radius: 4,
+      color: COLOR_CARD_SHADOW,
+      offsetX: 0,
+      offsetY: 2
+    })
+    .scale({ x: this.pressed ? 0.96 : 1, y: this.pressed ? 0.96 : 1 })
     .animation({ duration: this.reduceMotion ? 0 : 160, curve: Curve.EaseOut })
-    .opacity(this.isBusy ? 0.62 : 1)
+    .opacity(this.isBusy ? 0.72 : 1)
     .enabled(!this.isBusy)
-    .accessibilityText(this.isListening ? '松开并应用发现流调整' : '按住聊聊，松开即应用')
+    .hitTestBehavior(HitTestMode.Default)
+    .accessibilityText(this.label())
     .onTouch((event: TouchEvent): void => {
       this.handleTouch(event);
     })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { DynamicGenericToolResult } from '@loop/agent-core';
+import { configureComposioConfigFromRawJson, DynamicGenericToolResult } from '@loop/agent-core';
 import { callMediaVideoSearch, mediaRelevanceLanguageFromArgs, mediaSourcesFromArgs, mediaVideoQueryFromArgs, mediaVideoSearchQuery, mergeMediaVideoProviderResults } from '@loop/agent-core';
 
 function row(source: string, title: string, status: string = 'success'): DynamicGenericToolResult {
@@ -52,15 +52,16 @@ export default function mediaVideoClientTest() {
       expect(results[1].sourceTag).assertEqual('哔哩哔哩');
     });
 
-    it('keeps YouTube missing-key rows and includes Bilibili without credentials', 0, async () => {
+    it('keeps YouTube Composio config rows without provider fallbacks', 0, async () => {
+      configureComposioConfigFromRawJson('{}');
       const youtubeArgs: SourceArgsFixture = { sources: ['youtube'] };
       const results = await callMediaVideoSearch('qwen max 官方介绍', youtubeArgs, '');
 
       expect(results.length).assertEqual(1);
-      expect(results[0].sourceTag).assertEqual('YouTube Data API');
-      expect(results[0].status).assertEqual('error');
+      expect(results[0].sourceTag).assertEqual('Composio YouTube');
+      expect(results[0].status).assertEqual('missing_config');
       expect(results[0].toolName).assertEqual('media.video.search');
-      expect(results[0].rows[0].label).assertEqual('Credential');
+      expect(results[0].rows[0].label).assertEqual('请求');
     });
   });
 }

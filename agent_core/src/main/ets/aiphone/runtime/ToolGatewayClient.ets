@@ -120,10 +120,10 @@ import {
 } from './HotelToolTypes';
 import { callGmailApiTool, gmailMailDetailFromComposioObservation, gmailMailDetailFromPayload, readGmailMailDetail } from './GmailApiClient';
 import {
-  callYouTubeMostPopularVideos,
   callYouTubeVideoSearch,
   defaultYouTubeSearchOptions,
-  YouTubeSearchOptions
+  YouTubeSearchOptions,
+  youtubeVideoResultsFromComposioPopular
 } from './YouTubeApiClient';
 import { callMediaVideoSearch, mediaVideoQueryFromArgs } from './MediaVideoClient';
 import { mediaVideoPlaybackUrl, mediaVideoStructuredDataA2ui } from './MediaVideoToolA2ui';
@@ -175,6 +175,7 @@ import {
   callComposioDynamic,
   callComposioDynamicWithProviderData,
   callComposioGithubOperationTarget,
+  callComposioYouTubeMostPopularWithProviderData,
   callComposioFixedDynamic,
   callComposioFixedRaw,
   composioDynamicResultFromObservation,
@@ -15477,58 +15478,99 @@ export async function callConfiguredWaterfallInterestRecall(
   requests: WaterfallInterestRecallRequest[],
   onBatch: WaterfallInterestRecallObserver
 ): Promise<void> {
-  let batchIndex = 0;
-  for (let requestIndex = 0; requestIndex < requests.length; requestIndex += 1) {
-    const recall = requests[requestIndex];
-    const allowedSources = recall.sources.filter((source: string): boolean =>
-      waterfallInterestSourceAllowedForRuntime(source));
-    allowedSources.forEach((source: string): void => {
-      aiLogInfo('[AIPhone][WaterfallInterestRecallRequest] route=' + recall.route + ' source=' + source +
-        ' limit=' + waterfallInterestRecallLimitForSource(source).toString() +
-        (source === 'twitch' ? ' mode=provider-discovery' :
-          ' query=' + waterfallInterestDiagnosticText(recall.query, 80)));
+  const local: number[] = [];
+  const rest: number[] = [];
+  for (let index = 0; index < requests.length; index++) {
+    const source = requests[index].sources.length > 0 ? requests[index].sources[0] : '';
+    if (source === 'zhihu' || source === 'bilibili') local.push(index);
+    else rest.push(index);
+  }
+  // ponytail: Harmony HTTP pool starves Bilibili if YouTube/Composio start together; split if timeouts still fail.
+  await Promise.all(local.map((index: number): Promise<void> =>
+    runWaterfallInterestRecall(requests[index], index, onBatch)));
+  await Promise.all(rest.map((index: number): Promise<void> =>
+    runWaterfallInterestRecall(requests[index], index, onBatch)));
+}
+
+async function runWaterfallInterestRecall(
+  recall: WaterfallInterestRecallRequest,
+  requestIndex: number,
+  onBatch: WaterfallInterestRecallObserver
+): Promise<void> {
+  try {
+    await runWaterfallInterestRecallBody(recall, requestIndex, onBatch);
+  } catch (error) {
+    const source = (recall.sources.length > 0 ? recall.sources[0] : 'youtube') as AggregateSearchSource;
+    const message = error instanceof Error ? error.message.substring(0, 240) : 'recall failed';
+    onBatch({
+      request: recall,
+      batch: {
+        source,
+        videos: [],
+        posts: [],
+        status: { source, label: source, status: 'error', message, count: 0 },
+        continuation: null
+      },
+      candidates: []
     });
-    if (recall.route === 'popular' && allowedSources.indexOf('youtube') >= 0) {
-      const token = recall.continuation !== undefined && recall.continuation !== null &&
-        recall.continuation.kind === 'cursor' ? recall.continuation.value : '';
-      const dynamic = await callYouTubeMostPopularVideos(localProviderConfig.youtubeApiKey, 10, token);
-      const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic, recall.continuation ?? null, 10);
+  }
+}
+
+async function runWaterfallInterestRecallBody(
+  recall: WaterfallInterestRecallRequest,
+  requestIndex: number,
+  onBatch: WaterfallInterestRecallObserver
+): Promise<void> {
+  const allowedSources = recall.sources.filter((source: string): boolean =>
+    waterfallInterestSourceAllowedForRuntime(source));
+  allowedSources.forEach((source: string): void => {
+    aiLogInfo('[AIPhone][WaterfallInterestRecallRequest] route=' + recall.route + ' source=' + source +
+      ' limit=' + waterfallInterestRecallLimitForSource(source).toString() +
+      (source === 'twitch' ? ' mode=provider-discovery' :
+        ' query=' + waterfallInterestDiagnosticText(recall.query, 80)));
+  });
+  if (recall.route === 'popular' && allowedSources.indexOf('youtube') >= 0) {
+    const token = recall.continuation !== undefined && recall.continuation !== null &&
+      recall.continuation.kind === 'cursor' ? recall.continuation.value : '';
+    const dynamic = youtubeVideoResultsFromComposioPopular(
+      await callComposioYouTubeMostPopularWithProviderData(10, token)
+    );
+    const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic, recall.continuation ?? null, 10);
+    logWaterfallInterestBatch(recall, batch);
+    onBatch({
+      request: recall,
+      batch,
+      candidates: aggregateMediaCandidates(
+        batch.videos, batch.posts, requestIndex * 10, '', 'done', 'popular', recall.weight)
+    });
+    return;
+  }
+  const loads: WaterfallLoadRequest[] = allowedSources.map((source: string): WaterfallLoadRequest => ({
+    source,
+    continuation: recall.continuation ?? null,
+    limit: waterfallInterestRecallLimitForSource(source),
+    phase: 'loading',
+    message: '',
+    mode: 'search',
+    query: recall.query,
+    route: recall.route
+  }));
+  await callAggregateSearchContinuationForContext(
+    'interest',
+    recall.query,
+    loads,
+    localProviderConfig.youtubeApiKey,
+    { apiKey: localProviderConfig.zhihuApiKey },
+    (batch: AggregateSearchSourceBatch): void => {
       logWaterfallInterestBatch(recall, batch);
       onBatch({
         request: recall,
         batch,
         candidates: aggregateMediaCandidates(
-          batch.videos, batch.posts, batchIndex++, '', 'done', 'popular', recall.weight)
+          batch.videos, batch.posts, requestIndex * 10, recall.query, 'done', recall.route, recall.weight)
       });
-      continue;
     }
-    const loads: WaterfallLoadRequest[] = allowedSources.map((source: string): WaterfallLoadRequest => ({
-      source,
-      continuation: recall.continuation ?? null,
-      limit: waterfallInterestRecallLimitForSource(source),
-      phase: 'loading',
-      message: '',
-      mode: 'search',
-      query: recall.query,
-      route: recall.route
-    }));
-    await callAggregateSearchContinuationForContext(
-      'interest',
-      recall.query,
-      loads,
-      localProviderConfig.youtubeApiKey,
-      { apiKey: localProviderConfig.zhihuApiKey },
-      (batch: AggregateSearchSourceBatch): void => {
-        logWaterfallInterestBatch(recall, batch);
-        onBatch({
-          request: recall,
-          batch,
-          candidates: aggregateMediaCandidates(
-            batch.videos, batch.posts, batchIndex++, recall.query, 'done', recall.route, recall.weight)
-        });
-      }
-    );
-  }
+  );
 }
 
 async function callLocalMediaTool(

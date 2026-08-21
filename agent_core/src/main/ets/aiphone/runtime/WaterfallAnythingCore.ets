@@ -37,77 +37,42 @@ export interface WaterfallPreferenceSnapshot {
   sessionFormatWeights?: WaterfallPreferenceWeight[];
 }
 
-function uniquePositiveTopics(weights: WaterfallPreferenceWeight[], excluded: string[]): string[] {
-  const sorted = weights.filter((weight: WaterfallPreferenceWeight): boolean =>
-    weight.weight > 0 && weight.key.trim().length > 0 && excluded.indexOf(weight.key.trim()) < 0).slice();
-  sorted.sort((left: WaterfallPreferenceWeight, right: WaterfallPreferenceWeight): number =>
-    right.weight - left.weight || right.updatedAt - left.updatedAt || left.key.localeCompare(right.key));
-  return sorted.slice(0, 3).map((weight: WaterfallPreferenceWeight): string => weight.key.trim());
-}
+const WATERFALL_EXPLORATION_QUERIES: string[] = ['人工智能', '科技数码', '编程开发', '科学科普'];
+const WATERFALL_WESTERN_EXPLORATION_QUERIES: string[] = [
+  'tech news', 'artificial intelligence', 'programming', 'computer science'
+];
 
-function splitRecallWeight(total: number, count: number, index: number): number {
-  if (count <= 0) return 0;
-  const base = Math.floor(total / count);
-  return base + (index < total - base * count ? 1 : 0);
+function usesChineseDiscoveryQuery(source: string): boolean {
+  return source === 'zhihu' || source === 'bilibili';
 }
 
 export function planWaterfallInterestRecall(
-  profile: WaterfallPreferenceSnapshot,
-  recentPositiveCandidates: WaterfallRankedCandidate[],
+  _profile: WaterfallPreferenceSnapshot,
+  _recentPositiveCandidates: WaterfallRankedCandidate[],
   enabledSources: string[],
-  _round: number = 0
+  round: number = 0
 ): WaterfallInterestRecallRequest[] {
   const sources: string[] = [];
   enabledSources.forEach((source: string): void => {
     if (source.trim().length > 0 && sources.indexOf(source) < 0) sources.push(source);
   });
   if (sources.length === 0) return [];
-  const seedTopics: string[] = [];
-  recentPositiveCandidates.forEach((candidate: WaterfallRankedCandidate): void => {
-    (candidate.topics ?? []).forEach((topic: string): void => {
-      const clean = topic.trim();
-      if (clean.length > 0 && seedTopics.length < 3 && seedTopics.indexOf(clean) < 0) seedTopics.push(clean);
-    });
-  });
-  const profileTopics = uniquePositiveTopics(profile.topicWeights, seedTopics);
-  profile.explicitRules.forEach((rule: WaterfallExplicitPreference): void => {
-    if (rule.dimension === 'topic' && rule.effect === 'boost' && profileTopics.length < 3 &&
-      seedTopics.indexOf(rule.key) < 0 && profileTopics.indexOf(rule.key) < 0) profileTopics.push(rule.key);
-  });
-  const requests: WaterfallInterestRecallRequest[] = [];
-  const personalizedSources = sources.filter((source: string): boolean => source !== 'twitch');
-  const hasTwitch = sources.indexOf('twitch') >= 0;
-  const explorationParts = (personalizedSources.length > 0 ? 1 : 0) + (hasTwitch ? 1 : 0);
-  seedTopics.forEach((topic: string, index: number): void => {
-    if (personalizedSources.length > 0) requests.push({
-      route: 'similar', query: topic, sources: personalizedSources.slice(),
-      weight: splitRecallWeight(60, seedTopics.length, index)
-    });
-  });
-  profileTopics.forEach((topic: string, index: number): void => {
-    if (personalizedSources.length > 0) requests.push({
-      route: 'profile', query: topic, sources: personalizedSources.slice(),
-      weight: splitRecallWeight(30, profileTopics.length, index)
-    });
-  });
-  if (personalizedSources.length > 0) requests.push({
-    route: 'explore', query: 'AI 科技', sources: personalizedSources.slice(),
-    weight: splitRecallWeight(10, explorationParts, 0)
-  });
-  if (hasTwitch) requests.push({
-    // Empty query is intentional: the Twitch interest provider performs Helix category discovery.
-    route: 'explore', query: '', sources: ['twitch'],
-    weight: splitRecallWeight(10, explorationParts, personalizedSources.length > 0 ? 1 : 0)
-  });
-  const seenPairs: string[] = [];
-  return requests.filter((request: WaterfallInterestRecallRequest): boolean => {
-    request.sources = request.sources.filter((source: string): boolean => {
-      const key = request.route + '|' + request.query + '|' + source;
-      if (seenPairs.indexOf(key) >= 0) return false;
-      seenPairs.push(key);
-      return true;
-    });
-    return request.sources.length > 0;
+  const recallRound = Math.max(0, Math.floor(round));
+  const querySourceCount = sources.filter((source: string): boolean =>
+    source !== 'youtube' && source !== 'twitch').length;
+  let fallbackIndex = 0;
+  return sources.map((source: string): WaterfallInterestRecallRequest => {
+    if (source === 'youtube') {
+      return { route: 'popular', query: '', sources: [source], weight: 1, continuation: null };
+    }
+    if (source === 'twitch') {
+      return { route: 'explore', query: '', sources: [source], weight: 1, continuation: null };
+    }
+    // ponytail: ignore profile n-grams as search queries; they leak source names like 知乎
+    const pool = usesChineseDiscoveryQuery(source) ?
+      WATERFALL_EXPLORATION_QUERIES : WATERFALL_WESTERN_EXPLORATION_QUERIES;
+    const query = pool[(recallRound * Math.max(1, querySourceCount) + fallbackIndex++) % pool.length];
+    return { route: 'explore', query, sources: [source], weight: 1, continuation: null };
   });
 }
 
@@ -135,10 +100,18 @@ export interface WaterfallCandidate {
   queryStage?: WaterfallQueryStage;
   sourceRank?: number;
   providerScore?: number;
+  authorName?: string;
+  authorAvatarUrl?: string;
+  metrics?: WaterfallMetric[];
   topics?: string[];
   format?: WaterfallFormat;
   recallRoute?: WaterfallRecallRoute;
   recallWeight?: number;
+}
+
+export interface WaterfallMetric {
+  kind: string;
+  value: number;
 }
 
 export interface WaterfallRankSignals {
@@ -478,6 +451,9 @@ function toRankedCandidate(item: RankedCandidateInternal): WaterfallRankedCandid
     queryStage: item.candidate.queryStage,
     sourceRank: item.candidate.sourceRank,
     providerScore: item.candidate.providerScore,
+    authorName: item.candidate.authorName,
+    authorAvatarUrl: item.candidate.authorAvatarUrl,
+    metrics: item.candidate.metrics,
     topics: item.candidate.topics,
     format: item.candidate.format,
     recallRoute: item.candidate.recallRoute,
@@ -957,6 +933,63 @@ function filterEnabled(items: WaterfallRankedCandidate[], enabledSources: string
   return items.filter((item: WaterfallRankedCandidate): boolean => enabledSources.indexOf(item.source) >= 0);
 }
 
+function trailingSourceRun(items: WaterfallRankedCandidate[]): number {
+  if (items.length === 0) {
+    return 0;
+  }
+  const lastSource = items[items.length - 1].source;
+  let run = 1;
+  for (let index = items.length - 2; index >= 0; index -= 1) {
+    if (items[index].source !== lastSource) {
+      break;
+    }
+    run += 1;
+  }
+  return run;
+}
+
+function limitConsecutiveSources(
+  items: WaterfallRankedCandidate[],
+  maxRun: number,
+  prefix: WaterfallRankedCandidate[]
+): WaterfallRankedCandidate[] {
+  let lastSource = prefix.length > 0 ? prefix[prefix.length - 1].source : '';
+  let run = trailingSourceRun(prefix);
+  const remaining = items.slice();
+  const ordered: WaterfallRankedCandidate[] = [];
+  while (remaining.length > 0) {
+    let pick = 0;
+    if (run >= maxRun && lastSource.length > 0) {
+      for (let index = 0; index < remaining.length; index += 1) {
+        if (remaining[index].source !== lastSource) {
+          pick = index;
+          break;
+        }
+      }
+    }
+    const item = remaining.splice(pick, 1)[0];
+    if (item.source === lastSource) {
+      run += 1;
+    } else {
+      lastSource = item.source;
+      run = 1;
+    }
+    ordered.push(item);
+  }
+  return ordered;
+}
+
+function frozenPrefix(state: WaterfallFeedState): WaterfallRankedCandidate[] {
+  const prefix: WaterfallRankedCandidate[] = [];
+  if (state.current !== null) {
+    prefix.push(state.current);
+  }
+  state.stable.forEach((item: WaterfallRankedCandidate): void => {
+    prefix.push(item);
+  });
+  return prefix;
+}
+
 function rankUnshownCandidates(
   state: WaterfallFeedState,
   candidates: WaterfallCandidate[],
@@ -1169,11 +1202,8 @@ function planWaterfallLoads(state: WaterfallFeedState): WaterfallLoadPlan {
     }
     return { requests: requests, expansion: expansionRequest(state) };
   }
-  if (activeInventoryCount(state) > WATERFALL_LOW_WATERMARK) {
-    return { requests: requests };
-  }
   promoteReserveToTarget(state);
-  if (activeInventoryCount(state) >= WATERFALL_TARGET_INVENTORY) {
+  if (activeInventoryCount(state) > WATERFALL_LOW_WATERMARK) {
     return { requests: requests };
   }
   if (state.sources.some((source: WaterfallSourceState): boolean =>
@@ -1281,6 +1311,9 @@ function rankedToCandidates(items: WaterfallRankedCandidate[]): WaterfallCandida
     queryStage: item.queryStage,
     sourceRank: item.sourceRank,
     providerScore: item.providerScore,
+    authorName: item.authorName,
+    authorAvatarUrl: item.authorAvatarUrl,
+    metrics: item.metrics,
     topics: item.topics,
     format: item.format,
     recallRoute: item.recallRoute,
@@ -1295,12 +1328,16 @@ export function applyWaterfallProfile(
 ): WaterfallFeedUpdate {
   const next = copyState(state);
   next.profile = profile;
-  next.tail = rankUnshownCandidates(
-    next,
-    rankedToCandidates(next.tail).concat(rankedToCandidates(next.reserve ?? [])),
-    fixedDisplayIds(next),
-    idsOf(next.stable),
-    nowMs
+  next.tail = limitConsecutiveSources(
+    rankUnshownCandidates(
+      next,
+      rankedToCandidates(next.tail).concat(rankedToCandidates(next.reserve ?? [])),
+      fixedDisplayIds(next),
+      idsOf(next.stable),
+      nowMs
+    ),
+    WATERFALL_STABLE_LIMIT,
+    frozenPrefix(next)
   );
   next.reserve = [];
   trimWaterfallInventory(next);
@@ -1332,6 +1369,9 @@ function deferredRankedCandidate(candidate: WaterfallCandidate): WaterfallRanked
     queryStage: candidate.queryStage,
     sourceRank: candidate.sourceRank,
     providerScore: candidate.providerScore,
+    authorName: candidate.authorName,
+    authorAvatarUrl: candidate.authorAvatarUrl,
+    metrics: candidate.metrics,
     topics: candidate.topics,
     format: candidate.format,
     recallRoute: candidate.recallRoute,
@@ -1552,7 +1592,12 @@ function sortTail(state: WaterfallFeedState, incoming: WaterfallCandidate[], now
     .concat(rankedToCandidates(state.tail))
     .concat(rankedToCandidates(state.reserve ?? []))
     .concat(filteredIncoming);
-  return rankUnshownCandidates(state, candidates, fixedIds, idsOf(state.stable), nowMs);
+  // ponytail: cap same-source runs at the frozen window; full MMR source-sim if this over-mixes.
+  return limitConsecutiveSources(
+    rankUnshownCandidates(state, candidates, fixedIds, idsOf(state.stable), nowMs),
+    WATERFALL_STABLE_LIMIT,
+    frozenPrefix(state)
+  );
 }
 
 function placeInitialBatch(state: WaterfallFeedState, incoming: WaterfallCandidate[], nowMs: number): void {
@@ -1590,13 +1635,7 @@ function mergeWaterfallBatchState(
   received.inFlight = false;
   received.reservedCount = 0;
   replaceSource(next.sources, received);
-  const waitingForInitialInterestPeers = (next.mode ?? 'search') === 'interest' && next.current === null &&
-    next.sources.some((source: WaterfallSourceState): boolean =>
-      next.enabledSources.indexOf(source.source) >= 0 && (source.inFlight || source.phase === 'loading'));
-  if (waitingForInitialInterestPeers) {
-    next.tail = sortTail(next, incoming, nowMs);
-    trimWaterfallInventory(next);
-  } else if (next.current === null) {
+  if (next.current === null) {
     placeInitialBatch(next, incoming, nowMs);
   } else {
     // ponytail: small feed snapshots use a linear scan; add indexed URLs only if the pool grows materially.
@@ -1725,29 +1764,39 @@ export function mergeWaterfallFeedSnapshot(
 
 export function advanceWaterfallFeed(
   state: WaterfallFeedState,
-  nowMs: number
+  nowMs: number,
+  targetId: string = ''
 ): WaterfallFeedUpdate {
   const next = copyState(state);
-  if (next.current !== null) {
+  const target = targetId.trim();
+  let steps = 0;
+  const maxSteps = totalCandidateCount(next);
+  while (next.current !== null && steps < maxSteps) {
+    if (target.length === 0) {
+      next.shown.push(next.current);
+      next.current = null;
+      refreshCurrentAndStable(next);
+      break;
+    }
+    if (next.current.id === target) {
+      break;
+    }
+    const remaining: WaterfallRankedCandidate[] = next.stable.concat(next.tail).concat(next.reserve ?? []);
+    let found = false;
+    for (let index = 0; index < remaining.length; index += 1) {
+      if (remaining[index].id === target) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      break;
+    }
     next.shown.push(next.current);
-  }
-  next.current = null;
-  if ((next.mode ?? 'search') === 'interest') {
-    const remaining = next.stable.concat(next.tail, next.reserve ?? []);
-    const rankingWindow = remaining.slice(0, WATERFALL_TARGET_INVENTORY);
-    next.stable = [];
-    next.tail = rankUnshownCandidates(
-      next,
-      rankedToCandidates(rankingWindow),
-      idsOf(next.shown),
-      [],
-      nowMs
-    );
-    next.reserve = remaining.slice(rankingWindow.length);
+    next.current = null;
     refreshCurrentAndStable(next);
-    return finalizeUpdate(next);
+    steps += 1;
   }
-  refreshCurrentAndStable(next);
   return finalizeUpdate(next);
 }
 

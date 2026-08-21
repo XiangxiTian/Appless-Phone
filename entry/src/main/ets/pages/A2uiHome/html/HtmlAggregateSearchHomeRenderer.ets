@@ -82,6 +82,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", Arial, sans-serif;
   letter-spacing: 0;
 }
+body.waterfall-direct { background: transparent; }
 h1, h2, h3, p { margin: 0; }
 .aggregate-shell {
   width: min(100%, 980px);
@@ -842,9 +843,13 @@ const WATERFALL_CSS: string = `
 @keyframes waterfall-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 .waterfall-track {
   height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: none;
-  scroll-snap-type: y mandatory; scroll-padding-block: 18px; scrollbar-width: none;
-  background: #eef0f2; padding: 18px 0 44px; touch-action: pan-y;
+  scroll-snap-type: y mandatory; scrollbar-width: none; background: #eef0f2; touch-action: pan-y;
+  padding: calc(64px + env(safe-area-inset-top) + 12px) 0 calc(96px + env(safe-area-inset-bottom));
+  scroll-padding-top: calc(64px + env(safe-area-inset-top) + 12px);
+  scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
 }
+body.waterfall-direct .waterfall-overlay,
+body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-track::-webkit-scrollbar { display: none; }
 .waterfall-card {
   position: relative; width: min(100%, 720px); height: auto; min-height: 0; margin: 0 auto 28px;
@@ -855,9 +860,10 @@ const WATERFALL_CSS: string = `
 }
 .waterfall-card.is-adjacent { opacity: 0.42; transform: translate3d(0, 0, 0) scale(0.975); }
 .waterfall-card.is-active,
-.waterfall-card--video-fullscreen { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+.waterfall-card--video-fullscreen,
+.waterfall-card.is-playing { opacity: 1; transform: none; }
 .waterfall-cinema-stage {
-  position: absolute; top: max(88px, calc(62px + env(safe-area-inset-top))); left: 14px; right: 14px;
+  position: relative; top: auto; left: auto; right: auto;
   height: min(48dvh, 420px); overflow: hidden; border: 1px solid var(--line); border-radius: 22px;
   background: linear-gradient(145deg, #e8edf2, #f4f6f8); box-shadow: 0 12px 32px rgba(39, 50, 62, 0.1);
 }
@@ -914,7 +920,7 @@ const WATERFALL_CSS: string = `
   display: none;
 }
 .waterfall-card--video.waterfall-card--portrait .waterfall-cinema-stage {
-  left: max(28px, 7vw); right: max(28px, 7vw); height: min(62dvh, 560px);
+  left: auto; right: auto; height: min(62dvh, 560px);
 }
 .waterfall-card--video.waterfall-card--portrait .waterfall-media-cover { object-position: center; }
 .waterfall-video-fullscreen-toggle {
@@ -941,19 +947,22 @@ const WATERFALL_CSS: string = `
   margin-bottom: 18px;
   color: #303841; font-size: 12px; font-weight: 740;
 }
+.waterfall-author { display: inline-flex; min-width: 0; align-items: center; gap: 7px; color: var(--card-muted, var(--muted)); }
+.waterfall-author::before { content: ''; width: 1px; height: 14px; margin: 0 2px; background: var(--card-line, var(--line)); }
+.waterfall-author-avatar { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 999px; object-fit: cover; }
+.waterfall-author-name { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .waterfall-cinema-copy {
-  position: absolute; z-index: 4; top: min(52dvh, 468px); left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom));
+  position: relative; z-index: 4; top: auto; left: auto; right: auto; bottom: auto;
   display: flex; min-height: 0; flex-direction: column; overflow: hidden; padding: 18px;
-  border: 1px solid var(--line); border-radius: 22px; background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 12px 32px rgba(39, 50, 62, 0.08);
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
 }
-.waterfall-card--video.waterfall-card--landscape .waterfall-cinema-copy { top: min(calc(42dvh + 106px), 466px); }
+.waterfall-card--video.waterfall-card--landscape .waterfall-cinema-copy { top: auto; }
 .waterfall-card--video.waterfall-card--portrait .waterfall-cinema-copy {
-  top: auto; max-height: min(42dvh, 390px); backdrop-filter: blur(18px);
+  top: auto; max-height: min(42dvh, 390px); backdrop-filter: none;
 }
-.waterfall-card--image-text .waterfall-cinema-copy { top: min(55dvh, 488px); }
+.waterfall-card--image-text .waterfall-cinema-copy { top: auto; }
 .waterfall-card--text .waterfall-cinema-copy {
-  top: max(96px, calc(72px + env(safe-area-inset-top))); bottom: calc(14px + env(safe-area-inset-bottom)); max-height: none;
+  top: auto; bottom: auto; max-height: none;
   display: flex; flex-direction: column; justify-content: flex-start;
 }
 .waterfall-cinema-card h2 {
@@ -986,6 +995,11 @@ const WATERFALL_CSS: string = `
 .waterfall-cinema-card a { border-color: var(--line-strong); background: var(--panel); color: #2f4e6f; }
 .waterfall-recommendation { min-width: 0; max-width: 26ch; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .waterfall-meta { margin-top: 7px; color: #747f8a; font-size: 12px; line-height: 1.35; }
+.waterfall-signal-rail { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; margin-top: 14px; }
+.waterfall-signal { display: inline-flex; min-width: 0; align-items: center; gap: 6px; color: var(--card-muted, var(--muted)); font-size: 12px; }
+.waterfall-signal .waterfall-icon { width: 16px; height: 16px; color: var(--card-accent, var(--accent)); }
+.waterfall-signal .waterfall-icon svg { width: 15px; height: 15px; }
+.waterfall-signal b { overflow: hidden; font-variant-numeric: tabular-nums; font-weight: 720; text-overflow: ellipsis; }
 .waterfall-reader {
   position: fixed; z-index: 8; inset: 0; display: block; overflow: hidden;
   background: #eef0f2; color: var(--ink); pointer-events: none; visibility: hidden;
@@ -995,11 +1009,13 @@ const WATERFALL_CSS: string = `
 }
 .waterfall-reader.active {
   pointer-events: auto; visibility: visible; opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1); transition-delay: 0s;
+  transform: none; transition-delay: 0s;
 }
 .waterfall-reader.active.closing {
   pointer-events: auto; opacity: 0; transform: translate3d(0, 5px, 0) scale(0.99);
 }
+.waterfall-reader.is-playing,
+.waterfall-reader.active.is-playing { transform: none; }
 .waterfall-reader-body {
   height: 100dvh; overflow-y: auto; padding: calc(72px + env(safe-area-inset-top)) 24px calc(40px + env(safe-area-inset-bottom));
   overscroll-behavior-y: contain; opacity: 1; transition: none;
@@ -1033,8 +1049,10 @@ const WATERFALL_CSS: string = `
   position: fixed; z-index: 6; top: 0; left: 0; right: 0;
   min-height: calc(64px + env(safe-area-inset-top));
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  padding: env(safe-area-inset-top) 12px 0; background: #eef0f2;
-  border-bottom: 1px solid rgba(56, 65, 72, 0.09);
+  padding: env(safe-area-inset-top) 12px 0;
+  background: linear-gradient(180deg, rgba(245, 242, 238, 0.94) 0%, rgba(245, 242, 238, 0.55) 62%,
+    rgba(245, 242, 238, 0) 100%);
+  border-bottom: 0;
   pointer-events: auto;
 }
 .waterfall-toolbar button, .waterfall-preferences button {
@@ -1093,13 +1111,15 @@ const WATERFALL_CSS: string = `
 .waterfall-preferences {
   position: fixed; z-index: 32; inset: auto 14px calc(14px + env(safe-area-inset-bottom)) 14px;
   display: block; max-height: min(72dvh, 560px); overflow-y: auto; padding: 14px;
-  border: 1px solid rgba(38, 49, 60, 0.10); border-radius: 22px; background: #f9fafb;
-  box-shadow: 0 18px 48px rgba(39, 50, 62, 0.16); pointer-events: none; transform: none;
+  border: 1px solid rgba(153, 95, 76, 0.14); border-radius: 22px; background: #f8f5f0;
+  box-shadow: 0 18px 48px rgba(125, 75, 59, 0.16); pointer-events: none;
+  transform: translate3d(0, 24px, 0);
   visibility: hidden; opacity: 0;
-  transition: opacity 140ms var(--ease-out), visibility 0s linear 140ms;
+  transition: opacity 180ms var(--ease-out), transform 220ms var(--ease-drawer), visibility 0s linear 180ms;
 }
 .waterfall-preferences.active {
-  pointer-events: auto; visibility: visible; opacity: 1; transition-delay: 0s;
+  pointer-events: auto; visibility: visible; opacity: 1; transform: translate3d(0, 0, 0);
+  transition-delay: 0s;
 }
 .waterfall-preferences:not(.active),
 .waterfall-preferences:not(.active) * {
@@ -1119,12 +1139,15 @@ const WATERFALL_CSS: string = `
   background: #fff; color: #20262c; padding: 10px; font-size: 14px;
   transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), border-color 180ms ease-out;
 }
-.waterfall-preferences label:has(input:checked) { border-color: rgba(47, 78, 111, 0.22); background: #f0f4f7; }
+.waterfall-preferences label:has(input:checked) {
+  border-color: rgba(153, 95, 76, 0.28); background: var(--accent-soft);
+}
 .waterfall-source-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 720; }
 .waterfall-preferences input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .waterfall-empty {
   min-height: calc(100dvh - 150px); display: grid; place-items: center; align-content: center; gap: 14px;
-  color: var(--muted); font-size: 16px; line-height: 1.5; padding: 20px; text-align: center;
+  color: var(--muted); font-size: 16px; line-height: 1.5;
+  padding: calc(72px + env(safe-area-inset-top)) 20px 20px; text-align: center;
 }
 .waterfall-empty button, .waterfall-status button {
   min-height: 48px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel);
@@ -1173,7 +1196,8 @@ const WATERFALL_CSS: string = `
 }
 .waterfall-card-shell {
   position: relative; top: auto; right: auto; bottom: auto; left: auto;
-  display: flex; height: auto; min-height: 0; flex-direction: column; overflow: hidden; margin: 0 14px; padding: 12px;
+  display: flex; height: auto; min-height: 0; flex-direction: column; overflow: hidden;
+  margin: 0 14px; padding: 12px;
   border: 1px solid rgba(56, 65, 72, 0.07); border-radius: 24px;
   background: #fbfcfd;
   color: var(--card-ink);
@@ -1256,8 +1280,9 @@ const WATERFALL_CSS: string = `
 }
 .waterfall-source-action {
   display: inline-grid; width: 44px !important; min-width: 44px; min-height: 44px;
-  place-items: center; border: 0 !important; border-radius: 999px !important;
-  background: rgba(255,255,255,0.46) !important; color: var(--card-accent) !important;
+  place-items: center; border: 1px solid rgba(153, 95, 76, 0.16) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.88) !important; color: var(--accent) !important;
   padding: 0 !important; text-decoration: none; cursor: pointer;
   transition: transform 140ms var(--ease-out), background-color 180ms ease;
 }
@@ -1294,8 +1319,10 @@ const WATERFALL_CSS: string = `
 .waterfall-toolbar {
   top: 0; left: 0; right: 0; min-height: calc(64px + env(safe-area-inset-top));
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  padding: env(safe-area-inset-top) 12px 0; background: #eef0f2;
-  border-bottom: 1px solid rgba(56, 65, 72, 0.09);
+  padding: env(safe-area-inset-top) 12px 0;
+  background: linear-gradient(180deg, rgba(245, 242, 238, 0.94) 0%, rgba(245, 242, 238, 0.55) 62%,
+    rgba(245, 242, 238, 0) 100%);
+  border-bottom: 0;
   opacity: 1; transform: none; visibility: visible; pointer-events: auto;
 }
 .waterfall-toolbar button,
@@ -1318,18 +1345,28 @@ const WATERFALL_CSS: string = `
   border: 0 !important; background: transparent !important;
 }
 .waterfall-toolbar-tools { justify-self: end; }
-.waterfall-toolbar button:active { background: #dde3e8; transform: scale(0.97); }
-.waterfall-toolbar .waterfall-toolbar-secondary:active { background: #dde3e8 !important; }
-.waterfall-track { padding-top: calc(76px + env(safe-area-inset-top)); }
+.waterfall-toolbar button:active { background: var(--accent-soft); transform: scale(0.97); }
+.waterfall-toolbar .waterfall-toolbar-secondary:active { background: var(--accent-soft) !important; }
+.waterfall-edge-fade {
+  position: fixed; z-index: 5; left: 0; right: 0; pointer-events: none;
+}
+.waterfall-edge-fade--top {
+  top: 0; height: calc(72px + env(safe-area-inset-top));
+  background: linear-gradient(180deg, rgba(245, 242, 238, 0.78) 0%, rgba(245, 242, 238, 0) 100%);
+}
+.waterfall-edge-fade--bottom {
+  bottom: 0; height: 18vh;
+  background: linear-gradient(0deg, rgba(245, 242, 238, 0.78) 0%, rgba(245, 242, 238, 0) 100%);
+}
 .waterfall-preferences .waterfall-toolbar {
   min-height: 44px; background: transparent; border-bottom: 0;
   opacity: 1; transform: none; visibility: visible; transition: none;
 }
-.waterfall-reader { background: #eef0f2; }
+.waterfall-reader { background: var(--paper); }
 .waterfall-reader-head {
   z-index: 10; top: 0; left: 0; right: 0; min-height: calc(64px + env(safe-area-inset-top));
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  padding: env(safe-area-inset-top) 12px 0; background: #eef0f2;
+  padding: env(safe-area-inset-top) 12px 0; background: var(--paper);
   border-bottom: 1px solid rgba(56, 65, 72, 0.09);
   opacity: 1; transform: none; visibility: visible;
   transition: opacity 120ms var(--ease-out), transform 140ms var(--ease-out);
@@ -1352,7 +1389,7 @@ const WATERFALL_CSS: string = `
 .waterfall-reader-head a.is-pressed,
 .waterfall-toolbar button.is-pressed,
 .waterfall-preferences button.is-pressed {
-  background: #dde3e8 !important; transform: scale(0.97);
+  background: var(--accent-soft) !important; transform: scale(0.97);
 }
 .waterfall-reader-body { padding: calc(82px + env(safe-area-inset-top)) 22px calc(48px + env(safe-area-inset-bottom)); }
 .waterfall-reader-layout { width: min(100%, 640px); margin: 0 auto; }
@@ -1392,14 +1429,18 @@ const WATERFALL_CSS: string = `
 .waterfall-reader-video-frame .waterfall-media-frame { position: absolute; inset: 0; }
 .waterfall-reader-video-play {
   position: absolute; z-index: 3; inset: 0; display: grid; place-content: center; justify-items: center; gap: 9px;
-  border: 0; background: linear-gradient(180deg, rgba(20,20,18,0.02), rgba(20,20,18,0.20)); color: #fff;
-  font-size: 13px; font-weight: 760; cursor: pointer;
+  border: 0; background: transparent; color: rgba(255, 255, 255, 0.94);
+  font-size: 13px; font-weight: 760; cursor: pointer; pointer-events: auto;
 }
 .waterfall-reader-video-play .waterfall-icon {
-  width: 54px; height: 54px; border-radius: 999px; background: rgba(20,20,18,0.72);
-  box-shadow: 0 10px 28px rgba(20,20,18,0.24); backdrop-filter: blur(14px);
+  width: 44px; height: 44px; border: 1px solid rgba(255, 255, 255, 0.34); border-radius: 999px;
+  background: rgba(24, 28, 32, 0.52); box-shadow: 0 8px 20px rgba(20, 24, 28, 0.16);
+  backdrop-filter: blur(8px); transition: transform 140ms var(--ease-out), background-color 140ms ease;
 }
-.waterfall-reader-video-play .waterfall-icon svg { width: 24px; height: 24px; }
+.waterfall-reader-video-play .waterfall-icon svg { width: 20px; height: 20px; }
+.waterfall-reader-video-play span { display: none; }
+.waterfall-reader-video-play:active .waterfall-icon { transform: scale(0.95); background: rgba(24, 28, 32, 0.64); }
+.waterfall-reader-video-play:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
 .waterfall-reader-video-stage.is-playing .waterfall-reader-video-frame { opacity: 1; pointer-events: auto; }
 .waterfall-reader-video-stage.is-playing .waterfall-reader-video-poster,
 .waterfall-reader-video-stage.is-playing .waterfall-media-cover,
@@ -1408,10 +1449,28 @@ const WATERFALL_CSS: string = `
 .waterfall-reader--video h2 { max-width: 18ch; margin: 0 0 12px; font-size: clamp(27px, 7vw, 38px); line-height: 1.12; }
 .waterfall-reader--video p { font-size: 15px; line-height: 1.68; }
 .waterfall-reader-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); }
-.waterfall-reader-source { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); text-transform: none; letter-spacing: 0; }
+.waterfall-reader-source { display: inline-flex; min-width: 0; align-items: center; gap: 8px; color: var(--accent); text-transform: none; letter-spacing: 0; }
+.waterfall-reader-source .waterfall-author { color: var(--muted); font-weight: 650; }
+.waterfall-reader-source .waterfall-author-name { max-width: none; overflow: visible; text-overflow: clip; white-space: normal; }
+.waterfall-reader-context > span:last-child { flex: 0 0 auto; }
+.waterfall-reader-signals {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px;
+  margin: -4px 0 16px; border-top: 1px solid var(--line); padding-top: 14px;
+}
+.waterfall-reader-signal {
+  display: grid; min-width: 0; grid-template-columns: 14px minmax(0, 1fr); align-items: center; gap: 2px 4px;
+  color: var(--muted); font-size: 11px;
+}
+.waterfall-reader-signal .waterfall-icon { width: 14px; height: 14px; color: var(--accent); }
+.waterfall-reader-signal .waterfall-icon svg { width: 14px; height: 14px; }
+.waterfall-reader-signal b { grid-column: 2; grid-row: 1; overflow-wrap: anywhere; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 760; }
+.waterfall-reader-signal-label { grid-column: 1 / -1; font-size: 10px; font-weight: 650; white-space: nowrap; }
 .waterfall-reader h2 { max-width: 14ch; margin: 16px 0 20px; font-size: clamp(34px, 8.8vw, 50px); line-height: 1.08; }
 .waterfall-reader p { color: #423d38; font-size: 17px; line-height: 1.82; }
 .waterfall-reader--text h2 { max-width: 12ch; }
+@media (max-width: 360px) {
+  .waterfall-reader-signals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (hover: hover) and (pointer: fine) {
   .waterfall-entry button:hover, .waterfall-toolbar button:hover, .waterfall-preferences label:hover {
     transform: translateY(-1px);
@@ -1473,6 +1532,21 @@ const WATERFALL_CSS: string = `
 
 const WATERFALL_JS: string = `
 (function () {
+  function disableArkWebDomTree(scanner) {
+    if (!scanner) return;
+    scanner.addDomTreeReportedAsync = function () {};
+    if (typeof scanner.removeDomTreeReported === 'function') scanner.removeDomTreeReported();
+  }
+  var arkWebDomTree = window.__arkWebDomTree;
+  if (arkWebDomTree) {
+    disableArkWebDomTree(arkWebDomTree);
+  } else {
+    Object.defineProperty(window, '__arkWebDomTree', {
+      configurable: true,
+      get: function () { return arkWebDomTree; },
+      set: function (scanner) { arkWebDomTree = scanner; disableArkWebDomTree(scanner); }
+    });
+  }
   var overlay = document.getElementById('waterfall-discovery');
   var track = document.getElementById('waterfall-track');
   var preferences = document.getElementById('waterfall-preferences');
@@ -1513,10 +1587,11 @@ const WATERFALL_JS: string = `
   var readerCandidateId = '';
   var readerMountedId = '';
   var readerFeedScrollTop = 0;
+  var readerReturnScrolled = false;
+  var preferencesFeedScrollTop = 0;
   var readerStartedAt = 0;
   var readerDurationMs = 0;
   var pageAnchorIndex = -1;
-  var pagingClamp = false;
   var ignoreNextFeedOpen = false;
   var emittedBehavior = {};
   var pendingPayload = null;
@@ -1579,6 +1654,64 @@ const WATERFALL_JS: string = `
     var icons = window.__aiphoneWaterfallUiIcons || {};
     return text(icons[name]);
   }
+  function metricLabel(source, kind) {
+    if (kind === 'view') return source === 'x' ? '浏览' : '播放';
+    if (kind === 'like') return '点赞';
+    if (kind === 'favorite') return '收藏';
+    if (kind === 'comment') return source === 'x' ? '回复' : '评论';
+    if (kind === 'score') return '热度';
+    if (kind === 'repost') return '转发';
+    if (kind === 'quote') return '引用';
+    if (kind === 'coin') return '投币';
+    if (kind === 'danmaku') return '弹幕';
+    if (kind === 'share') return '分享';
+    return '';
+  }
+  function metricIcon(source, kind) {
+    if (kind === 'view') return source === 'x' ? 'eye' : 'play';
+    if (kind === 'like') return source === 'youtube' || source === 'zhihu' ? 'thumbsUp' : 'heart';
+    if (kind === 'favorite') return 'star';
+    if (kind === 'comment') return 'comment';
+    return kind === 'score' ? 'upvote' : kind;
+  }
+  function fullMetricValue(value) {
+    return Math.round(value).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');
+  }
+  function compactMetricValue(value, keepOneDecimal) {
+    if (value < 10000) return Math.round(value).toString();
+    var compact = Math.round(value / 1000) / 10;
+    return compact.toFixed(keepOneDecimal || compact % 1 !== 0 ? 1 : 0) + '万';
+  }
+  function authorMarkup(item) {
+    var name = text(item.authorName).trim();
+    var avatar = text(item.authorAvatarUrl).trim();
+    if (!name && !avatar) return '';
+    return '<span class="waterfall-author">' +
+      (avatar ? '<img class="waterfall-author-avatar" src="' + escapeHtml(avatar) +
+        '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" />' : '') +
+      (name ? '<span class="waterfall-author-name">' + escapeHtml(name) + '</span>' : '') + '</span>';
+  }
+  function metricsMarkup(item, detail) {
+    var metrics = Array.isArray(item.metrics) ? item.metrics.filter(function (metric) {
+      return metric && metricLabel(item.source, text(metric.kind)) && isFinite(Number(metric.value)) && Number(metric.value) >= 0;
+    }) : [];
+    if (!metrics.length) return '';
+    var visible = detail ? metrics : metrics.slice(0, 4);
+    var content = visible.map(function (metric) {
+      var kind = text(metric.kind);
+      var value = Number(metric.value);
+      var label = metricLabel(item.source, kind);
+      if (detail) {
+        return '<span class="waterfall-reader-signal" data-waterfall-metric="' + escapeHtml(kind) + '">' +
+          uiIcon(metricIcon(item.source, kind)) + '<span class="waterfall-reader-signal-label">' +
+          escapeHtml(label) + '</span><b>' + escapeHtml(compactMetricValue(value, true)) + '</b></span>';
+      }
+      return '<span class="waterfall-signal" data-waterfall-metric="' + escapeHtml(kind) + '" aria-label="' +
+        escapeHtml(label + ' ' + fullMetricValue(value)) + '">' + uiIcon(metricIcon(item.source, kind)) +
+        '<b>' + escapeHtml(compactMetricValue(value)) + '</b></span>';
+    }).join('');
+    return '<div class="' + (detail ? 'waterfall-reader-signals' : 'waterfall-signal-rail') + '">' + content + '</div>';
+  }
   function videoEmbedForUrl(value) {
     var raw = text(value).trim();
     if (!raw) return '';
@@ -1625,22 +1758,43 @@ const WATERFALL_JS: string = `
     return url.indexOf('autoplay=0') >= 0 ? url.replace('autoplay=0', 'autoplay=1') :
       url + (url.indexOf('?') >= 0 ? '&' : '?') + 'autoplay=1';
   }
+  function mountPlayback(frame, kind, url) {
+    if (kind === 'iframe') {
+      var iframe = document.createElement('iframe');
+      iframe.className = 'waterfall-media-frame';
+      iframe.title = '视频播放';
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.setAttribute('allow',
+        'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+      iframe.setAttribute('referrerpolicy', 'origin-when-cross-origin');
+      iframe.src = autoplayVideoUrl(url);
+      frame.appendChild(iframe);
+      return;
+    }
+    var video = document.createElement('video');
+    video.className = 'waterfall-media-frame';
+    video.setAttribute('controls', '');
+    video.setAttribute('autoplay', '');
+    video.setAttribute('playsinline', '');
+    video.src = url;
+    frame.appendChild(video);
+  }
   function playVideo(control) {
-    var stage = control && typeof control.closest === 'function' ? control.closest('.waterfall-reader-video-stage') : null;
-    if (!stage || typeof stage.getAttribute !== 'function' || typeof stage.querySelector !== 'function') return;
+    var stage = control && typeof control.closest === 'function' ?
+      control.closest('.waterfall-reader-video-stage') : null;
+    if (!stage || typeof stage.getAttribute !== 'function' ||
+      typeof stage.querySelector !== 'function') return;
     var frame = stage.querySelector('.waterfall-reader-video-frame');
     var kind = text(stage.getAttribute('data-waterfall-video-kind'));
     var url = text(stage.getAttribute('data-waterfall-video-url'));
     if (!frame || !url) return;
-    if (!frame.innerHTML) {
-      frame.innerHTML = kind === 'iframe' ? '<iframe class="waterfall-media-frame" src="' +
-        escapeHtml(autoplayVideoUrl(url)) + '" title="视频播放" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" ' +
-        'allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>' :
-        '<video class="waterfall-media-frame" src="' + escapeHtml(url) + '" controls autoplay playsinline></video>';
-    }
+    if (!frame.firstChild) mountPlayback(frame, kind, url);
     stage.classList.add('is-playing');
+    var hostCard = typeof stage.closest === 'function' ? stage.closest('.waterfall-card') : null;
+    if (hostCard) hostCard.classList.add('is-playing');
     var videoCard = control.closest('.waterfall-reader-video-card');
     if (videoCard) videoCard.classList.add('is-playing');
+    if (reader && reader.contains(stage)) reader.classList.add('is-playing');
     var player = frame.querySelector('video');
     if (player && typeof player.play === 'function') player.play();
   }
@@ -1698,16 +1852,19 @@ const WATERFALL_JS: string = `
         pressed = null;
         return;
       }
-      if (Math.abs(touch.clientX - tapX) > 12 || Math.abs(touch.clientY - tapY) > 12) {
+      if (Math.abs(touch.clientX - tapX) > 24 || Math.abs(touch.clientY - tapY) > 24) {
         setPressed(pressed, false);
         pressed = null;
         return;
       }
-      if (handler(event)) {
+      var result = handler(event);
+      if (result) {
         handled = true;
         setPressed(pressed, false);
         pressed = null;
-        if (event.cancelable && typeof event.preventDefault === 'function') event.preventDefault();
+        if (result !== 'media' && event.cancelable && typeof event.preventDefault === 'function') {
+          event.preventDefault();
+        }
         return;
       }
       setPressed(pressed, false);
@@ -1921,27 +2078,9 @@ const WATERFALL_JS: string = `
     });
   }
   function renderedOrderCandidates(payload) {
-    var items = candidates(payload).filter(function (item) {
+    return candidates(payload).filter(function (item) {
       return enabledSources.indexOf(item.source) >= 0;
     });
-    if (renderedCards.length === 0) return items;
-    var indexed = {};
-    items.forEach(function (item) { indexed['$' + text(item.id)] = item; });
-    var ordered = [];
-    var included = {};
-    renderedCards.forEach(function (rendered) {
-      var key = '$' + rendered.id;
-      if (!indexed[key]) return;
-      ordered.push(indexed[key]);
-      included[key] = true;
-    });
-    items.forEach(function (item) {
-      var key = '$' + text(item.id);
-      if (included[key]) return;
-      ordered.push(item);
-      included[key] = true;
-    });
-    return ordered;
   }
   function candidateById(id) {
     return candidates(state).find(function (item) { return text(item.id) === text(id); }) || null;
@@ -1974,12 +2113,22 @@ const WATERFALL_JS: string = `
     shell.innerHTML = aggregateHtml;
     if (window.__aiphoneRefreshAggregateSearch) window.__aiphoneRefreshAggregateSearch();
   }
+  function stopStageMedia(root) {
+    if (!root || typeof root.querySelectorAll !== 'function') return;
+    var stages = root.querySelectorAll('.waterfall-reader-video-stage.is-playing');
+    for (var index = 0; index < stages.length; index += 1) {
+      var frame = stages[index].querySelector('.waterfall-reader-video-frame');
+      if (frame) frame.innerHTML = '';
+      stages[index].classList.remove('is-playing');
+    }
+    var playing = root.querySelectorAll('.is-playing');
+    for (index = 0; index < playing.length; index += 1) {
+      playing[index].classList.remove('is-playing');
+    }
+  }
   function stopReaderMedia() {
-    if (!reader || typeof reader.querySelector !== 'function') return;
-    var frame = reader.querySelector('.waterfall-reader-video-frame');
-    if (frame) frame.innerHTML = '';
-    var playing = reader.querySelector('.is-playing');
-    if (playing && playing.classList) playing.classList.remove('is-playing');
+    stopStageMedia(reader);
+    if (reader && reader.classList) reader.classList.remove('is-playing');
   }
   function visibleCardIndex() {
     if (!track) return 0;
@@ -1994,28 +2143,22 @@ const WATERFALL_JS: string = `
         bestIndex = index;
       }
     }
-    if (presentedIndex >= 0 && presentedIndex < cardMetrics.length) {
-      if (Math.abs(bestIndex - presentedIndex) > 1) {
-        bestIndex = bestIndex > presentedIndex ? presentedIndex + 1 : presentedIndex - 1;
-      }
-      var currentTop = cardMetrics[presentedIndex].snapTop;
-      var next = cardMetrics[presentedIndex + 1];
-      var previous = cardMetrics[presentedIndex - 1];
-      if (next && track.scrollTop >= currentTop + (next.snapTop - currentTop) * 0.32) {
-        bestIndex = presentedIndex + 1;
-      } else if (previous && track.scrollTop <= previous.snapTop + (currentTop - previous.snapTop) * 0.32) {
-        bestIndex = presentedIndex - 1;
-      } else {
-        bestIndex = presentedIndex;
-      }
-    }
-    if (pageAnchorIndex >= 0) {
-      var lo = Math.max(0, pageAnchorIndex - 1);
-      var hi = Math.min(cardMetrics.length - 1, pageAnchorIndex + 1);
-      if (bestIndex < lo) bestIndex = lo;
-      if (bestIndex > hi) bestIndex = hi;
-    }
     return bestIndex;
+  }
+  function snapPadding() {
+    if (!track || typeof window.getComputedStyle !== 'function') return { top: 0, bottom: 0 };
+    var style = window.getComputedStyle(track);
+    return {
+      top: parseFloat(style.scrollPaddingTop) || parseFloat(style.paddingTop) || 0,
+      bottom: parseFloat(style.scrollPaddingBottom) || parseFloat(style.paddingBottom) || 0
+    };
+  }
+  function snapTopForNode(node, index, viewportHeight, padding) {
+    var top = typeof node.offsetTop === 'number' ? node.offsetTop : index * viewportHeight;
+    var height = typeof node.offsetHeight === 'number' ? node.offsetHeight : viewportHeight;
+    var inset = padding || snapPadding();
+    var snapport = Math.max(1, viewportHeight - inset.top - inset.bottom);
+    return Math.max(0, top + height / 2 - inset.top - snapport / 2);
   }
   function refreshCardMetrics() {
     if (!track || typeof track.querySelectorAll !== 'function') return;
@@ -2024,12 +2167,11 @@ const WATERFALL_JS: string = `
     metricsDirty = false;
     var nodes = track.querySelectorAll('[data-waterfall-id]');
     var viewportHeight = Math.max(1, track.clientHeight);
+    var padding = snapPadding();
     cardMetrics = [];
     for (var index = 0; index < nodes.length; index += 1) {
       var node = nodes[index];
-      var top = typeof node.offsetTop === 'number' ? node.offsetTop : index * viewportHeight;
-      var height = typeof node.offsetHeight === 'number' && node.offsetHeight > 0 ? node.offsetHeight : viewportHeight;
-      cardMetrics.push({ node: node, snapTop: Math.max(0, top - Math.max(0, viewportHeight - height) / 2) });
+      cardMetrics.push({ node: node, snapTop: snapTopForNode(node, index, viewportHeight, padding) });
     }
   }
   function updateCardPresentation(force) {
@@ -2038,6 +2180,10 @@ const WATERFALL_JS: string = `
     if (!nodes || nodes.length === 0) return 0;
     if (cardMetrics.length === 0) refreshCardMetrics();
     else if (cardMetrics.length !== nodes.length) syncCardsAfterPaint();
+    if (mode === 'reading' || mode === 'reader_closing' ||
+      mode === 'source_preferences' || mode === 'source_preferences_closing') {
+      return presentedIndex < 0 ? 0 : presentedIndex;
+    }
     var activeIndex = visibleCardIndex();
     if (!force && activeIndex === presentedIndex) return activeIndex;
     if (activeIndex > nodes.length - 1) activeIndex = nodes.length - 1;
@@ -2121,34 +2267,42 @@ const WATERFALL_JS: string = `
   }
   function scrollTopForCard(index) {
     if (!track || index < 0) return 0;
+    if (cardMetrics.length === 0) refreshCardMetrics();
+    if (index < cardMetrics.length) return cardMetrics[index].snapTop;
     var nodes = typeof track.querySelectorAll === 'function' ? track.querySelectorAll('[data-waterfall-id]') : [];
     var node = nodes && nodes[index];
-    if (!node || typeof node.offsetTop !== 'number') return index * track.clientHeight;
-    var height = typeof node.offsetHeight === 'number' && node.offsetHeight > 0 ? node.offsetHeight : track.clientHeight;
-    return Math.max(0, node.offsetTop - Math.max(0, track.clientHeight - height) / 2);
+    if (!node) return index * track.clientHeight;
+    return snapTopForNode(node, index, Math.max(1, track.clientHeight));
   }
-  function clampPagingScroll() {
-    if (pageAnchorIndex < 0 || !track || cardMetrics.length === 0) return;
-    var lo = Math.max(0, pageAnchorIndex - 1);
-    var hi = Math.min(cardMetrics.length - 1, pageAnchorIndex + 1);
-    var minTop = cardMetrics[lo].snapTop;
-    var maxTop = cardMetrics[hi].snapTop;
-    if (track.scrollTop <= maxTop && track.scrollTop >= minTop) return;
-    pagingClamp = true;
-    track.scrollTop = track.scrollTop > maxTop ? maxTop : minTop;
-    pagingClamp = false;
+  function realignPresentedCard() {
+    var run = function () {
+      if (cardMetrics.length === 0) refreshCardMetrics();
+      updateCardPresentation(true);
+    };
+    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run);
+    else run();
   }
-  function snapPagingCard() {
-    if (pageAnchorIndex < 0 || !track || mode !== 'discovering') return;
-    if (cardMetrics.length === 0) refreshCardMetrics();
-    var index = visibleCardIndex();
-    var top = scrollTopForCard(index);
-    if (Math.abs(track.scrollTop - top) > 1) {
-      pagingClamp = true;
-      track.scrollTop = top;
-      pagingClamp = false;
+  function freezeFeedMotion() {
+    pageAnchorIndex = -1;
+    scrollActive = false;
+    if (payloadSettleTimer !== null) clearTimeout(payloadSettleTimer);
+    payloadSettleTimer = null;
+    if (presentationFrame !== null && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(presentationFrame);
     }
-    updateCardPresentation(true);
+    presentationFrame = null;
+  }
+  function scheduleIdleFlush(enabledOverride, forceRender) {
+    if (payloadSettleTimer !== null) clearTimeout(payloadSettleTimer);
+    payloadSettleTimer = setTimeout(function () {
+      payloadSettleTimer = null;
+      if (mode !== 'discovering' || scrollActive || interactionActive) {
+        if (pendingPayload || forceRender) scheduleIdleFlush(enabledOverride, forceRender);
+        return;
+      }
+      var flushed = flushPendingPayload(enabledOverride);
+      if (forceRender && !flushed) render();
+    }, 240);
   }
   function beginPagingGesture() {
     if (mode !== 'discovering') return;
@@ -2202,7 +2356,6 @@ const WATERFALL_JS: string = `
   }
   function mergePayload(payload) {
     if (!payload) return;
-    var oldCurrentId = state ? text(state.currentId) : '';
     var oldEnabledSources = state && state.enabledSources ? state.enabledSources.join('|') : '';
     if (typeof payload.aggregateHtml === 'string' && payload.aggregateHtml !== aggregateHtml) {
       aggregateHtml = payload.aggregateHtml;
@@ -2213,7 +2366,7 @@ const WATERFALL_JS: string = `
     state = payload;
     enabledSources = payload.enabledSources ? payload.enabledSources.slice() : [];
     if (oldEnabledSources !== enabledSources.join('|')) alignToCurrent = true;
-    if (!oldCurrentId || oldCurrentId !== text(payload.currentId)) advancePending = false;
+    advancePending = false;
   }
   function postSourceSelection() {
     if (!state || !window.AIPhoneHome || typeof window.AIPhoneHome.postAction !== 'function') return;
@@ -2228,22 +2381,37 @@ const WATERFALL_JS: string = `
     var currentId = state ? text(state.currentId) : '';
     var currentIndex = items.findIndex(function (item) { return text(item.id) === currentId; });
     var visibleIndex = typeof presentedIndex === 'number' ? presentedIndex : visibleCardIndex();
+    var visibleItem = visibleIndex >= 0 && visibleIndex < items.length ? items[visibleIndex] : null;
     if (mode !== 'discovering' || advancePending || currentIndex < 0 || visibleIndex <= currentIndex ||
       !window.AIPhoneHome || typeof window.AIPhoneHome.postAction !== 'function') return;
     pauseCurrentBehavior(true);
     advancePending = true;
     window.AIPhoneHome.postAction(JSON.stringify({
       id: 'waterfall.feed.advance', label: '下一条', prompt: '', variant: 'secondary', kind: 'client',
-      args: { surfaceId: state.surfaceId || '', currentId: currentId }
+      args: {
+        surfaceId: state.surfaceId || '', currentId: currentId,
+        visibleId: text(visibleItem && visibleItem.id)
+      }
     }));
   }
   function closeReader() {
     if (!reader || reader.classList.contains('closing')) return;
+    freezeFeedMotion();
     destroyInlinePlayer();
     reader.classList.add('closing');
+    readerReturnScrolled = false;
     ignoreNextFeedOpen = true;
     mode = 'reader_closing';
-    stopReaderMedia();
+    if (overlay) overlay.classList.remove('reading');
+    if (directDiscovery) setFullscreen(false);
+    if (playerCleanupTimer !== null) clearTimeout(playerCleanupTimer);
+    playerCleanupTimer = setTimeout(function () {
+      playerCleanupTimer = null;
+      stopReaderMedia();
+      if (reader && reader.classList.contains('closing') && reader.style) {
+        reader.style.pointerEvents = 'none';
+      }
+    }, 0);
     var completedCandidateId = readerCandidateId;
     if (readerCandidateId && readerStartedAt > 0) {
       readerDurationMs += Math.max(0, Date.now() - readerStartedAt);
@@ -2256,15 +2424,21 @@ const WATERFALL_JS: string = `
     readerCloseTimer = setTimeout(function () {
       reader.classList.remove('active');
       reader.classList.remove('closing');
-      if (overlay) overlay.classList.remove('reading');
+      if (reader.style) reader.style.pointerEvents = '';
       readerCloseTimer = null;
-      if (track) {
-        if (track.scrollTop !== readerFeedScrollTop) track.scrollTop = readerFeedScrollTop;
-      }
       mode = 'discovering';
-      if (directDiscovery) setFullscreen(false);
+      if (!readerReturnScrolled && track && track.scrollTop !== readerFeedScrollTop) {
+        track.scrollTop = readerFeedScrollTop;
+      }
       if (pendingPayload) {
-        settleInteraction();
+        if (interactionActive || scrollActive) settleInteraction();
+        else {
+          payloadSettleTimer = setTimeout(function () {
+            payloadSettleTimer = null;
+            if (interactionActive || scrollActive) settleInteraction();
+            else flushPendingPayload();
+          }, 0);
+        }
       }
       resumeCurrentBehavior();
       if (completedCandidateId && completedDurationMs >= 8000) {
@@ -2276,6 +2450,7 @@ const WATERFALL_JS: string = `
     if (!reader || !track) return;
     var item = candidates(state).find(function (candidate) { return text(candidate.id) === text(id); });
     if (!item || ${WATERFALL_SOURCE_ONLY_SOURCES_JSON}.indexOf(item.source) >= 0) return;
+    stopStageMedia(track);
     destroyInlinePlayer();
     var format = candidateFormat(item);
     var summary = cleanSummary(item.summary) || cleanSummary(item.reason);
@@ -2289,20 +2464,25 @@ const WATERFALL_JS: string = `
     advanceTimer = null;
     if (playerCleanupTimer !== null) clearTimeout(playerCleanupTimer);
     playerCleanupTimer = null;
-    reader.classList.remove('active');
-    reader.classList.remove('closing');
+    if (overlay) overlay.classList.add('reading');
+    freezeFeedMotion();
+    if (reader.classList.contains('closing')) {
+      reader.classList.remove('closing');
+    }
+    if (reader.style) reader.style.pointerEvents = '';
     var videoStage = item.mediaType === 'video' ? videoStageMarkup(item, title,
       'waterfall-reader-media waterfall-reader-media--video', 'waterfall-reader-video-poster') : '';
     var media = format === 'image_text' ?
       '<div class="waterfall-reader-media"><img src="' + escapeHtml(item.coverUrl) + '" alt="' +
-      escapeHtml(title) + '" referrerpolicy="no-referrer" onerror="this.parentElement.hidden=true" /></div>' :
+      escapeHtml(title) + '" referrerpolicy="no-referrer" onerror="this.hidden=true" /></div>' :
       (item.mediaType === 'video' ? videoStage : '');
     var sourceAction = item.url ? '<a class="waterfall-source-action" href="' + escapeHtml(item.url) +
       '" rel="noopener noreferrer" aria-label="查看来源">' + uiIcon('external') + '</a>' : '<span></span>';
     var context = '<div class="waterfall-reader-context"><div class="waterfall-reader-source">' +
-      sourceLogoMarkup(item.source) + '<span>' + escapeHtml(sourceLabel(item.source)) + '</span></div><span>' +
+      sourceLogoMarkup(item.source) + '<span>' + escapeHtml(sourceLabel(item.source)) + '</span>' +
+      authorMarkup(item) + '</div><span>' +
       escapeHtml(publishedLabel(item.publishedAt)) + '</span></div>';
-    var copy = context + '<h2>' + escapeHtml(title) + '</h2>' +
+    var copy = context + '<h2>' + escapeHtml(title) + '</h2>' + metricsMarkup(item, true) +
       (summary ? '<p>' + escapeHtml(summary) + '</p>' : '');
     var content = item.mediaType === 'video' ? '<section class="waterfall-reader-video-card">' + media +
       '<div class="waterfall-reader-video-copy">' + copy + '</div></section>' : media + copy;
@@ -2328,8 +2508,11 @@ const WATERFALL_JS: string = `
     mode = 'reading';
     if (directDiscovery) setFullscreen(true);
     ignoreNextFeedOpen = false;
-    if (overlay) overlay.classList.add('reading');
-    reader.classList.add('active');
+    var reveal = function () {
+      if (mode === 'reading' && !reader.classList.contains('active')) reader.classList.add('active');
+    };
+    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(reveal);
+    else reveal();
   }
   function toggleVideoFullscreen(videoCard) {
     if (!videoCard) return;
@@ -2366,7 +2549,7 @@ const WATERFALL_JS: string = `
     var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
     var cardClass = cardClassName(item);
     var meta = '<div class="waterfall-cinema-meta">' + sourceLogoMarkup(item.source) + '<span>' +
-      escapeHtml(sourceLabel(item.source)) + '</span></div>';
+      escapeHtml(sourceLabel(item.source)) + '</span>' + authorMarkup(item) + '</div>';
     var twitchEmbedUrl = item.source === 'twitch' ? twitchEmbedForUrl(text(item.url)) : '';
     var inlinePlay = twitchEmbedUrl ? '<button type="button" class="waterfall-inline-play" data-waterfall-inline-play="' +
       escapeHtml(item.id) + '" aria-label="播放 Twitch 直播">播放</button>' : '';
@@ -2386,15 +2569,19 @@ const WATERFALL_JS: string = `
       ((cover || inlineControls) ? '<div class="waterfall-cinema-stage">' + cover + inlineControls + '</div>' : '');
     var reason = reasonText ? '<span class="waterfall-recommendation" aria-label="推荐理由" data-waterfall-reason>' +
       escapeHtml(reasonText) + '</span>' : '<span></span>';
-    var openAttributes = sourceOnly ? '' : ' role="button" tabindex="0" data-waterfall-open="' +
-      escapeHtml(item.id) + '"';
+    var openAttr = sourceOnly ? '' : ' data-waterfall-open="' + escapeHtml(item.id) + '"';
+    var shellAttrs = item.mediaType === 'video' || sourceOnly ? '' : ' role="button" tabindex="0"' + openAttr;
+    var copyAttrs = item.mediaType === 'video' && !sourceOnly ? ' role="button" tabindex="0"' + openAttr : '';
     var shellClass = 'waterfall-card-shell' + (sourceOnly ? '' : ' waterfall-card-shell--interactive');
     if (twitchEmbedUrl) cardClass += ' waterfall-card--inline-player waterfall-card--inline-twitch';
     return '<article class="' + cardClass + '" data-waterfall-id="' + escapeHtml(item.id) + '" data-waterfall-media-type="' +
-      escapeHtml(item.mediaType) + '"><div class="' + shellClass + '"' + openAttributes + '>' +
-      stage + '<div class="waterfall-cinema-copy">' + meta + '<h2>' + escapeHtml(title) + '</h2>' +
+      escapeHtml(item.mediaType) + '"><div class="' + shellClass + '"' + shellAttrs + '>' + stage +
+      '<div class="waterfall-cinema-copy"' + copyAttrs + '>' + meta +
+      '<h2>' + escapeHtml(title) + '</h2>' +
       (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') +
-      (item.publishedAt ? '<div class="waterfall-meta">' + escapeHtml(publishedLabel(item.publishedAt)) + '</div>' : '') +
+      (item.publishedAt ?
+        '<div class="waterfall-meta">' + escapeHtml(publishedLabel(item.publishedAt)) + '</div>' : '') +
+      metricsMarkup(item, false) +
       '<div class="waterfall-copy-actions">' + reason + '<div class="waterfall-action-group">' +
       link + '</div></div></div></div></article>';
   }
@@ -2431,6 +2618,8 @@ const WATERFALL_JS: string = `
     }
     preferences.classList.add('active');
     if (overlay) overlay.classList.add('sheet-open');
+    if (track) preferencesFeedScrollTop = track.scrollTop;
+    freezeFeedMotion();
     mode = 'source_preferences';
     if (directDiscovery) setFullscreen(true);
   }
@@ -2441,18 +2630,19 @@ const WATERFALL_JS: string = `
     var selectedSources = enabledSources.slice();
     preferences.classList.remove('active');
     mode = 'source_preferences_closing';
+    if (directDiscovery) setFullscreen(false);
     if (preferenceApplyTimer !== null) clearTimeout(preferenceApplyTimer);
     preferenceApplyTimer = setTimeout(function () {
       preferenceApplyTimer = null;
       if (overlay) overlay.classList.remove('sheet-open');
       mode = 'discovering';
-      if (directDiscovery) setFullscreen(false);
-      var flushed = flushPendingPayload(selectedSources);
-      enabledSources = selectedSources;
-      if (changed) {
-        postSourceSelection();
-        if (!flushed) render();
+      if (track && track.scrollTop !== preferencesFeedScrollTop) {
+        track.scrollTop = preferencesFeedScrollTop;
       }
+      realignPresentedCard();
+      enabledSources = selectedSources;
+      if (changed) postSourceSelection();
+      if (pendingPayload || changed) scheduleIdleFlush(selectedSources, changed);
     }, 140);
   }
   function render() {
@@ -2480,29 +2670,72 @@ const WATERFALL_JS: string = `
     var nodes = typeof track.querySelectorAll === 'function' ?
       track.querySelectorAll('[data-waterfall-id]') : [];
     var domChanged = dropRenderedCardsMissingFrom(items, nodes);
+    if (domChanged && typeof track.querySelectorAll === 'function') {
+      nodes = track.querySelectorAll('[data-waterfall-id]');
+    }
+    var layoutChanged = domChanged;
+    var cardsReplaced = false;
     var canPatch = items.length >= renderedCards.length && renderedCards.length > 0 &&
       (domChanged || nodes.length === renderedCards.length);
-    for (var i = 0; canPatch && i < renderedCards.length; i++) {
-      if (text(items[i].id) !== renderedCards[i].id) canPatch = false;
+    var matched = 0;
+    for (var i = 0; canPatch && i < items.length; i++) {
+      if (matched < renderedCards.length && text(items[i].id) === renderedCards[matched].id) matched += 1;
     }
+    if (matched !== renderedCards.length) canPatch = false;
     if (canPatch) {
+      var renderedIndexById = {};
+      for (var r = 0; r < renderedCards.length; r++) renderedIndexById['$' + renderedCards[r].id] = r;
+      var nextRendered = [];
       for (var j = 0; j < items.length; j++) {
-        if (j < renderedCards.length) {
-          if (items[j].source === 'applepodcasts' && renderedCards[j].html !== cardHtml[j]) {
-            if (activeInlineCard === nodes[j] || text(items[j].id) === activeInlineCandidateId) {
-              destroyInlinePlayer(false);
-            }
-            nodes[j].outerHTML = cardHtml[j];
-            renderedCards[j].html = cardHtml[j];
-          }
+        var id = text(items[j].id);
+        if (renderedIndexById['$' + id] !== undefined) continue;
+        var beforeNode = null;
+        for (var k = j + 1; k < items.length; k++) {
+          var ahead = renderedIndexById['$' + text(items[k].id)];
+          if (ahead === undefined) continue;
+          beforeNode = nodes[ahead];
+          break;
+        }
+        if (beforeNode && typeof beforeNode.insertAdjacentHTML === 'function') {
+          beforeNode.insertAdjacentHTML('beforebegin', cardHtml[j]);
         } else {
           var tail = track.querySelector('.waterfall-tail-status');
           if (tail) tail.insertAdjacentHTML('beforebegin', cardHtml[j]);
           else track.insertAdjacentHTML('beforeend', cardHtml[j]);
-          renderedCards.push({ id: text(items[j].id), html: cardHtml[j] });
-          domChanged = true;
         }
+        layoutChanged = true;
+        domChanged = true;
       }
+      if (typeof track.querySelectorAll === 'function') {
+        nodes = track.querySelectorAll('[data-waterfall-id]');
+      }
+      var liveById = {};
+      for (r = 0; r < nodes.length; r++) {
+        var liveId = nodes[r] && typeof nodes[r].getAttribute === 'function' ?
+          nodes[r].getAttribute('data-waterfall-id') : '';
+        if (liveId) liveById['$' + liveId] = nodes[r];
+      }
+      for (j = 0; j < items.length; j++) {
+        id = text(items[j].id);
+        var oldIndex = renderedIndexById['$' + id];
+        if (oldIndex === undefined) {
+          nextRendered.push({ id: id, html: cardHtml[j] });
+          continue;
+        }
+        if (items[j].source === 'applepodcasts' && renderedCards[oldIndex].html !== cardHtml[j]) {
+          var oldNode = liveById['$' + id] || nodes[oldIndex];
+          if (activeInlineCard === oldNode || id === activeInlineCandidateId) {
+            destroyInlinePlayer(false);
+          }
+          if (oldNode && 'outerHTML' in oldNode) {
+            oldNode.outerHTML = cardHtml[j];
+            cardsReplaced = true;
+            domChanged = true;
+          }
+        }
+        nextRendered.push({ id: id, html: cardHtml[j] });
+      }
+      renderedCards = nextRendered;
     } else if (track.innerHTML !== nextHtml) {
       var keepInlineCandidate = activeInlineCandidateId && items.some(function (item) {
         return text(item.id) === activeInlineCandidateId;
@@ -2510,19 +2743,24 @@ const WATERFALL_JS: string = `
       destroyInlinePlayer(keepInlineCandidate ? false : true);
       track.innerHTML = nextHtml;
       domChanged = true;
+      layoutChanged = true;
       renderedCards = items.map(function (item, index) {
         return { id: text(item.id), html: cardHtml[index] };
       });
-      if (!renderedCurrentId && nextCurrentId) {
-        track.scrollTop = scrollTopForCard(Math.max(0, currentIndex));
-      } else {
-        track.scrollTop = Math.min(nextScrollTop, maxScrollTop);
+      if (mode !== 'reading' && mode !== 'reader_closing') {
+        if (!renderedCurrentId && nextCurrentId) {
+          track.scrollTop = scrollTopForCard(Math.max(0, currentIndex));
+        } else {
+          track.scrollTop = Math.min(nextScrollTop, maxScrollTop);
+        }
       }
     }
     if (alignToCurrent || alignToCandidateId) {
-      var alignId = alignToCandidateId || nextCurrentId;
-      var alignIndex = items.findIndex(function (item) { return text(item.id) === alignId; });
-      track.scrollTop = scrollTopForCard(alignIndex >= 0 ? alignIndex : Math.max(0, items.length - 1));
+      if (mode !== 'reading' && mode !== 'reader_closing') {
+        var alignId = alignToCandidateId || nextCurrentId;
+        var alignIndex = items.findIndex(function (item) { return text(item.id) === alignId; });
+        track.scrollTop = scrollTopForCard(alignIndex >= 0 ? alignIndex : Math.max(0, items.length - 1));
+      }
       alignToCurrent = false;
       alignToCandidateId = '';
     }
@@ -2536,7 +2774,11 @@ const WATERFALL_JS: string = `
       var sourceLogoHtml = items.length > 0 ? sourceLogoMarkup(items[0].source) : '';
       if (sourceControl.innerHTML !== sourceLogoHtml) sourceControl.innerHTML = sourceLogoHtml;
     }
-    if (domChanged) syncCardsAfterPaint();
+    if (cardsReplaced && !layoutChanged) {
+      cardMetrics = [];
+      refreshCardMetrics();
+      updateCardPresentation(true);
+    } else if (domChanged) syncCardsAfterPaint();
     else updateCardPresentation(false);
     syncActiveInlinePlayer();
     return domChanged;
@@ -2577,10 +2819,12 @@ const WATERFALL_JS: string = `
     if (payloadSettleTimer !== null) clearTimeout(payloadSettleTimer);
     payloadSettleTimer = setTimeout(function () {
       payloadSettleTimer = null;
+      var settledIndex = mode === 'discovering' ? updateCardPresentation(true) : presentedIndex;
       scrollActive = false;
       if (!interactionActive) pageAnchorIndex = -1;
       if (!interactionActive && mode !== 'reading' && mode !== 'reader_closing' &&
-        mode !== 'source_preferences' && mode !== 'source_preferences_closing') flushPendingPayload();
+        mode !== 'source_preferences' && mode !== 'source_preferences_closing' &&
+        !flushPendingPayload() && mode === 'discovering') scheduleAdvance(settledIndex);
     }, 96);
   }
   document.addEventListener('touchstart', function () {
@@ -2592,19 +2836,21 @@ const WATERFALL_JS: string = `
   }, { passive: true });
   document.addEventListener('touchend', function () {
     interactionActive = false;
-    snapPagingCard();
     if (scrollActive || pendingPayload || pageAnchorIndex >= 0) settleInteraction();
   }, { passive: true });
   document.addEventListener('touchcancel', function () {
     interactionActive = false;
-    snapPagingCard();
     if (scrollActive || pendingPayload || pageAnchorIndex >= 0) settleInteraction();
   }, { passive: true });
   track.addEventListener('scroll', function () {
-    if (pagingClamp) return;
+    if (mode === 'reader_closing') {
+      readerReturnScrolled = true;
+      scrollActive = true;
+      settleInteraction();
+      return;
+    }
     if (mode !== 'discovering') return;
     if (cardMetrics.length === 0) refreshCardMetrics();
-    clampPagingScroll();
     scrollActive = true;
     settleInteraction();
     if (presentationFrame !== null) return;
@@ -2612,20 +2858,18 @@ const WATERFALL_JS: string = `
       presentationFrame = window.requestAnimationFrame(function () {
         presentationFrame = null;
         if (metricsDirty) refreshMetricsAfterSettle();
-        scheduleAdvance(updateCardPresentation());
+        updateCardPresentation();
       });
       return;
     }
     if (metricsDirty) refreshMetricsAfterSettle();
-    scheduleAdvance(updateCardPresentation());
+    updateCardPresentation();
   });
   track.addEventListener('error', function (event) {
     var image = event.target;
     if (!image || !image.classList || !image.classList.contains('waterfall-media-cover') ||
       typeof image.closest !== 'function') return;
-    var stage = image.closest('.waterfall-cinema-stage');
-    if (stage) stage.hidden = true;
-    refreshMetricsAfterSettle();
+    image.hidden = true;
   }, true);
   track.addEventListener('ended', function (event) {
     var media = event.target;
@@ -2657,7 +2901,12 @@ const WATERFALL_JS: string = `
     var play = target.closest('[data-waterfall-video-play]');
     if (play) {
       playVideo(play);
-      return true;
+      return 'media';
+    }
+    var stage = target.closest('.waterfall-reader-video-stage');
+    if (stage) {
+      playVideo(stage);
+      return 'media';
     }
     var fullscreen = target.closest('[data-waterfall-video-fullscreen]');
     if (fullscreen) {
@@ -2709,7 +2958,12 @@ const WATERFALL_JS: string = `
       var play = target.closest('[data-waterfall-video-play]');
       if (play) {
         playVideo(play);
-        return true;
+        return 'media';
+      }
+      var stage = target.closest('.waterfall-reader-video-stage');
+      if (stage) {
+        playVideo(stage);
+        return 'media';
       }
       if (!target.closest('.waterfall-reader-layout')) {
         closeReader();
@@ -2897,6 +3151,15 @@ export function waterfallApplePodcastCandidateFromAction(action: A2uiAction, sur
   return candidateId.length > 0 ? candidateId : null;
 }
 
+export function waterfallAdvanceVisibleFromAction(action: A2uiAction, surfaceId: string): string | null {
+  const args = waterfallArgsFromAction(action, 'waterfall.feed.advance', surfaceId);
+  if (args === null || typeof args['visibleId'] !== 'string') {
+    return null;
+  }
+  const visibleId = (args['visibleId'] as string).trim();
+  return visibleId.length > 0 ? visibleId : null;
+}
+
 export function waterfallBehaviorFromAction(
   action: A2uiAction,
   surfaceId: string
@@ -3052,6 +3315,28 @@ function waterfallUiIconMarkup(name: string): string {
   } else if (name === 'sources') {
     paths = '<path d="M4 7h5M13 7h7M4 17h9M17 17h3" />' +
       '<circle cx="11" cy="7" r="2" /><circle cx="15" cy="17" r="2" />';
+  } else if (name === 'heart') {
+    paths = '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z" />';
+  } else if (name === 'star') {
+    paths = '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z" />';
+  } else if (name === 'comment') {
+    paths = '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />';
+  } else if (name === 'eye') {
+    paths = '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="2.5" />';
+  } else if (name === 'thumbsUp') {
+    paths = '<path d="M7 10v11H3V10h4Zm0 9h10.5a2 2 0 0 0 2-1.7l1.2-7A2 2 0 0 0 18.7 8H14l.7-3.4A2.2 2.2 0 0 0 12.5 2L7 10v9Z" />';
+  } else if (name === 'upvote') {
+    paths = '<path d="m5 11 7-7 7 7h-4v8H9v-8Z" />';
+  } else if (name === 'repost') {
+    paths = '<path d="m17 2 4 4-4 4" /><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4" /><path d="M21 13v2a3 3 0 0 1-3 3H3" />';
+  } else if (name === 'quote') {
+    paths = '<path d="M8 9H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-6Zm10 0h-4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-6Z" />';
+  } else if (name === 'coin') {
+    paths = '<circle cx="12" cy="12" r="9" /><path d="M9 8h4.5a2 2 0 0 1 0 4H9m0 0h5a2 2 0 0 1 0 4H9V8m3-2v2m0 8v2" />';
+  } else if (name === 'danmaku') {
+    paths = '<rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 10h6M7 14h10M16 10h1" />';
+  } else if (name === 'share') {
+    paths = '<circle cx="18" cy="5" r="2" /><circle cx="6" cy="12" r="2" /><circle cx="18" cy="19" r="2" /><path d="m8 11 8-5m-8 7 8 5" />';
   }
   return '<span class="waterfall-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">' +
     paths + '</svg></span>';
@@ -3079,7 +3364,18 @@ export function renderAggregateSearchHomeDocument(
     external: waterfallUiIconMarkup('external'),
     expand: waterfallUiIconMarkup('expand'),
     play: waterfallUiIconMarkup('play'),
-    sources: waterfallUiIconMarkup('sources')
+    sources: waterfallUiIconMarkup('sources'),
+    heart: waterfallUiIconMarkup('heart'),
+    star: waterfallUiIconMarkup('star'),
+    comment: waterfallUiIconMarkup('comment'),
+    eye: waterfallUiIconMarkup('eye'),
+    thumbsUp: waterfallUiIconMarkup('thumbsUp'),
+    upvote: waterfallUiIconMarkup('upvote'),
+    repost: waterfallUiIconMarkup('repost'),
+    quote: waterfallUiIconMarkup('quote'),
+    coin: waterfallUiIconMarkup('coin'),
+    danmaku: waterfallUiIconMarkup('danmaku'),
+    share: waterfallUiIconMarkup('share')
   }).replace(/</g, '\\u003c');
   const waterfallStatus = waterfall !== null && waterfall.replenishing ? '<div class="waterfall-status">正在补充内容</div>' :
     (waterfall !== null && waterfall.exhausted ? '<div class="waterfall-status">本轮内容已结束</div>' : '');
@@ -3088,7 +3384,8 @@ export function renderAggregateSearchHomeDocument(
     '<html lang="zh-CN"><head><meta charset="utf-8" />',
     '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />',
     '<title>', escapeHtml(document.title), '</title>',
-    '<style>', AGGREGATE_CSS, WATERFALL_CSS, '</style></head><body>',
+    '<style>', AGGREGATE_CSS, WATERFALL_CSS, '</style></head><body',
+    startInDiscovery ? ' class="waterfall-direct"' : '', '>',
     '<main class="aggregate-shell">',
     waterfall === null ? renderAggregateMainContent(document, isBusy, false) : waterfall.aggregateHtml,
     '</main>', waterfall !== null ? '<section id="waterfall-discovery" class="waterfall-overlay' +
@@ -3104,6 +3401,8 @@ export function renderAggregateSearchHomeDocument(
       'aria-label="内容来源" data-waterfall-preferences>' + waterfallUiIconMarkup('sources') +
       '<span class="waterfall-toolbar-label">设置</span></button></div></div>' +
       '<div id="waterfall-track" class="waterfall-track">' + waterfallStatus + '</div>' +
+      '<div class="waterfall-edge-fade waterfall-edge-fade--top" aria-hidden="true"></div>' +
+      '<div class="waterfall-edge-fade waterfall-edge-fade--bottom" aria-hidden="true"></div>' +
       '<div id="waterfall-preferences" class="waterfall-preferences"></div>' +
       '<div id="waterfall-reader" class="waterfall-reader"></div>' +
       '<div id="waterfall-toast" class="waterfall-toast" role="status" aria-live="polite"></div></section>' : '',

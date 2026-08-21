@@ -1083,13 +1083,16 @@ function plainChatReply(layout) {
       nodeTextValues(node, values);
       if (!values.some((value) => value === 'user' || value === 'assistant') && values.length === 1) {
         replies.push(values[0]);
+      } else {
+        const brandIndex = values.indexOf('Appless');
+        if (brandIndex >= 0 && brandIndex === values.length - 2) replies.push(values[brandIndex + 1]);
       }
       return;
     }
     for (const child of Array.isArray(node.children) ? node.children : []) visit(child);
   };
   visit(layout);
-  return heading && context && replies.length === 1 ? replies[0] : '';
+  return heading && context && replies.length > 0 ? replies[replies.length - 1] : '';
 }
 
 function layoutHasInputText(layout, expected) {

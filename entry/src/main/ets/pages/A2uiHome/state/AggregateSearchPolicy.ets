@@ -4,8 +4,8 @@ export interface AggregateSearchPolicy {
 }
 
 export const DEFAULT_AGGREGATE_SEARCH_POLICY: AggregateSearchPolicy = {
-  onlyDomesticSources: true,
-  includeMultilingualResults: false
+  onlyDomesticSources: false,
+  includeMultilingualResults: true
 };
 
 type AggregateSearchArgValue = Object | string | number | boolean | null | undefined;

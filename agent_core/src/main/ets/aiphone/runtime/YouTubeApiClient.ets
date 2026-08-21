@@ -1,6 +1,7 @@
 import { http } from '@kit.NetworkKit';
 import util from '@ohos.util';
 import { A2uiLabelValueData } from './A2uiTypes';
+import { callComposioYouTubeSearchWithProviderData } from './ComposioDynamicBackend';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 
 const YOUTUBE_SEARCH_URL: string = 'https://www.googleapis.com/youtube/v3/search';
@@ -36,6 +37,13 @@ interface YouTubePopularResponse {
 interface YouTubePopularItem {
   id?: string;
   snippet?: YouTubeSnippet;
+  statistics?: YouTubeStatistics;
+}
+
+interface YouTubeStatistics {
+  viewCount?: string;
+  likeCount?: string;
+  commentCount?: string;
 }
 
 interface YouTubeThumbnails {
@@ -142,7 +150,7 @@ export function youtubeMostPopularUrl(
   pageToken: string = ''
 ): string {
   const params: string[][] = [
-    ['part', 'snippet'],
+    ['part', 'snippet,statistics'],
     ['chart', 'mostPopular'],
     ['maxResults', normalizedYouTubeMaxResults(maxResults).toString()],
     ['key', apiKey]
@@ -166,7 +174,11 @@ function thumbnailUrl(snippet: YouTubeSnippet): string {
   return '';
 }
 
-export function youtubeVideoResultsFromSearchPayload(rawJson: string, query: string): DynamicGenericToolResult[] {
+export function youtubeVideoResultsFromSearchPayload(
+  rawJson: string,
+  query: string,
+  sourceTag: string = 'YouTube Data API'
+): DynamicGenericToolResult[] {
   const payload = JSON.parse(rawJson) as YouTubeSearchResponse;
   const nextPageToken = textOf(payload.nextPageToken).trim();
   const items = Array.isArray(payload.items) ? payload.items : [];
@@ -189,7 +201,7 @@ export function youtubeVideoResultsFromSearchPayload(rawJson: string, query: str
       rows.push({ label: 'Thumbnail', value: image });
     }
     const result: DynamicGenericToolResult = {
-      sourceTag: 'YouTube Data API',
+      sourceTag: sourceTag,
       toolName: 'youtube.video.search',
       title: textOf(snippet.title),
       status: 'success',
@@ -206,7 +218,7 @@ export function youtubeVideoResultsFromSearchPayload(rawJson: string, query: str
     return results;
   }
   return [{
-    sourceTag: 'YouTube Data API',
+    sourceTag: sourceTag,
     toolName: 'youtube.video.search',
     title: '没有找到 YouTube 视频',
     status: 'success',
@@ -216,7 +228,10 @@ export function youtubeVideoResultsFromSearchPayload(rawJson: string, query: str
   }];
 }
 
-export function youtubeVideoResultsFromPopularPayload(rawJson: string): DynamicGenericToolResult[] {
+export function youtubeVideoResultsFromPopularPayload(
+  rawJson: string,
+  sourceTag: string = 'YouTube Data API'
+): DynamicGenericToolResult[] {
   const payload = JSON.parse(rawJson) as YouTubePopularResponse;
   const nextPageToken = textOf(payload.nextPageToken).trim();
   const items = Array.isArray(payload.items) ? payload.items : [];
@@ -233,8 +248,19 @@ export function youtubeVideoResultsFromPopularPayload(rawJson: string): DynamicG
     ];
     const image = thumbnailUrl(snippet);
     if (image.length > 0) rows.push({ label: 'Thumbnail', value: image });
+    if (item.statistics !== undefined) {
+      if (textOf(item.statistics.viewCount).length > 0) {
+        rows.push({ label: 'Views', value: textOf(item.statistics.viewCount) });
+      }
+      if (textOf(item.statistics.likeCount).length > 0) {
+        rows.push({ label: 'Likes', value: textOf(item.statistics.likeCount) });
+      }
+      if (textOf(item.statistics.commentCount).length > 0) {
+        rows.push({ label: 'Comments', value: textOf(item.statistics.commentCount) });
+      }
+    }
     const result: DynamicGenericToolResult = {
-      sourceTag: 'YouTube Data API',
+      sourceTag: sourceTag,
       toolName: 'youtube.videos.mostPopular',
       title: textOf(snippet.title),
       status: 'success',
@@ -250,6 +276,51 @@ export function youtubeVideoResultsFromPopularPayload(rawJson: string): DynamicG
   return results;
 }
 
+export function youtubeVideoResultsFromComposioPopular(
+  result: DynamicGenericToolResult
+): DynamicGenericToolResult[] {
+  if (result.status !== 'success' || result.providerData === undefined) {
+    return [result];
+  }
+  try {
+    return youtubeVideoResultsFromPopularPayload(JSON.stringify(result.providerData), 'Composio YouTube');
+  } catch (error) {
+    return [{
+      sourceTag: 'Composio YouTube',
+      toolName: 'youtube.videos.mostPopular',
+      title: 'YouTube Popular 数据解析失败',
+      status: 'error',
+      summary: error instanceof Error ? error.message : JSON.stringify(error),
+      rows: [],
+      rawPreview: 'invalid provider data',
+      providerPhase: 'execution'
+    }];
+  }
+}
+
+export function youtubeVideoResultsFromComposioSearch(
+  result: DynamicGenericToolResult,
+  query: string
+): DynamicGenericToolResult[] {
+  if (result.status !== 'success' || result.providerData === undefined) {
+    return [result];
+  }
+  try {
+    return youtubeVideoResultsFromSearchPayload(JSON.stringify(result.providerData), query, 'Composio YouTube');
+  } catch (error) {
+    return [{
+      sourceTag: 'Composio YouTube',
+      toolName: 'youtube.video.search',
+      title: 'YouTube 搜索数据解析失败',
+      status: 'error',
+      summary: error instanceof Error ? error.message : JSON.stringify(error),
+      rows: [],
+      rawPreview: 'invalid provider data',
+      providerPhase: 'execution'
+    }];
+  }
+}
+
 function responseText(result: Object | string | number | boolean | ArrayBuffer): string {
   if (typeof result === 'string') {
     return result;
@@ -260,58 +331,19 @@ function responseText(result: Object | string | number | boolean | ArrayBuffer):
   return textOf(result);
 }
 
-export async function callYouTubeVideoSearch(query: string, apiKey: string, options: YouTubeSearchOptions = defaultYouTubeSearchOptions()): Promise<DynamicGenericToolResult[]> {
-  if (apiKey.trim().length === 0) {
-    return [{
-      sourceTag: 'YouTube Data API',
-      toolName: 'youtube.video.search',
-      title: '缺少 YouTube API Key',
-      status: 'error',
-      summary: '请在本地 provider 配置中设置 YOUTUBE_API_KEY。',
-      rows: [{ label: 'Credential', value: 'YOUTUBE_API_KEY' }],
-      rawPreview: 'missing YOUTUBE_API_KEY'
-    }];
-  }
-  const request = http.createHttp();
-  try {
-    const response = await request.request(youtubeSearchUrl(
-      query,
-      apiKey.trim(),
-      options.order,
-      options.maxResults,
-      options.relevanceLanguage === undefined ? '' : options.relevanceLanguage,
-      options.pageToken === undefined ? '' : options.pageToken
-    ), {
-      method: http.RequestMethod.GET,
-      header: { 'Accept': 'application/json' },
-      usingProtocol: http.HttpProtocol.HTTP1_1,
-      connectTimeout: 10000,
-      readTimeout: 20000
-    });
-    const text = responseText(response.result);
-    if (response.responseCode < 200 || response.responseCode >= 300) {
-      throw new Error('HTTP ' + response.responseCode.toString() + ': ' + text.substring(0, 240));
-    }
-    return youtubeVideoResultsFromSearchPayload(text, query);
-  } catch (error) {
-    const rawMessage = error instanceof Error ? error.message : JSON.stringify(error);
-    const lowerMessage = rawMessage.toLowerCase();
-    const networkIssue = lowerMessage.includes('timeout') || lowerMessage.includes('timed out')
-      || lowerMessage.includes('connect') || rawMessage.includes('2300');
-    return [{
-      sourceTag: 'YouTube Data API',
-      toolName: 'youtube.video.search',
-      title: 'YouTube API 调用失败',
-      status: 'error',
-      summary: networkIssue
-        ? '设备无法连接 googleapis.com（超时/不可达）。YouTube 需要可访问 Google 的网络环境。原始错误：' + rawMessage
-        : rawMessage,
-      rows: [{ label: 'Query', value: query }],
-      rawPreview: 'error'
-    }];
-  } finally {
-    request.destroy();
-  }
+export async function callYouTubeVideoSearch(
+  query: string,
+  _apiKey: string,
+  options: YouTubeSearchOptions = defaultYouTubeSearchOptions()
+): Promise<DynamicGenericToolResult[]> {
+  const result = await callComposioYouTubeSearchWithProviderData(
+    query,
+    normalizedYouTubeOrder(options.order),
+    normalizedYouTubeMaxResults(options.maxResults),
+    normalizeYouTubeRelevanceLanguage(options.relevanceLanguage ?? ''),
+    options.pageToken ?? ''
+  );
+  return youtubeVideoResultsFromComposioSearch(result, query);
 }
 
 export async function callYouTubeMostPopularVideos(

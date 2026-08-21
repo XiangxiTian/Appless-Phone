@@ -111,6 +111,12 @@ interface ExecuteRequest {
   enable_auto_workbench_offload: boolean;
 }
 
+interface ConnectedToolExecuteRequest {
+  connected_account_id: string;
+  user_id: string;
+  arguments: Object;
+}
+
 interface TruncatedObservation {
   source: string;
   truncated: boolean;
@@ -318,6 +324,34 @@ export class ComposioSessionClient {
 
   async executePreservingProviderData(toolSlug: string, args: Object): Promise<ComposioPreservedExecution> {
     return preservedComposioExecutionFromResponse(await this.executeResponseText(toolSlug, args), toolSlug);
+  }
+
+  async executeConnectedTool(
+    toolkitSlug: string,
+    toolSlug: string,
+    args: Object
+  ): Promise<ComposioPreservedExecution> {
+    await this.initialize();
+    const toolkit = toolkitSlug.trim().toLowerCase();
+    const slug = toolSlug.trim().toUpperCase();
+    const accountId = this.toolkitAccounts.get(toolkit);
+    if (accountId === undefined || slug.length === 0) {
+      throw new Error(this.discoveryError.length > 0 ? this.discoveryError : 'Composio 没有已授权 ' + toolkit + ' Toolkit');
+    }
+    const body: ConnectedToolExecuteRequest = {
+      connected_account_id: accountId,
+      user_id: this.config.userId,
+      arguments: args
+    };
+    const response = await this.request(
+      http.RequestMethod.POST,
+      '/tools/execute/' + encodeURIComponent(slug),
+      JSON.stringify(body)
+    );
+    if (!this.isSuccess(response.code)) {
+      throw new Error(this.httpError('执行工具', response));
+    }
+    return preservedComposioExecutionFromResponse(response.text, slug);
   }
 
   private async executeResponseText(toolSlug: string, args: Object): Promise<string> {

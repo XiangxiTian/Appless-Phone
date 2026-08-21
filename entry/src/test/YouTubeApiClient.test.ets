@@ -1,7 +1,9 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { DynamicGenericToolResult } from '@loop/agent-core';
+import { aggregateVideoSourceBatchFromDynamicResults, DynamicGenericToolResult } from '@loop/agent-core';
 import {
   remainingReadStructuredDataResult,
+  youtubeVideoResultsFromComposioPopular,
+  youtubeVideoResultsFromComposioSearch,
   youtubeMostPopularUrl,
   youtubeSearchUrl,
   youtubeVideoResultsFromPopularPayload,
@@ -13,7 +15,7 @@ export default function youtubeApiClientTest() {
     it('builds and parses the verified YouTube most-popular endpoint', 0, () => {
       const url: string = youtubeMostPopularUrl('api-key-123', 10, 'next-page');
       expect(url.indexOf('https://www.googleapis.com/youtube/v3/videos?')).assertEqual(0);
-      expect(url.indexOf('part=snippet')).assertLarger(-1);
+      expect(url.indexOf('part=snippet%2Cstatistics')).assertLarger(-1);
       expect(url.indexOf('chart=mostPopular')).assertLarger(-1);
       expect(url.indexOf('maxResults=10')).assertLarger(-1);
       expect(url.indexOf('pageToken=next-page')).assertLarger(-1);
@@ -21,12 +23,36 @@ export default function youtubeApiClientTest() {
         '{"nextPageToken":"next-2","items":[{"id":"popular-1","snippet":{' +
         '"title":"Popular AI video","description":"Real description","channelTitle":"Channel",' +
         '"publishedAt":"2026-08-12T00:00:00Z","thumbnails":{"medium":{' +
-        '"url":"https://img.test/popular.jpg"}}}}]}');
+        '"url":"https://img.test/popular.jpg"}}},"statistics":{"viewCount":"2840163",' +
+        '"likeCount":"87421","commentCount":"4216"}}]}');
+      const rows = JSON.stringify(results[0].rows);
       expect(results.length).assertEqual(1);
       expect(results[0].title).assertEqual('Popular AI video');
       expect(results[0].summary).assertEqual('Real description');
       expect(results[0].rows[3].value).assertEqual('https://www.youtube.com/watch?v=popular-1');
       expect(JSON.stringify(results[0].providerData).indexOf('next-2')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Views","value":"2840163"')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Likes","value":"87421"')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Comments","value":"4216"')).assertLarger(-1);
+    });
+    it('maps Composio most-popular provider data into discovery videos', 0, () => {
+      const results: DynamicGenericToolResult[] = youtubeVideoResultsFromComposioPopular({
+        sourceTag: 'Composio', toolName: 'YOUTUBE_LIST_MOST_POPULAR_VIDEOS', title: 'Composio YouTube 结果',
+        status: 'success', summary: 'ok', rows: [], rawPreview: '',
+        providerData: JSON.parse('{"nextPageToken":"next-composio","items":[{"id":"popular-composio",' +
+          '"snippet":{"title":"Popular via Composio","channelTitle":"Channel","publishedAt":' +
+          '"2026-08-21T00:00:00Z","thumbnails":{"medium":{"url":"https://img.test/composio.jpg"}}}}]}') as Object
+      });
+
+      expect(results.length).assertEqual(1);
+      expect(results[0].sourceTag).assertEqual('Composio YouTube');
+      expect(results[0].title).assertEqual('Popular via Composio');
+      expect(results[0].rows[3].value).assertEqual('https://www.youtube.com/watch?v=popular-composio');
+      expect(JSON.stringify(results[0].providerData).indexOf('next-composio')).assertLarger(-1);
+      const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', results, null, 10);
+      expect(batch.videos.length).assertEqual(1);
+      expect(batch.videos[0].provider).assertEqual('Composio YouTube');
+      expect(batch.continuation === null ? '' : batch.continuation.value).assertEqual('next-composio');
     });
     it('builds a search URL for public video search', 0, () => {
       const url = youtubeSearchUrl('qwen max 官方介绍', 'api-key-123');
@@ -65,6 +91,23 @@ export default function youtubeApiClientTest() {
       expect(results[0].title).assertEqual('Qwen Max official intro');
       expect(results[0].rows[0].label).assertEqual('Channel');
       expect(results[0].rows[3].value).assertEqual('https://www.youtube.com/watch?v=abc123');
+    });
+
+    it('maps Composio YouTube search data and pagination into discovery videos', 0, () => {
+      const results: DynamicGenericToolResult[] = youtubeVideoResultsFromComposioSearch({
+        sourceTag: 'Composio', toolName: 'YOUTUBE_SEARCH_YOU_TUBE', title: 'Composio YouTube 结果',
+        status: 'success', summary: 'ok', rows: [], rawPreview: '',
+        providerData: JSON.parse('{"nextPageToken":"search-next","items":[' +
+          '{"id":{"channelId":"channel-1"},"snippet":{"title":"Channel result"}},' +
+          '{"id":{"videoId":"video-1"},"snippet":{"title":"Video via Composio",' +
+          '"channelTitle":"Channel","publishedAt":"2026-08-21T00:00:00Z"}}]}') as Object
+      }, 'openai');
+
+      expect(results.length).assertEqual(1);
+      expect(results[0].sourceTag).assertEqual('Composio YouTube');
+      expect(results[0].title).assertEqual('Video via Composio');
+      expect(results[0].rows[3].value).assertEqual('https://www.youtube.com/watch?v=video-1');
+      expect(JSON.stringify(results[0].providerData).indexOf('search-next')).assertLarger(-1);
     });
 
     it('keeps authenticated playlist IDs and URLs distinct from public video search', 0, () => {

@@ -47,6 +47,7 @@ import {
   WaterfallFeedState,
   WaterfallFormat,
   WaterfallLoadRequest,
+  WaterfallMetric,
   WaterfallPreferenceSnapshot,
   WaterfallQueryStage,
   WaterfallRecallRoute,
@@ -78,6 +79,7 @@ interface AggregateXSearchArgs {
   expansions: string;
   mediaFields: string;
   tweetFields: string;
+  userFields?: string;
   cursor?: string;
 }
 
@@ -101,13 +103,46 @@ interface AggregateHackerNewsItemArgs {
   itemId: string;
 }
 
+function decodeHttpUrl(value: string): string {
+  return value.replace(/&amp;/g, '&').trim();
+}
+
+function isDisplayableImageUrl(value: string): boolean {
+  const url = decodeHttpUrl(value).toLowerCase();
+  if (!url.startsWith('http')) return false;
+  if (url === 'self' || url === 'default' || url === 'nsfw' || url === 'spoiler' || url === 'image') {
+    return false;
+  }
+  if (url.indexOf('v.redd.it/') >= 0 || url.indexOf('/comments/') >= 0 ||
+    url.indexOf('reddit.com/gallery') >= 0) {
+    return false;
+  }
+  if (url.indexOf('.jpg') >= 0 || url.indexOf('.jpeg') >= 0 || url.indexOf('.png') >= 0 ||
+    url.indexOf('.webp') >= 0 || url.indexOf('.gif') >= 0 || url.indexOf('image') >= 0 ||
+    url.indexOf('pic') >= 0 || url.indexOf('thumb') >= 0) {
+    return true;
+  }
+  // ponytail: host heuristic; native fetch+Referer proxy if Reddit CDN still 403s in WebView
+  return url.indexOf('i.redd.it/') >= 0 || url.indexOf('preview.redd.it/') >= 0 ||
+    url.indexOf('thumbs.redditmedia.com/') >= 0 || url.indexOf('i.imgur.com/') >= 0 ||
+    url.indexOf('pbs.twimg.com/') >= 0;
+}
+
+function appendImageUrl(urls: string[], value: string): void {
+  const url = decodeHttpUrl(value);
+  if (!isDisplayableImageUrl(url) || urls.indexOf(url) >= 0) return;
+  urls.push(url);
+}
+
 function waterfallPostCoverUrl(post: AggregateSearchPost): string {
   const labels: string[] = ['mediaurl', 'image', 'images', 'thumbnail', 'cover', 'pic', 'picture'];
   for (let index = 0; index < post.rows.length; index++) {
     const label = post.rows[index].label.trim().toLowerCase();
-    const value = post.rows[index].value.trim();
-    if (labels.indexOf(label) >= 0 && value.toLowerCase().startsWith('http')) {
-      return value.split(/\s+/)[0];
+    if (labels.indexOf(label) < 0) continue;
+    const parts = post.rows[index].value.trim().split(/\s+/);
+    for (let part = 0; part < parts.length; part++) {
+      const url = decodeHttpUrl(parts[part]);
+      if (isDisplayableImageUrl(url)) return url;
     }
   }
   return '';
@@ -146,6 +181,65 @@ function waterfallTitle(value: string): string {
   return /^result\s+\d+$/i.test(value.trim()) ? '' : value;
 }
 
+function normalizedMetricLabel(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, '');
+}
+
+function aggregateRowText(rows: AggregateSearchRowData[], labels: string[]): string {
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const label = normalizedMetricLabel(rows[rowIndex].label);
+    for (let labelIndex = 0; labelIndex < labels.length; labelIndex++) {
+      if (label === normalizedMetricLabel(labels[labelIndex])) return rows[rowIndex].value.trim();
+    }
+  }
+  return '';
+}
+
+function metricNumber(value: string): number | undefined {
+  const parsed = Number(value.trim().replace(/,/g, ''));
+  return value.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function addMetric(metrics: WaterfallMetric[], kind: string, value: string): void {
+  const parsed = metricNumber(value);
+  if (parsed !== undefined) metrics.push({ kind: kind, value: parsed });
+}
+
+function videoMetrics(video: AggregateSearchVideo): WaterfallMetric[] {
+  const metrics: WaterfallMetric[] = [];
+  addMetric(metrics, 'view', aggregateRowText(video.rows, ['Views', 'View Count', 'Play']));
+  addMetric(metrics, 'like', aggregateRowText(video.rows, ['Likes', 'Like Count']));
+  addMetric(metrics, 'favorite', aggregateRowText(video.rows, ['Favorites', 'Favorite Count']));
+  addMetric(metrics, 'comment', aggregateRowText(video.rows, ['Comments', 'Comment Count', 'Replies']));
+  addMetric(metrics, 'coin', aggregateRowText(video.rows, ['Coins']));
+  addMetric(metrics, 'danmaku', aggregateRowText(video.rows, ['Danmaku']));
+  addMetric(metrics, 'share', aggregateRowText(video.rows, ['Shares']));
+  return metrics;
+}
+
+function postMetrics(post: AggregateSearchPost): WaterfallMetric[] {
+  const metrics: WaterfallMetric[] = [];
+  const record = post.rows.length > 0 ? dynamicPostRecord(post.rows[0].value) : null;
+  const publicMetrics = record === null ? null : dynamicRecord(record.public_metrics);
+  if (post.source === 'x' && publicMetrics !== null) {
+    addMetric(metrics, 'view', recordText(publicMetrics, ['impression_count']));
+    addMetric(metrics, 'like', recordText(publicMetrics, ['like_count']));
+    addMetric(metrics, 'comment', recordText(publicMetrics, ['reply_count']));
+    addMetric(metrics, 'repost', recordText(publicMetrics, ['retweet_count']));
+    addMetric(metrics, 'quote', recordText(publicMetrics, ['quote_count']));
+    addMetric(metrics, 'favorite', recordText(publicMetrics, ['bookmark_count']));
+    return metrics;
+  }
+  addMetric(metrics, post.source === 'zhihu' ? 'like' : 'score', post.score);
+  addMetric(metrics, 'comment', post.commentCount);
+  return metrics;
+}
+
+function aggregateAvatar(rows: AggregateSearchRowData[]): string {
+  const avatar = aggregateRowText(rows, ['Author Avatar', 'authorAvatar', 'Avatar', 'upic']);
+  return avatar.startsWith('http') ? avatar : '';
+}
+
 export function aggregateMediaCandidates(
   videos: AggregateSearchVideo[],
   posts: AggregateSearchPost[],
@@ -165,6 +259,7 @@ export function aggregateMediaCandidates(
   const topicsFor = (title: string, summary: string): string[] =>
     waterfallTextTokens(title + ' ' + summary);
   videos.forEach((video: AggregateSearchVideo, index: number) => {
+    const metrics = videoMetrics(video);
     candidates.push({
       id: video.id,
       source: video.source,
@@ -179,6 +274,9 @@ export function aggregateMediaCandidates(
       searchQuery: searchQuery,
       queryStage: queryStage,
       sourceRank: nextSourceRank(video.source),
+      authorName: aggregateRowText(video.rows, ['Channel', 'Author', 'Owner']) || undefined,
+      authorAvatarUrl: aggregateAvatar(video.rows) || undefined,
+      metrics: metrics.length > 0 ? metrics : undefined,
       topics: topicsFor(video.title, video.summary),
       format: 'landscape_video',
       recallRoute: recallRoute,
@@ -193,6 +291,7 @@ export function aggregateMediaCandidates(
     const parsedScore = Number(post.score.trim());
     const format: WaterfallFormat = mediaType === 'video' ? 'landscape_video' :
       (mediaType === 'image_text' ? 'image_text' : 'text');
+    const metrics = postMetrics(post);
     candidates.push({
       id: post.id,
       source: post.source,
@@ -209,6 +308,9 @@ export function aggregateMediaCandidates(
       queryStage: queryStage,
       sourceRank: nextSourceRank(post.source),
       providerScore: post.score.trim().length > 0 && Number.isFinite(parsedScore) ? parsedScore : undefined,
+      authorName: post.author || aggregateRowText(post.rows, ['Author', 'authorName']) || undefined,
+      authorAvatarUrl: aggregateAvatar(post.rows) || undefined,
+      metrics: metrics.length > 0 ? metrics : undefined,
       topics: topicsFor(post.title, post.text),
       format: format,
       recallRoute: recallRoute,
@@ -577,7 +679,7 @@ function statusFor(source: AggregateSearchSource, status: string, message: strin
 }
 
 function dynamicSource(result: DynamicGenericToolResult): AggregateSearchSource {
-  return result.sourceTag === 'YouTube Data API' ? 'youtube' : 'bilibili';
+  return result.sourceTag === 'YouTube Data API' || result.sourceTag === 'Composio YouTube' ? 'youtube' : 'bilibili';
 }
 
 function dynamicVideoUrl(result: DynamicGenericToolResult): string {
@@ -620,15 +722,7 @@ function imageUrlsFromText(value: string): string[] {
     return [];
   }
   const urls: string[] = [];
-  matches.forEach((raw: string) => {
-    const lower = raw.toLowerCase();
-    if ((lower.indexOf('.jpg') < 0 && lower.indexOf('.jpeg') < 0 && lower.indexOf('.png') < 0 &&
-      lower.indexOf('.webp') < 0 && lower.indexOf('.gif') < 0 && lower.indexOf('image') < 0 &&
-      lower.indexOf('pic') < 0) || urls.indexOf(raw) >= 0) {
-      return;
-    }
-    urls.push(raw);
-  });
+  matches.forEach((raw: string) => appendImageUrl(urls, raw));
   return urls;
 }
 
@@ -733,21 +827,37 @@ function dynamicPostUrl(value: string): string {
   return urlFromText(value);
 }
 
-function appendImageUrl(urls: string[], value: string): void {
-  if (value.length > 0 && urls.indexOf(value) < 0) {
-    urls.push(value);
-  }
-}
-
 function imageUrlsFromDynamicPost(value: string): string[] {
   const urls = imageUrlsFromText(value);
   const record = dynamicPostRecord(value);
   if (record === null) {
     return urls;
   }
-  ['thumbnail_pic', 'bmiddle_pic', 'original_pic', 'image_url', 'cover', 'thumbnail', 'url_overridden_by_dest'].forEach((key: string) => {
-    appendImageUrl(urls, textOf(record[key]).trim());
+  ['thumbnail_pic', 'bmiddle_pic', 'original_pic', 'image_url', 'cover', 'thumbnail',
+    'url_overridden_by_dest', 'preview_image_url'].forEach((key: string) => {
+    appendImageUrl(urls, textOf(record[key]));
   });
+  const preview = dynamicRecord(record.preview);
+  const previewImages = preview === null ? null : preview.images;
+  if (Array.isArray(previewImages)) {
+    previewImages.forEach((item: DynamicPostValue) => {
+      const image = dynamicRecord(item);
+      const source = image === null ? null : dynamicRecord(image.source);
+      if (source !== null) {
+        appendImageUrl(urls, textOf(source.url));
+      }
+    });
+  }
+  const metadata = dynamicRecord(record.media_metadata);
+  if (metadata !== null) {
+    Object.keys(metadata).forEach((key: string) => {
+      const sized = dynamicRecord(metadata[key]);
+      const source = sized === null ? null : dynamicRecord(sized.s);
+      if (source !== null) {
+        appendImageUrl(urls, textOf(source.u));
+      }
+    });
+  }
   const pics = record.pics;
   if (Array.isArray(pics)) {
     pics.forEach((item: DynamicPostValue) => {
@@ -759,7 +869,8 @@ function imageUrlsFromDynamicPost(value: string): string[] {
         return;
       }
       if (typeof item === 'object') {
-        appendImageUrl(urls, recordText(item as DynamicPostRecord, ['url', 'large_url', 'thumbnail_pic', 'bmiddle_pic', 'original_pic']));
+        appendImageUrl(urls, recordText(item as DynamicPostRecord,
+          ['url', 'large_url', 'thumbnail_pic', 'bmiddle_pic', 'original_pic']));
       }
     });
   }
@@ -1070,13 +1181,14 @@ export function redditPostsFromComposioResult(result: DynamicGenericToolResult):
 export function xPostsFromComposioResult(result: DynamicGenericToolResult): AggregateSearchPost[] {
   const posts = postsFromDynamicResult('x', 'X', result);
   appendXMediaRows(posts, xMediaRecords(result.rawPreview));
+  appendXAuthorRows(posts, xIncludedRecords(result.rawPreview, 'users'));
   return posts;
 }
 
-function xMediaRecords(value: DynamicPostValue): Object[] {
+function xIncludedRecords(value: DynamicPostValue, key: string): Object[] {
   if (typeof value === 'string') {
     try {
-      return xMediaRecords(JSON.parse(value) as DynamicPostValue);
+      return xIncludedRecords(JSON.parse(value) as DynamicPostValue, key);
     } catch (_error) {
       return [];
     }
@@ -1086,24 +1198,28 @@ function xMediaRecords(value: DynamicPostValue): Object[] {
   }
   const record = value as DynamicPostRecord;
   const includes = dynamicRecord(record.includes);
-  if (includes !== null && Array.isArray(includes.media)) {
-    return objectArrayFrom(includes.media);
+  if (includes !== null && Array.isArray(includes[key])) {
+    return objectArrayFrom(includes[key]);
   }
   const preview = record.preview;
   if (preview !== undefined) {
-    const nested = xMediaRecords(preview);
+    const nested = xIncludedRecords(preview, key);
     if (nested.length > 0) {
       return nested;
     }
   }
   const keys = Object.keys(record);
   for (let index = 0; index < keys.length; index++) {
-    const nested = xMediaRecords(record[keys[index]]);
+    const nested = xIncludedRecords(record[keys[index]], key);
     if (nested.length > 0) {
       return nested;
     }
   }
   return [];
+}
+
+function xMediaRecords(value: DynamicPostValue): Object[] {
+  return xIncludedRecords(value, 'media');
 }
 
 function stringValues(value: DynamicPostValue): string[] {
@@ -1138,6 +1254,22 @@ function appendXMediaRows(posts: AggregateSearchPost[], media: Object[]): void {
       if (video.length > 0) {
         post.rows.push({ label: 'video', value: video });
       }
+      break;
+    }
+  });
+}
+
+function appendXAuthorRows(posts: AggregateSearchPost[], users: Object[]): void {
+  posts.forEach((post: AggregateSearchPost): void => {
+    const record = post.rows.length > 0 ? dynamicPostRecord(post.rows[0].value) : null;
+    const authorId = record === null ? '' : recordText(record, ['author_id']);
+    for (let index = 0; index < users.length; index++) {
+      const user = dynamicRecord(users[index]);
+      if (user === null || recordText(user, ['id']) !== authorId) continue;
+      post.author = recordText(user, ['name', 'username']);
+      post.handle = recordText(user, ['username']);
+      const avatar = recordText(user, ['profile_image_url']);
+      if (avatar.length > 0) post.rows.push({ label: 'authorAvatar', value: avatar });
       break;
     }
   });
@@ -1820,7 +1952,8 @@ async function enrichOnePostComments(source: AggregateSearchSource, post: Aggreg
     if (source === 'x') {
       const args: AggregateXSearchArgs = {
         query: 'conversation_id:' + id + ' -is:retweet', pageSize: 10,
-        expansions: 'author_id', mediaFields: '', tweetFields: 'id,text,author_id,created_at,conversation_id'
+        expansions: 'author_id', mediaFields: '', tweetFields: 'id,text,author_id,created_at,conversation_id',
+        userFields: 'id,name,username,profile_image_url'
       };
       const result = await callComposioFixedDynamic('帮我用 Composio X 读取公开回复', 'x.post.search', args as Object);
       if (result !== null && result.status === 'success') {
@@ -2032,7 +2165,8 @@ function aggregateSourceBatch(
       pageSize: limit,
       expansions: 'attachments.media_keys,author_id',
       mediaFields: 'media_key,type,url,preview_image_url,variants,width,height',
-      tweetFields: 'id,text,author_id,created_at,public_metrics,attachments,conversation_id'
+      tweetFields: 'id,text,author_id,created_at,public_metrics,attachments,conversation_id',
+      userFields: 'id,name,username,profile_image_url'
     };
     if (continuation !== null && continuation.kind === 'cursor') {
       args.cursor = continuation.value;

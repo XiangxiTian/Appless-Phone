@@ -352,6 +352,7 @@ import {
   renderAggregateSearchHomeDocument,
   waterfallApplePodcastCandidateFromAction,
   waterfallAdvanceCurrentFromAction,
+  waterfallAdvanceVisibleFromAction,
   waterfallBehaviorFromAction,
   waterfallEnabledSourcesFromAction
 } from './html/HtmlAggregateSearchHomeRenderer';
@@ -1776,7 +1777,7 @@ struct Index {
       state.enabledSources.indexOf(candidate.source) >= 0).length;
     active += state.tail.filter((candidate: WaterfallRankedCandidate): boolean =>
       state.enabledSources.indexOf(candidate.source) >= 0).length;
-    if (active > 3) return;
+    if (active > 8) return;
     const sources = this.interestExplorationSources.filter((source: string): boolean =>
       state.enabledSources.indexOf(source) >= 0);
     if (sources.length > 0) this.runInterestRecall(sources);
@@ -1814,6 +1815,10 @@ struct Index {
       } else if (result.batch.status.status !== 'success' && explorationIndex >= 0) {
         this.interestExplorationSources.splice(explorationIndex, 1);
       }
+      aiLogInfo('[AIPhone][WaterfallInterestRecallBatch] source=' + source +
+        ' status=' + result.batch.status.status +
+        ' count=' + result.candidates.length.toString() +
+        ' route=' + result.request.route + ' query=' + result.request.query);
       current = mergeWaterfallBatchDeferredRanking(
         current, result.candidates, this.interestSourceState(result)).state;
       this.interestWaterfallFeedState = current;
@@ -2069,12 +2074,14 @@ struct Index {
       return true;
     }
     const currentId = waterfallAdvanceCurrentFromAction(action, surfaceId);
+    const visibleId = waterfallAdvanceVisibleFromAction(action, surfaceId);
     const current = this.waterfallFeedState.current;
-    if (currentId === null || current === null || current.id !== currentId) {
+    const targetId = visibleId ?? '';
+    if (current === null || (currentId !== null && current.id !== currentId && targetId.length === 0)) {
       this.logHtmlHomeActionError(action, 'stale_waterfall_current');
       return true;
     }
-    this.applyWaterfallUpdate(document, advanceWaterfallFeed(this.waterfallFeedState, Date.now()));
+    this.applyWaterfallUpdate(document, advanceWaterfallFeed(this.waterfallFeedState, Date.now(), targetId));
     return true;
   }
 
@@ -2126,9 +2133,11 @@ struct Index {
     }
     if (action.id === 'waterfall.feed.advance') {
       const currentId = waterfallAdvanceCurrentFromAction(action, surfaceId);
-      if (currentId !== null && state.current !== null && state.current.id === currentId) {
-        this.applyInterestWaterfallUpdate(advanceWaterfallFeed(state, Date.now()));
-      }
+      const visibleId = waterfallAdvanceVisibleFromAction(action, surfaceId);
+      if (state.current === null) return;
+      const targetId = visibleId ?? '';
+      if (currentId !== null && state.current.id !== currentId && targetId.length === 0) return;
+      this.applyInterestWaterfallUpdate(advanceWaterfallFeed(state, Date.now(), targetId));
     }
   }
 
@@ -9684,7 +9693,14 @@ struct Index {
         }
       })
 
-      Column() {
+      Stack({ alignContent: Alignment.Bottom }) {
+        Image($r('app.media.home_light_aurora_background'))
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Cover)
+          .hitTestBehavior(HitTestMode.Transparent)
+          .align(Alignment.TopStart)
+
         HtmlHomeSurfaceView({
           html: this.interestWaterfallHtml,
           waterfallPayloadJson: this.interestWaterfallPayloadJson,
@@ -9700,29 +9716,25 @@ struct Index {
           }
         })
         .width('100%')
-        .layoutWeight(1)
+        .height('100%')
+        .align(Alignment.TopStart)
+        .zIndex(1)
 
-        if (!this.interestWaterfallFullscreen) {
-          Row() {
-            WaterfallVoiceDock({
-              isListening: this.isVoiceListening && this.voiceTarget === 'waterfall',
-              isBusy: this.waterfallConversationBusy ||
-                (this.isVoiceListening && this.voiceTarget !== 'waterfall'),
-              reduceMotion: this.bimReduceMotion,
-              message: this.waterfallConversationMessage,
-              onStart: (): void => {
-                void this.startVoiceInput('waterfall');
-              },
-              onStop: (): void => {
-                this.stopVoiceInput();
-              }
-            })
+        WaterfallVoiceDock({
+          isListening: this.isVoiceListening && this.voiceTarget === 'waterfall',
+          isBusy: this.waterfallConversationBusy ||
+            (this.isVoiceListening && this.voiceTarget !== 'waterfall'),
+          reduceMotion: this.bimReduceMotion,
+          message: this.waterfallConversationMessage,
+          onStart: (): void => {
+            void this.startVoiceInput('waterfall');
+          },
+          onStop: (): void => {
+            this.stopVoiceInput();
           }
-          .width('100%')
-          .justifyContent(FlexAlign.Center)
-          .padding({ left: 16, right: 16, top: 6, bottom: 8 })
-          .backgroundColor('#F3F2EE')
-        }
+        })
+        .margin({ bottom: 20 })
+        .zIndex(this.interestWaterfallFullscreen ? 0 : 2)
       }
       .width('100%')
       .height('100%')
@@ -9732,7 +9744,7 @@ struct Index {
       .index(this.bimRootIndex)
       .loop(false)
       .indicator(false)
-      .disableSwipe(this.waterfallFullscreen || this.interestWaterfallFullscreen)
+      .disableSwipe(this.bimRootIndex === 1 || this.waterfallFullscreen)
       .duration(this.bimReduceMotion ? 0 : A2UI_MOTION_NORMAL_MS)
       .curve(A2UI_MOTION_MOVE_CURVE)
       .onChange((index: number) => {

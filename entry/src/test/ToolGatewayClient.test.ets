@@ -4068,8 +4068,9 @@ export default function toolGatewayClientTest() {
       }
     });
 
-    it('renders YouTube API key errors without fake videos', 0, async () => {
+    it('renders YouTube Composio config errors without fake videos', 0, async () => {
       try {
+        configureComposioConfigFromRawJson('{}');
         configureLocalProviderConfigFromRawJson('{}');
         const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
         const args: YouTubeSearchArgsFixture = {
@@ -4087,16 +4088,18 @@ export default function toolGatewayClientTest() {
         );
 
         expect(result.ok).assertTrue();
-        expect(genericToolResults(result.surface)[0].status).assertEqual('error');
-        expect(result.raw.indexOf('YOUTUBE_API_KEY')).assertLarger(-1);
+        expect(genericToolResults(result.surface)[0].status).assertEqual('missing_config');
+        expect(result.raw.indexOf('Composio 未配置')).assertLarger(-1);
         expect(result.raw.indexOf('fake')).assertEqual(-1);
       } finally {
+        configureComposioConfigFromRawJson('{}');
         configureLocalProviderConfigFromRawJson('{}');
       }
     });
 
-    it('dispatches media video search locally without network when YouTube key is missing', 0, async () => {
+    it('dispatches media video search through Composio config state', 0, async () => {
       try {
+        configureComposioConfigFromRawJson('{}');
         configureLocalProviderConfigFromRawJson('{}');
         const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
         const args: MediaVideoSearchArgsFixture = {
@@ -4118,11 +4121,12 @@ export default function toolGatewayClientTest() {
         expect(result.ok).assertTrue();
         expect(rendered.length).assertLarger(0);
         expect(rendered[0].toolName).assertEqual('media.video.search');
-        expect(rendered[0].status).assertEqual('error');
-        expect(rendered[0].sourceTag).assertEqual('YouTube Data API');
+        expect(rendered[0].status).assertEqual('missing_config');
+        expect(rendered[0].sourceTag).assertEqual('Composio YouTube');
         expect(rendered[0].rows.length).assertLarger(0);
-        expect(rendered[0].summary.indexOf('YOUTUBE_API_KEY')).assertLarger(-1);
+        expect(rendered[0].summary.indexOf('Composio 未配置')).assertLarger(-1);
       } finally {
+        configureComposioConfigFromRawJson('{}');
         configureLocalProviderConfigFromRawJson('{}');
       }
     });

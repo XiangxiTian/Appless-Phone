@@ -22,8 +22,9 @@ export default function bilibiliApiClientTest() {
     });
 
     it('maps Bilibili API JSON into playable generic tool rows', 0, () => {
-      const payload: string = '{"code":0,"message":"OK","data":{"result":[{"result_type":"video","data":[{"bvid":"BV1h57y6pE5o","title":"Qwen <em class=\\"keyword\\">Max</em> 官方介绍","description":"真实视频简介","pic":"//i1.hdslb.com/bfs/archive/cover.jpg"}]}]}}';
+      const payload: string = '{"code":0,"message":"OK","data":{"result":[{"result_type":"video","data":[{"bvid":"BV1h57y6pE5o","title":"Qwen <em class=\\"keyword\\">Max</em> 官方介绍","description":"真实视频简介","pic":"//i1.hdslb.com/bfs/archive/cover.jpg","author":"通义实验室","upic":"//i1.hdslb.com/bfs/face/avatar.jpg","play":98659,"like":361,"favorites":178,"review":186,"video_review":148}]}]}}';
       const results: DynamicGenericToolResult[] = bilibiliVideoResultsFromSearchPayload(payload, 'qwen max');
+      const rows = JSON.stringify(results[0].rows);
 
       expect(results.length).assertEqual(1);
       expect(results[0].sourceTag).assertEqual('哔哩哔哩');
@@ -33,6 +34,13 @@ export default function bilibiliApiClientTest() {
       expect(results[0].rows[1].value).assertEqual('BV1h57y6pE5o');
       expect(results[0].rows[2].value).assertEqual('https://www.bilibili.com/video/BV1h57y6pE5o');
       expect(results[0].rows[3].value).assertEqual('https://i1.hdslb.com/bfs/archive/cover.jpg');
+      expect(rows.indexOf('"label":"Author","value":"通义实验室"')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Author Avatar","value":"https://i1.hdslb.com/bfs/face/avatar.jpg"')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Views","value":"98659"')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Likes","value":"361"')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Favorites","value":"178"')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Comments","value":"186"')).assertLarger(-1);
+      expect(rows.indexOf('"label":"Danmaku","value":"148"')).assertLarger(-1);
     });
 
     it('maps Bilibili search HTML into playable generic tool rows', 0, () => {

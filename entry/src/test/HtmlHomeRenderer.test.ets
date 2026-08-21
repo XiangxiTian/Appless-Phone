@@ -16,6 +16,7 @@ import {
   shouldShowWaterfallReaderAction,
   waterfallAdvanceCurrentFromAction,
   waterfallApplePodcastCandidateFromAction,
+  waterfallAdvanceVisibleFromAction,
   waterfallBehaviorFromAction,
   waterfallEnabledSourcesFromAction
 } from '../main/ets/pages/A2uiHome/html/HtmlAggregateSearchHomeRenderer';
@@ -3739,7 +3740,7 @@ export default function htmlHomeRendererTest() {
       expect(shouldShowWaterfallReaderAction('hackernews', 'post')).assertTrue();
       expect(html.indexOf('var sourceOnly = ["applepodcasts","twitch"].indexOf(item.source) >= 0'))
         .assertLarger(-1);
-      expect(html.indexOf('var openAttributes = sourceOnly ?')).assertLarger(-1);
+      expect(html.indexOf('var openAttr = sourceOnly ?')).assertLarger(-1);
       expect(html.indexOf("var shellClass = 'waterfall-card-shell' + (sourceOnly ? '' : " +
         "' waterfall-card-shell--interactive')")).assertLarger(-1);
       expect(html.indexOf('.waterfall-card-shell--interactive { cursor: pointer; }')).assertLarger(-1);
@@ -3923,15 +3924,18 @@ export default function htmlHomeRendererTest() {
       const html = renderHtmlHomeDocument(doc);
       const action = parseHtmlHomeAction(
         '{"id":"waterfall.feed.advance","label":"下一条","prompt":"","variant":"secondary",' +
-        '"kind":"client","args":{"surfaceId":"' + surfaceId + '","currentId":"video-1"}}'
+        '"kind":"client","args":{"surfaceId":"' + surfaceId +
+        '","currentId":"video-1","visibleId":"post-3"}}'
       );
       const currentId = waterfallAdvanceCurrentFromAction(action as A2uiAction, surfaceId);
-      const update = advanceWaterfallFeed(state, Date.parse('2026-08-06T12:00:00.000Z'));
+      const visibleId = waterfallAdvanceVisibleFromAction(action as A2uiAction, surfaceId);
+      const update = advanceWaterfallFeed(state, Date.parse('2026-08-06T12:00:00.000Z'), visibleId ?? '');
 
       expect(currentId).assertEqual('video-1');
-      expect(update.state.shown.map((item) => item.id).join(',')).assertEqual('video-1');
-      expect(update.state.current?.id).assertEqual('image-2');
-      expect(update.state.stable.map((item) => item.id).join(',')).assertEqual('post-3');
+      expect(visibleId).assertEqual('post-3');
+      expect(update.state.shown.map((item) => item.id).join(',')).assertEqual('video-1,image-2');
+      expect(update.state.current?.id).assertEqual('post-3');
+      expect(update.state.stable.length).assertEqual(0);
       expect(html.indexOf('waterfall.feed.advance')).assertLarger(-1);
       expect(html.indexOf("track.addEventListener('scroll'")).assertLarger(-1);
       expect(html.indexOf('data-waterfall-id')).assertLarger(-1);

@@ -2,6 +2,7 @@ import { ComposioConfig } from '../../composio/ComposioConfig';
 import {
   ComposioPreservedExecution,
   ComposioSessionClient,
+  describeComposioFailure,
   proxyToolkitAccountsFromAuthConfigs
 } from '../../composio/ComposioSessionClient';
 import { A2uiLabelValueData } from './A2uiTypes';
@@ -127,6 +128,8 @@ const GITHUB_DASHBOARD_TARGET: string = 'github.user.dashboard';
 const GITHUB_PROFILE_TOOL: string = 'GITHUB_GET_A_USER';
 const GITHUB_REPOSITORIES_TOOL: string = 'GITHUB_LIST_REPOSITORIES_FOR_A_USER';
 const GITHUB_EVENTS_TOOL: string = 'GITHUB_LIST_EVENTS_FOR_USER';
+const YOUTUBE_MOST_POPULAR_TOOL: string = 'YOUTUBE_LIST_MOST_POPULAR_VIDEOS';
+const YOUTUBE_SEARCH_TOOL: string = 'YOUTUBE_SEARCH_YOU_TUBE';
 const MAX_TRUSTED_GITHUB_SCHEMA_CHARS: number = 3000;
 
 function emptyGitHubRecord(): GitHubJsonRecord {
@@ -3311,6 +3314,75 @@ export async function callComposioDynamicWithProviderData(
   args: Object | null
 ): Promise<DynamicGenericToolResult | null> {
   return callComposioParsed(prompt, parsedExecuteArgs(args), false, true);
+}
+
+async function callComposioYouTubeToolWithProviderData(
+  toolSlug: string,
+  prompt: string,
+  args: Object
+): Promise<DynamicGenericToolResult> {
+  if (!composioConfig.isConfigured()) {
+    const missing = composioDynamicMissingConfigResult(prompt, toolSlug);
+    missing.sourceTag = 'Composio YouTube';
+    return missing;
+  }
+  try {
+    const current = await clientForPrompt(prompt);
+    const execution = await current.executeConnectedTool('youtube', toolSlug, args);
+    const result = composioDynamicResultFromObservation('execute', execution.observation, toolSlug, prompt);
+    result.sourceTag = 'Composio YouTube';
+    if (execution.providerData !== null) {
+      result.providerData = execution.providerData;
+      result.providerDataMeta = execution.providerDataMeta as Object;
+    }
+    return result;
+  } catch (error) {
+    const message = describeComposioFailure(error instanceof Error ? error : JSON.stringify(error));
+    return {
+      sourceTag: 'Composio YouTube',
+      toolName: toolSlug,
+      title: 'YouTube Composio 调用失败',
+      status: 'error',
+      summary: message,
+      rows: [],
+      rawPreview: 'error',
+      providerPhase: 'execution'
+    };
+  }
+}
+
+export async function callComposioYouTubeMostPopularWithProviderData(
+  maxResults: number = 10,
+  pageToken: string = ''
+): Promise<DynamicGenericToolResult> {
+  const args = new Object() as Record<string, Object | string | number | boolean>;
+  args['chart'] = 'mostPopular';
+  args['part'] = 'snippet,statistics';
+  args['maxResults'] = Math.max(1, Math.min(50, Math.floor(maxResults)));
+  if (pageToken.trim().length > 0) args['pageToken'] = pageToken.trim();
+  return callComposioYouTubeToolWithProviderData(
+    YOUTUBE_MOST_POPULAR_TOOL, 'Composio YouTube most popular videos', args
+  );
+}
+
+export async function callComposioYouTubeSearchWithProviderData(
+  query: string,
+  order: string,
+  maxResults: number,
+  relevanceLanguage: string = '',
+  pageToken: string = ''
+): Promise<DynamicGenericToolResult> {
+  const args = new Object() as Record<string, Object | string | number | boolean>;
+  args['q'] = query;
+  args['part'] = 'snippet';
+  args['type'] = 'video';
+  args['order'] = order;
+  args['maxResults'] = Math.max(1, Math.min(50, Math.floor(maxResults)));
+  if (relevanceLanguage.trim().length > 0) args['relevanceLanguage'] = relevanceLanguage.trim();
+  if (pageToken.trim().length > 0) args['pageToken'] = pageToken.trim();
+  return callComposioYouTubeToolWithProviderData(
+    YOUTUBE_SEARCH_TOOL, 'Composio YouTube search for ' + query, args
+  );
 }
 
 export async function callComposioFixedDynamic(

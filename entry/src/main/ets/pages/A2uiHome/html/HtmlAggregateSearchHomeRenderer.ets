@@ -1391,8 +1391,9 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-preferences button.is-pressed {
   background: var(--accent-soft) !important; transform: scale(0.97);
 }
-.waterfall-reader-body { padding: calc(82px + env(safe-area-inset-top)) 22px calc(48px + env(safe-area-inset-bottom)); }
+.waterfall-reader-body { padding: calc(86px + env(safe-area-inset-top)) 24px calc(56px + env(safe-area-inset-bottom)); }
 .waterfall-reader-layout { width: min(100%, 640px); margin: 0 auto; }
+.waterfall-reader-copy { width: 100%; }
 .waterfall-toolbar button,
 .waterfall-reader-head button,
 .waterfall-reader-head a,
@@ -1400,22 +1401,16 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   -webkit-tap-highlight-color: transparent; touch-action: manipulation; cursor: pointer;
 }
 .waterfall-reader-media {
-  height: min(44dvh, 390px); overflow: hidden; margin-bottom: 24px; border-radius: 22px;
-  background: #e7eaed; box-shadow: 0 10px 28px rgba(42,55,69,0.09);
+  height: min(44dvh, 390px); overflow: hidden; margin-bottom: 28px; border-radius: 16px;
+  background: #e7eaed; box-shadow: 0 18px 44px rgba(42,55,69,0.10);
 }
 .waterfall-reader-media img,
 .waterfall-reader-media iframe,
 .waterfall-reader-media video { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
-.waterfall-reader-media--video { height: auto; margin-bottom: 0; aspect-ratio: 16 / 9; background: #e6e3dd; box-shadow: none; }
+.waterfall-reader-media--video { height: auto; aspect-ratio: 16 / 9; }
 .waterfall-reader--video.waterfall-reader--portrait .waterfall-reader-media--video {
   width: min(72%, 360px); margin-right: auto; margin-left: auto; aspect-ratio: 9 / 16;
 }
-.waterfall-reader-video-card {
-  overflow: hidden; border: 1px solid rgba(56,65,72,0.07); border-radius: 24px; padding: 12px;
-  background: #fbfcfd;
-  box-shadow: 0 20px 48px rgba(42,55,69,0.12);
-}
-.waterfall-reader-video-copy { padding: 18px 8px 10px; }
 .waterfall-reader-video-stage { position: relative; }
 .waterfall-reader-video-poster { position: absolute; z-index: 1; inset: 0; }
 .waterfall-reader-video-fallback {
@@ -1445,17 +1440,17 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-reader-video-stage.is-playing .waterfall-reader-video-poster,
 .waterfall-reader-video-stage.is-playing .waterfall-media-cover,
 .waterfall-reader-video-stage.is-playing .waterfall-reader-video-play { opacity: 0; pointer-events: none; }
-.waterfall-reader--video .waterfall-reader-context { margin-bottom: 14px; }
-.waterfall-reader--video h2 { max-width: 18ch; margin: 0 0 12px; font-size: clamp(27px, 7vw, 38px); line-height: 1.12; }
-.waterfall-reader--video p { font-size: 15px; line-height: 1.68; }
-.waterfall-reader-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); }
+.waterfall-reader-context {
+  display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 20px; color: var(--muted); font-size: 12px;
+}
 .waterfall-reader-source { display: inline-flex; min-width: 0; align-items: center; gap: 8px; color: var(--accent); text-transform: none; letter-spacing: 0; }
 .waterfall-reader-source .waterfall-author { color: var(--muted); font-weight: 650; }
 .waterfall-reader-source .waterfall-author-name { max-width: none; overflow: visible; text-overflow: clip; white-space: normal; }
 .waterfall-reader-context > span:last-child { flex: 0 0 auto; }
 .waterfall-reader-signals {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px;
-  margin: -4px 0 16px; border-top: 1px solid var(--line); padding-top: 14px;
+  margin: 0 0 26px; border-top: 1px solid var(--line); padding-top: 16px;
 }
 .waterfall-reader-signal {
   display: grid; min-width: 0; grid-template-columns: 14px minmax(0, 1fr); align-items: center; gap: 2px 4px;
@@ -1465,9 +1460,11 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-reader-signal .waterfall-icon svg { width: 14px; height: 14px; }
 .waterfall-reader-signal b { grid-column: 2; grid-row: 1; overflow-wrap: anywhere; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 760; }
 .waterfall-reader-signal-label { grid-column: 1 / -1; font-size: 10px; font-weight: 650; white-space: nowrap; }
-.waterfall-reader h2 { max-width: 14ch; margin: 16px 0 20px; font-size: clamp(34px, 8.8vw, 50px); line-height: 1.08; }
-.waterfall-reader p { color: #423d38; font-size: 17px; line-height: 1.82; }
-.waterfall-reader--text h2 { max-width: 12ch; }
+.waterfall-reader h2 {
+  max-width: 18ch; margin: 0 0 24px; color: var(--ink);
+  font-size: clamp(28px, 7.2vw, 38px); line-height: 1.08; letter-spacing: -0.035em;
+}
+.waterfall-reader p { margin: 0; color: #423d38; font-size: 17px; line-height: 1.8; overflow-wrap: anywhere; }
 @media (max-width: 360px) {
   .waterfall-reader-signals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -1792,8 +1789,6 @@ const WATERFALL_JS: string = `
     stage.classList.add('is-playing');
     var hostCard = typeof stage.closest === 'function' ? stage.closest('.waterfall-card') : null;
     if (hostCard) hostCard.classList.add('is-playing');
-    var videoCard = control.closest('.waterfall-reader-video-card');
-    if (videoCard) videoCard.classList.add('is-playing');
     if (reader && reader.contains(stage)) reader.classList.add('is-playing');
     var player = frame.querySelector('video');
     if (player && typeof player.play === 'function') player.play();
@@ -2482,10 +2477,9 @@ const WATERFALL_JS: string = `
       sourceLogoMarkup(item.source) + '<span>' + escapeHtml(sourceLabel(item.source)) + '</span>' +
       authorMarkup(item) + '</div><span>' +
       escapeHtml(publishedLabel(item.publishedAt)) + '</span></div>';
-    var copy = context + '<h2>' + escapeHtml(title) + '</h2>' + metricsMarkup(item, true) +
-      (summary ? '<p>' + escapeHtml(summary) + '</p>' : '');
-    var content = item.mediaType === 'video' ? '<section class="waterfall-reader-video-card">' + media +
-      '<div class="waterfall-reader-video-copy">' + copy + '</div></section>' : media + copy;
+    var copy = '<div class="waterfall-reader-copy">' + context + '<h2>' + escapeHtml(title) + '</h2>' +
+      metricsMarkup(item, true) + (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') + '</div>';
+    var content = media + copy;
     var nextId = text(item.id);
     if (readerMountedId !== nextId) {
       reader.innerHTML = '<div class="waterfall-reader-head">' +

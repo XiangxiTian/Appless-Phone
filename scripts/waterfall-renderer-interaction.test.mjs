@@ -279,7 +279,11 @@ assert.match(waterfallJs, /class="waterfall-source-action"[^>]*aria-label="查�
 assert.match(waterfallJs, /waterfall-reader--image-text/);
 assert.match(waterfallJs, /waterfall-reader--text/);
 assert.match(waterfallJs, /waterfall-reader--video/);
-assert.match(waterfallJs, /waterfall-reader-video-card/);
+assert.match(waterfallJs, /waterfall-reader-copy/);
+assert.doesNotMatch(waterfallJs, /waterfall-reader-video-card/,
+  'video, image-text, and text details must use the same reader structure');
+assert.doesNotMatch(waterfallJs, /waterfall-reader-video-copy/,
+  'detail copy must not fork into a video-only wrapper');
 assert.match(waterfallJs, /requestAnimationFrame/);
 assert.doesNotMatch(waterfallJs, /reader\.offsetWidth/,
   'opening details must not force a synchronous full-reader layout');
@@ -1237,10 +1241,10 @@ window.__aiphoneApplyWaterfallUpdate({
 assert.equal(track.innerHTMLWrites, writesBeforeReaderUpdate,
   'live provider updates must not rebuild the feed behind an open reader');
 assert.match(reader.innerHTML, /waterfall-reader--video/);
-assert.match(reader.innerHTML, /waterfall-reader-video-card/);
+assert.match(reader.innerHTML, /class="waterfall-reader-copy"/);
+assert.doesNotMatch(reader.innerHTML, /waterfall-reader-video-card|waterfall-reader-video-copy/);
 assert.match(reader.innerHTML, /waterfall-reader-head-label">返回</);
 assert.match(reader.innerHTML, /waterfall-reader-head-title">详情</);
-assert.match(reader.innerHTML, /waterfall-reader-video-copy/);
 assert.doesNotMatch(reader.innerHTML, /<iframe class="waterfall-media-frame"/,
   'opening video details must not load the remote player before a deliberate play press');
 assert.match(reader.innerHTML, /waterfall-reader-video-frame/);
@@ -1252,20 +1256,18 @@ assert.equal(track.classList.contains('reader-open'), false,
 assert.equal(videoOpenLayoutReads, 0,
   'opening details must not synchronously read card geometry that no reader style consumes');
 assert.deepEqual(reader.style.values, {});
-const videoDetail = element();
 const videoFrame = element();
 const videoStage = element();
 videoStage.getAttribute = (name) => name === 'data-waterfall-video-url' ?
   'https://www.youtube.com/embed/abc123?playsinline=1' : (name === 'data-waterfall-video-kind' ? 'iframe' : '');
 videoStage.querySelector = (selector) => selector === '.waterfall-reader-video-frame' ? videoFrame : null;
 const playControl = {
-  closest: (selector) => selector === '.waterfall-reader-video-card' ? videoDetail :
-    (selector === '.waterfall-reader-video-stage' ? videoStage : null)
+  closest: (selector) => selector === '.waterfall-reader-video-stage' ? videoStage : null
 };
 reader.emit('click', {
   target: { closest: (selector) => selector === '[data-waterfall-video-play]' ? playControl : null }
 });
-assert.equal(videoDetail.classList.contains('is-playing'), true,
+assert.equal(videoStage.classList.contains('is-playing'), true,
   'video details must reveal the player only after the play control is pressed');
 assert.match(videoFrame.innerHTML, /<iframe class="waterfall-media-frame"/);
 const readCompleteCountBeforeClose = actions.filter((action) => action.args?.behavior === 'read_complete').length;
@@ -1418,7 +1420,8 @@ assert.equal(track.scrollTop, 3000,
 const bilibiliOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'portrait-current' : '' };
 leftoverFeedClickMustNotOpen(bilibiliOpen);
 openFeedCard(bilibiliOpen);
-assert.match(reader.innerHTML, /waterfall-reader-video-card/);
+assert.match(reader.innerHTML, /class="waterfall-reader-copy"/);
+assert.doesNotMatch(reader.innerHTML, /waterfall-reader-video-card|waterfall-reader-video-copy/);
 assert.match(reader.innerHTML, /player\.bilibili\.com\/player\.html\?bvid=BV1xx411c7mD/);
 assert.doesNotMatch(reader.innerHTML, /<iframe class="waterfall-media-frame"/);
 assert.match(reader.innerHTML, /data-waterfall-video-play/,
@@ -1467,6 +1470,7 @@ assert.equal(track.classList.contains('reader-open'), false);
 assert.equal(overlay.classList.contains('reading'), true);
 assert.match(reader.innerHTML, /waterfall-reader--text/);
 assert.doesNotMatch(reader.innerHTML, /waterfall-reader-media/);
+assert.match(reader.innerHTML, /class="waterfall-reader-copy"/);
 assert.match(reader.innerHTML, /A long text summary for the dedicated reader/);
 assert.equal(track.scrollTop, 320, 'opening the reader must preserve the feed position');
 assert.doesNotMatch(reader.innerHTML, /data-waterfall-reader-hotzone/);
@@ -1508,6 +1512,7 @@ assert.equal(prevented, true);
 assert.equal(reader.classList.contains('active'), true);
 assert.match(reader.innerHTML, /waterfall-reader--image-text/);
 assert.match(reader.innerHTML, /class="waterfall-reader-media"/);
+assert.match(reader.innerHTML, /class="waterfall-reader-copy"/);
 assert.match(reader.innerHTML, /https:\/\/example\.test\/image\.jpg/);
 assert.match(reader.innerHTML, /onerror="this\.hidden=true"/);
 documentListeners.keydown({ key: 'Escape' });

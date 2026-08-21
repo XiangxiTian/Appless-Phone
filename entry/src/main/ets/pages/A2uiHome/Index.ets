@@ -422,6 +422,7 @@ import {
   A2uiHomeResolvedToolRequest,
   directPaymentToolIdForActionId,
   directRideToolIdForActionId,
+  hasAggregateSearchIntent,
   resolveA2uiHomeSubmitToolRequest,
   resolveA2uiHomeToolRequest
 } from './render/A2uiHomeToolRequest';
@@ -5194,7 +5195,7 @@ struct Index {
       const explicitDecision = explicitDeepSearchRouteDecision(trimmed);
       if (explicitDecision !== null) {
         autoDeep = explicitDecision === 'deepsearch';
-      } else {
+      } else if (!hasAggregateSearchIntent(trimmed)) {
         try {
           const decision = await this.canaryModel().complete(deepSearchRouteDecisionPrompt(trimmed));
           autoDeep = deepSearchRouteDecisionFromModelText(decision) === 'deepsearch';

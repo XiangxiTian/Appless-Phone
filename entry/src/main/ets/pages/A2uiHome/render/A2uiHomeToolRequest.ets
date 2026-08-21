@@ -229,8 +229,11 @@ function hasMediaAggregationIntent(prompt: string): boolean {
     (prompt.indexOf('聚合') >= 0 && containsAny(prompt, ['视频', '短视频', '媒体']));
 }
 
-function hasAggregateSearchIntent(prompt: string): boolean {
+export function hasAggregateSearchIntent(prompt: string): boolean {
   if (hasSocialHubContext(prompt)) {
+    return false;
+  }
+  if (containsAny(prompt, ['查证', '事实核验', '核验事实', '官方来源'])) {
     return false;
   }
   const lowerPrompt = prompt.toLowerCase();

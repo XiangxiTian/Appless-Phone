@@ -267,6 +267,9 @@ test('admits only one prompt while the model chooses the focused release route',
   const start = index.indexOf('  private async submitPrompt(');
   const submit = index.slice(start, index.indexOf('\n  private async submitBimPrompt(', start));
   assert.ok(submit.indexOf('this.isBusy = true;') < submit.indexOf('this.canaryModel().complete('));
+  assert.match(submit, /else if \(!hasAggregateSearchIntent\(trimmed\)\) \{/);
+  assert.match(readFileSync('entry/src/main/ets/pages/A2uiHome/render/A2uiHomeToolRequest.ets', 'utf8'),
+    /containsAny\(prompt, \['查证', '事实核验', '核验事实', '官方来源'\]\)/);
   assert.doesNotMatch(submit, /Promise\.race<string>/);
   assert.match(submit, /this\.appendMessage\('assistant', readyMessage\)/);
   assert.doesNotMatch(submit, /this\.showHistory = true/);

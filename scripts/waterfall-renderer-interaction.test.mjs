@@ -276,6 +276,22 @@ assert.ok(
 );
 assert.doesNotMatch(waterfallJs, />阅读全文</);
 assert.match(waterfallJs, /class="waterfall-source-action"[^>]*aria-label="查看来源"/);
+assert.match(waterfallJs, /data-waterfall-card-action=/,
+  'feed and detail cards must expose the same product reaction controls');
+assert.match(waterfallJs, /id: 'waterfall\.card\.action'/,
+  'reaction controls must use the bounded native action bridge');
+assert.match(waterfallJs, /function renderCollection/,
+  'manual saves need one dedicated collection view');
+assert.match(waterfallCss, /\.waterfall-card-action\s*\{[^}]*width:\s*44px[^}]*height:\s*44px/s,
+  'compact icons must keep a 44px accessible hit target');
+assert.match(waterfallCss, /\.waterfall-card-action \.waterfall-icon\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/s,
+  'the visible selected surface must stay quieter than the hit target');
+assert.match(waterfallCss, /\.waterfall-card-action \.waterfall-icon svg\s*\{[^}]*width:\s*19px[^}]*height:\s*19px/s,
+  'card actions must not compete with card content');
+assert.match(renderer, /data-waterfall-collection-open/,
+  'the discovery toolbar needs an icon-only collection entry');
+assert.match(renderer, /id="waterfall-collection"/,
+  'the collection must stay inside the existing ArkWeb shell');
 assert.match(waterfallJs, /waterfall-reader--image-text/);
 assert.match(waterfallJs, /waterfall-reader--text/);
 assert.match(waterfallJs, /waterfall-reader--video/);
@@ -775,12 +791,14 @@ const overlay = element();
 const track = element();
 const preferences = element();
 const reader = element();
+const collection = element();
 const readerHead = element();
 reader.querySelector = (selector) => selector === '.waterfall-reader-head' ? readerHead : null;
 const toolbar = element();
 const toast = element();
 const backButton = element();
 const preferencesButton = element();
+const collectionButton = element();
 const preferenceBackButton = element();
 const preferenceDoneButton = element();
 preferenceBackButton.closest = (selector) => selector.includes('[data-waterfall-close-preferences]') ? preferenceBackButton : null;
@@ -864,13 +882,15 @@ const document = {
     'waterfall-track': track,
     'waterfall-preferences': preferences,
     'waterfall-reader': reader,
+    'waterfall-collection': collection,
     'waterfall-toolbar': toolbar,
     'waterfall-toast': toast
   })[id] ?? null,
   querySelector: () => null,
   querySelectorAll: (selector) => ({
     '[data-waterfall-back]': [backButton],
-    '[data-waterfall-preferences]': [preferencesButton]
+    '[data-waterfall-preferences]': [preferencesButton],
+    '[data-waterfall-collection-open]': [collectionButton]
   })[selector] ?? [],
   createElement: (tagName) => {
     assert.ok(tagName === 'iframe' || tagName === 'audio');
@@ -968,6 +988,8 @@ const window = {
       'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1'
     },
     sources: [{ source: 'youtube', phase: 'success' }]
+    ,cardStates: [{ candidateId: 'current', reaction: 'like', saved: true }]
+    ,savedCards: [{ ...candidate('current'), savedAt: 1000 }]
   },
   __aiphoneWaterfallSourceLogos: { youtube: 'data:image/png;base64,logo', reddit: 'data:image/png;base64,reddit' },
   __aiphoneWaterfallUiIcons: {
@@ -981,6 +1003,9 @@ const window = {
     comment: testUiIcon,
     eye: testUiIcon,
     thumbsUp: testUiIcon,
+    thumbsDown: testUiIcon,
+    bookmark: testUiIcon,
+    search: testUiIcon,
     upvote: testUiIcon,
     repost: testUiIcon,
     quote: testUiIcon,
@@ -1046,6 +1071,60 @@ assert.equal(track.innerHTML.match(/data-waterfall-open="image-current"/g)?.leng
 assert.equal(track.innerHTML.match(/data-waterfall-open="text-current"/g)?.length, 1,
   'a text card must expose one keyboard entry into details');
 assert.match(track.innerHTML, /class="waterfall-source-action"/);
+assert.match(track.innerHTML,
+  /waterfall-card-action--like is-selected"[^>]*data-waterfall-candidate-id="current"[^>]*aria-pressed="true"/,
+  'persisted product feedback must render independently from platform metrics');
+assert.match(track.innerHTML,
+  /waterfall-card-action--save is-selected"[^>]*data-waterfall-candidate-id="current"[^>]*aria-pressed="true"/);
+const advanceBeforeDislike = actionCount('waterfall.feed.advance');
+const dislikeControl = {
+  getAttribute: (name) => ({
+    'data-waterfall-card-action': 'dislike',
+    'data-waterfall-candidate-id': 'current'
+  })[name] ?? ''
+};
+track.emit('click', {
+  preventDefault: () => {},
+  target: { closest: (selector) => selector === '[data-waterfall-card-action]' ? dislikeControl : null }
+});
+assert.equal(actions.at(-1)?.id, 'waterfall.card.action');
+assert.deepEqual(actions.at(-1)?.args, {
+  surfaceId: 'surface-1', candidateId: 'current', action: 'dislike', active: true
+});
+assert.equal(actionCount('waterfall.feed.advance'), advanceBeforeDislike,
+  'dislike must not hide or advance the current card');
+collectionButton.emit('click', { preventDefault: () => {}, target: collectionButton });
+assert.equal(collection.classList.contains('active'), true);
+assert.match(collection.innerHTML, /data-waterfall-collection-search/);
+assert.match(collection.innerHTML, /data-waterfall-collection-source="youtube"/);
+assert.match(collection.innerHTML, /data-waterfall-collection-row="current"/);
+const collectionSaveControl = {
+  getAttribute: (name) => ({
+    'data-waterfall-card-action': 'save',
+    'data-waterfall-candidate-id': 'current'
+  })[name] ?? ''
+};
+collection.emit('click', {
+  preventDefault: () => {},
+  target: { closest: (selector) => selector === '[data-waterfall-card-action]' ? collectionSaveControl : null }
+});
+assert.equal(actions.at(-1)?.id, 'waterfall.card.action');
+assert.equal(actions.at(-1)?.args?.active, false);
+assert.doesNotMatch(collection.innerHTML, /data-waterfall-collection-row="current"/);
+assert.match(toast.innerHTML, /data-waterfall-collection-undo/);
+toast.emit('click', {
+  preventDefault: () => {},
+  target: { closest: (selector) => selector === '[data-waterfall-collection-undo]' ? {} : null }
+});
+assert.equal(actions.at(-1)?.args?.active, true);
+assert.equal(actions.at(-1)?.args?.restoreSavedAt, true);
+assert.match(collection.innerHTML, /data-waterfall-collection-row="current"/);
+collection.emit('click', {
+  preventDefault: () => {},
+  target: { closest: (selector) => selector === '[data-waterfall-collection-close]' ? {} : null }
+});
+runLatestTimer(160);
+assert.equal(collection.classList.contains('active'), false);
 assert.match(track.innerHTML, /referrerpolicy="no-referrer"/);
 assert.match(track.innerHTML, /onerror="this\.hidden=true"/);
 assert.doesNotMatch(track.innerHTML, />查看来源</);

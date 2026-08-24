@@ -9,15 +9,20 @@ import {
   aggregateSearchRegistrySourceIds,
   aggregateSearchSearchSourceIds,
   aggregateSearchRegistryVersion,
+  WaterfallCandidate,
   WaterfallExplicitPreference,
   WaterfallPreferenceWeight
 } from '@loop/agent-core';
 import {
   emptyWaterfallPreferenceProfile,
+  WATERFALL_CARDS_KEY,
   WATERFALL_PREFERENCES_KEY,
   WaterfallBehaviorEvidence,
+  WaterfallCardRecord,
   WaterfallPreferenceProfile,
-  WaterfallPreferencesStore
+  WaterfallPreferencesStore,
+  waterfallCandidateFromSavedCard,
+  waterfallReactionWeights
 } from '../main/ets/pages/A2uiHome/waterfall/WaterfallPreferencesStore';
 
 class MemoryPreferences {
@@ -92,6 +97,30 @@ function legacyProfile(enabledSources: string[]): LegacyPreferenceFixture {
     enabledSources: enabledSources,
     updatedAt: 1000
   };
+}
+
+function card(id: string = 'candidate-1'): WaterfallCandidate {
+  return {
+    id,
+    source: 'youtube',
+    mediaType: 'video',
+    title: 'AI agent demo',
+    summary: 'A compact summary',
+    url: 'https://www.youtube.com/watch?v=abc123',
+    coverUrl: 'https://i.example/cover.jpg',
+    publishedAt: '2026-08-24T00:00:00.000Z',
+    originalIndex: 0,
+    authorName: 'OpenAI',
+    topics: ['AI', 'agent'],
+    format: 'landscape_video'
+  };
+}
+
+function projectedWeight(weights: WaterfallPreferenceWeight[], key: string): number {
+  for (let index = 0; index < weights.length; index += 1) {
+    if (weights[index].key === key) return weights[index].weight;
+  }
+  return 0;
 }
 
 export default function waterfallPreferencesStoreTest() {
@@ -268,6 +297,90 @@ export default function waterfallPreferencesStoreTest() {
         .assertEqual(aggregateSearchRegistrySourceIds().join(','));
       expect(emptyWaterfallPreferenceProfile().enabledSources.join(','))
         .assertEqual(aggregateSearchRegistrySourceIds().join(','));
+    });
+
+    it('keeps Like and Dislike mutually exclusive while Save stays independent and undo restores time', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      let records: WaterfallCardRecord[] = store.applyCardAction(card(), 'like', true, 1000);
+      expect(records[0].reaction).assertEqual('like');
+      expect(records[0].saved).assertFalse();
+
+      records = store.applyCardAction(card(), 'dislike', true, 2000);
+      expect(records.length).assertEqual(1);
+      expect(records[0].reaction).assertEqual('dislike');
+
+      records = store.applyCardAction(card(), 'dislike', false, 3000);
+      expect(records[0].reaction).assertEqual('none');
+      records = store.applyCardAction(card(), 'save', true, 4000);
+      expect(records[0].saved).assertTrue();
+      expect(records[0].savedAt).assertEqual(4000);
+
+      records = store.applyCardAction(card(), 'like', true, 5000);
+      expect(records[0].reaction).assertEqual('like');
+      expect(records[0].saved).assertTrue();
+      records = store.applyCardAction(card(), 'save', false, 6000);
+      expect(records[0].saved).assertFalse();
+      expect(records[0].savedAt).assertEqual(4000);
+      expect(records[0].snapshot.title).assertEqual('AI agent demo');
+
+      records = store.applyCardAction(card(), 'save', true, 7000, true);
+      expect(records[0].savedAt).assertEqual(4000);
+      const reopened = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      expect(reopened.loadCardRecords()[0].savedAt).assertEqual(4000);
+    });
+
+    it('round-trips direct playback URLs through saved card snapshots', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      const hostedVideo = card('hosted-video');
+      hostedVideo.url = 'https://videos.example/watch/hosted-video';
+      hostedVideo.mediaUrl = 'https://cdn.example/hosted-video.mp4';
+      store.applyCardAction(hostedVideo, 'save', true, 1000);
+
+      const reopened = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      const restored = waterfallCandidateFromSavedCard(reopened.loadCardRecords()[0].snapshot);
+      expect(restored.mediaUrl).assertEqual('https://cdn.example/hosted-video.mp4');
+    });
+
+    it('keeps saved cards when card records exceed the bound', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      store.applyCardAction(card('saved-card'), 'save', true, 1000);
+      for (let index = 0; index < 500; index += 1) {
+        store.applyCardAction(card('reaction-' + index.toString()), 'like', true, 2000 + index);
+      }
+
+      const records = store.loadCardRecords();
+      expect(records.length).assertEqual(500);
+      expect(records.filter((record: WaterfallCardRecord): boolean =>
+        record.candidateId === 'saved-card' && record.saved).length).assertEqual(1);
+    });
+
+    it('derives current Reaction weights without counting Save and rejects malformed stored cards', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      store.applyCardAction(card('liked'), 'like', true, 1000);
+      const disliked = card('disliked');
+      disliked.source = 'reddit';
+      disliked.topics = ['科技'];
+      disliked.format = 'text';
+      store.applyCardAction(disliked, 'dislike', true, 2000);
+      store.applyCardAction(card('saved-only'), 'save', true, 3000);
+
+      const projection = waterfallReactionWeights(store.loadCardRecords());
+      expect(projectedWeight(projection.topicWeights, 'AI')).assertEqual(4);
+      expect(projectedWeight(projection.topicWeights, 'agent')).assertEqual(4);
+      expect(projectedWeight(projection.topicWeights, '科技')).assertEqual(-4);
+      expect(projectedWeight(projection.sourceWeights, 'youtube')).assertEqual(4);
+      expect(projectedWeight(projection.sourceWeights, 'reddit')).assertEqual(-4);
+      expect(projectedWeight(projection.formatWeights, 'landscape_video')).assertEqual(4);
+      expect(projectedWeight(projection.formatWeights, 'text')).assertEqual(-4);
+
+      native.putSync(WATERFALL_CARDS_KEY, '{');
+      const malformed = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      expect(malformed.loadCardRecords().length).assertEqual(0);
+      expect(native.raw(WATERFALL_PREFERENCES_KEY).indexOf('saved-only')).assertEqual(-1);
     });
   });
 }

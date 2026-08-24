@@ -47,6 +47,7 @@ import {
   planWaterfallContinuation,
   resolveApplePodcastEpisode,
   parseWaterfallExpandedQuery,
+  WaterfallCandidate,
   WaterfallFeedState,
   WaterfallFeedUpdate,
   WaterfallInterestRecallRequest,
@@ -294,8 +295,12 @@ import {
   emptyWaterfallPreferenceProfile,
   updateWaterfallPreferenceWeight,
   waterfallBehaviorDelta,
+  waterfallCandidateFromSavedCard,
+  waterfallReactionWeights,
   WaterfallBehaviorEvidence,
+  WaterfallCardRecord,
   WaterfallPreferenceProfile,
+  WaterfallReactionProjection,
   WaterfallPreferencesStore,
   WATERFALL_PREFERENCES_STORE_NAME
 } from './waterfall/WaterfallPreferencesStore';
@@ -356,6 +361,7 @@ import {
   waterfallAdvanceCurrentFromAction,
   waterfallAdvanceVisibleFromAction,
   waterfallBehaviorFromAction,
+  waterfallCardActionFromAction,
   waterfallEnabledSourcesFromAction
 } from './html/HtmlAggregateSearchHomeRenderer';
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
@@ -367,7 +373,8 @@ import {
   HtmlHomeAction,
   HtmlHomeBlock,
   HtmlHomeDocument,
-  WaterfallBehaviorActionArgs
+  WaterfallBehaviorActionArgs,
+  WaterfallCardActionArgs
 } from './html/HtmlHomeTypes';
 import {
   ensureReminderNotificationEnabled,
@@ -1136,6 +1143,10 @@ struct Index {
   private waterfallConversationState: WaterfallConversationState = { history: [], rules: [], summary: '' };
   private waterfallPreferencesStoreInstance: WaterfallPreferencesStore | null = null;
   private waterfallPreferenceProfile: WaterfallPreferenceProfile = emptyWaterfallPreferenceProfile();
+  private waterfallCardRecords: WaterfallCardRecord[] = [];
+  private waterfallReactionProjection: WaterfallReactionProjection = {
+    topicWeights: [], sourceWeights: [], formatWeights: []
+  };
   private waterfallSessionTopicWeights: WaterfallPreferenceWeight[] = [];
   private waterfallSessionSourceWeights: WaterfallPreferenceWeight[] = [];
   private waterfallSessionFormatWeights: WaterfallPreferenceWeight[] = [];
@@ -1717,7 +1728,8 @@ struct Index {
   }
 
   private publishWaterfallPayload(document: HtmlHomeDocument): void {
-    const payload = buildWaterfallHomePayload(document, this.isBusy, this.waterfallFeedState);
+    const payload = buildWaterfallHomePayload(
+      document, this.isBusy, this.waterfallFeedState, this.waterfallCardRecords);
     this.waterfallPayloadJson = payload === null ? '' : JSON.stringify(payload);
     this.waterfallPayloadTick = this.waterfallPayloadTick + 1;
   }
@@ -1747,7 +1759,7 @@ struct Index {
 
   private publishInterestWaterfallPayload(): void {
     const payload = buildWaterfallHomePayload(
-      this.interestWaterfallDocument(), false, this.interestWaterfallFeedState);
+      this.interestWaterfallDocument(), false, this.interestWaterfallFeedState, this.waterfallCardRecords);
     this.interestWaterfallPayloadJson = payload === null ? '' : JSON.stringify(payload);
     this.interestWaterfallPayloadTick = this.interestWaterfallPayloadTick + 1;
   }
@@ -2061,7 +2073,8 @@ struct Index {
 
   private handleWaterfallClientAction(action: A2uiAction): boolean {
     if (action.id !== 'waterfall.sources.select' && action.id !== 'waterfall.feed.advance' &&
-      action.id !== 'waterfall.behavior.record' && action.id !== 'waterfall.applepodcasts.resolve') {
+      action.id !== 'waterfall.behavior.record' && action.id !== 'waterfall.card.action' &&
+      action.id !== 'waterfall.applepodcasts.resolve') {
       return false;
     }
     const document = this.currentHtmlHomeDocument();
@@ -2073,6 +2086,17 @@ struct Index {
     if (this.waterfallFeedState === null || this.waterfallFeedSurfaceId !== surfaceId) {
       this.waterfallFeedState = document.waterfall;
       this.waterfallFeedSurfaceId = surfaceId;
+    }
+    if (action.id === 'waterfall.card.action') {
+      const cardAction = waterfallCardActionFromAction(action, surfaceId);
+      const candidate = cardAction === null ? null : this.waterfallActionCandidate(
+        cardAction.candidateId, this.waterfallFeedState);
+      if (cardAction === null || candidate === null) {
+        this.logHtmlHomeActionError(action, 'invalid_waterfall_card_action');
+        return true;
+      }
+      this.applyWaterfallCardAction(candidate, cardAction);
+      return true;
     }
     if (action.id === 'waterfall.applepodcasts.resolve') {
       const candidateId = waterfallApplePodcastCandidateFromAction(action, surfaceId);
@@ -2136,6 +2160,12 @@ struct Index {
       return;
     }
     if (state === null) return;
+    if (action.id === 'waterfall.card.action') {
+      const cardAction = waterfallCardActionFromAction(action, surfaceId);
+      const candidate = cardAction === null ? null : this.waterfallActionCandidate(cardAction.candidateId, state);
+      if (cardAction !== null && candidate !== null) this.applyWaterfallCardAction(candidate, cardAction);
+      return;
+    }
     if (action.id === 'waterfall.applepodcasts.resolve') {
       const candidateId = waterfallApplePodcastCandidateFromAction(action, surfaceId);
       const candidate = candidateId === null ? null : this.waterfallCandidate(candidateId, state);
@@ -2203,6 +2233,40 @@ struct Index {
       if (values[index].id === candidateId) return values[index];
     }
     return null;
+  }
+
+  private waterfallActionCandidate(candidateId: string, state: WaterfallFeedState | null): WaterfallCandidate | null {
+    const active = this.waterfallCandidate(candidateId, state);
+    if (active !== null) return active;
+    for (let index = 0; index < this.waterfallCardRecords.length; index += 1) {
+      if (this.waterfallCardRecords[index].candidateId === candidateId) {
+        return waterfallCandidateFromSavedCard(this.waterfallCardRecords[index].snapshot);
+      }
+    }
+    return null;
+  }
+
+  private applyWaterfallCardAction(candidate: WaterfallCandidate, args: WaterfallCardActionArgs): void {
+    this.waterfallCardRecords = this.waterfallPreferencesStore().applyCardAction(
+      candidate, args.action, args.active, Date.now(), args.restoreSavedAt);
+    this.waterfallReactionProjection = waterfallReactionWeights(this.waterfallCardRecords);
+    const current = this.currentHtmlHomeDocument();
+    if (args.action === 'save') {
+      if (this.waterfallFeedState !== null && current.kind === 'aggregate-search' &&
+        (current.surfaceId ?? '') === this.waterfallFeedSurfaceId) this.publishWaterfallPayload(current);
+      if (this.interestWaterfallFeedState !== null) this.publishInterestWaterfallPayload();
+      return;
+    }
+    configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile(false));
+    if (this.waterfallFeedState !== null && current.kind === 'aggregate-search' &&
+      (current.surfaceId ?? '') === this.waterfallFeedSurfaceId) {
+      this.applyWaterfallUpdate(current, applyWaterfallProfile(
+        this.waterfallFeedState, this.currentWaterfallPreferenceProfile(false), Date.now()));
+    }
+    if (this.interestWaterfallFeedState !== null) {
+      this.applyInterestWaterfallUpdate(applyWaterfallProfile(
+        this.interestWaterfallFeedState, this.currentWaterfallPreferenceProfile(), Date.now()));
+    }
   }
 
   private activeApplePodcastCandidate(
@@ -3436,9 +3500,12 @@ struct Index {
     return {
       version: 2,
       sourceRegistryVersion: this.waterfallPreferenceProfile.sourceRegistryVersion,
-      topicWeights: this.waterfallPreferenceProfile.topicWeights.slice(),
-      sourceWeights: this.waterfallPreferenceProfile.sourceWeights.slice(),
-      formatWeights: this.waterfallPreferenceProfile.formatWeights.slice(),
+      topicWeights: this.waterfallPreferenceProfile.topicWeights.concat(
+        this.waterfallReactionProjection.topicWeights),
+      sourceWeights: this.waterfallPreferenceProfile.sourceWeights.concat(
+        this.waterfallReactionProjection.sourceWeights),
+      formatWeights: this.waterfallPreferenceProfile.formatWeights.concat(
+        this.waterfallReactionProjection.formatWeights),
       explicitRules: this.waterfallPreferenceProfile.explicitRules.concat(
         includeConversation ? this.waterfallConversationState.rules : []),
       recentEvidence: this.waterfallPreferenceProfile.recentEvidence.slice(),
@@ -3454,8 +3521,12 @@ struct Index {
   private loadWaterfallPreferences(): void {
     try {
       this.waterfallPreferenceProfile = this.waterfallPreferencesStore().loadForNewSession();
+      this.waterfallCardRecords = this.waterfallPreferencesStore().loadCardRecords();
+      this.waterfallReactionProjection = waterfallReactionWeights(this.waterfallCardRecords);
     } catch (_error) {
       this.waterfallPreferenceProfile = emptyWaterfallPreferenceProfile();
+      this.waterfallCardRecords = [];
+      this.waterfallReactionProjection = { topicWeights: [], sourceWeights: [], formatWeights: [] };
     }
     try {
       this.waterfallPreferenceProfile = this.waterfallPreferencesStore().replaceExplicitPreferences(

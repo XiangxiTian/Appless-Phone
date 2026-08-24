@@ -18,6 +18,7 @@ import {
   waterfallApplePodcastCandidateFromAction,
   waterfallAdvanceVisibleFromAction,
   waterfallBehaviorFromAction,
+  waterfallCardActionFromAction,
   waterfallEnabledSourcesFromAction
 } from '../main/ets/pages/A2uiHome/html/HtmlAggregateSearchHomeRenderer';
 import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer';
@@ -53,6 +54,7 @@ import {
   HtmlHomeDocument,
   HtmlHomeMetric
 } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
+import { WaterfallCardRecord } from '../main/ets/pages/A2uiHome/waterfall/WaterfallPreferencesStore';
 import {
   parseHtmlHomeAction,
   popupSubtitleFromTitle,
@@ -3755,8 +3757,9 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('-webkit-tap-highlight-color: transparent')).assertLarger(-1);
       expect(html.indexOf('-webkit-user-select: none')).assertLarger(-1);
       expect(html.indexOf('user-select: none')).assertLarger(-1);
+      expect(html.indexOf('var item = candidateById(id)')).assertLarger(-1);
       expect(html.indexOf('if (!item || ["applepodcasts","twitch"].indexOf(item.source) >= 0) return'))
-        .assertLarger(-1);
+        .assertEqual(-1);
       expect(html.indexOf('https://podcasts.apple.com/us/podcast/apple-events-video/id275834665')).assertLarger(-1);
       expect(html.indexOf('https://www.twitch.tv/example')).assertLarger(-1);
       expect(html.indexOf('-webkit-line-clamp: 4;')).assertLarger(-1);
@@ -3980,6 +3983,58 @@ export default function htmlHomeRendererTest() {
       const unexpectedId = JSON.parse(JSON.stringify(valid)) as A2uiAction;
       (unexpectedId.args as Record<string, Object | string | number>).candidateId = '';
       expect(waterfallBehaviorFromAction(unexpectedId, 'surface-1')).assertEqual(null);
+    });
+
+    it('accepts only bounded Waterfall card actions from the current surface', 0, () => {
+      const valid = parseHtmlHomeAction('{"id":"waterfall.card.action","label":"偏好",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","action":"like","active":true}}') as A2uiAction;
+      expect(waterfallCardActionFromAction(valid, 'surface-1')?.action).assertEqual('like');
+      expect(waterfallCardActionFromAction(valid, 'other')).assertEqual(null);
+
+      const undo = parseHtmlHomeAction('{"id":"waterfall.card.action","label":"撤销",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","action":"save","active":true,"restoreSavedAt":true}}') as A2uiAction;
+      expect(waterfallCardActionFromAction(undo, 'surface-1')?.restoreSavedAt).assertTrue();
+
+      const unknown = JSON.parse(JSON.stringify(valid)) as A2uiAction;
+      (unknown.args as Record<string, Object | string | boolean>).action = 'hide';
+      expect(waterfallCardActionFromAction(unknown, 'surface-1')).assertEqual(null);
+      const injected = JSON.parse(JSON.stringify(valid)) as A2uiAction;
+      (injected.args as Record<string, Object | string | boolean>).title = 'forged';
+      expect(waterfallCardActionFromAction(injected, 'surface-1')).assertEqual(null);
+    });
+
+    it('publishes card state and newest-first saved snapshots without mixing platform metrics', 0, () => {
+      const doc = waterfallRendererFixture();
+      const first: WaterfallCardRecord = {
+        candidateId: 'video-1', reaction: 'like', reactedAt: 1000, saved: true, savedAt: 1000,
+        snapshot: {
+          id: 'video-1', source: 'youtube', mediaType: 'video', title: 'Older', summary: 'Summary',
+          url: 'https://www.youtube.com/watch?v=older', coverUrl: 'https://i.example/older.jpg',
+          publishedAt: '2026-08-20T00:00:00.000Z', authorName: 'Creator', authorAvatarUrl: '',
+          metrics: [{ kind: 'like', value: 999 }], topics: ['AI'], format: 'landscape_video'
+        }
+      };
+      first.snapshot.mediaUrl = 'https://cdn.example/older.mp4';
+      const second: WaterfallCardRecord = {
+        candidateId: 'saved-2', reaction: 'none', reactedAt: 0, saved: true, savedAt: 2000,
+        snapshot: {
+          id: 'saved-2', source: 'reddit', mediaType: 'post', title: 'Newer', summary: 'Second',
+          url: 'https://reddit.com/r/test/2', coverUrl: '', publishedAt: '2026-08-21T00:00:00.000Z',
+          authorName: 'Redditor', authorAvatarUrl: '', metrics: [], topics: ['科技'], format: 'text'
+        }
+      };
+      const payload = buildWaterfallHomePayload(doc, false, null, [first, second]);
+
+      expect(payload?.cardStates.length).assertEqual(2);
+      expect(payload?.cardStates[0].reaction).assertEqual('like');
+      expect(payload?.cardStates[0].saved).assertTrue();
+      expect(payload?.savedCards[0].id).assertEqual('saved-2');
+      expect(payload?.savedCards[1].id).assertEqual('video-1');
+      expect(payload?.savedCards[1].savedAt).assertEqual(1000);
+      expect(payload?.savedCards[1].mediaUrl).assertEqual('https://cdn.example/older.mp4');
+      expect(JSON.stringify(payload?.cardStates).indexOf('metrics')).assertEqual(-1);
     });
 
     it('keeps the Waterfall entry hidden when no candidate is valid', 0, () => {

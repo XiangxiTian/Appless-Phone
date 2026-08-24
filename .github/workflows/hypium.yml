@@ -27,6 +27,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           allow-unsafe-pr-checkout: true
 
+      - name: Reject machine-local signing config
+        run: |
+          if grep -Eq '"signingConfigs?"|"(key|store)Password"|[A-Za-z]:\\\\Users\\\\|/Users/' build-profile.json5; then
+            echo "::error file=build-profile.json5::Keep signing material in a private local config; do not commit it."
+            exit 1
+          fi
+
       - name: Install dependencies
         run: /Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm install --all
 

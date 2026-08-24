@@ -7,6 +7,7 @@ import {
   WaterfallSourceState
 } from '@loop/agent-core';
 import { DailyBriefPreference, DailyBriefSnapshot } from '../dailybrief/DailyBriefTypes';
+import { WaterfallCardReaction, WaterfallSavedCard } from '../waterfall/WaterfallPreferencesStore';
 
 export type HtmlHomeSource = 'welcome' | 'pending' | 'model' | 'tool';
 export type HtmlHomeKind = 'welcome' | 'thinking' | 'travel' | 'hotel' | 'food' | 'social' | 'dynamic-tools' | 'gmail' | 'media' | 'payment' | 'aggregate-search' | 'luckin' | 'multi-task' | 'daily-brief' | 'generic';
@@ -110,8 +111,28 @@ export interface WaterfallHomePayload {
   mediaEmbeds: Record<string, string>;
   enabledSources: string[];
   sources: WaterfallSourceState[];
+  cardStates: WaterfallCardViewState[];
+  savedCards: WaterfallSavedCardView[];
   replenishing: boolean;
   exhausted: boolean;
+}
+
+export interface WaterfallCardViewState {
+  candidateId: string;
+  reaction: WaterfallCardReaction;
+  saved: boolean;
+}
+
+export interface WaterfallSavedCardView extends WaterfallSavedCard {
+  savedAt: number;
+}
+
+export interface WaterfallCardActionArgs {
+  surfaceId: string;
+  candidateId: string;
+  action: 'like' | 'dislike' | 'save';
+  active: boolean;
+  restoreSavedAt: boolean;
 }
 
 export interface WaterfallBehaviorActionArgs {

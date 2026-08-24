@@ -4,18 +4,62 @@ import {
   aggregateSearchDefaultEnabledSourceIdsAfter,
   aggregateSearchRegistryVersion,
   aggregateSearchRegistrySourceIds,
+  WaterfallCandidate,
   WaterfallExplicitPreference,
   WaterfallFormat,
+  WaterfallMediaType,
+  WaterfallMetric,
   WaterfallPreferenceSnapshot,
   WaterfallPreferenceWeight
 } from '@loop/agent-core';
 
 export const WATERFALL_PREFERENCES_STORE_NAME: string = 'aiphone_waterfall_preferences';
 export const WATERFALL_PREFERENCES_KEY: string = 'profile.v1';
+export const WATERFALL_CARDS_KEY: string = 'cards.v1';
 const THIRTY_DAYS_MS: number = 30 * 24 * 60 * 60 * 1000;
 const MAX_WEIGHT: number = 20;
 const MAX_EVIDENCE: number = 500;
 const REGISTERED_SOURCES: string[] = aggregateSearchRegistrySourceIds();
+
+export type WaterfallCardReaction = 'like' | 'dislike' | 'none';
+export type WaterfallCardAction = 'like' | 'dislike' | 'save';
+
+export interface WaterfallSavedCard {
+  id: string;
+  source: string;
+  mediaType: WaterfallMediaType;
+  title: string;
+  summary: string;
+  url: string;
+  coverUrl: string;
+  mediaUrl?: string;
+  publishedAt: string;
+  authorName: string;
+  authorAvatarUrl: string;
+  metrics: WaterfallMetric[];
+  topics: string[];
+  format: WaterfallFormat;
+}
+
+export interface WaterfallCardRecord {
+  candidateId: string;
+  reaction: WaterfallCardReaction;
+  reactedAt: number;
+  saved: boolean;
+  savedAt: number;
+  snapshot: WaterfallSavedCard;
+}
+
+export interface WaterfallReactionProjection {
+  topicWeights: WaterfallPreferenceWeight[];
+  sourceWeights: WaterfallPreferenceWeight[];
+  formatWeights: WaterfallPreferenceWeight[];
+}
+
+interface StoredWaterfallCards {
+  version: number;
+  records: WaterfallCardRecord[];
+}
 
 export interface WaterfallBehaviorEvidence {
   candidateId: string;
@@ -191,6 +235,125 @@ function parsedProfile(raw: string): WaterfallPreferenceProfile {
   }
 }
 
+function validMetric(value: WaterfallMetric): boolean {
+  return value !== null && typeof value.kind === 'string' && value.kind.trim().length > 0 &&
+    typeof value.value === 'number' && isFinite(value.value);
+}
+
+function validSavedCard(value: WaterfallSavedCard): boolean {
+  return value !== null && typeof value.id === 'string' && value.id.trim().length > 0 &&
+    typeof value.source === 'string' && value.source.trim().length > 0 &&
+    (value.mediaType === 'video' || value.mediaType === 'image_text' || value.mediaType === 'post') &&
+    typeof value.title === 'string' && typeof value.summary === 'string' && typeof value.url === 'string' &&
+    typeof value.coverUrl === 'string' &&
+    (value.mediaUrl === undefined || typeof value.mediaUrl === 'string') &&
+    typeof value.publishedAt === 'string' &&
+    typeof value.authorName === 'string' && typeof value.authorAvatarUrl === 'string' &&
+    Array.isArray(value.metrics) && value.metrics.every((metric: WaterfallMetric): boolean => validMetric(metric)) &&
+    Array.isArray(value.topics) && value.topics.every((topic: string): boolean =>
+      typeof topic === 'string' && topic.trim().length > 0) &&
+    (value.format === 'landscape_video' || value.format === 'portrait_video' ||
+      value.format === 'image_text' || value.format === 'text');
+}
+
+function validCardRecord(value: WaterfallCardRecord): boolean {
+  return value !== null && typeof value.candidateId === 'string' && value.candidateId.trim().length > 0 &&
+    (value.reaction === 'like' || value.reaction === 'dislike' || value.reaction === 'none') &&
+    typeof value.reactedAt === 'number' && isFinite(value.reactedAt) && value.reactedAt >= 0 &&
+    typeof value.saved === 'boolean' && typeof value.savedAt === 'number' && isFinite(value.savedAt) &&
+    value.savedAt >= 0 && validSavedCard(value.snapshot) && value.snapshot.id === value.candidateId;
+}
+
+function copyMetric(value: WaterfallMetric): WaterfallMetric {
+  return { kind: value.kind, value: value.value };
+}
+
+function copySavedCard(value: WaterfallSavedCard): WaterfallSavedCard {
+  return {
+    id: value.id,
+    source: value.source,
+    mediaType: value.mediaType,
+    title: value.title,
+    summary: value.summary,
+    url: value.url,
+    coverUrl: value.coverUrl,
+    mediaUrl: value.mediaUrl ?? '',
+    publishedAt: value.publishedAt,
+    authorName: value.authorName,
+    authorAvatarUrl: value.authorAvatarUrl,
+    metrics: value.metrics.map(copyMetric),
+    topics: value.topics.slice(),
+    format: value.format
+  };
+}
+
+function copyCardRecord(value: WaterfallCardRecord): WaterfallCardRecord {
+  return {
+    candidateId: value.candidateId,
+    reaction: value.reaction,
+    reactedAt: value.reactedAt,
+    saved: value.saved,
+    savedAt: value.savedAt,
+    snapshot: copySavedCard(value.snapshot)
+  };
+}
+
+function parsedCardRecords(raw: string): WaterfallCardRecord[] {
+  if (raw.trim().length === 0) return [];
+  try {
+    const value = JSON.parse(raw) as StoredWaterfallCards;
+    if (value === null || value.version !== 1 || !Array.isArray(value.records) ||
+      !value.records.every((record: WaterfallCardRecord): boolean => validCardRecord(record))) return [];
+    return value.records.map(copyCardRecord);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function formatForCandidate(candidate: WaterfallCandidate): WaterfallFormat {
+  return candidate.format ?? (candidate.mediaType === 'video' ? 'landscape_video' :
+    (candidate.mediaType === 'image_text' ? 'image_text' : 'text'));
+}
+
+function savedCardFromCandidate(candidate: WaterfallCandidate): WaterfallSavedCard {
+  return {
+    id: candidate.id.trim(),
+    source: candidate.source.trim(),
+    mediaType: candidate.mediaType,
+    title: candidate.title,
+    summary: candidate.summary,
+    url: candidate.url,
+    coverUrl: candidate.coverUrl,
+    mediaUrl: candidate.mediaUrl ?? '',
+    publishedAt: candidate.publishedAt,
+    authorName: candidate.authorName ?? '',
+    authorAvatarUrl: candidate.authorAvatarUrl ?? '',
+    metrics: (candidate.metrics ?? []).map(copyMetric),
+    topics: dedupeStrings(candidate.topics ?? []),
+    format: formatForCandidate(candidate)
+  };
+}
+
+export function waterfallCandidateFromSavedCard(value: WaterfallSavedCard): WaterfallCandidate {
+  return {
+    id: value.id,
+    source: value.source,
+    mediaType: value.mediaType,
+    title: value.title,
+    summary: value.summary,
+    url: value.url,
+    coverUrl: value.coverUrl,
+    mediaUrl: value.mediaUrl ?? '',
+    publishedAt: value.publishedAt,
+    originalIndex: 0,
+    authorName: value.authorName,
+    authorAvatarUrl: value.authorAvatarUrl,
+    metrics: value.metrics.map(copyMetric),
+    topics: value.topics.slice(),
+    format: value.format
+  };
+}
+
 function dedupeStrings(values: string[]): string[] {
   const result: string[] = [];
   values.forEach((value: string): void => {
@@ -198,6 +361,40 @@ function dedupeStrings(values: string[]): string[] {
     if (clean.length > 0 && result.indexOf(clean) < 0) result.push(clean);
   });
   return result;
+}
+
+function addReactionWeight(
+  weights: WaterfallPreferenceWeight[],
+  key: string,
+  delta: number,
+  updatedAt: number
+): void {
+  const clean = key.trim();
+  if (clean.length === 0) return;
+  for (let index = 0; index < weights.length; index += 1) {
+    if (weights[index].key !== clean) continue;
+    weights[index] = {
+      key: clean,
+      weight: Math.max(-MAX_WEIGHT, Math.min(MAX_WEIGHT, weights[index].weight + delta)),
+      updatedAt: Math.max(weights[index].updatedAt, updatedAt)
+    };
+    return;
+  }
+  weights.push({ key: clean, weight: delta, updatedAt });
+}
+
+export function waterfallReactionWeights(records: WaterfallCardRecord[]): WaterfallReactionProjection {
+  const projection: WaterfallReactionProjection = { topicWeights: [], sourceWeights: [], formatWeights: [] };
+  records.forEach((record: WaterfallCardRecord): void => {
+    if (record.reaction === 'none') return;
+    const delta = record.reaction === 'like' ? 4 : -4;
+    dedupeStrings(record.snapshot.topics).forEach((topic: string): void => {
+      addReactionWeight(projection.topicWeights, topic, delta, record.reactedAt);
+    });
+    addReactionWeight(projection.sourceWeights, record.snapshot.source, delta, record.reactedAt);
+    addReactionWeight(projection.formatWeights, record.snapshot.format, delta, record.reactedAt);
+  });
+  return projection;
 }
 
 export function updateWaterfallPreferenceWeight(
@@ -253,6 +450,7 @@ function dedupeRules(values: WaterfallExplicitPreference[]): WaterfallExplicitPr
 export class WaterfallPreferencesStore {
   private readonly store: preferences.Preferences;
   private profile: WaterfallPreferenceProfile | null = null;
+  private cardRecords: WaterfallCardRecord[] | null = null;
 
   constructor(store: preferences.Preferences) {
     this.store = store;
@@ -272,6 +470,79 @@ export class WaterfallPreferencesStore {
     profile.enabledSources = profile.discoveryEnabledSources.slice();
     profile.updatedAt = Date.now();
     return this.save(profile);
+  }
+
+  loadCardRecords(): WaterfallCardRecord[] {
+    if (this.cardRecords === null) {
+      const value = this.store.getSync(WATERFALL_CARDS_KEY, '');
+      this.cardRecords = parsedCardRecords(typeof value === 'string' ? value : '');
+    }
+    return this.cardRecords.map(copyCardRecord);
+  }
+
+  private saveCardRecords(records: WaterfallCardRecord[]): WaterfallCardRecord[] {
+    let retained = records;
+    if (records.length > 500) {
+      // ponytail: protect up to 500 favorites; split collection storage if that ceiling becomes real.
+      const saved = records.filter((record: WaterfallCardRecord): boolean => record.saved);
+      const otherCapacity = Math.max(0, 500 - saved.length);
+      const other = records.filter((record: WaterfallCardRecord): boolean => !record.saved);
+      retained = saved.length >= 500 ? saved.slice(saved.length - 500) :
+        saved.concat(other.slice(Math.max(0, other.length - otherCapacity)));
+    }
+    this.cardRecords = retained.map(copyCardRecord);
+    const stored: StoredWaterfallCards = { version: 1, records: this.cardRecords };
+    this.store.putSync(WATERFALL_CARDS_KEY, JSON.stringify(stored));
+    this.store.flush().catch((error: Error): void => {
+      console.warn('[AIPhone][WaterfallCardsFlushFailed] ' + error.message.substring(0, 160));
+    });
+    return this.cardRecords.map(copyCardRecord);
+  }
+
+  applyCardAction(
+    candidate: WaterfallCandidate,
+    action: WaterfallCardAction,
+    active: boolean,
+    timestamp: number,
+    restoreSavedAt: boolean = false
+  ): WaterfallCardRecord[] {
+    if (candidate.id.trim().length === 0 || candidate.source.trim().length === 0 ||
+      !isFinite(timestamp) || timestamp <= 0) return this.loadCardRecords();
+    const records = this.loadCardRecords();
+    let recordIndex = -1;
+    for (let index = 0; index < records.length; index += 1) {
+      if (records[index].candidateId === candidate.id) {
+        recordIndex = index;
+        break;
+      }
+    }
+    if (recordIndex < 0 && !active) return records;
+    if (recordIndex < 0) {
+      records.push({
+        candidateId: candidate.id,
+        reaction: 'none',
+        reactedAt: 0,
+        saved: false,
+        savedAt: 0,
+        snapshot: savedCardFromCandidate(candidate)
+      });
+      recordIndex = records.length - 1;
+    }
+    const record = records[recordIndex];
+    record.snapshot = savedCardFromCandidate(candidate);
+    if (action === 'save') {
+      if (active) {
+        record.savedAt = restoreSavedAt && record.savedAt > 0 ? record.savedAt : timestamp;
+      }
+      record.saved = active;
+    } else if (active) {
+      record.reaction = action;
+      record.reactedAt = timestamp;
+    } else if (record.reaction === action) {
+      record.reaction = 'none';
+      record.reactedAt = timestamp;
+    }
+    return this.saveCardRecords(records);
   }
 
   private save(profile: WaterfallPreferenceProfile): WaterfallPreferenceProfile {

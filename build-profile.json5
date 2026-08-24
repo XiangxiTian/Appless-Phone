@@ -3,7 +3,6 @@
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
         "targetSdkVersion": "6.1.0(23)",
         "compatibleSdkVersion": "6.0.2(22)",
         "runtimeOS": "HarmonyOS",
@@ -22,21 +21,6 @@
       },
       {
         "name": "release"
-      }
-    ],
-    "signingConfigs": [
-      {
-        "name": "default",
-        "type": "HarmonyOS",
-        "material": {
-          "certpath": "C:\\Users\\lin\\.ohos\\config\\default_Appless-Phone_WPY2O4g4A_Ij7vn_0BjE31LJEVzRTFRuPkGr5T959eM=.cer",
-          "keyAlias": "debugKey",
-          "keyPassword": "0000001BE526B4C1D70A78045C1B0DE671774E3DC3FB6BF79213D6AC2141171076BE3ED9CAEECC2E5D7826",
-          "profile": "C:\\Users\\lin\\.ohos\\config\\default_Appless-Phone_WPY2O4g4A_Ij7vn_0BjE31LJEVzRTFRuPkGr5T959eM=.p7b",
-          "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\lin\\.ohos\\config\\default_Appless-Phone_WPY2O4g4A_Ij7vn_0BjE31LJEVzRTFRuPkGr5T959eM=.p12",
-          "storePassword": "0000001B3C7DBA878960BBB1C0F95B60A251A44B281E848DF924C62EB1CBE37C94973F0AC3C6C3CF146565"
-        }
       }
     ]
   },

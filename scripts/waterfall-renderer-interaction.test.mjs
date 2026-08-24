@@ -401,6 +401,9 @@ assert.match(waterfallCss,
 assert.match(waterfallCss,
   /\.waterfall-preferences:not\(\.active\),\s*\.waterfall-preferences:not\(\.active\) \*\s*\{[^}]*pointer-events:\s*none !important/s,
   'every descendant of the hidden source sheet must stop intercepting Twitch controls');
+assert.match(waterfallCss,
+  /\.waterfall-preferences:not\(\.active\)\s*\{[^}]*opacity 100ms var\(--ease-out\)[^}]*transform 100ms var\(--ease-out\)[^}]*visibility 0s linear 100ms !important/s,
+  'closing source settings must keep one short visible motion without restoring the delayed close phase');
 assert.match(waterfallCss, /\.waterfall-video-fullscreen-toggle\s*\{[^}]*min-height:\s*44px[^}]*cursor:\s*pointer[^}]*transform 140ms var\(--ease-out\)/s);
 assert.match(waterfallCss, /\.waterfall-cinema-card a, \.waterfall-read-button\s*\{[^}]*transform 140ms var\(--ease-out\)/s);
 assert.match(waterfallCss, /\.waterfall-reader-head button\s*\{[^}]*transform 140ms var\(--ease-out\)/s);
@@ -558,11 +561,6 @@ const closePreferencesSource = waterfallJs.slice(
 );
 assert.match(closePreferencesSource, /scheduleIdleFlush\(selectedSources,\s*changed\)/,
   'source changes still apply after the sheet is gone and the feed is idle');
-assert.ok(
-  closePreferencesSource.indexOf('setFullscreen(false)') <
-    closePreferencesSource.indexOf('= setTimeout'),
-  'native chrome must restore while the source sheet still covers the feed'
-);
 assert.ok(
   closePreferencesSource.indexOf('realignPresentedCard()') <
     closePreferencesSource.indexOf('scheduleIdleFlush(selectedSources, changed)'),
@@ -1674,26 +1672,61 @@ sourceInputs[0].checked = false;
 sourceInputs[0].emit('change');
 assert.equal(actionCount('waterfall.sources.select'), sourceSelectionCountBeforeToggle,
   'toggling a source must stay local so the control responds immediately');
-let preferenceTapPrevented = false;
-preferences.emit('click', {
-  cancelable: true,
-  preventDefault: () => { preferenceTapPrevented = true; },
-  target: preferenceDoneButton
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  currentId: 'queued-preference-payload',
+  candidates: [{ ...candidate('queued-preference-payload'), source: 'bilibili' }],
+  enabledSources: sourceInputs.map((input) => input.getAttribute('data-waterfall-source'))
 });
+const preferenceTouch = { clientX: 120, clientY: 120 };
+documentListeners.touchstart({ touches: [preferenceTouch], target: preferenceDoneButton });
+preferences.emit('touchstart', { touches: [preferenceTouch], target: preferenceDoneButton });
+let preferenceTapPrevented = false;
+let preferenceTouchStopped = false;
+const preferenceTouchEnd = {
+  cancelable: true,
+  changedTouches: [preferenceTouch],
+  preventDefault: () => { preferenceTapPrevented = true; },
+  stopPropagation: () => { preferenceTouchStopped = true; },
+  target: preferenceDoneButton
+};
+preferences.emit('touchend', preferenceTouchEnd);
+if (!preferenceTouchStopped) {
+  documentListeners.touchend?.(preferenceTouchEnd);
+  runLatestTimer(96);
+} else {
+  runLatestTimer(240);
+}
+assert.match(track.innerHTML, /queued-preference-payload/,
+  'closing source settings must let the queued payload flush after the exit motion');
 assert.equal(preferences.classList.contains('active'), false);
-assert.equal(overlay.classList.contains('sheet-open'), true,
-  'the source sheet must keep the feed inert until the release click can no longer fall through');
-assert.equal(preferenceTapPrevented, true, 'source done must use the single native click path');
-preferences.emit('click', { preventDefault: () => {}, target: preferenceDoneButton });
-assert.equal(actionCount('waterfall.sources.select'), sourceSelectionCountBeforeToggle,
-  'closing the sheet must paint before applying the heavier feed update');
-runLatestTimer(140);
 assert.equal(overlay.classList.contains('sheet-open'), false,
-  'the feed must unlock after the source sheet close transition');
+  'the source sheet and feed lock must close in the same interaction');
+assert.equal(preferenceTapPrevented, true, 'source done must use the single native click path');
+assert.equal(preferenceTouchStopped, true,
+  'source settings must consume the closing touchend before the document settles a queued stale payload');
+assert.equal(actionCount('waterfall.sources.select'), sourceSelectionCountBeforeToggle + 1,
+  'source selection must commit without a delayed close phase');
+preferences.emit('click', { preventDefault: () => {}, target: preferenceDoneButton });
 assert.equal(actionCount('waterfall.sources.select'), sourceSelectionCountBeforeToggle + 1);
 preferencesButton.emit('click');
+assert.equal(sourceInputs[0].checked, false,
+  'a queued payload must not revert the source selection made before closing');
 assert.equal(preferences.innerHTMLWrites, preferenceWritesAfterFirstOpen,
   'reopening source settings must not rebuild the sheet');
+sourceInputs[1].checked = false;
+sourceInputs[1].emit('change');
+preferences.emit('click', { preventDefault: () => {}, target: preferenceDoneButton });
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  currentId: 'late-preference-payload',
+  candidates: [{ ...candidate('late-preference-payload'), source: 'x' }],
+  enabledSources: sourceInputs.map((input) => input.getAttribute('data-waterfall-source'))
+});
+runLatestTimer(100);
+preferencesButton.emit('click');
+assert.equal(sourceInputs[1].checked, false,
+  'a payload arriving during the exit motion must not revert the source selection');
 let preferenceBackPrevented = false;
 preferences.emit('click', {
   preventDefault: () => { preferenceBackPrevented = true; },
@@ -1701,12 +1734,10 @@ preferences.emit('click', {
 });
 assert.equal(preferences.classList.contains('active'), false);
 assert.equal(preferenceBackPrevented, true, 'source back must use the delegated native click path');
-runLatestTimer(140);
 preferencesButton.emit('click');
 backButton.emit('click');
 assert.deepEqual(fullscreenStates, ['true']);
 assert.equal(preferences.classList.contains('active'), false);
-runLatestTimer(140);
 backButton.emit('click');
 assert.deepEqual(fullscreenStates, ['true', 'false']);
 assert.equal(overlay.classList.contains('active'), true, 'the overlay must remain mounted while it fades out');
@@ -1772,7 +1803,6 @@ sourceInputs.forEach((input) => { input.checked = false; });
 sourceInputs[0].checked = true;
 sourceInputs[0].emit('change');
 preferences.emit('click', { preventDefault: () => {}, target: preferenceBackButton });
-runLatestTimer(140);
 runLatestTimer(240);
 assert.match(track.innerHTML, /本轮内容已结束/);
 assert.doesNotMatch(track.innerHTML, /至少开启一个来源/);
@@ -1787,7 +1817,6 @@ assert.equal(preferences.classList.contains('active'), true,
   'terminal empty state must allow reopening source preferences');
 assert.match(preferences.innerHTML, /data-waterfall-source="youtube"/);
 preferences.emit('click', { preventDefault: () => {}, target: preferenceDoneButton });
-runLatestTimer(140);
 
 window.__aiphoneApplyWaterfallUpdate({
   surfaceId: 'surface-1',
@@ -2063,7 +2092,6 @@ const preferencesFrame = createdFrames.at(-1);
 preferencesButton.emit('click');
 assert.equal(preferencesFrame.removed, true, 'opening source preferences must destroy the inline player');
 preferences.emit('click', { preventDefault: () => {}, target: preferenceDoneButton });
-runLatestTimer(140);
 
 track.emit('click', { target: twitchPlayer.button });
 const readerFrame = createdFrames.at(-1);

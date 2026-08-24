@@ -2473,7 +2473,6 @@ struct Index {
     this.loadWaterfallPreferences();
     this.loadFoodAddressBook();
     this.loadFoodFavorites();
-    void this.requestLocationPermissionOnLaunch();
     this.subscribeTrainPresaleHandoff();
     this.subscribeWaterfallConversationTypedTest();
     this.requestPendingTrainPresaleResume();
@@ -6423,16 +6422,6 @@ struct Index {
       authResults: permission.authResults
     })) {
       throw new Error('定位权限未授权');
-    }
-  }
-
-  private async requestLocationPermissionOnLaunch(): Promise<void> {
-    try {
-      await this.ensureLocationPermission();
-      aiLogInfo('[AIPhone][LocationPermissionLaunch] ok=true');
-    } catch (error) {
-      aiLogError('[AIPhone][LocationPermissionLaunch] ok=false reason=' +
-        (error instanceof Error ? error.message : JSON.stringify(error)));
     }
   }
 

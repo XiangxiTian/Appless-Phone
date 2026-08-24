@@ -1121,6 +1121,9 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   pointer-events: auto; visibility: visible; opacity: 1; transform: translate3d(0, 0, 0);
   transition-delay: 0s;
 }
+.waterfall-preferences:not(.active) {
+  transition: opacity 100ms var(--ease-out), transform 100ms var(--ease-out), visibility 0s linear 100ms !important;
+}
 .waterfall-preferences:not(.active),
 .waterfall-preferences:not(.active) * {
   pointer-events: none !important;
@@ -1595,7 +1598,7 @@ const WATERFALL_JS: string = `
   window.__aiphoneApplyWaterfallUpdate = function (payload) {
     pendingPayload = payload;
     if (mode === 'reading' || mode === 'reader_closing' || mode === 'source_preferences' ||
-      mode === 'source_preferences_closing' || interactionActive || scrollActive) return;
+      preferenceApplyTimer !== null || interactionActive || scrollActive) return;
     flushPendingPayload();
   };
   function flushPendingPayload(enabledOverride) {
@@ -2175,8 +2178,7 @@ const WATERFALL_JS: string = `
     if (!nodes || nodes.length === 0) return 0;
     if (cardMetrics.length === 0) refreshCardMetrics();
     else if (cardMetrics.length !== nodes.length) syncCardsAfterPaint();
-    if (mode === 'reading' || mode === 'reader_closing' ||
-      mode === 'source_preferences' || mode === 'source_preferences_closing') {
+    if (mode === 'reading' || mode === 'reader_closing' || mode === 'source_preferences') {
       return presentedIndex < 0 ? 0 : presentedIndex;
     }
     var activeIndex = visibleCardIndex();
@@ -2623,21 +2625,21 @@ const WATERFALL_JS: string = `
     var changed = preferenceBaseline !== enabledSources.join('|');
     var selectedSources = enabledSources.slice();
     preferences.classList.remove('active');
-    mode = 'source_preferences_closing';
-    if (directDiscovery) setFullscreen(false);
+    if (overlay) overlay.classList.remove('sheet-open');
+    mode = 'discovering';
+    if (track && track.scrollTop !== preferencesFeedScrollTop) {
+      track.scrollTop = preferencesFeedScrollTop;
+    }
+    realignPresentedCard();
+    enabledSources = selectedSources;
     if (preferenceApplyTimer !== null) clearTimeout(preferenceApplyTimer);
-    preferenceApplyTimer = setTimeout(function () {
+    preferenceApplyTimer = changed ? setTimeout(function () {
       preferenceApplyTimer = null;
-      if (overlay) overlay.classList.remove('sheet-open');
-      mode = 'discovering';
-      if (track && track.scrollTop !== preferencesFeedScrollTop) {
-        track.scrollTop = preferencesFeedScrollTop;
-      }
-      realignPresentedCard();
-      enabledSources = selectedSources;
-      if (changed) postSourceSelection();
-      if (pendingPayload || changed) scheduleIdleFlush(selectedSources, changed);
-    }, 140);
+      if (pendingPayload) flushPendingPayload(selectedSources);
+    }, 100) : null;
+    if (changed) postSourceSelection();
+    if (pendingPayload || changed) scheduleIdleFlush(selectedSources, changed);
+    if (directDiscovery) setFullscreen(false);
   }
   function render() {
     if (!track || !state) return false;
@@ -2817,7 +2819,7 @@ const WATERFALL_JS: string = `
       scrollActive = false;
       if (!interactionActive) pageAnchorIndex = -1;
       if (!interactionActive && mode !== 'reading' && mode !== 'reader_closing' &&
-        mode !== 'source_preferences' && mode !== 'source_preferences_closing' &&
+        mode !== 'source_preferences' &&
         !flushPendingPayload() && mode === 'discovering') scheduleAdvance(settledIndex);
     }, 96);
   }
@@ -2971,6 +2973,8 @@ const WATERFALL_JS: string = `
       var target = event.target;
       if (!target || typeof target.closest !== 'function' ||
         !target.closest('[data-waterfall-close-preferences], [data-waterfall-apply-preferences]')) return false;
+      interactionActive = false;
+      if (typeof event.stopPropagation === 'function') event.stopPropagation();
       closePreferences();
       return true;
     });
@@ -3034,7 +3038,6 @@ const WATERFALL_JS: string = `
   }
   window.__aiphoneHandleWaterfallBack = function () {
     if (mode === 'reader_closing') return true;
-    if (mode === 'source_preferences_closing') return true;
     if (mode === 'reading') {
       closeReader();
       return true;

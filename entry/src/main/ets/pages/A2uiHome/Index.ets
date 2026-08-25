@@ -102,6 +102,7 @@ import {
 } from '@loop/agent-core';
 import { buildFoodPhoneUri, stripeReceivingAccount } from '@loop/agent-core';
 import {
+  awaitConnectionTest,
   callDirectModel,
   DirectModelCallResult
 } from '../../model/LocalModelClient';
@@ -9572,11 +9573,11 @@ struct Index {
     aiLogInfo('[AIPhone][A2uiHomeConnectionTest] model=' + this.selectedModel + ' baseUrl=' + this.baseUrl);
     this.markChecking('正在向模型发起连接检查...');
     try {
-      const result: DirectModelCallResult = await callDirectModel(
+      const result: DirectModelCallResult = await awaitConnectionTest(callDirectModel(
         this.getSettings(),
         CONNECTION_TEST_PROMPT,
         this.recentMessages()
-      );
+      ));
       aiLogInfo('[AIPhone][A2uiHomeConnectionResult] ok=' + (result.ok ? 'true' : 'false') +
         ' errorChars=' + result.error.length.toString() +
         ' rawChars=' + result.raw.length.toString() +
@@ -9607,7 +9608,11 @@ struct Index {
   }
 
   onBackPress(): boolean {
-    if (!this.showConfigPage && !this.showComposioAuthPage) {
+    if (this.showConfigPage) {
+      this.showConfigPage = false;
+      return true;
+    }
+    if (!this.showComposioAuthPage) {
       if (this.bimRootIndex === 1) {
         this.interestWaterfallBackRequestTick = this.interestWaterfallBackRequestTick + 1;
         return true;
@@ -9771,6 +9776,8 @@ struct Index {
           this.openExternalUrl(url);
         }
       })
+    } else if (this.showConfigPage) {
+      this.ConfigPageContent();
     } else {
       Swiper(this.bimRootController) {
       HomePage({
@@ -9978,7 +9985,6 @@ struct Index {
         this.bimRootIndex = index;
         if (index === 1) this.ensureInterestWaterfall();
       })
-      .bindContentCover(this.showConfigPage, this.ConfigPageContent, ModalTransition.NONE)
     }
   }
 }

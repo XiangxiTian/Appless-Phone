@@ -16,6 +16,23 @@ export interface DirectModelCallResult {
   assistantDebug: string;
 }
 
+const CONNECTION_TEST_TIMEOUT_MS = 45000;
+
+export async function awaitConnectionTest(
+  request: Promise<DirectModelCallResult>,
+  timeoutMs: number = CONNECTION_TEST_TIMEOUT_MS
+): Promise<DirectModelCallResult> {
+  let timerId = -1;
+  const timeout = new Promise<DirectModelCallResult>((_resolve, reject: (reason?: Error) => void): void => {
+    timerId = setTimeout((): void => reject(new Error('模型连接检查超时')), timeoutMs);
+  });
+  try {
+    return await Promise.race<DirectModelCallResult>([request, timeout]);
+  } finally {
+    if (timerId >= 0) clearTimeout(timerId);
+  }
+}
+
 export function directModelSystemPrompt(): string {
   return 'You are Appless direct text model. Return only the requested text or JSON. Do not call tools.';
 }

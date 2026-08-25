@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
+  awaitConnectionTest,
   directModelRequestDebug,
   directModelSystemPrompt
 } from '../main/ets/model/LocalModelClient';
@@ -27,6 +28,17 @@ export default function localModelClientTest() {
       expect(debug.indexOf('OpenAiCompatibleModel.direct')).assertLarger(-1);
       expect(debug.indexOf('LoopBackend')).assertEqual(-1);
       expect(debug.indexOf('"historyTurns":3')).assertLarger(-1);
+    });
+
+    it('releases a connection test that exceeds its deadline', 0, async () => {
+      const never = new Promise<never>(() => {});
+      let errorMessage = '';
+      try {
+        await awaitConnectionTest(never, 10);
+      } catch (error) {
+        errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+      }
+      expect(errorMessage).assertEqual('模型连接检查超时');
     });
 
     it('defaults to CSI DeepSeek V4 Flash and preserves the DashScope DeepSeek fallback preset', 0, () => {

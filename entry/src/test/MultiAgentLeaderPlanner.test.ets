@@ -2041,6 +2041,20 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.prompts.length).assertEqual(1);
     });
 
+    it('accepts one trailing pseudo-wrapper closure after a streamed Leader JSON object', 0, async () => {
+      const model = new QueueLocalModel([LIVE_ANSWER_WITHOUT_REASON_CODE + '"}']);
+
+      const decision = await new MultiAgentLeaderPlanner(model).plan(
+        inputMessage(),
+        { text: '你好' },
+        planningContext(),
+        1
+      );
+
+      expect(decision.answer).assertEqual('LIVE_PRIVATE_MARKER');
+      expect(model.prompts.length).assertEqual(1);
+    });
+
     it('preserves the locked first-round persona and skill in later-round prompt and decision', 0, async () => {
       const model = new LockedSelectionPromptAwareModel();
       const context = planningContext();

@@ -1588,10 +1588,13 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     try {
       parsed = JSON.parse(trimmed) as Object;
     } catch (_error) {
-      if (!trimmed.endsWith('}}')) {
+      if (trimmed.endsWith('}"}')) {
+        trimmed = trimmed.substring(0, trimmed.length - 2);
+      } else if (trimmed.endsWith('}}')) {
+        trimmed = trimmed.substring(0, trimmed.length - 1);
+      } else {
         throw new Error('Leader planner requires exactly one JSON object.');
       }
-      trimmed = trimmed.substring(0, trimmed.length - 1);
       try {
         parsed = JSON.parse(trimmed) as Object;
       } catch (_redundantClosureError) {

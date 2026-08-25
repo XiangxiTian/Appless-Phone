@@ -658,6 +658,9 @@ assert.match(surfaceView, /waterfallBackRequestTick/);
 assert.match(surfaceView, /__aiphoneHandleWaterfallBack/);
 assert.match(homePage, /waterfallBackRequestTick/);
 assert.match(indexPage, /onBackPress\(\): boolean[\s\S]*waterfallBackRequestTick/);
+assert.match(indexPage,
+  /onBackPress\(\): boolean[\s\S]*if \(this\.showConfigPage\) \{[\s\S]*this\.showConfigPage = false;[\s\S]*return true;/,
+  'system Back must return from the conditionally rendered settings page');
 const scrollHandlerSource = waterfallJs.slice(
   waterfallJs.indexOf("track.addEventListener('scroll'"),
   waterfallJs.indexOf("track.addEventListener('error'")

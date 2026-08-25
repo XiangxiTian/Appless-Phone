@@ -1726,7 +1726,7 @@ const WATERFALL_JS: string = `
   var pendingCardAction = null;
   var preserveLoadedCardOrder = false;
   window.__aiphoneApplyWaterfallUpdate = function (payload) {
-    if (applyCardActionAcknowledgement(payload)) return;
+    applyCardActionAcknowledgement(payload);
     pendingPayload = payloadAfterCardAction(payload);
     if (mode === 'collection') {
       mergePayload(payload);
@@ -1991,6 +1991,20 @@ const WATERFALL_JS: string = `
         '<b>' + escapeHtml(compactMetricValue(value)) + '</b></span>';
     }).join('');
     return '<div class="' + (detail ? 'waterfall-reader-signals' : 'waterfall-signal-rail') + '">' + content + '</div>';
+  }
+  function syncMetricSlots(payload) {
+    candidates(payload).forEach(function (item) {
+      var card = cardById(item.id);
+      if (!card || typeof card.querySelector !== 'function') return;
+      var slot = card.querySelector('[data-waterfall-card-metrics]');
+      var markup = metricsMarkup(item, false);
+      if (slot && slot.innerHTML !== markup) slot.innerHTML = markup;
+    });
+    if (mode !== 'reading' || !reader || typeof reader.querySelector !== 'function') return;
+    var readerItem = candidateById(readerCandidateId);
+    var readerSlot = reader.querySelector('[data-waterfall-reader-metrics]');
+    var readerMarkup = readerItem ? metricsMarkup(readerItem, true) : '';
+    if (readerSlot && readerSlot.innerHTML !== readerMarkup) readerSlot.innerHTML = readerMarkup;
   }
   function videoEmbedForUrl(value) {
     var raw = text(value).trim();
@@ -2707,6 +2721,7 @@ const WATERFALL_JS: string = `
       }
     }
     state = payload;
+    syncMetricSlots(payload);
     var payloadSources = payload.enabledSources ? payload.enabledSources.slice() : [];
     if (committedPreferenceSources) {
       if (payloadSources.join('|') === committedPreferenceSources.join('|')) committedPreferenceSources = null;
@@ -2846,7 +2861,8 @@ const WATERFALL_JS: string = `
       authorMarkup(item) + '</div><span>' +
       escapeHtml(publishedLabel(item.publishedAt)) + '</span></div>';
     var copy = '<div class="waterfall-reader-copy">' + context + '<h2>' + escapeHtml(title) + '</h2>' +
-      metricsMarkup(item, true) + (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') +
+      '<div data-waterfall-reader-metrics>' + metricsMarkup(item, true) + '</div>' +
+      (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') +
       '<div data-waterfall-comments-slot>' + commentsMarkup(item) + '</div>' + feedbackBarMarkup(item) + '</div>';
     var content = media + copy;
     var nextId = text(item.id);
@@ -2944,7 +2960,7 @@ const WATERFALL_JS: string = `
       (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') +
       (item.publishedAt ?
         '<div class="waterfall-meta">' + escapeHtml(publishedLabel(item.publishedAt)) + '</div>' : '') +
-      metricsMarkup(item, false) +
+      '<div data-waterfall-card-metrics>' + metricsMarkup(item, false) + '</div>' +
       '<div class="waterfall-copy-actions">' + reason + feedbackBarMarkup(item) +
       '</div></div></div></article>';
   }

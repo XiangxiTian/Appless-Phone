@@ -1255,6 +1255,10 @@ const compactCardNodes = [
 ];
 const gestureCardNodes = window.__aiphoneWaterfallInitial.candidates.map((_, index) =>
   Object.assign(element(), { offsetTop: 18 + index * 728, offsetHeight: 700 }));
+const currentMetricSlot = element();
+gestureCardNodes[0].getAttribute = (name) => name === 'data-waterfall-id' ? 'current' : '';
+gestureCardNodes[0].querySelector = (selector) =>
+  selector === '[data-waterfall-card-metrics]' ? currentMetricSlot : null;
 track.querySelectorAll = (selector) => selector === '[data-waterfall-id]' ? gestureCardNodes : [];
 const likeControl = {
   getAttribute: (name) => ({
@@ -1273,15 +1277,19 @@ const writesBeforeCardActionAck = track.innerHTMLWrites;
 const initialCandidates = window.__aiphoneWaterfallInitial.candidates;
 window.__aiphoneApplyWaterfallUpdate({
   ...window.__aiphoneWaterfallInitial,
-  candidates: [initialCandidates[0], initialCandidates[1], initialCandidates[3], initialCandidates[2],
+  candidates: [{ ...initialCandidates[0], metrics: [{ kind: 'like', value: 4321 }] },
+    initialCandidates[1], initialCandidates[3], initialCandidates[2],
     ...initialCandidates.slice(4)],
   cardStates: [{ candidateId: 'current', reaction: 'like', saved: true }]
 });
 assert.equal(track.innerHTMLWrites, writesBeforeCardActionAck,
   'a card-action acknowledgement must not rebuild and flash the loaded card tree');
+assert.match(currentMetricSlot.innerHTML, /data-waterfall-metric="like"[^>]*aria-label="\u70b9\u8d5e 4,321"/,
+  'a card-action acknowledgement must not discard platform metrics arriving in the same payload');
 window.__aiphoneApplyWaterfallUpdate({
   ...window.__aiphoneWaterfallInitial,
-  candidates: [initialCandidates[0], initialCandidates[1], initialCandidates[3], initialCandidates[2],
+  candidates: [{ ...initialCandidates[0], metrics: [{ kind: 'like', value: 4321 }] },
+    initialCandidates[1], initialCandidates[3], initialCandidates[2],
     ...initialCandidates.slice(4)],
   cardStates: [{ candidateId: 'current', reaction: 'like', saved: true }]
 });
@@ -2201,10 +2209,13 @@ assert.deepEqual(Object.keys(actions.at(-1)?.args ?? {}).sort(), ['candidateId',
 assert.equal(actions.at(-1)?.args?.candidateId, 'comments-current');
 
 const commentsSlot = element();
+const readerMetricSlot = element();
 reader.querySelector = (selector) => selector === '.waterfall-reader-head' ? readerHead :
-  (selector === '[data-waterfall-comments-slot]' ? commentsSlot : null);
+  (selector === '[data-waterfall-comments-slot]' ? commentsSlot :
+    (selector === '[data-waterfall-reader-metrics]' ? readerMetricSlot : null));
 window.__aiphoneApplyWaterfallUpdate(commentsPayload({
   commentLoadState: 'ready',
+  metrics: [{ kind: 'like', value: 9876 }],
   comments: Array.from({ length: 6 }, (_, index) => ({
     text: index === 0 ? '<b>第一条评论</b>' : `第 ${index + 1} 条评论`,
     authorName: index === 0 ? '评论者' : '',
@@ -2216,6 +2227,8 @@ window.__aiphoneApplyWaterfallUpdate(commentsPayload({
 }));
 assert.equal((commentsSlot.innerHTML.match(/data-waterfall-comment-toggle/g) ?? []).length, 5,
   'detail comments must show at most five rows');
+assert.match(readerMetricSlot.innerHTML, /data-waterfall-metric="like"/,
+  'detail metrics must update alongside an asynchronous comment payload');
 assert.match(commentsSlot.innerHTML, /&lt;b&gt;第一条评论&lt;\/b&gt;/);
 assert.doesNotMatch(commentsSlot.innerHTML, /第 6 条评论/);
 let commentExpanded = 'false';

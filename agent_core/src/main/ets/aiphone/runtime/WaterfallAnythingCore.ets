@@ -6,6 +6,21 @@ export type WaterfallMode = 'search' | 'interest';
 export type WaterfallFormat = 'landscape_video' | 'portrait_video' | 'image_text' | 'text';
 export type WaterfallRecallRoute = 'search' | 'similar' | 'profile' | 'explore' | 'popular';
 export type WaterfallInterestRecallRoute = 'similar' | 'profile' | 'explore' | 'popular';
+export type WaterfallCommentLoadState = 'loading' | 'ready' | 'empty' | 'error';
+
+export interface WaterfallComment {
+  text: string;
+  authorName?: string;
+  authorAvatarUrl?: string;
+  publishedAt?: string;
+  likeCount?: number;
+  replyCount?: number;
+}
+
+export interface WaterfallCommentsResult {
+  state: WaterfallCommentLoadState;
+  comments: WaterfallComment[];
+}
 
 export interface WaterfallInterestRecallRequest {
   route: WaterfallInterestRecallRoute;
@@ -103,6 +118,9 @@ export interface WaterfallCandidate {
   audioLoadState?: 'loading' | 'ready' | 'error';
   audioError?: string;
   audioRetryable?: boolean;
+  providerItemId?: string;
+  comments?: WaterfallComment[];
+  commentLoadState?: WaterfallCommentLoadState;
   publishedAt: string;
   duration?: string;
   originalIndex: number;
@@ -448,6 +466,9 @@ function toRankedCandidate(item: RankedCandidateInternal): WaterfallRankedCandid
     coverUrl: item.candidate.coverUrl,
     mediaUrl: item.candidate.mediaUrl,
     feedUrl: item.candidate.feedUrl,
+    providerItemId: item.candidate.providerItemId,
+    comments: item.candidate.comments,
+    commentLoadState: item.candidate.commentLoadState,
     audioTitle: item.candidate.audioTitle,
     audioMimeType: item.candidate.audioMimeType,
     audioDuration: item.candidate.audioDuration,
@@ -1309,6 +1330,9 @@ function rankedToCandidates(items: WaterfallRankedCandidate[]): WaterfallCandida
     coverUrl: item.coverUrl,
     mediaUrl: item.mediaUrl,
     feedUrl: item.feedUrl,
+    providerItemId: item.providerItemId,
+    comments: item.comments,
+    commentLoadState: item.commentLoadState,
     audioTitle: item.audioTitle,
     audioMimeType: item.audioMimeType,
     audioDuration: item.audioDuration,
@@ -1368,6 +1392,9 @@ function deferredRankedCandidate(candidate: WaterfallCandidate): WaterfallRanked
     coverUrl: candidate.coverUrl,
     mediaUrl: candidate.mediaUrl,
     feedUrl: candidate.feedUrl,
+    providerItemId: candidate.providerItemId,
+    comments: candidate.comments,
+    commentLoadState: candidate.commentLoadState,
     audioTitle: candidate.audioTitle,
     audioMimeType: candidate.audioMimeType,
     audioDuration: candidate.audioDuration,

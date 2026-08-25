@@ -195,6 +195,7 @@ import {
   callAggregateSearchContinuation,
   callAggregateSearchContinuationForContext,
   configureAggregateExternalProvidersForRuntime,
+  loadWaterfallComments,
   waterfallInterestSourceAllowedForRuntime,
   waterfallSearchPolicyForRuntime
 } from './AggregateSearchClient';
@@ -207,6 +208,7 @@ import {
 import { normalizeFoodPhoneNumber } from './FoodNavigation';
 import {
   WaterfallCandidate,
+  WaterfallCommentsResult,
   WaterfallInterestRecallRequest,
   WaterfallLoadRequest
 } from './WaterfallAnythingCore';
@@ -15560,6 +15562,13 @@ export async function callConfiguredAggregateSearchContinuation(
     { apiKey: localProviderConfig.zhihuApiKey },
     onBatch
   );
+}
+
+export async function callConfiguredWaterfallComments(
+  source: AggregateSearchSource,
+  providerItemId: string
+): Promise<WaterfallCommentsResult> {
+  return loadWaterfallComments(source, providerItemId, localProviderConfig.youtubeApiKey);
 }
 
 export interface WaterfallInterestRecallBatch {

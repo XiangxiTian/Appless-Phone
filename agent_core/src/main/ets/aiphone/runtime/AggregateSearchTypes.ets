@@ -1,4 +1,4 @@
-import { WaterfallContinuation, WaterfallFeedState } from './WaterfallAnythingCore';
+import { WaterfallComment, WaterfallContinuation, WaterfallFeedState } from './WaterfallAnythingCore';
 
 export type AggregateSearchSource = 'youtube' | 'bilibili' | 'x' | 'hackernews' | 'reddit' | 'zhihu' |
   'douban' | 'applepodcasts' | 'twitch' | 'github' | 'steam' | 'cnnews' | 'globalnews';
@@ -69,6 +69,7 @@ export interface AggregateSearchPost {
   status: AggregateSearchStatus;
   rows: AggregateSearchRowData[];
   feedUrl?: string;
+  comments?: WaterfallComment[];
 }
 
 export interface AggregateSearchResult {

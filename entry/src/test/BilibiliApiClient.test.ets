@@ -2,7 +2,9 @@ import { describe, it, expect } from '@ohos/hypium';
 import { DynamicGenericToolResult } from '@loop/agent-core';
 import {
   bilibiliApiSearchUrl,
+  bilibiliCommentsFromReplyPayload,
   bilibiliPlayerUrl,
+  bilibiliReplyUrl,
   bilibiliSearchUrl,
   bilibiliVideoResultsFromSearchHtml,
   bilibiliVideoResultsFromSearchPayload
@@ -10,6 +12,26 @@ import {
 
 export default function bilibiliApiClientTest() {
   describe('bilibiliApiClient', () => {
+    it('builds and parses five public hot replies without login state', 0, () => {
+      const url = bilibiliReplyUrl('456');
+      const comments = bilibiliCommentsFromReplyPayload('{"code":0,"message":"0","data":{"replies":[' +
+        '{"rpid":1,"ctime":1780000100,"like":17,"rcount":3,"member":{"uname":"阿明",' +
+        '"avatar":"https://i0.hdslb.com/avatar.jpg"},"content":{"message":"第一条 B 站评论"}}]}}');
+
+      expect(url.indexOf('https://api.bilibili.com/x/v2/reply?')).assertEqual(0);
+      expect(url.indexOf('type=1')).assertLarger(-1);
+      expect(url.indexOf('oid=456')).assertLarger(-1);
+      expect(url.indexOf('pn=1')).assertLarger(-1);
+      expect(url.indexOf('ps=5')).assertLarger(-1);
+      expect(url.indexOf('sort=2')).assertLarger(-1);
+      expect(comments.length).assertEqual(1);
+      expect(comments[0].text).assertEqual('第一条 B 站评论');
+      expect(comments[0].authorName).assertEqual('阿明');
+      expect(comments[0].authorAvatarUrl).assertEqual('https://i0.hdslb.com/avatar.jpg');
+      expect(comments[0].likeCount).assertEqual(17);
+      expect(comments[0].replyCount).assertEqual(3);
+    });
+
     it('builds search and player URLs without credentials', 0, () => {
       const searchUrl: string = bilibiliSearchUrl('qwen max 官方介绍');
       const apiUrl: string = bilibiliApiSearchUrl('qwen max 官方介绍', 2);

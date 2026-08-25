@@ -19,6 +19,7 @@ import {
   waterfallAdvanceVisibleFromAction,
   waterfallBehaviorFromAction,
   waterfallCardActionFromAction,
+  waterfallCommentsCandidateFromAction,
   waterfallEnabledSourcesFromAction
 } from '../main/ets/pages/A2uiHome/html/HtmlAggregateSearchHomeRenderer';
 import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer';
@@ -3773,14 +3774,14 @@ export default function htmlHomeRendererTest() {
 
       const html = renderHtmlHomeDocument(doc);
 
-      expect(shouldShowWaterfallReaderAction('applepodcasts', 'image_text')).assertFalse();
-      expect(shouldShowWaterfallReaderAction('twitch', 'image_text')).assertFalse();
+      expect(shouldShowWaterfallReaderAction('applepodcasts', 'image_text')).assertTrue();
+      expect(shouldShowWaterfallReaderAction('twitch', 'image_text')).assertTrue();
       expect(shouldShowWaterfallReaderAction('youtube', 'video')).assertTrue();
       expect(shouldShowWaterfallReaderAction('youtube', 'image_text')).assertTrue();
       expect(shouldShowWaterfallReaderAction('hackernews', 'post')).assertTrue();
       expect(html.indexOf('var sourceOnly = ["applepodcasts","twitch"].indexOf(item.source) >= 0'))
         .assertLarger(-1);
-      expect(html.indexOf('var openAttr = sourceOnly ?')).assertLarger(-1);
+      expect(html.indexOf("var openAttr = ' data-waterfall-open=\"")).assertLarger(-1);
       expect(html.indexOf("var shellClass = 'waterfall-card-shell' + (sourceOnly ? '' : " +
         "' waterfall-card-shell--interactive')")).assertLarger(-1);
       expect(html.indexOf('.waterfall-card-shell--interactive { cursor: pointer; }')).assertLarger(-1);
@@ -3812,6 +3813,11 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('id="waterfall-toast"')).assertLarger(-1);
       expect(html.indexOf("shownAudioErrors[text(loadingItem.id)] = ''")).assertLarger(-1);
       expect(html.indexOf('shownAudioErrors[key] === message')).assertLarger(-1);
+      expect(html.indexOf('评论精选')).assertLarger(-1);
+      expect(html.indexOf('data-waterfall-comments-slot')).assertLarger(-1);
+      expect(html.indexOf('data-waterfall-comment-toggle')).assertLarger(-1);
+      expect(html.indexOf('waterfall-comment-skeleton')).assertLarger(-1);
+      expect(html.indexOf("id: 'waterfall.comments.load'")).assertLarger(-1);
       expect(html.indexOf('TWITCH_CLIENT_ID')).assertEqual(-1);
       expect(html.indexOf('TWITCH_CLIENT_SECRET')).assertEqual(-1);
       expect(html.indexOf('access_token')).assertEqual(-1);
@@ -3999,6 +4005,17 @@ export default function htmlHomeRendererTest() {
       const injected = JSON.parse(JSON.stringify(action)) as A2uiAction;
       (injected.args as Record<string, Object | string>)['feedUrl'] = 'https://attacker.example/feed.xml';
       expect(waterfallApplePodcastCandidateFromAction(injected, 'surface-1')).assertEqual(null);
+    });
+
+    it('accepts only a current-surface comment candidate action', 0, () => {
+      const action = parseHtmlHomeAction('{"id":"waterfall.comments.load","label":"加载评论",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"youtube-video-1"}}') as A2uiAction;
+      expect(waterfallCommentsCandidateFromAction(action, 'surface-1')).assertEqual('youtube-video-1');
+      expect(waterfallCommentsCandidateFromAction(action, 'stale-surface')).assertEqual(null);
+      const injected = JSON.parse(JSON.stringify(action)) as A2uiAction;
+      (injected.args as Record<string, Object | string>)['providerItemId'] = 'attacker-controlled';
+      expect(waterfallCommentsCandidateFromAction(injected, 'surface-1')).assertEqual(null);
     });
 
     it('validates Waterfall behavior actions at the existing client bridge', 0, () => {

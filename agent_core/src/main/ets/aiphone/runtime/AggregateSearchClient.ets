@@ -7,6 +7,8 @@ import {
 } from './ComposioDynamicBackend';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 import { callMediaVideoSearch } from './MediaVideoClient';
+import { callBilibiliVideoComments } from './BilibiliApiClient';
+import { callYouTubeVideoComments } from './YouTubeApiClient';
 import { searchApplePodcasts } from './ApplePodcastClient';
 import { loadCnNewsSource } from './PublicFeedClient';
 import { discoverPublicGitHub, searchPublicGitHub } from './GitHubPublicClient';
@@ -48,6 +50,8 @@ import {
 } from './AggregateSearchSourceRegistry';
 import {
   WaterfallCandidate,
+  WaterfallComment,
+  WaterfallCommentsResult,
   WaterfallContinuation,
   WaterfallFeedState,
   WaterfallFormat,
@@ -185,17 +189,6 @@ function waterfallPostVideoUrl(post: AggregateSearchPost): string {
   return '';
 }
 
-function waterfallPostSummary(post: AggregateSearchPost): string {
-  const comments: string[] = [];
-  post.rows.forEach((row: AggregateSearchRowData): void => {
-    const label = row.label.trim().toLowerCase();
-    if ((label === 'comment' || label === 'reply') && row.value.trim().length > 0 && comments.length < 2) {
-      comments.push(row.value.trim());
-    }
-  });
-  return comments.length > 0 ? post.text + '\n\n评论摘录\n• ' + comments.join('\n• ') : post.text;
-}
-
 function waterfallTitle(value: string): string {
   return /^result\s+\d+$/i.test(value.trim()) ? '' : value;
 }
@@ -238,6 +231,11 @@ function videoMetrics(video: AggregateSearchVideo): WaterfallMetric[] {
 
 function postMetrics(post: AggregateSearchPost): WaterfallMetric[] {
   const metrics: WaterfallMetric[] = [];
+  if (post.source === 'github') {
+    addMetric(metrics, 'star', aggregateRowText(post.rows, ['Stars']));
+    addMetric(metrics, 'fork', aggregateRowText(post.rows, ['Forks']));
+    return metrics;
+  }
   const record = post.rows.length > 0 ? dynamicPostRecord(post.rows[0].value) : null;
   const publicMetrics = record === null ? null : dynamicRecord(record.public_metrics);
   if (post.source === 'x' && publicMetrics !== null) {
@@ -257,6 +255,19 @@ function postMetrics(post: AggregateSearchPost): WaterfallMetric[] {
 function aggregateAvatar(rows: AggregateSearchRowData[]): string {
   const avatar = aggregateRowText(rows, ['Author Avatar', 'authorAvatar', 'Avatar', 'upic']);
   return avatar.startsWith('http') ? avatar : '';
+}
+
+function commentsFromRows(rows: AggregateSearchRowData[]): WaterfallComment[] {
+  const comments: WaterfallComment[] = [];
+  rows.forEach((row: AggregateSearchRowData): void => {
+    const label = row.label.trim().toLowerCase();
+    const value = row.value.trim();
+    if ((label === 'comment' || label === 'reply') && value.length > 0 && comments.length < 5 &&
+      comments.every((comment: WaterfallComment): boolean => comment.text !== value)) {
+      comments.push({ text: value });
+    }
+  });
+  return comments;
 }
 
 export function aggregateMediaCandidates(
@@ -279,6 +290,9 @@ export function aggregateMediaCandidates(
     waterfallTextTokens(title + ' ' + summary);
   videos.forEach((video: AggregateSearchVideo, index: number) => {
     const metrics = videoMetrics(video);
+    const providerItemId = video.source === 'bilibili' ?
+      aggregateRowText(video.rows, ['AID']) :
+      aggregateRowText(video.rows, ['Video ID']);
     candidates.push({
       id: video.id,
       source: video.source,
@@ -288,6 +302,7 @@ export function aggregateMediaCandidates(
       summary: video.summary,
       url: video.url,
       coverUrl: video.thumbnail,
+      providerItemId: providerItemId || undefined,
       publishedAt: video.publishedAt,
       duration: video.duration,
       originalIndex: batchIndex * 1000 + index,
@@ -312,17 +327,21 @@ export function aggregateMediaCandidates(
     const format: WaterfallFormat = mediaType === 'video' ? 'landscape_video' :
       (mediaType === 'image_text' ? 'image_text' : 'text');
     const metrics = postMetrics(post);
+    const comments = (post.comments ?? commentsFromRows(post.rows)).slice(0, 5);
     candidates.push({
       id: post.id,
       source: post.source,
       provider: post.provider,
       mediaType: mediaType,
       title: waterfallTitle(post.title),
-      summary: waterfallPostSummary(post),
+      summary: post.text,
       url: post.url,
       coverUrl: coverUrl,
       mediaUrl: mediaUrl,
       feedUrl: post.feedUrl,
+      providerItemId: postProviderId(post) || undefined,
+      comments: comments.length > 0 ? comments : undefined,
+      commentLoadState: comments.length > 0 ? 'ready' : (post.source === 'zhihu' ? 'empty' : undefined),
       publishedAt: post.publishedAt,
       originalIndex: batchIndex * 1000 + videos.length + index,
       searchQuery: searchQuery,
@@ -421,14 +440,21 @@ function cleanAggregateSearchQuery(value: string): string {
       query = query.substring(prefix.length).trim();
     }
   });
-  ['的相关新闻和讨论', '相关新闻和讨论', '的新闻和讨论', '新闻和讨论', '的相关新闻讨论', '相关新闻讨论',
+  const tailMarkers: string[] = ['的相关新闻和讨论', '相关新闻和讨论', '的新闻和讨论', '新闻和讨论', '的相关新闻讨论', '相关新闻讨论',
     '新闻讨论', '的相关新闻', '相关新闻', '的相关讨论', '相关讨论', '的新闻', '新闻',
     '的讨论', '讨论', '热议', '观点', '帖子', 'po文', '公开动态',
-    '，知乎也看', '，Reddit也看', '，reddit也看'].forEach((tail: string) => {
-    if (query.length > tail.length && query.substring(query.length - tail.length) === tail) {
-      query = query.substring(0, query.length - tail.length).trim();
+    '，知乎也看', '，Reddit也看', '，reddit也看'];
+  let trimmedTail = true;
+  while (trimmedTail) {
+    trimmedTail = false;
+    for (let index = 0; index < tailMarkers.length; index++) {
+      const tail = tailMarkers[index];
+      if (query.length > tail.length && query.substring(query.length - tail.length) === tail) {
+        query = query.substring(0, query.length - tail.length).trim();
+        trimmedTail = true;
+      }
     }
-  });
+  }
   return query.length > 0 ? query : original;
 }
 
@@ -956,7 +982,7 @@ function directVideoUrl(value: DynamicPostValue, depth: number = 0): string {
 }
 
 function appendCommentTexts(value: DynamicPostValue, comments: string[], depth: number = 0): void {
-  if (comments.length >= 2 || depth > 5 || value === undefined || value === null) {
+  if (comments.length >= 5 || depth > 5 || value === undefined || value === null) {
     return;
   }
   if (Array.isArray(value)) {
@@ -1533,6 +1559,7 @@ function zhihuPostFromItem(item: Object, index: number): AggregateSearchPost {
   const author = recordText(record, ['AuthorName', 'authorName', 'author', 'Source', 'source', 'Site', 'site']);
   const score = recordText(record, ['VoteUpCount', 'voteUpCount', 'Score', 'score', 'Relevance', 'relevance']);
   const commentCount = recordText(record, ['CommentCount', 'commentCount', 'comments_count', 'num_comments']);
+  const contentId = recordText(record, ['ContentID', 'contentID', 'id']);
   const rows: AggregateSearchRowData[] = [
     { label: 'author', value: author },
     { label: 'contentType', value: recordText(record, ['ContentType', 'contentType']) },
@@ -1541,12 +1568,15 @@ function zhihuPostFromItem(item: Object, index: number): AggregateSearchPost {
     { label: 'score', value: score },
     { label: 'comments', value: commentCount }
   ];
+  if (contentId.length > 0) {
+    rows.push({ label: 'Content ID', value: contentId });
+  }
   const avatar = recordText(record, ['AuthorAvatar', 'authorAvatar', 'AuthorBadge', 'authorBadge']);
   if (avatar.length > 0) {
     rows.push({ label: 'authorAvatar', value: avatar });
   }
   return {
-    id: 'zhihu-' + (recordText(record, ['ContentID', 'contentID', 'id']) || index.toString()),
+    id: 'zhihu-' + (contentId || index.toString()),
     source: 'zhihu',
     provider: '知乎',
     title: title.length > 0 ? title : '知乎内容',
@@ -1558,8 +1588,33 @@ function zhihuPostFromItem(item: Object, index: number): AggregateSearchPost {
     score: score,
     commentCount: commentCount,
     status: 'success',
-    rows: rows
+    rows: rows,
+    comments: zhihuCommentsFromItem(record)
   };
+}
+
+function zhihuCommentsFromItem(record: DynamicPostRecord): WaterfallComment[] {
+  const raw = record.CommentInfoList ?? record.commentInfoList ?? record.comments;
+  if (!Array.isArray(raw)) return [];
+  const comments: WaterfallComment[] = [];
+  raw.forEach((value: DynamicPostValue): void => {
+    if (comments.length >= 5) return;
+    const item = dynamicRecord(value);
+    if (item === null) return;
+    const content = plainPostText(recordText(item, ['Content', 'content', 'Text', 'text']));
+    if (content.length === 0 || comments.some((comment: WaterfallComment): boolean => comment.text === content)) return;
+    const likeCount = metricNumber(recordText(item, ['LikeCount', 'likeCount', 'VoteUpCount', 'voteUpCount']));
+    const replyCount = metricNumber(recordText(item, ['ReplyCount', 'replyCount', 'ChildCommentCount']));
+    comments.push({
+      text: content,
+      authorName: recordText(item, ['AuthorName', 'authorName', 'Author', 'author']) || undefined,
+      authorAvatarUrl: recordText(item, ['AuthorAvatar', 'authorAvatar']) || undefined,
+      publishedAt: zhihuTimeText(recordText(item, ['CreateTime', 'createTime', 'created_at'])) || undefined,
+      likeCount: likeCount,
+      replyCount: replyCount
+    });
+  });
+  return comments;
 }
 
 export function zhihuPostsFromSearchPayload(rawJson: string): AggregateSearchPost[] {
@@ -1971,7 +2026,6 @@ async function aggregateComposioSourceBatch(
   const posts: AggregateSearchPost[] = [];
   const statuses: AggregateSearchSourceStatus[] = [];
   const result = await appendComposioPosts(source, provider, prompt, posts, statuses, fixedToolId, fixedArgs);
-  await enrichPostComments(source, posts);
   return {
     source: source,
     videos: [],
@@ -1986,6 +2040,8 @@ function postRecord(post: AggregateSearchPost): DynamicPostRecord | null {
 }
 
 function postProviderId(post: AggregateSearchPost): string {
+  const rowId = aggregateRowText(post.rows, ['Content ID', 'Provider ID']);
+  if (rowId.length > 0) return rowId;
   const record = postRecord(post);
   if (record !== null) {
     const id = recordText(record, ['id', 'objectID', 'object_id', 'story_id']);
@@ -2006,20 +2062,12 @@ function commentTextsFromResult(result: DynamicGenericToolResult): string[] {
   try {
     appendCommentTexts(JSON.parse(result.rawPreview) as DynamicPostValue, comments);
   } catch (_error) {}
-  if (comments.length < 2) {
+  if (comments.length < 5) {
     result.rows.forEach((row: AggregateSearchRowData): void => {
       appendCommentTexts(parsedDynamicPostRecord(row.value), comments);
     });
   }
-  return comments.slice(0, 2);
-}
-
-function appendComments(post: AggregateSearchPost, comments: string[]): void {
-  comments.forEach((comment: string): void => {
-    if (comment !== post.text && post.rows.every((row: AggregateSearchRowData): boolean => row.value !== comment)) {
-      post.rows.push({ label: 'comment', value: comment });
-    }
-  });
+  return comments.slice(0, 5);
 }
 
 function childIdsFromResult(result: DynamicGenericToolResult): string[] {
@@ -2033,38 +2081,43 @@ function childIdsFromResult(result: DynamicGenericToolResult): string[] {
     } else if (record !== null && Array.isArray(record.kids)) {
       kids = record.kids as DynamicPostValue[];
     }
-    return kids.slice(0, 2).map((item: DynamicPostValue): string => textOf(item).trim()).filter((id: string): boolean => id.length > 0);
+    return kids.slice(0, 5).map((item: DynamicPostValue): string => textOf(item).trim()).filter((id: string): boolean => id.length > 0);
   } catch (_error) {
     return [];
   }
 }
 
-async function enrichPostComments(source: AggregateSearchSource, posts: AggregateSearchPost[]): Promise<void> {
-  // ponytail: 首卡补评论不阻塞整批；逐卡评论等真正展示时再懒加载。
-  if (posts.length > 0) {
-    await enrichOnePostComments(source, posts[0]);
-  }
+export function waterfallCommentSourceSupported(source: string): boolean {
+  return source === 'youtube' || source === 'bilibili' || source === 'x' ||
+    source === 'hackernews' || source === 'reddit';
 }
 
-async function enrichOnePostComments(source: AggregateSearchSource, post: AggregateSearchPost): Promise<void> {
-  // commentCount 为空表示"未知"而非"没有评论"：未知时也尝试拉取，只有明确 0 才跳过。
-  const knownCount = Number(post.commentCount);
-  const knownZero = post.commentCount.trim().length > 0 && !Number.isNaN(knownCount) && knownCount <= 0;
-  if (knownZero || post.rows.some((row: AggregateSearchRowData): boolean => row.label === 'comment')) {
-    return;
-  }
-  const id = postProviderId(post);
-  if (id.length === 0) {
-    return;
-  }
+function commentResult(comments: WaterfallComment[]): WaterfallCommentsResult {
+  const visible = comments.filter((comment: WaterfallComment): boolean => comment.text.trim().length > 0).slice(0, 5);
+  return { state: visible.length > 0 ? 'ready' : 'empty', comments: visible };
+}
+
+function textComments(values: string[]): WaterfallComment[] {
+  return values.slice(0, 5).map((value: string): WaterfallComment => ({ text: value }));
+}
+
+export async function loadWaterfallComments(
+  source: AggregateSearchSource,
+  providerItemId: string,
+  youtubeApiKey: string = ''
+): Promise<WaterfallCommentsResult> {
+  const id = providerItemId.trim();
+  if (!waterfallCommentSourceSupported(source) || id.length === 0) return { state: 'empty', comments: [] };
   try {
+    if (source === 'youtube') return commentResult(await callYouTubeVideoComments(id, youtubeApiKey));
+    if (source === 'bilibili') return commentResult(await callBilibiliVideoComments(id));
     if (source === 'reddit') {
       const args: AggregateRedditCommentsArgs = { articleId: id };
       const result = await callComposioFixedDynamic('帮我用 Composio Reddit 读取帖子评论', 'social.reddit.comments', args as Object);
       if (result !== null && result.status === 'success') {
-        appendComments(post, commentTextsFromResult(result));
+        return commentResult(textComments(commentTextsFromResult(result)));
       }
-      return;
+      return { state: 'empty', comments: [] };
     }
     if (source === 'x') {
       const args: AggregateXSearchArgs = {
@@ -2074,28 +2127,39 @@ async function enrichOnePostComments(source: AggregateSearchSource, post: Aggreg
       };
       const result = await callComposioFixedDynamic('帮我用 Composio X 读取公开回复', 'x.post.search', args as Object);
       if (result !== null && result.status === 'success') {
-        appendComments(post, xPostsFromComposioResult(result).map((reply: AggregateSearchPost): string => reply.text).slice(0, 2));
+        return commentResult(xPostsFromComposioResult(result).filter((reply: AggregateSearchPost): boolean =>
+          postProviderId(reply) !== id).slice(0, 5).map((reply: AggregateSearchPost): WaterfallComment => ({
+          text: reply.text,
+          authorName: reply.author || undefined,
+          authorAvatarUrl: aggregateAvatar(reply.rows) || undefined,
+          publishedAt: reply.publishedAt || undefined
+        })));
       }
-      return;
+      return { state: 'empty', comments: [] };
     }
     if (source === 'hackernews') {
       const parentArgs: AggregateHackerNewsItemArgs = { itemId: id };
       const parent = await callComposioFixedDynamic('帮我用 Composio Hacker News 读取帖子', 'social.hackernews.item.read', parentArgs as Object);
       if (parent === null || parent.status !== 'success') {
-        return;
+        return { state: 'empty', comments: [] };
       }
       const childIds = childIdsFromResult(parent);
+      const comments: string[] = [];
       for (let index = 0; index < childIds.length; index++) {
         const childArgs: AggregateHackerNewsItemArgs = { itemId: childIds[index] };
         const child = await callComposioFixedDynamic('帮我用 Composio Hacker News 读取评论', 'social.hackernews.item.read', childArgs as Object);
         if (child !== null && child.status === 'success') {
-          appendComments(post, commentTextsFromResult(child));
+          commentTextsFromResult(child).forEach((text: string): void => {
+            if (comments.length < 5 && comments.indexOf(text) < 0) comments.push(text);
+          });
         }
       }
+      return commentResult(textComments(comments));
     }
   } catch (_error) {
-    // 评论是补充信息；失败时保留已成功的主帖和真实评论数量。
+    return { state: 'error', comments: [] };
   }
+  return { state: 'empty', comments: [] };
 }
 
 async function aggregateZhihuSourceBatch(config: AggregateZhihuConfig, query: string): Promise<AggregateSearchSourceBatch> {

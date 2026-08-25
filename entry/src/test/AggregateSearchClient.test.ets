@@ -29,6 +29,7 @@ import {
   configureWaterfallEnabledSourcesForRuntime,
   configureWaterfallPreferenceProfileForRuntime,
   configureWaterfallSearchPolicyForRuntime,
+  applyWaterfallProfile,
   applyWaterfallSourceSelection,
   applyWaterfallExpandedQuery,
   failWaterfallExpansion,
@@ -62,6 +63,7 @@ import {
   parseWaterfallExpandedQuery,
   planWaterfallInterestRecall,
   rankWaterfallCandidates,
+  waterfallCommentSourceSupported,
   waterfallSearchPolicyForRuntime
 } from '@loop/agent-core';
 
@@ -287,10 +289,12 @@ export default function aggregateSearchClientTest() {
     it('extracts query and source defaults', 0, () => {
       configureWaterfallEnabledSourcesForRuntime(aggregateSearchRegistrySourceIds());
       const args: QueryArgsFixture = { query: 'openai codex', sources: ['youtube', 'x'], limit: 3 };
+      const spacedIntentArgs: QueryArgsFixture = { query: 'OpenAI Codex 新闻 讨论' };
 
       expect(aggregateSearchQueryFromArgs('我想看看相关新闻', args)).assertEqual('openai codex');
       expect(aggregateSearchQueryFromArgs('我想看看有关 openai codex 的相关新闻和讨论', null)).assertEqual('openai codex');
       expect(aggregateSearchQueryFromArgs('openai codex 新闻讨论', null)).assertEqual('openai codex');
+      expect(aggregateSearchQueryFromArgs('', spacedIntentArgs)).assertEqual('OpenAI Codex');
       expect(aggregateSearchSourcesFromArgs(args).join(',')).assertEqual('');
       expect(aggregateSearchSourcesFromArgs(null).join(','))
         .assertEqual('bilibili,zhihu,cnnews');
@@ -486,8 +490,27 @@ export default function aggregateSearchClientTest() {
       expect(aggregateXPostSearchPrompt('openai codex')).assertEqual('X 公开 post 搜索关键词: openai codex');
     });
 
+    it('loads comments only for sources with a fitting public comment path', 0, () => {
+      expect(waterfallCommentSourceSupported('youtube')).assertTrue();
+      expect(waterfallCommentSourceSupported('bilibili')).assertTrue();
+      expect(waterfallCommentSourceSupported('x')).assertTrue();
+      expect(waterfallCommentSourceSupported('hackernews')).assertTrue();
+      expect(waterfallCommentSourceSupported('reddit')).assertTrue();
+      expect(waterfallCommentSourceSupported('zhihu')).assertFalse();
+      expect(waterfallCommentSourceSupported('applepodcasts')).assertFalse();
+      expect(waterfallCommentSourceSupported('twitch')).assertFalse();
+      expect(waterfallCommentSourceSupported('douban')).assertFalse();
+    });
+
     it('maps official Zhihu search payloads into post cards', 0, () => {
-      const posts = zhihuPostsFromSearchPayload('{"code":0,"data":{"Items":[{"Title":"OpenAI Codex 有哪些讨论","ContentText":"<em>Codex</em> 的开发者讨论摘要","Url":"https://www.zhihu.com/question/1","AuthorName":"知乎用户","AuthorAvatar":"https://pic.example.com/avatar.jpg","VoteUpCount":12,"CommentCount":3,"EditTime":1780000000}]}}');
+      const posts = zhihuPostsFromSearchPayload('{"code":0,"data":{"Items":[{"ContentID":"answer-1",' +
+        '"Title":"OpenAI Codex 有哪些讨论","ContentText":"<em>Codex</em> 的开发者讨论摘要",' +
+        '"Url":"https://www.zhihu.com/question/1","AuthorName":"知乎用户",' +
+        '"AuthorAvatar":"https://pic.example.com/avatar.jpg","VoteUpCount":12,"CommentCount":3,' +
+        '"EditTime":1780000000,"CommentInfoList":[{"Content":"第一条真实评论",' +
+        '"AuthorName":"评论者","AuthorAvatar":"https://pic.example.com/commenter.jpg",' +
+        '"LikeCount":7,"ReplyCount":2,"CreateTime":1780000100}] }]}}');
+      const candidate = aggregateMediaCandidates([], posts, 0)[0];
 
       expect(zhihuSearchUrl('openai codex').indexOf('/api/v1/content/zhihu_search')).assertLarger(-1);
       expect(posts.length).assertEqual(1);
@@ -498,7 +521,14 @@ export default function aggregateSearchClientTest() {
       expect(posts[0].score).assertEqual('12');
       expect(posts[0].commentCount).assertEqual('3');
       expect(JSON.stringify(posts[0].rows).indexOf('avatar.jpg')).assertLarger(-1);
-      expect(aggregateMediaCandidates([], posts, 0)[0].mediaType).assertEqual('post');
+      expect(candidate.mediaType).assertEqual('post');
+      expect(candidate.providerItemId).assertEqual('answer-1');
+      expect(candidate.comments?.length).assertEqual(1);
+      expect(candidate.comments?.[0].text).assertEqual('第一条真实评论');
+      expect(candidate.comments?.[0].authorName).assertEqual('评论者');
+      expect(candidate.comments?.[0].authorAvatarUrl).assertEqual('https://pic.example.com/commenter.jpg');
+      expect(candidate.comments?.[0].likeCount).assertEqual(7);
+      expect(candidate.comments?.[0].replyCount).assertEqual(2);
     });
 
     it('maps the official Zhihu hot-list envelope and rejects business errors', 0, () => {
@@ -539,6 +569,44 @@ export default function aggregateSearchClientTest() {
       const candidate = aggregateMediaCandidates([], [twitchPost], 0)[0];
       expect(candidate.providerScore).assertEqual(321);
       expect(candidate.source).assertEqual('twitch');
+    });
+
+    it('normalizes public-source posts into the shared Waterfall card contract', 0, () => {
+      const posts: AggregateSearchPost[] = [
+        {
+          id: 'github-repo-1', source: 'github', provider: 'GitHub', title: 'openai/codex',
+          author: 'openai', handle: 'openai', text: 'Coding agent', url: 'https://github.com/openai/codex',
+          publishedAt: '2026-08-24T08:00:00Z', score: '1200', commentCount: '', status: 'success',
+          rows: [{ label: 'Stars', value: '1200' }, { label: 'Forks', value: '88' }]
+        },
+        {
+          id: 'steam-news-1', source: 'steam', provider: 'Steam', title: 'Game update',
+          author: 'Valve', handle: '', text: 'Update notes', url: 'https://store.steampowered.com/news/1',
+          publishedAt: '2026-08-24T09:00:00Z', score: '', commentCount: '', status: 'success', rows: []
+        },
+        {
+          id: 'cnnews-1', source: 'cnnews', provider: 'IT 之家', title: '国内科技新闻',
+          author: '编辑部', handle: '', text: '新闻摘要', url: 'https://www.ithome.com/0/1.htm',
+          publishedAt: '2026-08-24T10:00:00Z', score: '', commentCount: '', status: 'success', rows: []
+        },
+        {
+          id: 'globalnews-1', source: 'globalnews', provider: 'The Guardian', title: 'Global tech news',
+          author: 'Reporter', handle: '', text: 'News summary', url: 'https://www.theguardian.com/technology/1',
+          publishedAt: '2026-08-24T11:00:00Z', score: '', commentCount: '', status: 'success', rows: []
+        }
+      ];
+      const candidates = aggregateMediaCandidates([], posts, 0);
+
+      expect(candidates.map((candidate: WaterfallCandidate): string => candidate.source).join(','))
+        .assertEqual('github,steam,cnnews,globalnews');
+      expect(candidates.map((candidate: WaterfallCandidate): string => candidate.provider ?? '').join(','))
+        .assertEqual('GitHub,Steam,IT 之家,The Guardian');
+      expect(candidates.map((candidate: WaterfallCandidate): string => candidate.authorName ?? '').join(','))
+        .assertEqual('openai,Valve,编辑部,Reporter');
+      expect(candidates.map((candidate: WaterfallCandidate): string => candidate.summary).join(','))
+        .assertEqual('Coding agent,Update notes,新闻摘要,News summary');
+      expect(candidates[0].metrics?.map((metric): string => metric.kind + ':' + metric.value.toString()).join(','))
+        .assertEqual('star:1200,fork:88');
     });
 
     it('turns dynamic text rows into readable post cards with images', 0, () => {
@@ -646,7 +714,7 @@ export default function aggregateSearchClientTest() {
       expect(ranked.length).assertEqual(2);
     });
 
-    it('keeps real comment excerpts and direct video media from social results', 0, () => {
+    it('keeps real comments structured without appending them to the card summary', 0, () => {
       const posts = redditPostsFromComposioResult({
         sourceTag: 'Composio',
         toolName: 'REDDIT_SEARCH_POSTS',
@@ -665,7 +733,62 @@ export default function aggregateSearchClientTest() {
       expect(JSON.stringify(posts[0].rows).indexOf('Second useful reply')).assertLarger(-1);
       expect(candidates[0].mediaType).assertEqual('video');
       expect(candidates[0].mediaUrl).assertEqual('https://v.redd.it/demo/DASH_720.mp4');
-      expect(candidates[0].summary.indexOf('First useful reply')).assertLarger(-1);
+      expect(candidates[0].summary).assertEqual('Main post');
+      expect(candidates[0].providerItemId).assertEqual('3');
+      expect(candidates[0].comments?.length).assertEqual(2);
+      expect(candidates[0].comments?.[0].text).assertEqual('First useful reply');
+      expect(candidates[0].comments?.[1].text).assertEqual('Second useful reply');
+    });
+
+    it('preserves provider video ids for detail-only comment loading', 0, () => {
+      const youtube = video('youtube-video-123', 'https://www.youtube.com/watch?v=video-123');
+      youtube.rows.push({ label: 'Video ID', value: 'video-123' });
+      const bilibili: AggregateSearchVideo = {
+        id: 'bilibili-BV123', source: 'bilibili', provider: 'B 站', title: 'B 站视频', summary: '',
+        url: 'https://www.bilibili.com/video/BV123', thumbnail: '', publishedAt: '', duration: '',
+        status: 'success', rows: [{ label: 'BVID', value: 'BV123' }, { label: 'AID', value: '456' }]
+      };
+      const bilibiliWithoutAid: AggregateSearchVideo = {
+        id: 'bilibili-BV456', source: 'bilibili', provider: 'B 站', title: '缺少 AID 的 B 站视频', summary: '',
+        url: 'https://www.bilibili.com/video/BV456', thumbnail: '', publishedAt: '', duration: '', status: 'success',
+        rows: [{ label: 'BVID', value: 'BV456' }]
+      };
+      const candidates = aggregateMediaCandidates([youtube, bilibili, bilibiliWithoutAid], [], 0);
+
+      expect(candidates[0].providerItemId).assertEqual('video-123');
+      expect(candidates[1].providerItemId).assertEqual('456');
+      expect(candidates[2].providerItemId === undefined).assertTrue();
+    });
+
+    it('keeps detail comment fields through ranking and deferred reranking', 0, () => {
+      const candidate = waterfallCandidate(
+        'youtube-comments', 'youtube', 'OpenAI Codex', '',
+        'https://youtube.test/watch?v=comments', '2026-08-06T10:00:00.000Z', 0);
+      candidate.providerItemId = 'comments';
+      candidate.comments = [{ text: 'Useful comment' }];
+      candidate.commentLoadState = 'ready';
+      const ranked = rankWaterfallCandidates({
+        query: 'openai codex', candidates: [candidate], enabledSources: ['youtube'],
+        shownIds: [], stableIds: [], preferenceDescription: ''
+      }, WATERFALL_NOW_MS)[0];
+
+      expect(ranked.providerItemId).assertEqual('comments');
+      expect(ranked.comments?.[0].text).assertEqual('Useful comment');
+      expect(ranked.commentLoadState).assertEqual('ready');
+
+      const state = feedState(null, [], [ranked], [sourceState('youtube', null, 'exhausted')]);
+      const reranked = applyWaterfallProfile(state, emptyPreferenceProfile(), WATERFALL_NOW_MS).state.tail[0];
+      expect(reranked.providerItemId).assertEqual('comments');
+      expect(reranked.comments?.[0].text).assertEqual('Useful comment');
+      expect(reranked.commentLoadState).assertEqual('ready');
+
+      const deferred = mergeWaterfallBatchDeferredRanking(
+        feedState(null, [], [], [sourceState('youtube', null, 'loading', true, 10)]),
+        [candidate], sourceState('youtube', null, 'exhausted')
+      ).state.current as WaterfallRankedCandidate;
+      expect(deferred.providerItemId).assertEqual('comments');
+      expect(deferred.comments?.[0].text).assertEqual('Useful comment');
+      expect(deferred.commentLoadState).assertEqual('ready');
     });
 
     it('maps Reddit Composio preview wrappers into post cards', 0, () => {

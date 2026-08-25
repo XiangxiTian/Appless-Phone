@@ -364,6 +364,23 @@ export default function waterfallPreferencesStoreTest() {
       expect(restored.mediaUrl).assertEqual('https://cdn.example/hosted-video.mp4');
     });
 
+    it('round-trips detail comment metadata through saved card snapshots', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      const commented = card('saved-comments');
+      commented.providerItemId = 'video-comments';
+      commented.comments = [{ text: 'Useful comment', authorName: 'Reader', likeCount: 7 }];
+      commented.commentLoadState = 'ready';
+      store.applyCardAction(commented, 'save', true, 1000);
+
+      const reopened = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      const restored = waterfallCandidateFromSavedCard(reopened.loadCardRecords()[0].snapshot);
+      expect(restored.providerItemId).assertEqual('video-comments');
+      expect(restored.commentLoadState).assertEqual('ready');
+      expect(restored.comments?.length).assertEqual(1);
+      expect(restored.comments?.[0].authorName).assertEqual('Reader');
+    });
+
     it('restores saved Reddit cards through the reachable image cache', 0, () => {
       const native = new MemoryPreferences();
       const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);

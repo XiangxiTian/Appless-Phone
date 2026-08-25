@@ -168,6 +168,11 @@ assert.doesNotMatch(waterfallCore, /影视文化|生活灵感|运动赛事/,
   'discovery exploration must not keep lifestyle and entertainment filler queries');
 assert.match(indexPage, /waterfallAdvanceVisibleFromAction/,
   'native advance must accept the visible card, not only the stale current pointer');
+assert.match(indexPage,
+  /action\.id === 'waterfall\.comments\.load'[\s\S]*?this\.waterfallActionCandidate\(/,
+  'saved-only details must resolve comment requests through the existing saved-card candidate path');
+assert.match(indexPage, /persistSavedWaterfallCandidate\(current\)/,
+  'loaded comments must refresh an existing saved-card snapshot');
 assert.match(indexPage, /if \(active > 8\) return/,
   'discovery refill must start before the user can swipe through the last three cards');
 assert.match(waterfallCore, /WATERFALL_LOW_WATERMARK: number = 3/,
@@ -751,6 +756,15 @@ assert.match(waterfallJs, /document\.createElement\('audio'\)/);
 assert.match(waterfallJs, /audio\.setAttribute\('preload', 'none'\)/);
 assert.match(waterfallJs, /coverFailure = sourceOnly \? 'this\.hidden=true' : 'this\.parentElement\.hidden=true'/,
   'an inline source cover failure must not hide its playback controls');
+assert.match(waterfallJs, /id: 'waterfall\.comments\.load'/,
+  'detail comments must load through the bounded native action bridge');
+assert.match(waterfallJs, /data-waterfall-comments-slot/);
+assert.match(waterfallJs, /data-waterfall-comment-toggle/);
+assert.match(waterfallCss, /\.waterfall-comment-skeleton/);
+assert.match(waterfallCss, /@keyframes waterfall-comment-shimmer/);
+assert.match(waterfallCss,
+  /\.waterfall-comment-text\s*\{[^}]*-webkit-line-clamp:\s*2/s,
+  'comment previews must stay compact until the row is expanded');
 assert.match(waterfallJs, /youtube\.com\/embed\/.*\?playsinline=1/);
 assert.match(waterfallJs, /player\.bilibili\.com\/player\.html\?bvid=.*&autoplay=0&poster=true&danmaku=0&isOutside=true/);
 assert.doesNotMatch(waterfallJs, /TWITCH_CLIENT_(?:ID|SECRET)|access_token/i);
@@ -1006,6 +1020,21 @@ const globalNewsCandidate = {
   provider: 'The Guardian',
   mediaType: 'post'
 };
+const githubCandidate = {
+  ...candidate('github-current'),
+  source: 'github',
+  provider: 'GitHub',
+  mediaType: 'post',
+  authorName: 'openai',
+  metrics: [{ kind: 'star', value: 1200 }, { kind: 'fork', value: 88 }]
+};
+const steamCandidate = {
+  ...candidate('steam-current'),
+  source: 'steam',
+  provider: 'Steam',
+  mediaType: 'post',
+  authorName: 'Valve'
+};
 const portraitCandidate = {
   ...candidate('portrait-current'),
   source: 'bilibili',
@@ -1033,10 +1062,11 @@ const window = {
   __aiphoneWaterfallInitial: {
     surfaceId: 'surface-1',
     currentId: 'current',
-    enabledSources: ['youtube', 'bilibili', 'reddit', 'zhihu', 'hackernews', 'x', 'cnnews', 'globalnews', 'unknown'],
+    enabledSources: ['youtube', 'bilibili', 'reddit', 'zhihu', 'hackernews', 'x', 'github', 'steam',
+      'cnnews', 'globalnews', 'unknown'],
     aggregateHtml: '',
     candidates: [candidate('current'), imageCandidate, textCandidate, portraitCandidate, noCoverImageCandidate,
-      { ...candidate('x-current'), source: 'x', mediaType: 'post' },
+      { ...candidate('x-current'), source: 'x', mediaType: 'post' }, githubCandidate, steamCandidate,
       cnNewsCandidate, globalNewsCandidate,
       { ...candidate('unknown-current'), source: 'unknown', mediaType: 'post' }],
     mediaEmbeds: {
@@ -1105,6 +1135,12 @@ assert.match(track.innerHTML, />CNNews · IT 之家</,
   'CNNews cards must retain the internal publisher without exposing a second settings source');
 assert.match(track.innerHTML, />GlobalNews · The Guardian</,
   'GlobalNews cards must retain the publisher returned by the adapter');
+assert.match(track.innerHTML, /data-waterfall-id="github-current"/);
+assert.match(track.innerHTML, /data-waterfall-id="steam-current"/);
+assert.match(track.innerHTML, /data-waterfall-metric="star" aria-label="星标 1,200"/,
+  'GitHub stars must use their provider meaning instead of a generic heat score');
+assert.match(track.innerHTML, /data-waterfall-metric="fork" aria-label="Fork 88"/,
+  'GitHub forks must survive the shared card renderer');
 assert.match(track.innerHTML,
   /<article[^>]*data-waterfall-id="image-current"[^>]*><div class="waterfall-card-shell waterfall-card-shell--interactive" role="button" tabindex="0" data-waterfall-open="image-current">/,
   'ordinary image-text cards such as Zhihu must retain their whole-card reader action');
@@ -1220,11 +1256,41 @@ const compactCardNodes = [
 const gestureCardNodes = window.__aiphoneWaterfallInitial.candidates.map((_, index) =>
   Object.assign(element(), { offsetTop: 18 + index * 728, offsetHeight: 700 }));
 track.querySelectorAll = (selector) => selector === '[data-waterfall-id]' ? gestureCardNodes : [];
+const likeControl = {
+  getAttribute: (name) => ({
+    'data-waterfall-card-action': 'like',
+    'data-waterfall-candidate-id': 'current'
+  })[name] ?? ''
+};
+track.emit('click', {
+  preventDefault: () => {},
+  target: { closest: (selector) => selector === '[data-waterfall-card-action]' ? likeControl : null }
+});
+assert.deepEqual(actions.at(-1)?.args, {
+  surfaceId: 'surface-1', candidateId: 'current', action: 'like', active: true
+});
+const writesBeforeCardActionAck = track.innerHTMLWrites;
+const initialCandidates = window.__aiphoneWaterfallInitial.candidates;
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  candidates: [initialCandidates[0], initialCandidates[1], initialCandidates[3], initialCandidates[2],
+    ...initialCandidates.slice(4)],
+  cardStates: [{ candidateId: 'current', reaction: 'like', saved: true }]
+});
+assert.equal(track.innerHTMLWrites, writesBeforeCardActionAck,
+  'a card-action acknowledgement must not rebuild and flash the loaded card tree');
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  candidates: [initialCandidates[0], initialCandidates[1], initialCandidates[3], initialCandidates[2],
+    ...initialCandidates.slice(4)],
+  cardStates: [{ candidateId: 'current', reaction: 'like', saved: true }]
+});
+assert.equal(track.innerHTMLWrites, writesBeforeCardActionAck,
+  'the next provider update must keep action-reranked loaded cards stable too');
 documentListeners.touchstart({ touches: [{ clientX: 200, clientY: 700 }] });
 documentListeners.touchmove?.({ touches: [{ clientX: 202, clientY: 560 }] });
 const writesBeforeGesturePayload = track.innerHTMLWrites;
 const appendsBeforeGesturePayload = track.appendedHtmlWrites;
-const initialCandidates = window.__aiphoneWaterfallInitial.candidates;
 window.__aiphoneApplyWaterfallUpdate({
   ...window.__aiphoneWaterfallInitial,
   candidates: [initialCandidates[0], initialCandidates[1], candidate('reranked-during-swipe-a'),
@@ -2103,6 +2169,73 @@ assert.equal(track.appendedHtmlWrites, appendsBeforeDrop + 1,
   'newly ranked cards must still append after the surviving cards');
 assert.doesNotMatch(track.innerHTML, /\\u672c\\u8f6e\\u5185\\u5bb9\\u5df2\\u7ed3\\u675f/);
 
+const commentsCandidate = {
+  ...candidate('comments-current'),
+  providerItemId: 'youtube-comments-video'
+};
+const commentsPayload = (overrides = {}) => ({
+  surfaceId: 'surface-1',
+  currentId: 'comments-current',
+  enabledSources: ['youtube'],
+  aggregateHtml: '',
+  candidates: [{ ...commentsCandidate, ...overrides }],
+  mediaEmbeds: {},
+  sources: [{ source: 'youtube', phase: 'success' }],
+  replenishing: false,
+  exhausted: false
+});
+window.__aiphoneApplyWaterfallUpdate(commentsPayload());
+const commentsOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'comments-current' : '' };
+const commentActionsBeforeOpen = actionCount('waterfall.comments.load');
+openFeedCard(commentsOpen);
+assert.equal(reader.classList.contains('active'), true,
+  'detail content must open before comment data is available');
+assert.match(reader.innerHTML, /评论精选/);
+assert.match(reader.innerHTML, /waterfall-comment-skeleton/,
+  'supported details must paint a compact loading state immediately');
+assert.equal(actionCount('waterfall.comments.load'), commentActionsBeforeOpen,
+  'opening details must return before the native comment request is dispatched');
+runLatestTimer(0);
+assert.equal(actionCount('waterfall.comments.load'), commentActionsBeforeOpen + 1);
+assert.deepEqual(Object.keys(actions.at(-1)?.args ?? {}).sort(), ['candidateId', 'surfaceId']);
+assert.equal(actions.at(-1)?.args?.candidateId, 'comments-current');
+
+const commentsSlot = element();
+reader.querySelector = (selector) => selector === '.waterfall-reader-head' ? readerHead :
+  (selector === '[data-waterfall-comments-slot]' ? commentsSlot : null);
+window.__aiphoneApplyWaterfallUpdate(commentsPayload({
+  commentLoadState: 'ready',
+  comments: Array.from({ length: 6 }, (_, index) => ({
+    text: index === 0 ? '<b>第一条评论</b>' : `第 ${index + 1} 条评论`,
+    authorName: index === 0 ? '评论者' : '',
+    authorAvatarUrl: index === 0 ? 'https://img.example/avatar.png' : '',
+    publishedAt: index === 0 ? '2026-08-24T00:00:00.000Z' : '',
+    likeCount: index === 0 ? 12 : undefined,
+    replyCount: index === 0 ? 3 : undefined
+  }))
+}));
+assert.equal((commentsSlot.innerHTML.match(/data-waterfall-comment-toggle/g) ?? []).length, 5,
+  'detail comments must show at most five rows');
+assert.match(commentsSlot.innerHTML, /&lt;b&gt;第一条评论&lt;\/b&gt;/);
+assert.doesNotMatch(commentsSlot.innerHTML, /第 6 条评论/);
+let commentExpanded = 'false';
+const commentRow = {
+  getAttribute: (name) => name === 'aria-expanded' ? commentExpanded : '',
+  setAttribute: (name, value) => { if (name === 'aria-expanded') commentExpanded = value; },
+  closest: (selector) => selector === '[data-waterfall-comment-toggle]' ? commentRow : null
+};
+reader.emit('click', { target: commentRow });
+assert.equal(commentExpanded, 'true', 'tapping a comment row must expand its two-line preview');
+reader.emit('click', { target: commentRow });
+assert.equal(commentExpanded, 'false', 'tapping the expanded row must collapse it');
+window.__aiphoneApplyWaterfallUpdate(commentsPayload({ commentLoadState: 'empty', comments: [] }));
+assert.equal(commentsSlot.innerHTML, '', 'empty or unavailable comments must occupy no detail space');
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-reader-close]' ? {} : null }
+});
+finishReaderClose();
+reader.querySelector = (selector) => selector === '.waterfall-reader-head' ? readerHead : null;
+
 function inlinePlayerFixture(source, id) {
   const card = element();
   const stage = {
@@ -2169,6 +2302,12 @@ assert.match(track.innerHTML,
 assert.match(track.innerHTML,
   /<article[^>]*data-waterfall-id="twitch-channel-1"[^>]*><div class="waterfall-card-shell">/,
   'Twitch source-only cards must use a non-interactive shell');
+assert.match(track.innerHTML,
+  /data-waterfall-id="apple-podcast-1"[\s\S]*?class="waterfall-cinema-copy" role="button" tabindex="0" data-waterfall-open="apple-podcast-1"/,
+  'Apple Podcasts card copy must open details without swallowing inline playback');
+assert.match(track.innerHTML,
+  /data-waterfall-id="twitch-channel-1"[\s\S]*?class="waterfall-cinema-copy" role="button" tabindex="0" data-waterfall-open="twitch-channel-1"/,
+  'Twitch card copy must open details without swallowing inline playback');
 assert.doesNotMatch(track.innerHTML,
   /<article[^>]*data-waterfall-id="(?:apple-podcast-1|twitch-channel-1)"[^>]*><div class="[^"]*waterfall-card-shell--interactive/,
   'source-only media cards must not inherit whole-card press feedback');
@@ -2226,6 +2365,7 @@ track.emit('click', { target: twitchPlayer.button });
 const offscreenFrame = createdFrames.at(-1);
 twitchPlayer.card.rect = { top: 1001, bottom: 2001 };
 track.emit('scroll');
+runLatestTimer(96);
 runLatestTimer(180);
 assert.equal(offscreenFrame.removed, true, 'scrolling the active card outside the viewport must destroy its iframe');
 twitchPlayer.card.rect = { top: 0, bottom: 1000 };

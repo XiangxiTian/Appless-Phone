@@ -3,9 +3,11 @@ import util from '@ohos.util';
 import { A2uiLabelValueData } from './A2uiTypes';
 import { callComposioYouTubeSearchWithProviderData } from './ComposioDynamicBackend';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
+import { WaterfallComment } from './WaterfallAnythingCore';
 
 const YOUTUBE_SEARCH_URL: string = 'https://www.googleapis.com/youtube/v3/search';
 const YOUTUBE_VIDEOS_URL: string = 'https://www.googleapis.com/youtube/v3/videos';
+const YOUTUBE_COMMENT_THREADS_URL: string = 'https://www.googleapis.com/youtube/v3/commentThreads';
 
 interface YouTubeSearchResponse {
   nextPageToken?: string;
@@ -53,6 +55,32 @@ interface YouTubeThumbnails {
 
 interface YouTubeThumbnail {
   url?: string;
+}
+
+interface YouTubeCommentThreadsResponse {
+  items?: YouTubeCommentThread[];
+}
+
+interface YouTubeCommentThread {
+  snippet?: YouTubeCommentThreadSnippet;
+}
+
+interface YouTubeCommentThreadSnippet {
+  totalReplyCount?: number;
+  topLevelComment?: YouTubeTopLevelComment;
+}
+
+interface YouTubeTopLevelComment {
+  snippet?: YouTubeCommentSnippet;
+}
+
+interface YouTubeCommentSnippet {
+  textOriginal?: string;
+  textDisplay?: string;
+  authorDisplayName?: string;
+  authorProfileImageUrl?: string;
+  likeCount?: number;
+  publishedAt?: string;
 }
 
 export interface YouTubeSearchOptions {
@@ -158,6 +186,41 @@ export function youtubeMostPopularUrl(
   if (pageToken.trim().length > 0) params.push(['pageToken', pageToken.trim()]);
   return YOUTUBE_VIDEOS_URL + '?' + params.map((pair: string[]): string =>
     encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1])).join('&');
+}
+
+export function youtubeCommentThreadsUrl(videoId: string, apiKey: string): string {
+  const params: string[][] = [
+    ['part', 'snippet'],
+    ['videoId', videoId.trim()],
+    ['order', 'relevance'],
+    ['textFormat', 'plainText'],
+    ['maxResults', '5'],
+    ['key', apiKey.trim()]
+  ];
+  return YOUTUBE_COMMENT_THREADS_URL + '?' + params.map((pair: string[]): string =>
+    encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1])).join('&');
+}
+
+export function youtubeCommentsFromThreadsPayload(rawJson: string): WaterfallComment[] {
+  const payload = JSON.parse(rawJson) as YouTubeCommentThreadsResponse;
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const comments: WaterfallComment[] = [];
+  for (let index = 0; index < items.length && comments.length < 5; index++) {
+    const thread = items[index].snippet;
+    const snippet = thread?.topLevelComment?.snippet;
+    const content = textOf(snippet?.textOriginal ?? snippet?.textDisplay).trim();
+    if (snippet === undefined || content.length === 0 ||
+      comments.some((comment: WaterfallComment): boolean => comment.text === content)) continue;
+    comments.push({
+      text: content,
+      authorName: textOf(snippet.authorDisplayName).trim() || undefined,
+      authorAvatarUrl: textOf(snippet.authorProfileImageUrl).trim() || undefined,
+      publishedAt: textOf(snippet.publishedAt).trim() || undefined,
+      likeCount: snippet.likeCount,
+      replyCount: thread?.totalReplyCount
+    });
+  }
+  return comments;
 }
 
 function watchUrl(videoId: string): string {
@@ -378,6 +441,27 @@ export async function callYouTubeMostPopularVideos(
       sourceTag: 'YouTube Data API', toolName: 'youtube.videos.mostPopular', title: 'YouTube API 调用失败',
       status: 'error', summary: message, rows: [], rawPreview: 'error'
     }];
+  } finally {
+    request.destroy();
+  }
+}
+
+export async function callYouTubeVideoComments(videoId: string, apiKey: string): Promise<WaterfallComment[]> {
+  if (videoId.trim().length === 0 || apiKey.trim().length === 0) throw new Error('Missing YouTube comment credentials.');
+  const request = http.createHttp();
+  try {
+    const response = await request.request(youtubeCommentThreadsUrl(videoId, apiKey), {
+      method: http.RequestMethod.GET,
+      header: { 'Accept': 'application/json' },
+      usingProtocol: http.HttpProtocol.HTTP1_1,
+      connectTimeout: 10000,
+      readTimeout: 20000
+    });
+    const text = responseText(response.result);
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      throw new Error('HTTP ' + response.responseCode.toString() + ': ' + text.substring(0, 240));
+    }
+    return youtubeCommentsFromThreadsPayload(text);
   } finally {
     request.destroy();
   }

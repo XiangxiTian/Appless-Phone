@@ -6,6 +6,8 @@ import {
   aggregateSearchRegistrySourceIds,
   redditImageDeliveryUrl,
   WaterfallCandidate,
+  WaterfallComment,
+  WaterfallCommentLoadState,
   WaterfallExplicitPreference,
   WaterfallFormat,
   WaterfallMediaType,
@@ -35,6 +37,9 @@ export interface WaterfallSavedCard {
   url: string;
   coverUrl: string;
   mediaUrl?: string;
+  providerItemId?: string;
+  comments?: WaterfallComment[];
+  commentLoadState?: WaterfallCommentLoadState;
   publishedAt: string;
   authorName: string;
   authorAvatarUrl: string;
@@ -242,6 +247,15 @@ function validMetric(value: WaterfallMetric): boolean {
     typeof value.value === 'number' && isFinite(value.value);
 }
 
+function validComment(value: WaterfallComment): boolean {
+  return value !== null && typeof value.text === 'string' &&
+    (value.authorName === undefined || typeof value.authorName === 'string') &&
+    (value.authorAvatarUrl === undefined || typeof value.authorAvatarUrl === 'string') &&
+    (value.publishedAt === undefined || typeof value.publishedAt === 'string') &&
+    (value.likeCount === undefined || (typeof value.likeCount === 'number' && isFinite(value.likeCount))) &&
+    (value.replyCount === undefined || (typeof value.replyCount === 'number' && isFinite(value.replyCount)));
+}
+
 function validSavedCard(value: WaterfallSavedCard): boolean {
   return value !== null && typeof value.id === 'string' && value.id.trim().length > 0 &&
     typeof value.source === 'string' && value.source.trim().length > 0 &&
@@ -250,6 +264,12 @@ function validSavedCard(value: WaterfallSavedCard): boolean {
     typeof value.title === 'string' && typeof value.summary === 'string' && typeof value.url === 'string' &&
     typeof value.coverUrl === 'string' &&
     (value.mediaUrl === undefined || typeof value.mediaUrl === 'string') &&
+    (value.providerItemId === undefined || typeof value.providerItemId === 'string') &&
+    (value.comments === undefined || (Array.isArray(value.comments) &&
+      value.comments.every((comment: WaterfallComment): boolean => validComment(comment)))) &&
+    (value.commentLoadState === undefined || value.commentLoadState === 'loading' ||
+      value.commentLoadState === 'ready' || value.commentLoadState === 'empty' ||
+      value.commentLoadState === 'error') &&
     typeof value.publishedAt === 'string' &&
     typeof value.authorName === 'string' && typeof value.authorAvatarUrl === 'string' &&
     Array.isArray(value.metrics) && value.metrics.every((metric: WaterfallMetric): boolean => validMetric(metric)) &&
@@ -271,6 +291,17 @@ function copyMetric(value: WaterfallMetric): WaterfallMetric {
   return { kind: value.kind, value: value.value };
 }
 
+function copyComment(value: WaterfallComment): WaterfallComment {
+  return {
+    text: value.text,
+    authorName: value.authorName,
+    authorAvatarUrl: value.authorAvatarUrl,
+    publishedAt: value.publishedAt,
+    likeCount: value.likeCount,
+    replyCount: value.replyCount
+  };
+}
+
 function copySavedCard(value: WaterfallSavedCard): WaterfallSavedCard {
   return {
     id: value.id,
@@ -282,6 +313,9 @@ function copySavedCard(value: WaterfallSavedCard): WaterfallSavedCard {
     url: value.url,
     coverUrl: redditImageDeliveryUrl(value.coverUrl),
     mediaUrl: value.mediaUrl ?? '',
+    providerItemId: value.providerItemId,
+    comments: value.comments?.slice(0, 5).map(copyComment),
+    commentLoadState: value.commentLoadState === 'loading' ? undefined : value.commentLoadState,
     publishedAt: value.publishedAt,
     authorName: value.authorName,
     authorAvatarUrl: value.authorAvatarUrl,
@@ -330,6 +364,9 @@ function savedCardFromCandidate(candidate: WaterfallCandidate): WaterfallSavedCa
     url: candidate.url,
     coverUrl: candidate.coverUrl,
     mediaUrl: candidate.mediaUrl ?? '',
+    providerItemId: candidate.providerItemId,
+    comments: candidate.comments?.slice(0, 5).map(copyComment),
+    commentLoadState: candidate.commentLoadState === 'loading' ? undefined : candidate.commentLoadState,
     publishedAt: candidate.publishedAt,
     authorName: candidate.authorName ?? '',
     authorAvatarUrl: candidate.authorAvatarUrl ?? '',
@@ -350,6 +387,9 @@ export function waterfallCandidateFromSavedCard(value: WaterfallSavedCard): Wate
     url: value.url,
     coverUrl: value.coverUrl,
     mediaUrl: value.mediaUrl ?? '',
+    providerItemId: value.providerItemId,
+    comments: value.comments?.slice(0, 5).map(copyComment),
+    commentLoadState: value.commentLoadState,
     publishedAt: value.publishedAt,
     originalIndex: 0,
     authorName: value.authorName,

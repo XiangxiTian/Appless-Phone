@@ -29,6 +29,7 @@ import {
   applyWaterfallExpandedQuery,
   applyWaterfallSourceSelection,
   callConfiguredAggregateSearchContinuation,
+  callConfiguredWaterfallComments,
   callConfiguredWaterfallInterestRecall,
   AggregateSearchSource,
   AggregateSearchSourceBatch,
@@ -48,6 +49,7 @@ import {
   resolveApplePodcastEpisode,
   parseWaterfallExpandedQuery,
   WaterfallCandidate,
+  WaterfallCommentsResult,
   WaterfallFeedState,
   WaterfallFeedUpdate,
   WaterfallInterestRecallRequest,
@@ -58,6 +60,7 @@ import {
   WaterfallRankedCandidate,
   WaterfallSourcePhase,
   WaterfallSourceState,
+  waterfallCommentSourceSupported,
   waterfallExpansionPrompt,
   waterfallSearchPolicyForRuntime
 } from '@loop/agent-core';
@@ -362,6 +365,7 @@ import {
   waterfallAdvanceVisibleFromAction,
   waterfallBehaviorFromAction,
   waterfallCardActionFromAction,
+  waterfallCommentsCandidateFromAction,
   waterfallEnabledSourcesFromAction
 } from './html/HtmlAggregateSearchHomeRenderer';
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
@@ -2074,7 +2078,7 @@ struct Index {
   private handleWaterfallClientAction(action: A2uiAction): boolean {
     if (action.id !== 'waterfall.sources.select' && action.id !== 'waterfall.feed.advance' &&
       action.id !== 'waterfall.behavior.record' && action.id !== 'waterfall.card.action' &&
-      action.id !== 'waterfall.applepodcasts.resolve') {
+      action.id !== 'waterfall.applepodcasts.resolve' && action.id !== 'waterfall.comments.load') {
       return false;
     }
     const document = this.currentHtmlHomeDocument();
@@ -2107,6 +2111,18 @@ struct Index {
         return true;
       }
       this.resolveApplePodcastCandidate('search', surfaceId, candidate);
+      return true;
+    }
+    if (action.id === 'waterfall.comments.load') {
+      const candidateId = waterfallCommentsCandidateFromAction(action, surfaceId);
+      const candidate = candidateId === null ? null : this.waterfallActionCandidate(
+        candidateId, this.waterfallFeedState);
+      if (candidate === null || !waterfallCommentSourceSupported(candidate.source) ||
+        (candidate.providerItemId ?? '').trim().length === 0 || candidate.commentLoadState !== undefined) {
+        this.logHtmlHomeActionError(action, 'invalid_waterfall_comments_candidate');
+        return true;
+      }
+      this.resolveWaterfallComments('search', surfaceId, candidate);
       return true;
     }
     if (action.id === 'waterfall.sources.select') {
@@ -2174,6 +2190,17 @@ struct Index {
         this.resolveApplePodcastCandidate('interest', surfaceId, candidate);
       } else {
         this.logHtmlHomeActionError(action, 'invalid_apple_podcast_candidate');
+      }
+      return;
+    }
+    if (action.id === 'waterfall.comments.load') {
+      const candidateId = waterfallCommentsCandidateFromAction(action, surfaceId);
+      const candidate = candidateId === null ? null : this.waterfallActionCandidate(candidateId, state);
+      if (candidate !== null && waterfallCommentSourceSupported(candidate.source) &&
+        (candidate.providerItemId ?? '').trim().length > 0 && candidate.commentLoadState === undefined) {
+        this.resolveWaterfallComments('interest', surfaceId, candidate);
+      } else {
+        this.logHtmlHomeActionError(action, 'invalid_waterfall_comments_candidate');
       }
       return;
     }
@@ -2269,15 +2296,14 @@ struct Index {
     }
   }
 
-  private activeApplePodcastCandidate(
+  private activeWaterfallCandidate(
     target: 'search' | 'interest',
     surfaceId: string,
     candidateId: string,
-    feedUrl: string,
     runtimeOwner: RuntimeOwner,
     runtimeGeneration: number,
     interestGeneration: number
-  ): WaterfallRankedCandidate | null {
+  ): WaterfallCandidate | null {
     if (target === 'search') {
       if (!runtimeCallbackIsCurrent(
         this.activeRuntimeOwner, this.runtimeGeneration, runtimeOwner, runtimeGeneration)) return null;
@@ -2289,14 +2315,25 @@ struct Index {
       return null;
     }
     const state = target === 'search' ? this.waterfallFeedState : this.interestWaterfallFeedState;
-    const candidate = this.waterfallCandidate(candidateId, state);
-    if (candidate === null || candidate.source !== 'applepodcasts' || (candidate.feedUrl ?? '').trim() !== feedUrl) {
-      return null;
-    }
-    return candidate;
+    return this.waterfallActionCandidate(candidateId, state);
   }
 
-  private publishApplePodcastCandidate(target: 'search' | 'interest', surfaceId: string): void {
+  private activeApplePodcastCandidate(
+    target: 'search' | 'interest',
+    surfaceId: string,
+    candidateId: string,
+    feedUrl: string,
+    runtimeOwner: RuntimeOwner,
+    runtimeGeneration: number,
+    interestGeneration: number
+  ): WaterfallCandidate | null {
+    const candidate = this.activeWaterfallCandidate(
+      target, surfaceId, candidateId, runtimeOwner, runtimeGeneration, interestGeneration);
+    return candidate !== null && candidate.source === 'applepodcasts' &&
+      (candidate.feedUrl ?? '').trim() === feedUrl ? candidate : null;
+  }
+
+  private publishWaterfallCandidate(target: 'search' | 'interest', surfaceId: string): void {
     if (target === 'interest') {
       if (surfaceId === 'waterfall-interest-home') this.publishInterestWaterfallPayload();
       return;
@@ -2320,7 +2357,7 @@ struct Index {
     candidate.audioLoadState = 'loading';
     candidate.audioError = '';
     candidate.audioRetryable = true;
-    this.publishApplePodcastCandidate(target, surfaceId);
+    this.publishWaterfallCandidate(target, surfaceId);
     aiLogInfo('[AIPhone][ApplePodcastResolve] phase=loading surface=' + surfaceId + ' candidate=' + candidateId);
     resolveApplePodcastEpisode(feedUrl).then((episode: ApplePodcastEpisodeAudio): void => {
       const current = this.activeApplePodcastCandidate(
@@ -2337,7 +2374,7 @@ struct Index {
       current.audioLoadState = 'ready';
       current.audioError = '';
       current.audioRetryable = false;
-      this.publishApplePodcastCandidate(target, surfaceId);
+      this.publishWaterfallCandidate(target, surfaceId);
       aiLogInfo('[AIPhone][ApplePodcastResolve] phase=ready surface=' + surfaceId + ' candidate=' + candidateId);
     }).catch((error: Error): void => {
       const current = this.activeApplePodcastCandidate(
@@ -2347,10 +2384,55 @@ struct Index {
       current.audioLoadState = 'error';
       current.audioError = failure.message;
       current.audioRetryable = failure.retryable;
-      this.publishApplePodcastCandidate(target, surfaceId);
+      this.publishWaterfallCandidate(target, surfaceId);
       aiLogError('[AIPhone][ApplePodcastResolve] phase=error surface=' + surfaceId + ' candidate=' + candidateId +
         ' code=' + failure.code);
     });
+  }
+
+  private resolveWaterfallComments(
+    target: 'search' | 'interest',
+    surfaceId: string,
+    candidate: WaterfallCandidate
+  ): void {
+    const providerItemId = (candidate.providerItemId ?? '').trim();
+    if (providerItemId.length === 0 || candidate.commentLoadState !== undefined) return;
+    const candidateId = candidate.id;
+    const source = candidate.source as AggregateSearchSource;
+    const runtimeOwner = this.activeRuntimeOwner;
+    const runtimeGeneration = this.runtimeGeneration;
+    const interestGeneration = this.interestWaterfallGeneration;
+    candidate.commentLoadState = 'loading';
+    this.persistSavedWaterfallCandidate(candidate);
+    this.publishWaterfallCandidate(target, surfaceId);
+    callConfiguredWaterfallComments(source, providerItemId).then((result: WaterfallCommentsResult): void => {
+      const current = this.activeWaterfallCandidate(
+        target, surfaceId, candidateId, runtimeOwner, runtimeGeneration, interestGeneration);
+      if (current === null || current.source !== source ||
+        (current.providerItemId ?? '').trim() !== providerItemId) return;
+      current.comments = result.comments.slice(0, 5);
+      current.commentLoadState = current.comments.length > 0 ? 'ready' :
+        (result.state === 'error' ? 'error' : 'empty');
+      this.persistSavedWaterfallCandidate(current);
+      this.publishWaterfallCandidate(target, surfaceId);
+    }).catch((_error: Error): void => {
+      const current = this.activeWaterfallCandidate(
+        target, surfaceId, candidateId, runtimeOwner, runtimeGeneration, interestGeneration);
+      if (current === null || current.source !== source ||
+        (current.providerItemId ?? '').trim() !== providerItemId) return;
+      current.comments = [];
+      current.commentLoadState = 'error';
+      this.persistSavedWaterfallCandidate(current);
+      this.publishWaterfallCandidate(target, surfaceId);
+    });
+  }
+
+  private persistSavedWaterfallCandidate(candidate: WaterfallCandidate): void {
+    const saved = this.waterfallCardRecords.find((record: WaterfallCardRecord): boolean =>
+      record.candidateId === candidate.id && record.saved);
+    if (saved === undefined) return;
+    this.waterfallCardRecords = this.waterfallPreferencesStore().applyCardAction(
+      candidate, 'save', true, Date.now(), true);
   }
 
   private recordWaterfallBehavior(

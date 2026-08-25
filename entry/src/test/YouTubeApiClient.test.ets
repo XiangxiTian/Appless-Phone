@@ -2,6 +2,8 @@ import { describe, it, expect } from '@ohos/hypium';
 import { aggregateVideoSourceBatchFromDynamicResults, DynamicGenericToolResult } from '@loop/agent-core';
 import {
   remainingReadStructuredDataResult,
+  youtubeCommentThreadsUrl,
+  youtubeCommentsFromThreadsPayload,
   youtubeVideoResultsFromComposioPopular,
   youtubeVideoResultsFromComposioSearch,
   youtubeMostPopularUrl,
@@ -12,6 +14,27 @@ import {
 
 export default function youtubeApiClientTest() {
   describe('youTubeApiClient', () => {
+    it('builds and parses five relevant public comment threads', 0, () => {
+      const url = youtubeCommentThreadsUrl('video-123', 'api-key-123');
+      const comments = youtubeCommentsFromThreadsPayload('{"items":[{"snippet":{"totalReplyCount":2,' +
+        '"topLevelComment":{"snippet":{"textOriginal":"第一条评论","authorDisplayName":"Alice",' +
+        '"authorProfileImageUrl":"https://img.test/alice.jpg","likeCount":9,' +
+        '"publishedAt":"2026-08-24T01:00:00Z"}}}}]}');
+
+      expect(url.indexOf('https://www.googleapis.com/youtube/v3/commentThreads?')).assertEqual(0);
+      expect(url.indexOf('part=snippet')).assertLarger(-1);
+      expect(url.indexOf('videoId=video-123')).assertLarger(-1);
+      expect(url.indexOf('order=relevance')).assertLarger(-1);
+      expect(url.indexOf('textFormat=plainText')).assertLarger(-1);
+      expect(url.indexOf('maxResults=5')).assertLarger(-1);
+      expect(comments.length).assertEqual(1);
+      expect(comments[0].text).assertEqual('第一条评论');
+      expect(comments[0].authorName).assertEqual('Alice');
+      expect(comments[0].authorAvatarUrl).assertEqual('https://img.test/alice.jpg');
+      expect(comments[0].likeCount).assertEqual(9);
+      expect(comments[0].replyCount).assertEqual(2);
+    });
+
     it('builds and parses the verified YouTube most-popular endpoint', 0, () => {
       const url: string = youtubeMostPopularUrl('api-key-123', 10, 'next-page');
       expect(url.indexOf('https://www.googleapis.com/youtube/v3/videos?')).assertEqual(0);

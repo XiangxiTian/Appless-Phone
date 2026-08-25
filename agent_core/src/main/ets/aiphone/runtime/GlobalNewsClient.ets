@@ -10,7 +10,6 @@ const GUARDIAN_API: string = 'https://content.guardianapis.com/search';
 const NEWS_API: string = 'https://newsapi.org/v2';
 const MAX_BODY_BYTES: number = 2 * 1024 * 1024;
 const MAX_POSTS: number = 4;
-const MAX_POST_TEXT_CHARS: number = 6000;
 
 export interface GlobalNewsConfig {
   guardianApiKey: string;
@@ -53,7 +52,7 @@ function addCover(rows: AggregateSearchRowData[], value: NewsValue): void {
 function fullerText(primary: NewsValue, fallback: NewsValue): string {
   const primaryText = cleanText(primary);
   const fallbackText = cleanText(fallback);
-  return (primaryText.length >= fallbackText.length ? primaryText : fallbackText).slice(0, MAX_POST_TEXT_CHARS);
+  return primaryText.length >= fallbackText.length ? primaryText : fallbackText;
 }
 
 export function guardianPostsFromPayload(rawJson: string, requestedLimit: number): AggregateSearchPost[] {

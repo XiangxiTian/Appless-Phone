@@ -85,6 +85,12 @@ export function planWaterfallInterestRecall(
     if (source === 'youtube') {
       return { route: 'popular', query: '', sources: [source], weight: 1, continuation: null };
     }
+    if (source === 'zhihu') {
+      const query = WATERFALL_EXPLORATION_QUERIES[
+        (recallRound * Math.max(1, querySourceCount) + fallbackIndex++) % WATERFALL_EXPLORATION_QUERIES.length
+      ];
+      return { route: 'popular', query, sources: [source], weight: 1, continuation: null };
+    }
     if (usesPopularDiscovery(source)) {
       fallbackIndex++;
       return { route: 'popular', query: '', sources: [source], weight: 1, continuation: null };

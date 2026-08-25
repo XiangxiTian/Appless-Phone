@@ -1755,7 +1755,11 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       this.registeredCapability(context, 'maps.place.search') ? MAPS_SELECTION_CONTRACT : '',
       C10_C11_SELECTION_CONTRACT,
       SOCIAL_SELECTION_CONTRACT,
-      AGGREGATE_MEDIA_SELECTION_CONTRACT,
+      this.registeredCapability(context, 'media.aggregate.search') ?
+        AGGREGATE_MEDIA_SELECTION_CONTRACT :
+        'Aggregate media search is discovery-only. Never name or schedule media.aggregate.search. ' +
+          'For a news or discussion search request, answer with requestedCapabilityIds=[], dataTasks=[], ' +
+          'no actionIntent, and direct the user to swipe to Discovery and use its search button.',
       CALENDAR_UPDATE_SELECTION_CONTRACT,
       CALENDAR_DELETE_SELECTION_CONTRACT,
       'Current-turn completed Data tool IDs: ' + JSON.stringify(completedToolIds),

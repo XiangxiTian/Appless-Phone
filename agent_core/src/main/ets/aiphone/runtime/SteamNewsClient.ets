@@ -62,7 +62,7 @@ export function steamNewsPostsFromPayload(rawJson: string, requestedLimit: numbe
     const timestamp = number(item.date);
     posts.push({
       id: 'steam-news-' + id, source: 'steam', provider: 'Steam', title: title,
-      author: text(item.author), handle: '', text: text(item.contents).slice(0, 500), url: url,
+      author: text(item.author), handle: '', text: text(item.contents), url: url,
       publishedAt: timestamp > 0 ? new Date(timestamp * 1000).toISOString() : '',
       score: '', commentCount: '', status: 'success', rows: []
     });
@@ -85,7 +85,7 @@ async function requestAppNews(appId: number): Promise<string> {
   const request = http.createHttp();
   try {
     const url = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=' + appId.toString() +
-      '&count=4&maxlength=500&format=json';
+      '&count=4&format=json';
     const response = await request.request(url, options());
     if (response.responseCode < 200 || response.responseCode >= 300) {
       throw new Error('steam_http_' + response.responseCode.toString());

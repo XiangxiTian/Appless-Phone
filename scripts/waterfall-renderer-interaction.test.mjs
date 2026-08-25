@@ -22,6 +22,14 @@ const indexPage = readFileSync(
   new URL('../entry/src/main/ets/pages/A2uiHome/Index.ets', import.meta.url),
   'utf8'
 );
+const canaryRuntime = readFileSync(
+  new URL('../entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets', import.meta.url),
+  'utf8'
+);
+const leaderPlanner = readFileSync(
+  new URL('../entry/src/main/ets/pages/A2uiHome/agent/MultiAgentLeaderPlanner.ets', import.meta.url),
+  'utf8'
+);
 const waterfallCore = readFileSync(
   new URL('../agent_core/src/main/ets/aiphone/runtime/WaterfallAnythingCore.ets', import.meta.url),
   'utf8'
@@ -332,8 +340,84 @@ assert.match(waterfallCss, /\.waterfall-card-action \.waterfall-icon svg\s*\{[^}
   'card actions must not compete with card content');
 assert.match(renderer, /data-waterfall-collection-open/,
   'the discovery toolbar needs an icon-only collection entry');
+assert.match(renderer, /data-waterfall-search-open/,
+  'direct discovery needs one explicit search entry in its existing toolbar');
+assert.match(renderer, /id="waterfall-search-form"/,
+  'search must expand in the discovery toolbar instead of opening another page');
+assert.match(waterfallCss,
+  /\.waterfall-toolbar\.is-searching[\s\S]*?\.waterfall-search-form[\s\S]*?transform:\s*none/,
+  'the selected A interaction must morph the search field in place');
+assert.match(waterfallJs, /id:\s*'waterfall\.search\.submit'/,
+  'discovery search must use its bounded native action bridge');
+assert.match(waterfallJs, /id:\s*'waterfall\.search\.exit'/,
+  'the first back action in search results must restore discovery');
+assert.match(canaryRuntime,
+  /!focusedRelease \|\|[\s\S]*?definition\.toolId !== 'media\.aggregate\.search'/,
+  'natural conversation must not advertise aggregate search in the focused release');
+assert.match(leaderPlanner,
+  /registeredCapability\(context, 'media\.aggregate\.search'\)[\s\S]*?Aggregate media search is discovery-only/,
+  'the leader must not be prompted to invent the discovery-only search capability');
+assert.match(waterfallJs, /searchFeedScrollTop/,
+  'exiting search must restore the exact pre-search discovery position');
+assert.match(waterfallJs, /searchInput\.blur\(\)/,
+  'exiting search must release the web input focus before returning home');
+assert.match(indexPage,
+  /\.onChange\(\(index: number\)[\s\S]*?index === 1[\s\S]*?else inputMethod\.getController\(\)\.hideTextInput\(\)/,
+  'returning home must dismiss a keyboard opened by discovery search');
+assert.match(indexPage,
+  /if \(document\.kind !== 'aggregate-search'\) \{[\s\S]*?return document;[\s\S]*?return createHtmlHomeDocument\(\{[\s\S]*?messages: this\.messages/,
+  'a persisted legacy aggregate surface must fall back to the normal home without deleting conversation history');
+assert.match(waterfallJs, /searchPending[\s\S]*?payload[\s\S]*?candidates\.length === 0/,
+  'an empty pending payload must leave the current discovery card mounted');
+const searchCompletionSource = waterfallJs.slice(
+  waterfallJs.indexOf('if (searchActive && searchPending'),
+  waterfallJs.indexOf('pendingPayload = payloadAfterCardAction')
+);
+assert.match(searchCompletionSource, /searchInput\.blur\(\)/,
+  'completed search must dismiss its text input focus');
+assert.match(searchCompletionSource, /toolbar\.classList\.remove\('is-searching'\)/,
+  'completed search must restore collection and source controls');
+const openSearchSource = waterfallJs.slice(
+  waterfallJs.indexOf('function openSearch'),
+  waterfallJs.indexOf('function submitSearch')
+);
+assert.doesNotMatch(openSearchSource, /if \(!directDiscovery \|\| searchActive/,
+  'the restored search control must reopen for query refinement');
+const directDiscoveryUpdateSource = indexPage.slice(
+  indexPage.indexOf('private applyInterestWaterfallUpdate'),
+  indexPage.indexOf('private runNextInterestExplorationIfNeeded')
+);
+assert.match(directDiscoveryUpdateSource,
+  /update\.expansionRequest !== undefined[\s\S]*?runInterestWaterfallExpansion/,
+  'discovery search must execute query expansion when continuation planning requests it');
+const exitDiscoverySearchSource = indexPage.slice(
+  indexPage.indexOf('private exitInterestWaterfallSearch'),
+  indexPage.indexOf('private ensureInterestWaterfall')
+);
+assert.match(exitDiscoverySearchSource,
+  /waterfallPreferenceProfile\.discoveryEnabledSources[\s\S]*?applyWaterfallSourceSelection/,
+  'Back from search results must reconcile the discovery snapshot with saved source changes');
 assert.match(renderer, /id="waterfall-collection"/,
   'the collection must stay inside the existing ArkWeb shell');
+assert.match(waterfallJs, /function readerParagraphs/,
+  'long detail copy needs conservative paragraph normalization');
+assert.doesNotMatch(toolGateway,
+  /recall\.route === 'popular' && allowedSources\.indexOf\('zhihu'\)/,
+  'Zhihu discovery must use the shared search path that returns likes and comments');
+assert.match(waterfallJs, /function playCardActionFeedback/,
+  'like and save need one reusable, interruptible feedback motion');
+assert.match(waterfallJs, /Math\.min\(4,/,
+  'card-action particles must stay capped at four');
+assert.match(waterfallJs, /function renderSourceConvergence/,
+  'first discovery load must visualize real source convergence');
+assert.match(homePage, /struct PageStateIndicator/,
+  'home needs one non-clickable status indicator above the composer');
+assert.doesNotMatch(indexPage, /PageStateIndicator\s*\(\s*\{/,
+  'the page indicator belongs only on home, never over discovery');
+assert.match(indexPage, /geoLocationManager\.isLocationEnabled\(\)/,
+  'location permission success must still detect a disabled system location service');
+assert.match(homePage, /定位服务未开启，附近结果可能不够准确。/,
+  'the disabled-location notice must stay contextual above the composer');
 assert.match(waterfallJs, /waterfall-reader--image-text/);
 assert.match(waterfallJs, /waterfall-reader--text/);
 assert.match(waterfallJs, /waterfall-reader--video/);
@@ -478,7 +562,17 @@ assert.match(reducedMotionCss, /\.waterfall-overlay\.active\s*\{[^}]*animation:\
 assert.match(waterfallCss, /\.waterfall-cinema-card p\s*\{[^}]*-webkit-line-clamp:\s*3/s);
 assert.match(waterfallCss, /\.waterfall-cinema-card h2\s*\{[^}]*-webkit-line-clamp:\s*4/s);
 assert.match(waterfallCss, /\.waterfall-card--text h2\s*\{[^}]*-webkit-line-clamp:\s*6/s);
-assert.match(waterfallCss, /\.waterfall-preferences label\s*\{[^}]*border:\s*1px solid/s);
+assert.match(waterfallCss,
+  /\.waterfall-preferences label\s*\{[^}]*border:\s*0[^}]*border-bottom:\s*1px solid[^}]*border-radius:\s*0[^}]*background:\s*transparent/s,
+  'source rows must stay compact and flat instead of becoming rounded cards');
+assert.match(waterfallCss,
+  /\.waterfall-source-name\s*\{[^}]*overflow:\s*visible[^}]*white-space:\s*normal/s,
+  'source names must remain fully readable as the registry grows');
+assert.match(waterfallJs, /sourceStateIsUnavailable[\s\S]*?needs_auth[\s\S]*?missing.*credential/i,
+  'only definite unavailable sources may be disabled');
+assert.doesNotMatch(renderer,
+  /选择参与发现与搜索的来源|暂时失败的来源仍可使用|只有确定不可用的来源会被停用/,
+  'the compact source sheet must not add an explanatory paragraph');
 assert.doesNotMatch(waterfallCss, /\.waterfall-preferences > div:last-child > button/,
   'the source sheet must not end in an oversized full-width done button');
 assert.match(waterfallCss, /\.waterfall-toolbar-secondary\s*\{[^}]*border:\s*0/s);
@@ -635,8 +729,9 @@ const renderPreferencesSource = waterfallJs.slice(
   waterfallJs.indexOf('function renderPreferences'),
   waterfallJs.indexOf('function closePreferences')
 );
-assert.match(renderPreferencesSource, /if \(!preferences\.innerHTML\)/,
-  'reopening source settings must not rebuild the sheet');
+assert.match(renderPreferencesSource,
+  /if \(!preferences\.innerHTML \|\| preferenceStatusKey !== nextStatusKey\)/,
+  'reopening source settings rebuilds only when hard availability changes');
 assert.doesNotMatch(waterfallJs, /CARD_MOUNT_RADIUS/,
   'virtualizing offscreen cards as empty placeholders blanks the feed and breaks snap');
 assert.doesNotMatch(waterfallJs, /waterfall-card--placeholder/,
@@ -860,8 +955,12 @@ const preferencesButton = element();
 const collectionButton = element();
 const preferenceBackButton = element();
 const preferenceDoneButton = element();
+const preferenceAllButton = element();
+const preferenceNoneButton = element();
 preferenceBackButton.closest = (selector) => selector.includes('[data-waterfall-close-preferences]') ? preferenceBackButton : null;
 preferenceDoneButton.closest = (selector) => selector.includes('[data-waterfall-apply-preferences]') ? preferenceDoneButton : null;
+preferenceAllButton.closest = (selector) => selector.includes('[data-waterfall-sources-all]') ? preferenceAllButton : null;
+preferenceNoneButton.closest = (selector) => selector.includes('[data-waterfall-sources-none]') ? preferenceNoneButton : null;
 const sourceInput = (name, checked) => {
   const input = element();
   input.checked = checked;
@@ -876,6 +975,7 @@ const sourceInputs = [
   sourceInput('reddit', true),
   sourceInput('zhihu', true)
 ];
+sourceInputs.at(-1).disabled = true;
 preferences.querySelectorAll = (selector) => ({
   '[data-waterfall-source]': sourceInputs,
   '[data-waterfall-source]:checked': sourceInputs.filter((input) => input.checked)
@@ -1001,7 +1101,7 @@ const textCandidate = {
   source: 'hackernews',
   mediaType: 'post',
   coverUrl: '',
-  summary: 'A long text summary for the dedicated reader',
+  summary: 'A long text summary for the dedicated reader. '.repeat(40) + 'DETAIL_BODY_END',
   reason: '补充 HN 来源'
 };
 const noCoverImageCandidate = {
@@ -1075,7 +1175,10 @@ const window = {
     mediaEmbeds: {
       'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1'
     },
-    sources: [{ source: 'youtube', phase: 'success' }]
+    sources: [
+      { source: 'youtube', phase: 'success' },
+      { source: 'twitch', phase: 'needs_auth', message: '未授权' }
+    ]
     ,cardStates: [{ candidateId: 'current', reaction: 'like', saved: true }]
     ,savedCards: [{ ...candidate('current'), savedAt: 1000 }]
   },
@@ -1685,6 +1788,8 @@ assert.match(reader.innerHTML, /waterfall-reader--text/);
 assert.doesNotMatch(reader.innerHTML, /waterfall-reader-media/);
 assert.match(reader.innerHTML, /class="waterfall-reader-copy"/);
 assert.match(reader.innerHTML, /A long text summary for the dedicated reader/);
+assert.match(reader.innerHTML, /DETAIL_BODY_END/,
+  'detail paragraph layout must preserve the complete body tail');
 assert.equal(track.scrollTop, 320, 'opening the reader must preserve the feed position');
 assert.doesNotMatch(reader.innerHTML, /data-waterfall-reader-hotzone/);
 reader.emit('click', {
@@ -1883,6 +1988,21 @@ assert.equal(overlay.classList.contains('sheet-open'), true,
   'the source sheet must freeze the feed through the overlay, not overflow');
 const preferenceWritesAfterFirstOpen = preferences.innerHTMLWrites;
 const sourceSelectionCountBeforeToggle = actionCount('waterfall.sources.select');
+assert.match(preferences.innerHTML, /data-waterfall-sources-all/);
+assert.match(preferences.innerHTML, /data-waterfall-sources-none/);
+assert.match(preferences.innerHTML,
+  /<div class="waterfall-toolbar">[\s\S]*?<div class="waterfall-source-bulk"[\s\S]*?data-waterfall-sources-none[\s\S]*?data-waterfall-apply-preferences[\s\S]*?<div class="waterfall-source-grid">/,
+  'bulk source actions must stay inside the source sheet toolbar');
+preferences.emit('click', { preventDefault: () => {}, target: preferenceNoneButton });
+assert.equal(sourceInputs.every((input) => !input.checked), true,
+  'select none must clear every available source locally');
+preferences.emit('click', { preventDefault: () => {}, target: preferenceAllButton });
+assert.equal(sourceInputs.filter((input) => !input.disabled).every((input) => input.checked), true,
+  'select all must enable every available source');
+assert.equal(sourceInputs.filter((input) => input.disabled).every((input) => !input.checked), true,
+  'select all must leave unavailable sources disabled');
+assert.equal(actionCount('waterfall.sources.select'), sourceSelectionCountBeforeToggle,
+  'bulk selection must wait for Done before crossing the native bridge');
 sourceInputs[0].checked = false;
 sourceInputs[0].emit('change');
 assert.equal(actionCount('waterfall.sources.select'), sourceSelectionCountBeforeToggle,
@@ -1956,6 +2076,14 @@ preferences.emit('click', {
 });
 assert.equal(preferences.classList.contains('active'), false);
 assert.equal(preferenceBackPrevented, true, 'source back must use the delegated native click path');
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  sources: [{ source: 'youtube', phase: 'success' }]
+});
+preferencesButton.emit('click');
+assert.match(preferences.innerHTML, /data-waterfall-source="twitch" disabled/,
+  'a later partial source update must not re-enable a known unavailable source');
+preferences.emit('click', { preventDefault: () => {}, target: preferenceDoneButton });
 window.__aiphoneApplyWaterfallUpdate({
   ...window.__aiphoneWaterfallInitial,
   currentId: 'late-preference-payload',

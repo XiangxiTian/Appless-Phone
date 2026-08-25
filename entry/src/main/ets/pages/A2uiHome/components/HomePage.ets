@@ -247,6 +247,7 @@ export struct HomePage {
   @Prop deepSearchQuery: string = '';
   @Prop deepSearchSettingsJson: string = '';
   @Prop deepSearchContextJson: string = '';
+  @Prop locationServiceNotice: string = '';
   @State sendSpinnerRotation: number = 0;
   @State voicePulseTick: number = 0;
   @State waterfallFullscreen: boolean = false;
@@ -787,6 +788,22 @@ export struct HomePage {
 
       if (shouldShowHomeChrome(this.waterfallFullscreen)) {
       Column() {
+        if (this.locationServiceNotice.length > 0) {
+          Text('定位服务未开启，附近结果可能不够准确。')
+            .width('100%')
+            .fontSize(11)
+            .lineHeight(16)
+            .fontColor('#7A665B')
+            .textAlign(TextAlign.Center)
+            .margin({ bottom: 2 })
+        }
+
+        PageStateIndicator({
+          currentPage: 0,
+          reduceMotion: this.reduceMotion
+        })
+          .margin({ bottom: 2 })
+
         Stack({ alignContent: Alignment.Center }) {
           if (this.isVoiceListening) {
             this.VoiceWaveRing('#80F39A79', 0)
@@ -933,5 +950,53 @@ export struct HomePage {
     .width('100%')
     .height('100%')
     .backgroundColor(A2UI_HOME_SHELL_BACKGROUND)
+  }
+}
+
+@Component
+export struct PageStateIndicator {
+  @Prop currentPage: number = 0;
+  @Prop reduceMotion: boolean = false;
+  @State private discoveryHintOffset: number = 0;
+  private hintTimerId: number = -1;
+
+  aboutToAppear(): void {
+    if (this.currentPage !== 0 || this.reduceMotion) return;
+    this.hintTimerId = setTimeout((): void => {
+      this.discoveryHintOffset = 3;
+      this.hintTimerId = setTimeout((): void => {
+        this.discoveryHintOffset = 0;
+        this.hintTimerId = -1;
+      }, 240);
+    }, 520);
+  }
+
+  aboutToDisappear(): void {
+    if (this.hintTimerId >= 0) clearTimeout(this.hintTimerId);
+    this.hintTimerId = -1;
+  }
+
+  build() {
+    Row({ space: 5 }) {
+      Row() {}
+        .width(this.currentPage === 0 ? 14 : 3)
+        .height(3)
+        .borderRadius(2)
+        .backgroundColor(this.currentPage === 0 ? '#8E6558' : '#8A786E')
+
+      Row() {}
+        .width(this.currentPage === 1 ? 14 : 3)
+        .height(3)
+        .borderRadius(2)
+        .backgroundColor(this.currentPage === 1 ? '#8E6558' : '#8A786E')
+        .translate({ x: this.currentPage === 0 ? this.discoveryHintOffset : 0 })
+        .animation({ duration: this.reduceMotion ? 0 : 240, curve: A2UI_MOTION_MOVE_CURVE })
+    }
+    .width('100%')
+    .height(10)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+    .opacity(0.72)
+    .hitTestBehavior(HitTestMode.Transparent)
   }
 }

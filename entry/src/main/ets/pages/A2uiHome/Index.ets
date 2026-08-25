@@ -76,6 +76,7 @@ import { mapCommon, petalMaps } from '@kit.MapKit';
 import promptAction from '@ohos.promptAction';
 import fs from '@ohos.file.fs';
 import { geoLocationManager } from '@kit.LocationKit';
+import { inputMethod } from '@kit.IMEKit';
 import util from '@ohos.util';
 import {
   A2UI_COMPONENT_SOCIAL_HUB,
@@ -367,7 +368,9 @@ import {
   waterfallBehaviorFromAction,
   waterfallCardActionFromAction,
   waterfallCommentsCandidateFromAction,
-  waterfallEnabledSourcesFromAction
+  waterfallEnabledSourcesFromAction,
+  waterfallSearchExitFromAction,
+  waterfallSearchQueryFromAction
 } from './html/HtmlAggregateSearchHomeRenderer';
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
 import { FoodAddressBookStore, FoodSavedAddressViewModel } from './FoodAddressBookStore';
@@ -511,6 +514,7 @@ const READ_CALENDAR_PERMISSION: Permissions = 'ohos.permission.READ_CALENDAR';
 const WRITE_CALENDAR_PERMISSION: Permissions = 'ohos.permission.WRITE_CALENDAR';
 const APPROX_LOCATION_PERMISSION: Permissions = 'ohos.permission.APPROXIMATELY_LOCATION';
 const PRECISE_LOCATION_PERMISSION: Permissions = 'ohos.permission.LOCATION';
+const LOCATION_SERVICE_DISABLED_NOTICE: string = '定位服务未开启，附近结果可能不够准确。';
 
 interface RegisteredPageToolObservation {
   result: A2uiCallResult | null;
@@ -1110,6 +1114,7 @@ struct Index {
   @State foodLocationRadiusMeters: number = 3000;
   @State foodLocationName: string = '坂田';
   @State foodLocationAddress: string = '深圳市龙岗区坂田街道';
+  @State locationServiceNotice: string = '';
   private foodLocationOwnerSurfaceId: string = '';
   @State foodStoreMapOpen: boolean = false;
   @State foodStoreMapSnapshotJson: string = '';
@@ -1140,6 +1145,7 @@ struct Index {
   private dailyBriefCatchUpPending: boolean = false;
   private waterfallContinuationBatchIndex: number = 100;
   private interestWaterfallFeedState: WaterfallFeedState | null = null;
+  private interestWaterfallSearchSnapshot: WaterfallFeedState | null = null;
   private interestRecallStarted: boolean = false;
   private interestRecallRound: number = 0;
   private interestExplorationSources: string[] = [];
@@ -1810,6 +1816,10 @@ struct Index {
     this.interestWaterfallFeedState = update.state;
     this.publishInterestWaterfallPayload();
     if (update.loadRequests.length > 0) {
+      if (update.state.mode === 'search') {
+        this.runInterestSearchRequests(update.loadRequests);
+        return;
+      }
       const requests: WaterfallInterestRecallRequest[] = update.loadRequests.map(
         (request: WaterfallLoadRequest): WaterfallInterestRecallRequest => ({
           route: request.route ?? 'explore',
@@ -1821,12 +1831,34 @@ struct Index {
       this.runInterestRecallRequests(requests);
       return;
     }
+    if (update.expansionRequest !== undefined) {
+      this.runInterestWaterfallExpansion(update.expansionRequest);
+      return;
+    }
     this.runNextInterestExplorationIfNeeded();
+  }
+
+  private runInterestWaterfallExpansion(request: WaterfallQueryExpansionRequest): void {
+    const generation = this.interestWaterfallGeneration;
+    this.canaryModel().complete(waterfallExpansionPrompt(request)).then((raw: string): void => {
+      const state = this.interestWaterfallFeedState;
+      if (generation !== this.interestWaterfallGeneration || state === null || state.mode !== 'search') return;
+      const query = parseWaterfallExpandedQuery(raw, state.query);
+      this.applyInterestWaterfallUpdate(query.length > 0 ?
+        applyWaterfallExpandedQuery(state, request.stage, query, Date.now()) :
+        failWaterfallExpansion(state, request.stage));
+    }).catch((error: Error): void => {
+      const state = this.interestWaterfallFeedState;
+      if (generation !== this.interestWaterfallGeneration || state === null || state.mode !== 'search') return;
+      aiLogError('[AIPhone][WaterfallDiscoveryExpansionFailed] stage=' + request.stage +
+        ' error=' + error.message.substring(0, 240));
+      this.applyInterestWaterfallUpdate(failWaterfallExpansion(state, request.stage));
+    });
   }
 
   private runNextInterestExplorationIfNeeded(): void {
     const state = this.interestWaterfallFeedState;
-    if (state === null || this.interestRecallRound >= 3 || state.sources.some(
+    if (state === null || state.mode === 'search' || this.interestRecallRound >= 3 || state.sources.some(
       (source: WaterfallSourceState): boolean => source.inFlight || source.phase === 'loading')) return;
     let active = state.current !== null && state.enabledSources.indexOf(state.current.source) >= 0 ? 1 : 0;
     active += state.stable.filter((candidate: WaterfallRankedCandidate): boolean =>
@@ -1934,6 +1966,97 @@ struct Index {
       this.currentWaterfallPreferenceProfile(), this.recentPositiveWaterfallCandidates(),
       enabledSources, this.interestRecallRound++);
     this.runInterestRecallRequests(requests);
+  }
+
+  private runInterestSearchRequests(requests: WaterfallLoadRequest[]): void {
+    const generation = this.interestWaterfallGeneration;
+    const query = this.interestWaterfallFeedState?.query ?? '';
+    callConfiguredAggregateSearchContinuation(query, requests, (batch: AggregateSearchSourceBatch): void => {
+      if (generation !== this.interestWaterfallGeneration || this.interestWaterfallFeedState?.mode !== 'search') {
+        return;
+      }
+      this.interestWaterfallFeedState = mergeAggregateSearchContinuationBatch(
+        this.interestWaterfallFeedState,
+        batch,
+        this.waterfallContinuationBatchIndex++,
+        Date.now()
+      );
+      this.publishInterestWaterfallPayload();
+    }).then((): void => {
+      if (generation !== this.interestWaterfallGeneration || this.interestWaterfallFeedState?.mode !== 'search') {
+        return;
+      }
+      this.applyInterestWaterfallUpdate(planWaterfallContinuation(this.interestWaterfallFeedState));
+    }).catch((error: Error): void => {
+      aiLogError('[AIPhone][WaterfallDiscoverySearchFailed] generation=' + generation.toString() +
+        ' error=' + error.message.substring(0, 240));
+    });
+  }
+
+  private startInterestWaterfallSearch(query: string): void {
+    const current = this.interestWaterfallFeedState;
+    if (current === null) return;
+    if (this.interestWaterfallSearchSnapshot === null) this.interestWaterfallSearchSnapshot = current;
+    this.interestWaterfallGeneration += 1;
+    const allSources = aggregateSearchSearchSourceIds();
+    const enabledSources = waterfallSourcesForContext(current.enabledSources, allSources);
+    this.interestWaterfallFeedState = {
+      mode: 'search',
+      query,
+      originalQuery: query,
+      queryStage: 'original',
+      queryHistory: [query],
+      consecutiveEmptyRounds: 0,
+      roundNewItemCount: 0,
+      roundActive: true,
+      expansionInFlight: false,
+      enabledSources,
+      preferenceDescription: '',
+      profile: this.currentWaterfallPreferenceProfile(),
+      shown: [],
+      current: null,
+      stable: [],
+      tail: [],
+      reserve: [],
+      sources: allSources.map((source: string): WaterfallSourceState => ({
+        source,
+        phase: enabledSources.indexOf(source) >= 0 ? 'loading' : 'exhausted',
+        continuation: null,
+        inFlight: enabledSources.indexOf(source) >= 0,
+        reservedCount: enabledSources.indexOf(source) >= 0 ? 10 : 0,
+        message: enabledSources.indexOf(source) >= 0 ? '正在搜索' : ''
+      }))
+    };
+    this.publishInterestWaterfallPayload();
+    this.runInterestSearchRequests(enabledSources.map((source: string): WaterfallLoadRequest => ({
+      source,
+      continuation: null,
+      limit: 10,
+      phase: 'loading',
+      message: '正在搜索',
+      mode: 'search'
+    })));
+  }
+
+  private exitInterestWaterfallSearch(): void {
+    if (this.interestWaterfallSearchSnapshot === null) return;
+    this.interestWaterfallGeneration += 1;
+    const snapshot = this.interestWaterfallSearchSnapshot;
+    this.interestWaterfallSearchSnapshot = null;
+    const enabledSources = waterfallSourcesForContext(
+      this.waterfallPreferenceProfile.discoveryEnabledSources, aggregateSearchInterestSourceIds());
+    const restored = applyWaterfallSourceSelection(snapshot, enabledSources, Date.now()).state;
+    restored.profile = this.currentWaterfallPreferenceProfile();
+    this.interestWaterfallFeedState = restored;
+    this.publishInterestWaterfallPayload();
+    const recallSources = enabledSources.filter((source: string): boolean =>
+      snapshot.enabledSources.indexOf(source) < 0);
+    restored.sources.filter((source: WaterfallSourceState): boolean =>
+      restored.enabledSources.indexOf(source.source) >= 0 && (source.inFlight || source.phase === 'loading'))
+      .forEach((source: WaterfallSourceState): void => {
+        if (recallSources.indexOf(source.source) < 0) recallSources.push(source.source);
+      });
+    if (recallSources.length > 0) this.runInterestRecall(recallSources);
   }
 
   private ensureInterestWaterfall(): void {
@@ -2174,6 +2297,23 @@ struct Index {
     }
     if (action.id === 'waterfall.conversation.submit') {
       if (action.kind === 'client') this.submitWaterfallConversationTypedTest(action.prompt);
+      return;
+    }
+    if (action.id === 'waterfall.search.submit') {
+      const query = waterfallSearchQueryFromAction(action, surfaceId);
+      if (query === null || state === null) {
+        this.logHtmlHomeActionError(action, 'invalid_waterfall_search');
+      } else {
+        this.startInterestWaterfallSearch(query);
+      }
+      return;
+    }
+    if (action.id === 'waterfall.search.exit') {
+      if (!waterfallSearchExitFromAction(action, surfaceId)) {
+        this.logHtmlHomeActionError(action, 'invalid_waterfall_search_exit');
+      } else {
+        this.exitInterestWaterfallSearch();
+      }
       return;
     }
     if (state === null) return;
@@ -4185,11 +4325,20 @@ struct Index {
         inputText: this.inputText
       });
     }
-    return createHtmlHomeDocument({
+    const document = createHtmlHomeDocument({
       surface: this.currentSurface,
       messages: this.messages,
       isBusy: this.isBusy,
       isAwaitingFirstSurface: this.isAwaitingFirstSurface
+    });
+    if (document.kind !== 'aggregate-search') {
+      return document;
+    }
+    return createHtmlHomeDocument({
+      messages: this.messages,
+      isBusy: this.isBusy,
+      isAwaitingFirstSurface: this.isAwaitingFirstSurface,
+      inputText: this.inputText
     });
   }
 
@@ -4787,6 +4936,7 @@ struct Index {
     this.interestExplorationSources = [];
     this.interestSourceRequestSeq.clear();
     this.interestWaterfallFeedState = null;
+    this.interestWaterfallSearchSnapshot = null;
     this.interestWaterfallHtml = '';
     this.interestWaterfallPayloadJson = '';
     configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile(false));
@@ -6581,6 +6731,11 @@ struct Index {
 
   private async currentDeviceCoordinates(): Promise<DeviceCoordinates> {
     await this.ensureLocationPermission();
+    if (!geoLocationManager.isLocationEnabled()) {
+      this.locationServiceNotice = LOCATION_SERVICE_DISABLED_NOTICE;
+      throw new Error(LOCATION_SERVICE_DISABLED_NOTICE);
+    }
+    this.locationServiceNotice = '';
     const current = await geoLocationManager.getCurrentLocation();
     const longitude = current.longitude;
     const latitude = current.latitude;
@@ -8646,7 +8801,9 @@ struct Index {
     } catch (error) {
       const reason = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][FoodCurrentLocation] phase=failed reason=' + reason);
-      this.getUIContext().getPromptAction().showToast({ message: '重新定位失败，请检查定位权限后重试。' });
+      if (reason !== LOCATION_SERVICE_DISABLED_NOTICE) {
+        this.getUIContext().getPromptAction().showToast({ message: '重新定位失败，请检查定位权限后重试。' });
+      }
     }
   }
 
@@ -9817,6 +9974,7 @@ struct Index {
         deepSearchQuery: this.deepSearchQuery,
         deepSearchSettingsJson: this.deepSearchSettingsJson,
         deepSearchContextJson: this.deepSearchContextJson,
+        locationServiceNotice: this.locationServiceNotice,
         trainPresaleTrip: this.trainPresaleTrip,
         trainPresaleTask: this.trainPresaleTask,
         trainPresaleTaskState: this.trainPresaleTaskState,
@@ -9954,19 +10112,22 @@ struct Index {
         .align(Alignment.TopStart)
         .zIndex(1)
 
-        WaterfallVoiceDock({
-          isListening: this.isVoiceListening && this.voiceTarget === 'waterfall',
-          isBusy: this.waterfallConversationBusy ||
-            (this.isVoiceListening && this.voiceTarget !== 'waterfall'),
-          reduceMotion: this.bimReduceMotion,
-          message: this.waterfallConversationMessage,
-          onStart: (): void => {
-            void this.startVoiceInput('waterfall');
-          },
-          onStop: (): void => {
-            this.stopVoiceInput();
-          }
-        })
+        Column() {
+          WaterfallVoiceDock({
+            isListening: this.isVoiceListening && this.voiceTarget === 'waterfall',
+            isBusy: this.waterfallConversationBusy ||
+              (this.isVoiceListening && this.voiceTarget !== 'waterfall'),
+            reduceMotion: this.bimReduceMotion,
+            message: this.waterfallConversationMessage,
+            onStart: (): void => {
+              void this.startVoiceInput('waterfall');
+            },
+            onStop: (): void => {
+              this.stopVoiceInput();
+            }
+          })
+        }
+        .width('100%')
         .margin({ bottom: 20 })
         .zIndex(this.interestWaterfallFullscreen ? 0 : 2)
       }
@@ -9984,6 +10145,7 @@ struct Index {
       .onChange((index: number) => {
         this.bimRootIndex = index;
         if (index === 1) this.ensureInterestWaterfall();
+        else inputMethod.getController().hideTextInput().catch((_error: BusinessError): void => {});
       })
     }
   }

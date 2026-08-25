@@ -9,7 +9,6 @@ import {
 
 const MAX_FEED_BODY_BYTES: number = 2 * 1024 * 1024;
 const MAX_FEED_ITEMS: number = 80;
-const MAX_SUMMARY_CHARS: number = 6000;
 const MAX_SOURCE_POSTS: number = 4;
 
 interface PublicFeedDefinition {
@@ -52,10 +51,6 @@ function cleanText(value: string): string {
   return value.replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u001f\u007f]/g, ' ')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-}
-
-function boundedSummary(value: string): string {
-  return cleanText(value).slice(0, MAX_SUMMARY_CHARS);
 }
 
 function normalizedHttpsUrl(value: string): string {
@@ -130,8 +125,8 @@ function publicFeedPost(source: AggregateSearchSource, provider: string, item: P
   const title = cleanText(item.title);
   const url = normalizedHttpsUrl(cleanText(item.url));
   if (title.length === 0 || url.length === 0) return null;
-  const summary = boundedSummary(item.summary);
-  const content = boundedSummary(item.content);
+  const summary = cleanText(item.summary);
+  const content = cleanText(item.content);
   return {
     id: source + '-' + encodeURIComponent(url).slice(0, 512),
     source: source,

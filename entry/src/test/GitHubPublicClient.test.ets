@@ -53,5 +53,14 @@ export default function githubPublicClientTest(): void {
 
       expect(message).assertEqual('github_all_requests_failed');
     });
+
+    it('keeps the complete release body for details', 0, () => {
+      const body = 'Detailed release note. '.repeat(100) + 'release body end';
+      const release = '{"id":303,"name":"Codex 1.0","tag_name":"v1.0.0","body":"' + body + '",' +
+        '"html_url":"https://github.com/openai/codex/releases/tag/v1.0.0",' +
+        '"published_at":"2026-08-24T10:00:00Z"}';
+
+      expect(githubDiscoveryPostsFromPayload('{"items":[]}', [release], 1)[0].text).assertEqual(body);
+    });
   });
 }

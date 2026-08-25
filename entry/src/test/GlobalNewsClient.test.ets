@@ -48,7 +48,7 @@ export default function globalNewsClientTest(): void {
     });
 
     it('uses Guardian body text instead of the short trail text', 0, () => {
-      const body = '完整正文段落。'.repeat(180);
+      const body = '完整正文段落。'.repeat(1000) + '正文结尾';
       const raw = '{"response":{"status":"ok","results":[{' +
         '"id":"world/2026/aug/25/live","webTitle":"Live report",' +
         '"webUrl":"https://www.theguardian.com/world/2026/aug/25/live",' +
@@ -57,8 +57,7 @@ export default function globalNewsClientTest(): void {
       const posts = guardianPostsFromPayload(raw, 1);
 
       expect(posts.length).assertEqual(1);
-      expect(posts[0].text.length).assertLarger(1000);
-      expect(posts[0].text.indexOf('完整正文段落')).assertEqual(0);
+      expect(posts[0].text).assertEqual(body);
       expect(posts[0].text.indexOf('Follow live')).assertEqual(-1);
     });
   });

@@ -33,5 +33,14 @@ export default function steamNewsClientTest(): void {
       expect(posts[1].title).assertEqual('Four');
       expect(steamNewsPostsFromPayload('{"appnews":{"newsitems":{}}}', 4).length).assertEqual(0);
     });
+
+    it('keeps the complete article body for details', 0, () => {
+      const body = '完整更新正文。'.repeat(100) + '正文结尾';
+      const payload = '{"appnews":{"newsitems":[{"gid":"full","title":"Full update",' +
+        '"url":"https://store.steampowered.com/news/app/730/view/full","author":"Steam Team",' +
+        '"contents":"' + body + '","date":1}]}}';
+
+      expect(steamNewsPostsFromPayload(payload, 1)[0].text).assertEqual(body);
+    });
   });
 }

@@ -110,21 +110,22 @@ export default function publicFeedClientTest(): void {
       expect(posts[0].text).assertEqual('这是一段可读的新闻摘要。');
     });
 
-    it('caps summaries and emitted posts at requested limit', 0, () => {
+    it('keeps complete summaries and caps only emitted posts', 0, () => {
       const events: PublicFeedEvent[] = [];
+      const summary = '摘要'.repeat(4000) + '正文结尾';
       for (let index = 0; index < 5; index += 1) {
         events.push(
           event('start', 'item'),
           event('text', 'title', '新闻 ' + index.toString()),
           event('text', 'link', 'https://www.chinanews.com.cn/' + index.toString()),
-          event('text', 'description', '<p>' + '摘要'.repeat(4000) + '</p>'),
+          event('text', 'description', '<p>' + summary + '</p>'),
           event('end', 'item')
         );
       }
       const posts = publicFeedPostsFromEvents('cnnews', '中国新闻网', events, 4);
 
       expect(posts.length).assertEqual(4);
-      expect(posts[0].text.length).assertEqual(6000);
+      expect(posts[0].text).assertEqual(summary);
       expect(posts[3].title).assertEqual('新闻 3');
     });
 

@@ -147,7 +147,7 @@ const defaultCases = [
   { id: 'R08', query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
   { id: 'R09', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
   { id: 'R10', query: '帮我点一杯瑞幸生椰拿铁，半糖少冰', expectsTool: true, expectedToolId: 'luckin.order.preview' },
-  { id: 'R11', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: true, expectedToolId: 'media.aggregate.search' }
+  { id: 'R11', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: false, expectedToolId: '' }
 ];
 
 const dynamicCases = [
@@ -279,7 +279,7 @@ const coreRegressionCases = [
   { id: 'C05', query: '帮我查看邮箱里最新的重要邮件', expectsTool: true, expectedToolId: 'mail.search', verifyMailBody: true },
   { id: 'C06', query: '帮我查看我 Gmail 里和 ECCV 论文相关的邮件', expectsTool: true, expectedToolId: 'gmail.mail.search' },
   { id: 'C07', query: '帮我在 B 站和 YouTube 里搜索 Qwen 的官方视频', expectsTool: true, expectedToolId: 'media.video.search' },
-  { id: 'C08', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: true, expectedToolId: 'media.aggregate.search' },
+  { id: 'C08', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: false, expectedToolId: '' },
   { id: 'C09', query: '帮我查看我今天 X 和 Slack 上的消息', expectsTool: true, expectedToolId: 'social.feed.search', verifySocialDraft: true },
   { id: 'C10', query: '帮我查看 X 上 OpenAI 最近的公开 post', expectsTool: true, expectedToolId: 'x.post.search' },
   { id: 'C11a', query: '点一杯咖啡', expectsTool: true, expectedToolId: 'food.search' },
@@ -394,7 +394,7 @@ const coreScenarioManifest = [
   ['C01', []], ['C02', ['travel.search']], ['C03', ['food.search']],
   ['C05', ['mail.search']],
   ['C06', ['gmail.mail.search']], ['C07', ['media.video.search']],
-  ['C08', ['media.aggregate.search']], ['C09', ['social.feed.search']],
+  ['C08', []], ['C09', ['social.feed.search']],
   ['C10', ['x.post.search']], ['C11', ['food.search', 'memory.update']],
   ['C12', ['worldcup.open']], ['C13', ['dynamic.search']],
   ['C14', ['ride.estimate']], ['C15', ['luckin.order.preview']],
@@ -891,8 +891,8 @@ function expectedCaseForQuery(query) {
   }
   if (isAggregateMediaSearchQuery(query)) {
     return {
-      expectsTool: true,
-      expectedToolId: 'media.aggregate.search'
+      expectsTool: false,
+      expectedToolId: ''
     };
   }
   if (isXPostSearchQuery(query) && (!isSocialFeedQuery(query) || /公开\s*posts?\b|public\s+posts?\b|x\.com/i.test(query))) {

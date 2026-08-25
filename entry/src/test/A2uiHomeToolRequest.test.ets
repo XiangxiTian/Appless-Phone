@@ -604,47 +604,37 @@ export default function a2uiHomeToolRequestTest() {
       expect(argText(resolved.args, 'query')).assertEqual('');
     });
 
-    it('falls back mixed news and discussion prompts to aggregate media search', 0, () => {
+    it('keeps mixed news and discussion prompts in natural conversation', 0, () => {
       const resolved = resolveA2uiHomeToolRequest(
         surfaceWithToolRequest('', '', '', null),
         '我想看看有关 openai codex 的相关新闻和讨论',
         ''
       );
-      const sources = argSources(resolved.args);
 
-      expect(resolved.hasTool).assertTrue();
-      expect(resolved.toolId).assertEqual('media.aggregate.search');
-      expect(resolved.actionId).assertEqual('client_intent_fallback');
-      expect(sources.indexOf('youtube')).assertLarger(-1);
-      expect(sources.indexOf('bilibili')).assertLarger(-1);
-      expect(sources.indexOf('x')).assertLarger(-1);
-      expect(sources.indexOf('hackernews')).assertLarger(-1);
-      expect(sources.indexOf('reddit')).assertLarger(-1);
-      expect(argText(resolved.args, 'query')).assertEqual('openai codex');
+      expect(resolved.hasTool).assertFalse();
+      expect(resolved.toolId).assertEqual('');
     });
 
-    it('accepts compact aggregate news discussion prompts', 0, () => {
+    it('keeps compact aggregate news discussion prompts in natural conversation', 0, () => {
       const resolved = resolveA2uiHomeToolRequest(
         surfaceWithToolRequest('', '', '', null),
         'openai codex 新闻讨论',
         ''
       );
 
-      expect(resolved.hasTool).assertTrue();
-      expect(resolved.toolId).assertEqual('media.aggregate.search');
-      expect(argText(resolved.args, 'query')).assertEqual('openai codex');
+      expect(resolved.hasTool).assertFalse();
+      expect(resolved.toolId).assertEqual('');
     });
 
-    it('reroutes mistaken X-only tool choice for mixed aggregate prompts', 0, () => {
+    it('does not reroute mistaken X-only tool choice into aggregate search', 0, () => {
       const resolved = resolveA2uiHomeToolRequest(
         surfaceWithToolRequest('x.post.search', '我想看看有关 openai codex 的相关新闻和讨论', 'model_tool_request', null),
         '我想看看有关 openai codex 的相关新闻和讨论',
         ''
       );
 
-      expect(resolved.hasTool).assertTrue();
-      expect(resolved.toolId).assertEqual('media.aggregate.search');
-      expect(resolved.actionId).assertEqual('client_aggregate_search_reroute');
+      expect(resolved.hasTool).assertFalse();
+      expect(resolved.toolId).assertEqual('');
     });
 
     it('reroutes Xiaohongshu searches to the public Firecrawl tool', 0, () => {
@@ -851,9 +841,9 @@ export default function a2uiHomeToolRequestTest() {
       expect(discord.toolId).assertEqual('dynamic.search');
       expect(plainSlack.toolId).assertEqual('social.feed.search');
       expect(composioWeibo.toolId).assertEqual('');
-      expect(aggregateWithZhihu.toolId).assertEqual('media.aggregate.search');
+      expect(aggregateWithZhihu.toolId).assertEqual('');
       expect(reddit.toolId).assertEqual('dynamic.search');
-      expect(aggregateWithReddit.toolId).assertEqual('media.aggregate.search');
+      expect(aggregateWithReddit.toolId).assertEqual('');
     });
 
     it('does not infer X post search from Xcode or generic post text', 0, () => {
@@ -1184,8 +1174,8 @@ export default function a2uiHomeToolRequestTest() {
         null,
         false
       );
-      expect(model.toolId).assertEqual('media.aggregate.search');
-      expect(model.actionId).assertEqual('model_tool_request');
+      expect(model.hasTool).assertFalse();
+      expect(model.toolId).assertEqual('');
     });
 
     it('keeps model-generated shopping parameters ahead of the client fallback', 0, () => {

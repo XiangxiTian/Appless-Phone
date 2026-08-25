@@ -1089,6 +1089,16 @@ export function resolveA2uiHomeToolRequest(
       actionId = 'client_intent_fallback';
     }
   }
+  if (toolId === 'media.aggregate.search') {
+    return {
+      hasTool: false,
+      toolId: '',
+      prompt: prompt,
+      actionId: '',
+      args: null,
+      modelPromptChars: prompt.length
+    };
+  }
   let args = mergeArgs(fallbackArgs, request.args === undefined || request.args === null ? null : request.args);
   if (forcedDailyBriefRequest !== null) {
     args = forcedDailyBriefRequest.args;

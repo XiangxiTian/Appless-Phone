@@ -2140,7 +2140,7 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.prompts[0].indexOf('Preserve originQuery exactly') >= 0).assertTrue();
     });
 
-    it('keeps aggregate media and dependent Maps rounds explicit in the Leader prompt', 0, async () => {
+    it('keeps discovery-only media and dependent Maps rounds explicit in the Leader prompt', 0, async () => {
       const model: QueueLocalModel = new QueueLocalModel([PARALLEL_DECISION]);
       await new MultiAgentLeaderPlanner(model).plan(
         inputMessage(),
@@ -2150,7 +2150,7 @@ export default function multiAgentLeaderPlannerTest() {
       );
 
       expect(model.prompts[0].indexOf(
-        'A request for both 新闻 and 讨论 about the same topic uses exactly media.aggregate.search'
+        'Aggregate media search is discovery-only. Never name or schedule media.aggregate.search.'
       ) >= 0).assertTrue();
       expect(model.prompts[0].indexOf(
         'In round 1 requestedCapabilityIds is exactly ["maps.place.search"]'

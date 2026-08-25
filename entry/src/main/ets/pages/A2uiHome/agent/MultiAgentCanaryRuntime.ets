@@ -1396,7 +1396,9 @@ function canaryPlanningContext(
         definition.toolId !== 'hotel.navigate' &&
         definition.toolId !== 'hotel.booking.open' &&
         (!focusedRelease ||
-          (definition.toolId !== 'web.research.search' && definition.toolId !== 'web.page.read'))
+          (definition.toolId !== 'web.research.search' &&
+            definition.toolId !== 'web.page.read' &&
+            definition.toolId !== 'media.aggregate.search'))
     )
     .map(
     (definition: ToolDefinition): LeaderToolMetadata => {

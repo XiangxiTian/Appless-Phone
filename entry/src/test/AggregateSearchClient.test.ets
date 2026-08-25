@@ -52,7 +52,6 @@ import {
   redditPostsFromComposioResult,
   unsupportedSourceStatus,
   xPostsFromComposioResult,
-  zhihuHotListUrl,
   zhihuPostsFromHotListPayload,
   zhihuPostsFromSearchPayload,
   zhihuSearchUrl,
@@ -1311,13 +1310,11 @@ export default function aggregateSearchClientTest() {
       expect(aggregateSearchInterestSourceIds().indexOf('twitch')).assertLarger(-1);
     });
 
-    it('routes Zhihu discovery to the official hot list without a keyword', 0, () => {
+    it('gives Zhihu discovery a search query so platform metrics stay available', 0, () => {
       const request = planWaterfallInterestRecall(emptyPreferenceProfile(), [], ['zhihu'])[0];
 
       expect(request.route).assertEqual('popular');
-      expect(request.query).assertEqual('');
-      expect(zhihuHotListUrl(10)).assertEqual(
-        'https://developer.zhihu.com/api/v1/content/hot_list?Limit=10');
+      expect(request.query).assertEqual('人工智能');
     });
 
     it('registers the four new top-level sources once for search and discovery', 0, () => {

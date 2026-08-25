@@ -8,7 +8,6 @@ import {
 const GITHUB_API: string = 'https://api.github.com';
 const MAX_BODY_BYTES: number = 2 * 1024 * 1024;
 const MAX_POSTS: number = 4;
-const MAX_SUMMARY_CHARS: number = 1200;
 const CACHE_MS: number = 15 * 60 * 1000;
 const FAMOUS_REPOSITORIES: string[] = ['openai/codex', 'microsoft/vscode'];
 
@@ -44,10 +43,6 @@ function httpsGitHubUrl(value: GitHubValue): string {
   return url.startsWith('https://github.com/') && !/[\\\s\u0000-\u001f]/.test(url) ? url.split('#')[0] : '';
 }
 
-function bounded(value: string): string {
-  return value.slice(0, MAX_SUMMARY_CHARS);
-}
-
 function limit(value: number): number {
   return Number.isFinite(value) && value > 0 ? Math.min(MAX_POSTS, Math.floor(value)) : 0;
 }
@@ -78,7 +73,7 @@ function repositoryPosts(rawJson: string, typeLabel: string = 'Repository'): Agg
     posts.push({
       id: 'github-repo-' + number(item.id).toString(), source: 'github', provider: 'GitHub', title: title,
       author: owner === null ? '' : text(owner.login), handle: owner === null ? '' : text(owner.login),
-      text: bounded(text(item.description)), url: url, publishedAt: text(item.updated_at),
+      text: text(item.description), url: url, publishedAt: text(item.updated_at),
       score: number(item.stargazers_count).toString(), commentCount: '', status: 'success', rows: rows
     });
   });
@@ -107,7 +102,7 @@ function releasePost(repoName: string, rawJson: string): AggregateSearchPost | n
     id: 'github-release-' + number(release.id).toString(), source: 'github', provider: 'GitHub',
     title: repoName + ' · ' + releaseName,
     author: author === null ? repoName.split('/')[0] : text(author.login),
-    handle: author === null ? '' : text(author.login), text: bounded(text(release.body)), url: url,
+    handle: author === null ? '' : text(author.login), text: text(release.body), url: url,
     publishedAt: text(release.published_at), score: '', commentCount: '', status: 'success', rows: rows
   };
 }

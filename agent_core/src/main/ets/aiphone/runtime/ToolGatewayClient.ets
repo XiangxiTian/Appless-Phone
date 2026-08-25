@@ -190,7 +190,6 @@ import {
   AggregateSearchPartialObserver,
   aggregateMediaCandidates,
   aggregateVideoSourceBatchFromDynamicResults,
-  aggregateZhihuHotListBatch,
   callAggregateSearch,
   callAggregateSearchContinuation,
   callAggregateSearchContinuationForContext,
@@ -15667,19 +15666,6 @@ async function runWaterfallInterestRecallBody(
       await callComposioYouTubeMostPopularWithProviderData(10, token)
     );
     const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic, recall.continuation ?? null, 10);
-    logWaterfallInterestBatch(recall, batch);
-    onBatch({
-      request: recall,
-      batch,
-      candidates: aggregateMediaCandidates(
-        batch.videos, batch.posts, requestIndex * 10, '', 'done', 'popular', recall.weight)
-    });
-    return;
-  }
-  if (recall.route === 'popular' && allowedSources.indexOf('zhihu') >= 0) {
-    const batch = await aggregateZhihuHotListBatch(
-      { apiKey: localProviderConfig.zhihuApiKey }, waterfallInterestRecallLimitForSource('zhihu')
-    );
     logWaterfallInterestBatch(recall, batch);
     onBatch({
       request: recall,

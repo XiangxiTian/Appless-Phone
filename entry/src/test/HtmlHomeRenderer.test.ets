@@ -20,7 +20,9 @@ import {
   waterfallBehaviorFromAction,
   waterfallCardActionFromAction,
   waterfallCommentsCandidateFromAction,
-  waterfallEnabledSourcesFromAction
+  waterfallEnabledSourcesFromAction,
+  waterfallSearchExitFromAction,
+  waterfallSearchQueryFromAction
 } from '../main/ets/pages/A2uiHome/html/HtmlAggregateSearchHomeRenderer';
 import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer';
 import { createFirecrawlPendingDocument } from '../main/ets/pages/A2uiHome/html/HtmlFirecrawlHomeRenderer';
@@ -3699,13 +3701,13 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('Codex demo')).assertLarger(-1);
       expect(html.indexOf('OpenAI Codex discussion')).assertLarger(-1);
       expect(html.indexOf('https://www.youtube.com/watch?v=abc123')).assertLarger(-1);
-      expect(html.indexOf('正在补充内容')).assertEqual(-1);
+      expect(html.indexOf('<div id="waterfall-track" class="waterfall-track">正在补充内容')).assertEqual(-1);
       expect(html.indexOf('<div id="waterfall-track" class="waterfall-track"></div>')).assertLarger(-1);
       expect(html.indexOf('result 3')).assertEqual(-1);
 
       const busyHtml = renderHtmlHomeDocument(doc, true);
       expect(busyHtml.indexOf('正在更新')).assertLarger(-1);
-      expect(busyHtml.indexOf('正在补充内容')).assertEqual(-1);
+      expect(busyHtml.indexOf('<div id="waterfall-track" class="waterfall-track">正在补充内容')).assertEqual(-1);
     });
 
     it('formats the light home clock and greeting from local device time', 0, () => {
@@ -3970,6 +3972,29 @@ export default function htmlHomeRendererTest() {
       expect(action === null).assertFalse();
       expect(waterfallEnabledSourcesFromAction(action as A2uiAction, surfaceId)?.length).assertEqual(0);
       expect(waterfallEnabledSourcesFromAction(action as A2uiAction, 'other-surface')).assertEqual(null);
+    });
+
+    it('accepts only bounded discovery-search actions from the current surface', 0, () => {
+      const submit = parseHtmlHomeAction('{"id":"waterfall.search.submit","label":"搜索",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"query":"  HarmonyOS AI  "}}') as A2uiAction;
+      const exit = parseHtmlHomeAction('{"id":"waterfall.search.exit","label":"退出搜索",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1"}}') as A2uiAction;
+
+      expect(waterfallSearchQueryFromAction(submit, 'surface-1')).assertEqual('HarmonyOS AI');
+      expect(waterfallSearchQueryFromAction(submit, 'other')).assertEqual(null);
+      expect(waterfallSearchExitFromAction(exit, 'surface-1')).assertTrue();
+      expect(waterfallSearchExitFromAction(exit, 'other')).assertFalse();
+
+      const blank = JSON.parse(JSON.stringify(submit)) as A2uiAction;
+      (blank.args as Record<string, string>).query = '   ';
+      expect(waterfallSearchQueryFromAction(blank, 'surface-1')).assertEqual(null);
+      const long = JSON.parse(JSON.stringify(submit)) as A2uiAction;
+      (long.args as Record<string, string>).query = new Array(162).join('a');
+      expect(waterfallSearchQueryFromAction(long, 'surface-1')).assertEqual(null);
+      const injected = JSON.parse(JSON.stringify(submit)) as A2uiAction;
+      (injected.args as Record<string, string>).url = 'https://attacker.example';
+      expect(waterfallSearchQueryFromAction(injected, 'surface-1')).assertEqual(null);
     });
 
     it('turns the posted Waterfall scroll action into one current-card advance', 0, () => {

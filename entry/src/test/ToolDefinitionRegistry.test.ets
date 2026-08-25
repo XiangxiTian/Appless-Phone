@@ -584,7 +584,7 @@ export default function toolDefinitionRegistryTest() {
       expect(sourceIds.indexOf('applepodcasts')).assertLarger(-1);
       expect(sourceIds.indexOf('twitch')).assertLarger(-1);
       expect(aggregatePlanning.indexOf(JSON.stringify(aggregateSearchSearchSourceIds()))).assertLarger(-1);
-      expect(aggregatePlanning.indexOf('twitch')).assertEqual(-1);
+      expect(aggregatePlanning.indexOf('twitch')).assertLarger(-1);
       expect(aggregatePlanning.indexOf('news, discussion, video, article, and posts are never source IDs'))
         .assertLarger(-1);
       expect(aggregatePlanning.indexOf('does not explicitly name a provider, omit sources entirely'))

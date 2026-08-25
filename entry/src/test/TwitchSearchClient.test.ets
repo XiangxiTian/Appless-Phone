@@ -3,10 +3,12 @@ import {
   acquireTwitchAppToken,
   DefaultTwitchSearchTransport,
   discoverTwitchInterestStreams,
+  searchTwitchChannels,
   resetTwitchTokenCacheForTests,
   twitchAppTokenUrl,
   twitchGamesUrl,
   twitchHelixHeaders,
+  twitchChannelSearchUrl,
   twitchStreamsUrl,
   twitchTopGamesUrl,
   TwitchHttpResult,
@@ -54,6 +56,29 @@ interface TwitchStreamsPayloadFixture {
   data: TwitchStreamFixture[];
 }
 
+interface TwitchChannelFixture {
+  broadcaster_language: string;
+  broadcaster_login: string;
+  display_name: string;
+  game_id: string;
+  game_name: string;
+  id: string;
+  is_live: boolean;
+  tags: string[];
+  thumbnail_url: string;
+  title: string;
+  started_at: string;
+}
+
+interface TwitchPaginationFixture {
+  cursor: string;
+}
+
+interface TwitchChannelsPayloadFixture {
+  data: TwitchChannelFixture[];
+  pagination: TwitchPaginationFixture;
+}
+
 function tokenResponse(token: string, expiresIn: number = 3600): TwitchHttpResult {
   return { code: 200, text: '{"access_token":' + JSON.stringify(token) +
     ',"expires_in":' + expiresIn.toString() + ',"token_type":"bearer"}' };
@@ -76,6 +101,11 @@ function stream(id: string, login: string, gameId: string, gameName: string,
 
 function streamsResponse(data: TwitchStreamFixture[]): TwitchHttpResult {
   const payload: TwitchStreamsPayloadFixture = { data: data };
+  return { code: 200, text: JSON.stringify(payload) };
+}
+
+function channelsResponse(data: TwitchChannelFixture[], cursor: string = ''): TwitchHttpResult {
+  const payload: TwitchChannelsPayloadFixture = { data: data, pagination: { cursor: cursor } };
   return { code: 200, text: JSON.stringify(payload) };
 }
 
@@ -227,6 +257,28 @@ export default function twitchSearchClientTest(): void {
       const headers = twitchHelixHeaders(' client-id ', ' app-token ');
       expect(headers['Client-Id']).assertEqual('client-id');
       expect(headers['Authorization']).assertEqual('Bearer app-token');
+    });
+
+    it('searches live Twitch channels by keyword with an app token', 0, async () => {
+      expect(twitchChannelSearchUrl('openai codex', 4, 'next page')).assertEqual(
+        'https://api.twitch.tv/helix/search/channels?query=openai%20codex&live_only=true&first=4&after=next%20page');
+      resetTwitchTokenCacheForTests();
+      const transport = new QueueTransport([tokenResponse('token')], [channelsResponse([{
+        broadcaster_language: 'zh', broadcaster_login: 'codex-live', display_name: 'Codex Live',
+        game_id: 'tech', game_name: 'Science & Technology', id: 'channel-1', is_live: true,
+        tags: ['中文'], thumbnail_url: 'https://img.example/codex-{width}x{height}.jpg', title: 'OpenAI Codex 实战',
+        started_at: '2026-08-24T08:00:00Z'
+      }], 'cursor-2')]);
+
+      const batch = await searchTwitchChannels(
+        { clientId: 'id', clientSecret: 'secret' }, 'openai codex', 4, null, transport, 1000);
+
+      expect(batch.status).assertEqual('success');
+      expect(batch.items.length).assertEqual(1);
+      expect(batch.items[0].kind).assertEqual('search');
+      expect(batch.items[0].broadcasterLogin).assertEqual('codex-live');
+      expect(batch.items[0].thumbnailUrl).assertEqual('https://img.example/codex-640x360.jpg');
+      expect(batch.continuation).assertEqual('cursor-2');
     });
 
     it('returns three hottest technology streams and one hottest actual-game stream', 0, async () => {

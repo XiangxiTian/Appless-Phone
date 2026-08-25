@@ -51,6 +51,8 @@ import {
   redditPostsFromComposioResult,
   unsupportedSourceStatus,
   xPostsFromComposioResult,
+  zhihuHotListUrl,
+  zhihuPostsFromHotListPayload,
   zhihuPostsFromSearchPayload,
   zhihuSearchUrl,
   mergeWaterfallBatch,
@@ -290,11 +292,12 @@ export default function aggregateSearchClientTest() {
       expect(aggregateSearchQueryFromArgs('我想看看有关 openai codex 的相关新闻和讨论', null)).assertEqual('openai codex');
       expect(aggregateSearchQueryFromArgs('openai codex 新闻讨论', null)).assertEqual('openai codex');
       expect(aggregateSearchSourcesFromArgs(args).join(',')).assertEqual('');
-      expect(aggregateSearchSourcesFromArgs(null).join(',')).assertEqual('bilibili,zhihu');
+      expect(aggregateSearchSourcesFromArgs(null).join(','))
+        .assertEqual('bilibili,zhihu,cnnews');
       expect(aggregateSearchSourcesFromArgs({
         query: 'ignored', sources: ['twitch'],
         onlyDomesticSources: false, includeMultilingualResults: true
-      } as QueryArgsFixture).join(',')).assertEqual(aggregateSearchSearchSourceIds().join(','));
+      } as QueryArgsFixture).join(',')).assertEqual('twitch');
     });
 
     it('applies all four deterministic aggregate source policy combinations', 0, () => {
@@ -310,10 +313,12 @@ export default function aggregateSearchClientTest() {
       const globalMultilingual: QueryArgsFixture = {
         query: 'codex', onlyDomesticSources: false, includeMultilingualResults: true
       };
-      expect(aggregateSearchSourcesFromArgs(domesticChinese).join(',')).assertEqual('bilibili,zhihu');
-      expect(aggregateSearchSourcesFromArgs(domesticMultilingual).join(',')).assertEqual('bilibili,zhihu');
+      expect(aggregateSearchSourcesFromArgs(domesticChinese).join(','))
+        .assertEqual('bilibili,zhihu,cnnews');
+      expect(aggregateSearchSourcesFromArgs(domesticMultilingual).join(','))
+        .assertEqual('bilibili,zhihu,cnnews');
       expect(aggregateSearchSourcesFromArgs(globalChinese).join(','))
-        .assertEqual('youtube,bilibili,x,zhihu,applepodcasts');
+        .assertEqual('youtube,bilibili,x,zhihu,applepodcasts,twitch,cnnews');
       expect(aggregateSearchSourcesFromArgs(globalMultilingual).join(','))
         .assertEqual(aggregateSearchSearchSourceIds().join(','));
       expect(aggregateYouTubeRelevanceLanguage(aggregateSearchPolicyFromArgs(globalChinese))).assertEqual('zh-Hans');
@@ -363,7 +368,7 @@ export default function aggregateSearchClientTest() {
         onlyDomesticSources: true, includeMultilingualResults: false
       };
       expect(aggregateSearchSourcesFromArgs(blocked).join(',')).assertEqual('youtube,bilibili');
-      expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.isExternal).length).assertEqual(6);
+      expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.isExternal).length).assertEqual(9);
       expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.source === 'hackernews')[0].languages.join(','))
         .assertEqual('en');
       expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.source === 'reddit')[0].languageFilterMode)
@@ -374,8 +379,10 @@ export default function aggregateSearchClientTest() {
         .assertEqual('regional');
       expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.source === 'twitch')[0].languageFilterMode)
         .assertEqual('post_filter');
+      expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.source === 'steam')[0].languageFilterMode)
+        .assertEqual('none');
       expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.source === 'twitch')[0]
-        .capabilities.search).assertFalse();
+        .capabilities.search).assertTrue();
       expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.source === 'twitch')[0]
         .capabilities.interest).assertTrue();
       expect(aggregateSearchSourcesFromArgs(emptyExplicitSources).join(','))
@@ -393,7 +400,8 @@ export default function aggregateSearchClientTest() {
         onlyDomesticSources: false, includeMultilingualResults: true
       };
 
-      expect(aggregateSearchSourcesFromArgs(firstQuery).join(',')).assertEqual('bilibili,zhihu');
+      expect(aggregateSearchSourcesFromArgs(firstQuery).join(','))
+        .assertEqual('bilibili,zhihu,cnnews');
       expect(aggregateSearchSourcesFromArgs(secondQuery).join(','))
         .assertEqual(aggregateSearchSearchSourceIds().join(','));
     });
@@ -493,6 +501,33 @@ export default function aggregateSearchClientTest() {
       expect(aggregateMediaCandidates([], posts, 0)[0].mediaType).assertEqual('post');
     });
 
+    it('maps the official Zhihu hot-list envelope and rejects business errors', 0, () => {
+      const posts = zhihuPostsFromHotListPayload(
+        '{"Code":0,"Message":"success","Data":{"Total":2,"Items":[{"ContentID":"question-1","Title":"热点 1",' +
+        '"Url":"https://www.zhihu.com/question/1","ThumbnailUrl":"https://picx.zhimg.com/hot.jpg",' +
+        '"Summary":"摘要"},{"Title":"热点 2","Url":"https://www.zhihu.com/question/2","Summary":"摘要 2"}]}}'
+      );
+      const reordered = zhihuPostsFromHotListPayload(
+        '{"Code":0,"Message":"success","Data":{"Total":2,"Items":[' +
+        '{"Title":"热点 2","Url":"https://www.zhihu.com/question/2","Summary":"摘要 2"},' +
+        '{"ContentID":"question-1","Title":"热点 1","Url":"https://www.zhihu.com/question/1","Summary":"摘要"}]}}'
+      );
+
+      expect(posts.length).assertEqual(2);
+      expect(posts[0].title).assertEqual('热点 1');
+      expect(posts[0].rows[0].label).assertEqual('Cover');
+      expect(posts[0].id).assertEqual(reordered[1].id);
+      expect(posts[1].id).assertEqual(reordered[0].id);
+      expect(posts[0].id === posts[1].id).assertFalse();
+      let rejected: boolean = false;
+      try {
+        zhihuPostsFromHotListPayload('{"Code":20001,"Message":"Authorization failed","Data":null}');
+      } catch (_error) {
+        rejected = true;
+      }
+      expect(rejected).assertTrue();
+    });
+
     it('preserves Twitch viewer count as the provider ranking score', 0, () => {
       const twitchPost: AggregateSearchPost = {
         id: 'twitch-stream-1', source: 'twitch', provider: 'Twitch', title: 'Live coding',
@@ -570,7 +605,25 @@ export default function aggregateSearchClientTest() {
 
       expect(candidate.mediaType).assertEqual('image_text');
       expect(candidate.coverUrl).assertEqual(
-        'https://preview.redd.it/cover.jpg?width=640&format=pjpg&auto=webp&s=abc');
+        'https://wsrv.nl/?url=https%3A%2F%2Fpreview.redd.it%2Fcover.jpg%3Fwidth%3D640%26format%3Dpjpg%26auto%3Dwebp%26s%3Dabc&output=webp&w=1200');
+    });
+
+    it('uses the direct Reddit image URL returned by search', 0, () => {
+      const posts = redditPostsFromComposioResult({
+        sourceTag: 'Composio',
+        toolName: 'REDDIT_SEARCH_ACROSS_SUBREDDITS',
+        title: 'Composio Reddit results',
+        status: 'success',
+        summary: '1 result',
+        rows: [],
+        rawPreview: '{"data":{"children":[{"data":{"title":"Image post","permalink":' +
+          '"/r/OpenAI/comments/1/image","url":"https://i.redd.it/reddit-image.jpeg"}}]}}'
+      });
+      const candidate = aggregateMediaCandidates([], posts, 0)[0];
+
+      expect(candidate.mediaType).assertEqual('image_text');
+      expect(candidate.coverUrl).assertEqual(
+        'https://wsrv.nl/?url=https%3A%2F%2Fi.redd.it%2Freddit-image.jpeg&output=webp&w=1200');
     });
 
     it('keeps distinct raw-preview posts through Waterfall ranking', 0, () => {
@@ -1131,8 +1184,35 @@ export default function aggregateSearchClientTest() {
         .assertEqual('popular,explore,explore');
       expect(requests.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
         .assertEqual(',tech news,');
-      expect(aggregateSearchSearchSourceIds().indexOf('twitch')).assertEqual(-1);
+      expect(aggregateSearchSearchSourceIds().indexOf('twitch')).assertLarger(-1);
       expect(aggregateSearchInterestSourceIds().indexOf('twitch')).assertLarger(-1);
+    });
+
+    it('routes Zhihu discovery to the official hot list without a keyword', 0, () => {
+      const request = planWaterfallInterestRecall(emptyPreferenceProfile(), [], ['zhihu'])[0];
+
+      expect(request.route).assertEqual('popular');
+      expect(request.query).assertEqual('');
+      expect(zhihuHotListUrl(10)).assertEqual(
+        'https://developer.zhihu.com/api/v1/content/hot_list?Limit=10');
+    });
+
+    it('registers the four new top-level sources once for search and discovery', 0, () => {
+      const metadata = aggregateSearchSourceMetadata();
+      const newSources: AggregateSearchSource[] = ['github', 'steam', 'cnnews', 'globalnews'];
+      expect(aggregateSearchSearchSourceIds().join(','))
+        .assertEqual(aggregateSearchInterestSourceIds().join(','));
+      newSources.forEach((source: AggregateSearchSource): void => {
+        const row = metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.source === source)[0];
+        expect(aggregateSearchSearchSourceIds().indexOf(source)).assertLarger(-1);
+        expect(aggregateSearchInterestSourceIds().indexOf(source)).assertLarger(-1);
+        expect(row.capabilities.search).assertTrue();
+        expect(row.capabilities.interest).assertTrue();
+        expect(row.defaultEnabled).assertTrue();
+        expect(row.introducedInRegistryVersion).assertEqual(4);
+      });
+      expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean =>
+        ['chinanews', 'ithome', 'sspai', 'ifanr', 'v2ex'].indexOf(item.source) >= 0).length).assertEqual(0);
     });
 
     it('keeps Twitch provider discovery separate from source exploration', 0, () => {
@@ -1880,7 +1960,7 @@ export default function aggregateSearchClientTest() {
       expect(loaded.join(',')).assertEqual('youtube,bilibili,x,hackernews,reddit,zhihu');
     });
 
-    it('dispatches Twitch only for interest continuation context', 0, async () => {
+    it('dispatches Twitch for search and interest continuation contexts', 0, async () => {
       configureWaterfallEnabledSourcesForRuntime(['youtube', 'twitch']);
       configureWaterfallSearchPolicyForRuntime({ domesticOnly: false, multilingual: true });
       const requests: WaterfallLoadRequest[] = [{
@@ -1907,7 +1987,7 @@ export default function aggregateSearchClientTest() {
           (_batch: AggregateSearchSourceBatch): void => {}, loaderFor(interestLoaded)
         );
 
-        expect(ordinaryLoaded.join(',')).assertEqual('youtube');
+        expect(ordinaryLoaded.join(',')).assertEqual('youtube,twitch');
         expect(interestLoaded.join(',')).assertEqual('youtube,twitch');
       } finally {
         configureWaterfallEnabledSourcesForRuntime(aggregateSearchRegistrySourceIds());
@@ -2018,6 +2098,33 @@ export default function aggregateSearchClientTest() {
       expect(result.waterfall?.current === null).assertFalse();
       expect(result.sourceStatuses[2].status).assertEqual('needs_auth');
       expect(result.waterfall?.sources.every((item) => item.continuation === null)).assertTrue();
+    });
+
+    it('does not let an empty source delay the first source with content', 0, async () => {
+      const deferred = new DeferredAggregateBatch();
+      const snapshots: AggregateSearchResult[] = [];
+      const finalPromise = streamAggregateSearchSourceBatches(
+        'openai codex',
+        ['twitch', 'bilibili', 'x'],
+        [
+          Promise.resolve(aggregateBatch('twitch', 'twitch-empty', 'needs_auth')),
+          Promise.resolve(aggregateBatch('bilibili', 'bilibili-first')),
+          deferred.promise
+        ],
+        (snapshot: AggregateSearchResult): void => {
+          snapshots.push(snapshot);
+        },
+        WATERFALL_NOW_MS,
+        '',
+        100
+      );
+
+      await settleAggregateSearchMicrotasks();
+      expect(snapshots.length).assertEqual(1);
+      expect(snapshots[0].videos[0].id).assertEqual('bilibili-first');
+
+      deferred.finish(aggregateBatch('x', 'x-final'));
+      await finalPromise;
     });
 
     it('defers duplicate suppression until the complete aggregate result is finalized', 0, async () => {

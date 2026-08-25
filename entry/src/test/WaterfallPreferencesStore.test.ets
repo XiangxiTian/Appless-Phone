@@ -3,10 +3,12 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   aggregateSearchSourcesFromArgs,
   configureWaterfallEnabledSourcesForRuntime,
+  AggregateSearchSource,
   AggregateSearchSourceMetadata,
   aggregateSearchDefaultEnabledSourceIds,
   aggregateSearchRegistryMetadata,
   aggregateSearchRegistrySourceIds,
+  aggregateSearchInterestSourceIds,
   aggregateSearchSearchSourceIds,
   aggregateSearchRegistryVersion,
   WaterfallCandidate,
@@ -143,7 +145,7 @@ export default function waterfallPreferencesStoreTest() {
       const migrated = new WaterfallPreferencesStore(native as Object as preferences.Preferences).load();
       expect(migrated.version).assertEqual(2);
       expect(migrated.discoveryEnabledSources.join(','))
-        .assertEqual('youtube,x,applepodcasts,twitch');
+        .assertEqual('youtube,x,applepodcasts,twitch,github,steam,cnnews,globalnews');
 
       native.putSync(WATERFALL_PREFERENCES_KEY, JSON.stringify({ version: 2 }));
       expect(new WaterfallPreferencesStore(native as Object as preferences.Preferences).load().recentEvidence.length)
@@ -213,6 +215,25 @@ export default function waterfallPreferencesStoreTest() {
       expect(aggregateSearchRegistrySourceIds().indexOf('twitch')).assertLarger(-1);
       expect(emptyWaterfallPreferenceProfile().enabledSources.join(','))
         .assertEqual(aggregateSearchDefaultEnabledSourceIds().join(','));
+    });
+
+    it('uses the same registered source set for keyword search and discovery', 0, () => {
+      const newSources: AggregateSearchSource[] = ['github', 'steam', 'cnnews', 'globalnews'];
+      const metadata = aggregateSearchRegistryMetadata();
+
+      expect(aggregateSearchSearchSourceIds().join(','))
+        .assertEqual(aggregateSearchInterestSourceIds().join(','));
+      newSources.forEach((source: AggregateSearchSource): void => {
+        const row = metadata.filter((item: AggregateSearchSourceMetadata): boolean => item.source === source)[0];
+        expect(aggregateSearchSearchSourceIds().indexOf(source)).assertLarger(-1);
+        expect(aggregateSearchInterestSourceIds().indexOf(source)).assertLarger(-1);
+        expect(row.capabilities.search).assertTrue();
+        expect(row.capabilities.interest).assertTrue();
+        expect(row.defaultEnabled).assertTrue();
+        expect(row.introducedInRegistryVersion).assertEqual(4);
+      });
+      expect(metadata.filter((item: AggregateSearchSourceMetadata): boolean =>
+        ['chinanews', 'ithome', 'sspai', 'ifanr', 'v2ex'].indexOf(item.source) >= 0).length).assertEqual(0);
     });
 
     it('resets stored source selection for a new session without losing other preferences', 0, () => {
@@ -294,9 +315,9 @@ export default function waterfallPreferencesStoreTest() {
       expect(profile.explicitRules[0].effect).assertEqual('boost');
       expect(weight(profile, 'AI')).assertEqual(1);
       expect(emptyWaterfallPreferenceProfile().discoveryEnabledSources.join(','))
-        .assertEqual(aggregateSearchRegistrySourceIds().join(','));
+        .assertEqual(aggregateSearchDefaultEnabledSourceIds().join(','));
       expect(emptyWaterfallPreferenceProfile().enabledSources.join(','))
-        .assertEqual(aggregateSearchRegistrySourceIds().join(','));
+        .assertEqual(aggregateSearchDefaultEnabledSourceIds().join(','));
     });
 
     it('keeps Like and Dislike mutually exclusive while Save stays independent and undo restores time', 0, () => {
@@ -341,6 +362,21 @@ export default function waterfallPreferencesStoreTest() {
       const reopened = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
       const restored = waterfallCandidateFromSavedCard(reopened.loadCardRecords()[0].snapshot);
       expect(restored.mediaUrl).assertEqual('https://cdn.example/hosted-video.mp4');
+    });
+
+    it('restores saved Reddit cards through the reachable image cache', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      const reddit = card('reddit-image');
+      reddit.source = 'reddit';
+      reddit.mediaType = 'image_text';
+      reddit.coverUrl = 'https://i.redd.it/reddit-image.jpeg';
+      store.applyCardAction(reddit, 'save', true, 1000);
+
+      const reopened = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      const restored = waterfallCandidateFromSavedCard(reopened.loadCardRecords()[0].snapshot);
+      expect(restored.coverUrl).assertEqual(
+        'https://wsrv.nl/?url=https%3A%2F%2Fi.redd.it%2Freddit-image.jpeg&output=webp&w=1200');
     });
 
     it('keeps saved cards when card records exceed the bound', 0, () => {

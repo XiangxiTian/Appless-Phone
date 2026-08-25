@@ -190,6 +190,7 @@ import {
   AggregateSearchPartialObserver,
   aggregateMediaCandidates,
   aggregateVideoSourceBatchFromDynamicResults,
+  aggregateZhihuHotListBatch,
   callAggregateSearch,
   callAggregateSearchContinuation,
   callAggregateSearchContinuationForContext,
@@ -547,6 +548,8 @@ interface LocalProviderConfig {
   gmailMcpUserProject: string;
   youtubeApiKey: string;
   zhihuApiKey: string;
+  guardianApiKey: string;
+  newsApiApiKey: string;
   doubanPlaywrightMcpUrl: string;
   doubanPlaywrightMcpToken: string;
   twitchClientId: string;
@@ -627,6 +630,8 @@ interface LocalProviderRawConfig {
   GOOGLE_CLOUD_PROJECT?: string;
   YOUTUBE_API_KEY?: string;
   ZHIHU_API_KEY?: string;
+  GUARDIAN_API_KEY?: string;
+  NEWSAPI_API_KEY?: string;
   DOUBAN_PLAYWRIGHT_MCP_URL?: string;
   DOUBAN_PLAYWRIGHT_MCP_TOKEN?: string;
   TWITCH_CLIENT_ID?: string;
@@ -699,6 +704,8 @@ interface LocalProviderRawConfig {
   gmailMcpUserProject?: string;
   youtubeApiKey?: string;
   zhihuApiKey?: string;
+  guardianApiKey?: string;
+  newsApiApiKey?: string;
   doubanPlaywrightMcpUrl?: string;
   doubanPlaywrightMcpToken?: string;
   twitchClientId?: string;
@@ -1771,6 +1778,8 @@ let localProviderConfig: LocalProviderConfig = {
   gmailMcpUserProject: '',
   youtubeApiKey: '',
   zhihuApiKey: '',
+  guardianApiKey: '',
+  newsApiApiKey: '',
   doubanPlaywrightMcpUrl: '',
   doubanPlaywrightMcpToken: '',
   twitchClientId: '',
@@ -2182,6 +2191,8 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     gmailMcpUserProject: config.gmailMcpUserProject.trim(),
     youtubeApiKey: config.youtubeApiKey.trim(),
     zhihuApiKey: config.zhihuApiKey.trim(),
+    guardianApiKey: config.guardianApiKey.trim(),
+    newsApiApiKey: config.newsApiApiKey.trim(),
     doubanPlaywrightMcpUrl: config.doubanPlaywrightMcpUrl.trim(),
     doubanPlaywrightMcpToken: config.doubanPlaywrightMcpToken.trim(),
     twitchClientId: config.twitchClientId.trim(),
@@ -2219,6 +2230,10 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     twitch: {
       clientId: localProviderConfig.twitchClientId,
       clientSecret: localProviderConfig.twitchClientSecret
+    },
+    globalNews: {
+      guardianApiKey: localProviderConfig.guardianApiKey,
+      newsApiKey: localProviderConfig.newsApiApiKey
     }
   });
   aiLogInfo('[AIPhone][LocalProviderConfig] rawfile=' + LOCAL_PROVIDER_CONFIG_RAWFILE +
@@ -2247,6 +2262,8 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     ' gmailOauthClientSecretChars=' + localProviderConfig.gmailOauthClientSecret.length.toString() +
     ' youtubeApiKeyChars=' + localProviderConfig.youtubeApiKey.length.toString() +
     ' zhihuApiKeyChars=' + localProviderConfig.zhihuApiKey.length.toString() +
+    ' guardianApiKeyChars=' + localProviderConfig.guardianApiKey.length.toString() +
+    ' newsApiApiKeyChars=' + localProviderConfig.newsApiApiKey.length.toString() +
     ' doubanMcpUrlPresent=' + (localProviderConfig.doubanPlaywrightMcpUrl.length > 0 ? 'true' : 'false') +
     ' doubanMcpTokenChars=' + localProviderConfig.doubanPlaywrightMcpToken.length.toString() +
     ' twitchClientIdChars=' + localProviderConfig.twitchClientId.length.toString() +
@@ -2331,6 +2348,8 @@ export function configureLocalProviderConfigFromRawJson(rawJson: string): void {
     gmailMcpUserProject: firstText([parsed.GMAIL_MCP_USER_PROJECT, parsed.GOOGLE_CLOUD_PROJECT, parsed.gmailMcpUserProject]),
     youtubeApiKey: firstText([parsed.YOUTUBE_API_KEY, parsed.youtubeApiKey]),
     zhihuApiKey: firstText([parsed.ZHIHU_API_KEY, parsed.zhihuApiKey]),
+    guardianApiKey: firstText([parsed.GUARDIAN_API_KEY, parsed.guardianApiKey]),
+    newsApiApiKey: firstText([parsed.NEWSAPI_API_KEY, parsed.newsApiApiKey]),
     doubanPlaywrightMcpUrl: firstText([parsed.DOUBAN_PLAYWRIGHT_MCP_URL, parsed.doubanPlaywrightMcpUrl]),
     doubanPlaywrightMcpToken: firstText([parsed.DOUBAN_PLAYWRIGHT_MCP_TOKEN, parsed.doubanPlaywrightMcpToken]),
     twitchClientId: firstText([parsed.TWITCH_CLIENT_ID, parsed.twitchClientId]),
@@ -15639,6 +15658,19 @@ async function runWaterfallInterestRecallBody(
       await callComposioYouTubeMostPopularWithProviderData(10, token)
     );
     const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic, recall.continuation ?? null, 10);
+    logWaterfallInterestBatch(recall, batch);
+    onBatch({
+      request: recall,
+      batch,
+      candidates: aggregateMediaCandidates(
+        batch.videos, batch.posts, requestIndex * 10, '', 'done', 'popular', recall.weight)
+    });
+    return;
+  }
+  if (recall.route === 'popular' && allowedSources.indexOf('zhihu') >= 0) {
+    const batch = await aggregateZhihuHotListBatch(
+      { apiKey: localProviderConfig.zhihuApiKey }, waterfallInterestRecallLimitForSource('zhihu')
+    );
     logWaterfallInterestBatch(recall, batch);
     onBatch({
       request: recall,

@@ -38,6 +38,14 @@ const appScope = readFileSync(
   new URL('../AppScope/app.json5', import.meta.url),
   'utf8'
 );
+const cnnewsLogo = readFileSync(
+  new URL('../entry/src/main/resources/base/media/logo_cnnews.svg', import.meta.url),
+  'utf8'
+);
+const steamLogo = readFileSync(
+  new URL('../entry/src/main/resources/base/media/logo_steam.svg', import.meta.url),
+  'utf8'
+);
 
 function template(name) {
   const marker = `const ${name}: string = \``;
@@ -57,11 +65,34 @@ const sourceLabelsJson = JSON.stringify([
   { source: 'youtube', label: 'YouTube' },
   { source: 'bilibili', label: 'B 站' },
   { source: 'applepodcasts', label: 'Apple Podcasts' },
-  { source: 'twitch', label: 'Twitch' }
+  { source: 'twitch', label: 'Twitch' },
+  { source: 'github', label: 'GitHub' },
+  { source: 'steam', label: 'Steam' },
+  { source: 'cnnews', label: 'CNNews' },
+  { source: 'globalnews', label: 'GlobalNews' }
 ]);
 const sourceOnlyJson = JSON.stringify(['applepodcasts', 'twitch']);
-const searchSourcesJson = JSON.stringify(['youtube', 'bilibili', 'applepodcasts']);
-const interestSourcesJson = JSON.stringify(['youtube', 'bilibili', 'applepodcasts', 'twitch']);
+const searchSourcesJson = JSON.stringify([
+  'youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu', 'applepodcasts', 'twitch',
+  'github', 'steam', 'cnnews', 'globalnews'
+]);
+const interestSourcesJson = JSON.stringify([
+  'youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu', 'applepodcasts', 'twitch',
+  'github', 'steam', 'cnnews', 'globalnews'
+]);
+assert.deepEqual(JSON.parse(searchSourcesJson), [
+  'youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu', 'applepodcasts', 'twitch',
+  'github', 'steam', 'cnnews', 'globalnews'
+]);
+assert.deepEqual(JSON.parse(searchSourcesJson), JSON.parse(interestSourcesJson));
+assert.deepEqual(JSON.parse(interestSourcesJson), [
+  'youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu', 'applepodcasts', 'twitch',
+  'github', 'steam', 'cnnews', 'globalnews'
+]);
+assert.doesNotMatch(cnnewsLogo, /<image|data:image\/png/,
+  'the grouped CNNews mark must stay vector-only so ArkWeb cannot show broken nested images');
+assert.doesNotMatch(steamLogo, /<image|data:image\/png/,
+  'the Steam mark must stay vector-only');
 const waterfallTemplateWithRegistry = waterfallJs
   .split('${WATERFALL_SOURCE_LABELS_JSON}').join(sourceLabelsJson)
   .split('${WATERFALL_SOURCE_ONLY_SOURCES_JSON}').join(sourceOnlyJson)
@@ -69,6 +100,12 @@ const waterfallTemplateWithRegistry = waterfallJs
   .split('${WATERFALL_INTEREST_SOURCE_IDS_JSON}').join(interestSourcesJson);
 const emittedWaterfallJs = Function('return `' + waterfallTemplateWithRegistry + '`;')();
 assert.doesNotThrow(() => new vm.Script(emittedWaterfallJs));
+const aggregatePostMediaSource = renderer.slice(
+  renderer.indexOf('function renderPostMedia'),
+  renderer.indexOf('function renderPostLink')
+);
+assert.match(aggregatePostMediaSource, /class="aggregate-post-media"[^>]*onerror="this\.hidden=true"/,
+  'failed remote post media such as Reddit CDN images must not expose a broken image');
 const reducedMotionCss = waterfallCss.slice(waterfallCss.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
 assert.match(indexPage, /@State interestWaterfallFullscreen:\s*boolean\s*=\s*false/,
   'search and interest Waterfall surfaces must not overwrite one shared fullscreen flag');
@@ -376,6 +413,9 @@ assert.match(waterfallCss,
 assert.match(waterfallCss,
   /\.waterfall-reader-source \.waterfall-author-name\s*\{[^}]*max-width:\s*none[^}]*overflow:\s*visible[^}]*text-overflow:\s*clip[^}]*white-space:\s*normal/s,
   'detail author data must wrap instead of inheriting card ellipsis');
+assert.match(waterfallCss,
+  /@media \(max-width:\s*480px\)[\s\S]*?\.waterfall-reader-context\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*gap:\s*6px/s,
+  'phone details must place metadata on full-width rows instead of squeezing source, author, and date together');
 assert.match(waterfallCss, /\.waterfall-reader\s*\{[^}]*opacity:\s*0[^}]*scale\(0\.985\)[^}]*transform-origin:\s*center[^}]*transform 180ms var\(--ease-out\)/s,
   'opening details uses a short center fade, not a full-screen scale from the card');
 assert.match(waterfallCss, /\.waterfall-reader\.active\s*\{[^}]*opacity:\s*1[^}]*transform:\s*none/s,
@@ -575,13 +615,15 @@ const closePreferencesSource = waterfallJs.slice(
   waterfallJs.indexOf('function closePreferences'),
   waterfallJs.indexOf('function render()')
 );
-assert.match(closePreferencesSource, /scheduleIdleFlush\(selectedSources,\s*changed\)/,
-  'source changes still apply after the sheet is gone and the feed is idle');
+assert.match(closePreferencesSource, /changed[\s\S]*?(?:flushPendingPayload\(selectedSources\)|render\(\))/,
+  'source changes must update the local feed before the sheet returns control');
 assert.ok(
-  closePreferencesSource.indexOf('realignPresentedCard()') <
-    closePreferencesSource.indexOf('scheduleIdleFlush(selectedSources, changed)'),
-  'sheet close must restore the visible card before applying a deferred payload'
+  closePreferencesSource.indexOf('realignPresentedCard(changed)') <
+    closePreferencesSource.indexOf('setFullscreen(false)'),
+  'sheet close must restore the visible card before returning control'
 );
+assert.match(waterfallJs, /snapToCard && track\) track\.scrollTop = scrollTopForCard\(visibleCardIndex\(\)\)/,
+  'a changed source list must align the rebuilt feed to a real card before the next swipe');
 assert.match(waterfallJs, /readerMountedId/,
   'reopening the same card must reuse the already-built reader layer');
 const renderPreferencesSource = waterfallJs.slice(
@@ -952,6 +994,18 @@ const noCoverImageCandidate = {
   coverUrl: '',
   summary: 'A Reddit post without a cover should stay a compact text card'
 };
+const cnNewsCandidate = {
+  ...candidate('cnnews-current'),
+  source: 'cnnews',
+  provider: 'IT 之家',
+  mediaType: 'post'
+};
+const globalNewsCandidate = {
+  ...candidate('globalnews-current'),
+  source: 'globalnews',
+  provider: 'The Guardian',
+  mediaType: 'post'
+};
 const portraitCandidate = {
   ...candidate('portrait-current'),
   source: 'bilibili',
@@ -979,10 +1033,11 @@ const window = {
   __aiphoneWaterfallInitial: {
     surfaceId: 'surface-1',
     currentId: 'current',
-    enabledSources: ['youtube', 'bilibili', 'reddit', 'zhihu', 'hackernews', 'x', 'unknown'],
+    enabledSources: ['youtube', 'bilibili', 'reddit', 'zhihu', 'hackernews', 'x', 'cnnews', 'globalnews', 'unknown'],
     aggregateHtml: '',
     candidates: [candidate('current'), imageCandidate, textCandidate, portraitCandidate, noCoverImageCandidate,
       { ...candidate('x-current'), source: 'x', mediaType: 'post' },
+      cnNewsCandidate, globalNewsCandidate,
       { ...candidate('unknown-current'), source: 'unknown', mediaType: 'post' }],
     mediaEmbeds: {
       'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1'
@@ -1046,6 +1101,10 @@ assert.doesNotMatch(track.innerHTML, /class="waterfall-card-ambient"/,
 assert.doesNotMatch(track.innerHTML, /waterfall-card-shell--ambient/);
 assert.match(track.innerHTML, /waterfall-tone--youtube[^"\n]*" data-waterfall-id="current"/);
 assert.match(track.innerHTML, /waterfall-tone--zhihu[^"\n]*" data-waterfall-id="image-current"/);
+assert.match(track.innerHTML, />CNNews · IT 之家</,
+  'CNNews cards must retain the internal publisher without exposing a second settings source');
+assert.match(track.innerHTML, />GlobalNews · The Guardian</,
+  'GlobalNews cards must retain the publisher returned by the adapter');
 assert.match(track.innerHTML,
   /<article[^>]*data-waterfall-id="image-current"[^>]*><div class="waterfall-card-shell waterfall-card-shell--interactive" role="button" tabindex="0" data-waterfall-open="image-current">/,
   'ordinary image-text cards such as Zhihu must retain their whole-card reader action');
@@ -1770,11 +1829,17 @@ const preferenceTouchEnd = {
   target: preferenceDoneButton
 };
 preferences.emit('touchend', preferenceTouchEnd);
+assert.match(track.innerHTML, /queued-preference-payload/,
+  'closing source settings must apply the selected sources before an immediate swipe can start');
 if (!preferenceTouchStopped) {
   documentListeners.touchend?.(preferenceTouchEnd);
   runLatestTimer(96);
 } else {
-  runLatestTimer(240);
+  const deferredPreferenceTimer = timers.filter((timer) => timer.delay === 240 && !timer.canceled).at(-1);
+  if (deferredPreferenceTimer) {
+    deferredPreferenceTimer.canceled = true;
+    deferredPreferenceTimer.callback();
+  }
 }
 assert.match(track.innerHTML, /queued-preference-payload/,
   'closing source settings must let the queued payload flush after the exit motion');
@@ -1802,7 +1867,8 @@ window.__aiphoneApplyWaterfallUpdate({
   candidates: [{ ...candidate('late-preference-payload'), source: 'x' }],
   enabledSources: sourceInputs.map((input) => input.getAttribute('data-waterfall-source'))
 });
-runLatestTimer(100);
+assert.match(track.innerHTML, /late-preference-payload/,
+  'a source response after close must apply immediately instead of waiting on an exit timer');
 preferencesButton.emit('click');
 assert.equal(sourceInputs[1].checked, false,
   'a payload arriving during the exit motion must not revert the source selection');
@@ -1813,6 +1879,13 @@ preferences.emit('click', {
 });
 assert.equal(preferences.classList.contains('active'), false);
 assert.equal(preferenceBackPrevented, true, 'source back must use the delegated native click path');
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  currentId: 'late-preference-payload',
+  candidates: [{ ...candidate('late-preference-payload'), source: 'x' }],
+  enabledSources: sourceInputs.filter((input) => input.checked)
+    .map((input) => input.getAttribute('data-waterfall-source'))
+});
 preferencesButton.emit('click');
 backButton.emit('click');
 assert.deepEqual(fullscreenStates, ['true']);
@@ -1882,7 +1955,6 @@ sourceInputs.forEach((input) => { input.checked = false; });
 sourceInputs[0].checked = true;
 sourceInputs[0].emit('change');
 preferences.emit('click', { preventDefault: () => {}, target: preferenceBackButton });
-runLatestTimer(240);
 assert.match(track.innerHTML, /本轮内容已结束/);
 assert.doesNotMatch(track.innerHTML, /至少开启一个来源/);
 assert.match(track.innerHTML, /data-waterfall-empty-sources[^>]*>调整内容来源<\/button>/);

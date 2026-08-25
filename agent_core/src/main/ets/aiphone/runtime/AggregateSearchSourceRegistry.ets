@@ -12,7 +12,11 @@ const SOURCE_METADATA: AggregateSearchSourceMetadata[] = [
   { source: 'reddit', isExternal: true, languages: ['zh-Hans', 'zh-Hant', 'en'], languageFilterMode: 'none', introducedInRegistryVersion: 1, defaultEnabled: true, capabilities: { search: true, interest: true } },
   { source: 'zhihu', isExternal: false, languages: ['zh-Hans', 'zh-Hant'], languageFilterMode: 'intrinsic', introducedInRegistryVersion: 1, defaultEnabled: true, capabilities: { search: true, interest: true } },
   { source: 'applepodcasts', isExternal: true, languages: ['zh-Hans', 'zh-Hant', 'en'], languageFilterMode: 'regional', introducedInRegistryVersion: 2, defaultEnabled: true, capabilities: { search: true, interest: true } },
-  { source: 'twitch', isExternal: true, languages: ['zh-Hans', 'zh-Hant', 'en'], languageFilterMode: 'post_filter', introducedInRegistryVersion: 2, defaultEnabled: true, capabilities: { search: false, interest: true } }
+  { source: 'twitch', isExternal: true, languages: ['zh-Hans', 'zh-Hant', 'en'], languageFilterMode: 'post_filter', introducedInRegistryVersion: 2, defaultEnabled: true, capabilities: { search: true, interest: true } },
+  { source: 'github', isExternal: true, languages: ['zh-Hans', 'zh-Hant', 'en'], languageFilterMode: 'none', introducedInRegistryVersion: 4, defaultEnabled: true, capabilities: { search: true, interest: true } },
+  { source: 'steam', isExternal: true, languages: ['zh-Hans', 'zh-Hant', 'en'], languageFilterMode: 'none', introducedInRegistryVersion: 4, defaultEnabled: true, capabilities: { search: true, interest: true } },
+  { source: 'cnnews', isExternal: false, languages: ['zh-Hans', 'zh-Hant'], languageFilterMode: 'intrinsic', introducedInRegistryVersion: 4, defaultEnabled: true, capabilities: { search: true, interest: true } },
+  { source: 'globalnews', isExternal: true, languages: ['en'], languageFilterMode: 'intrinsic', introducedInRegistryVersion: 4, defaultEnabled: true, capabilities: { search: true, interest: true } }
 ];
 
 function cloneMetadata(metadata: AggregateSearchSourceMetadata): AggregateSearchSourceMetadata {

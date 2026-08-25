@@ -8,6 +8,10 @@ import {
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 import { callMediaVideoSearch } from './MediaVideoClient';
 import { searchApplePodcasts } from './ApplePodcastClient';
+import { loadCnNewsSource } from './PublicFeedClient';
+import { discoverPublicGitHub, searchPublicGitHub } from './GitHubPublicClient';
+import { discoverSteamNews } from './SteamNewsClient';
+import { GlobalNewsConfig, loadGlobalNews } from './GlobalNewsClient';
 import {
   DoubanPlaywrightMcpClient,
   DoubanPlaywrightMcpConfig,
@@ -15,6 +19,7 @@ import {
 } from './DoubanPlaywrightMcpClient';
 import {
   discoverTwitchInterestStreams,
+  searchTwitchChannels,
   TwitchChannelSearchBatch,
   TwitchChannelSearchItem,
   TwitchSearchConfig
@@ -128,10 +133,24 @@ function isDisplayableImageUrl(value: string): boolean {
     url.indexOf('pbs.twimg.com/') >= 0;
 }
 
+export function redditImageDeliveryUrl(value: string): string {
+  const url = decodeHttpUrl(value);
+  const lower = url.toLowerCase();
+  if (!lower.startsWith('https://i.redd.it/') && !lower.startsWith('https://preview.redd.it/') &&
+    !lower.startsWith('https://external-preview.redd.it/') &&
+    !lower.startsWith('https://thumbs.redditmedia.com/')) {
+    return url;
+  }
+  // ponytail: public cache is enough here; use an owned weserv deployment if an image SLA becomes necessary.
+  return 'https://wsrv.nl/?url=' + encodeURIComponent(url) + '&output=webp&w=1200';
+}
+
 function appendImageUrl(urls: string[], value: string): void {
   const url = decodeHttpUrl(value);
-  if (!isDisplayableImageUrl(url) || urls.indexOf(url) >= 0) return;
-  urls.push(url);
+  if (!isDisplayableImageUrl(url)) return;
+  const deliveredUrl = redditImageDeliveryUrl(url);
+  if (urls.indexOf(deliveredUrl) >= 0) return;
+  urls.push(deliveredUrl);
 }
 
 function waterfallPostCoverUrl(post: AggregateSearchPost): string {
@@ -263,6 +282,7 @@ export function aggregateMediaCandidates(
     candidates.push({
       id: video.id,
       source: video.source,
+      provider: video.provider,
       mediaType: 'video',
       title: video.title,
       summary: video.summary,
@@ -295,6 +315,7 @@ export function aggregateMediaCandidates(
     candidates.push({
       id: post.id,
       source: post.source,
+      provider: post.provider,
       mediaType: mediaType,
       title: waterfallTitle(post.title),
       summary: waterfallPostSummary(post),
@@ -327,6 +348,7 @@ export interface AggregateZhihuConfig {
 export interface AggregateExternalProviderConfig {
   doubanPlaywright: DoubanPlaywrightMcpConfig;
   twitch: TwitchSearchConfig;
+  globalNews: GlobalNewsConfig;
 }
 
 interface AggregateHttpResult {
@@ -342,7 +364,8 @@ export const AGGREGATE_SEARCH_PARTIAL_THROTTLE_MS: number = 5000;
 let runtimeEnabledSources: AggregateSearchSource[] = aggregateSearchRegistrySourceIds();
 let runtimeExternalProviderConfig: AggregateExternalProviderConfig = {
   doubanPlaywright: { mcpUrl: '', bearerToken: '' },
-  twitch: { clientId: '', clientSecret: '' }
+  twitch: { clientId: '', clientSecret: '' },
+  globalNews: { guardianApiKey: '', newsApiKey: '' }
 };
 let runtimePreferenceProfile: WaterfallPreferenceSnapshot | undefined = undefined;
 let runtimeSearchPolicy: AggregateSearchPolicy = {
@@ -351,6 +374,7 @@ let runtimeSearchPolicy: AggregateSearchPolicy = {
 };
 const X_PUBLIC_SEARCH_MARKER: string = 'X 公开 post 搜索关键词:';
 const ZHIHU_SEARCH_URL: string = 'https://developer.zhihu.com/api/v1/content/zhihu_search';
+const ZHIHU_HOT_LIST_URL: string = 'https://developer.zhihu.com/api/v1/content/hot_list';
 
 function textOf(value: AggregateArgValue): string {
   if (value === undefined || value === null) {
@@ -501,6 +525,10 @@ export function configureAggregateExternalProvidersForRuntime(config: AggregateE
     twitch: {
       clientId: config.twitch.clientId.trim(),
       clientSecret: config.twitch.clientSecret.trim()
+    },
+    globalNews: {
+      guardianApiKey: config.globalNews.guardianApiKey.trim(),
+      newsApiKey: config.globalNews.newsApiKey.trim()
     }
   };
 }
@@ -1413,6 +1441,11 @@ export function zhihuSearchUrl(query: string, count: number = 10): string {
   return ZHIHU_SEARCH_URL + '?Query=' + encodeURIComponent(query) + '&Count=' + encodeURIComponent(count.toString());
 }
 
+export function zhihuHotListUrl(limit: number = 10): string {
+  const bounded = Math.max(1, Math.min(30, Math.floor(limit)));
+  return ZHIHU_HOT_LIST_URL + '?Limit=' + encodeURIComponent(bounded.toString());
+}
+
 function zhihuTimestamp(): string {
   return Math.floor(Date.now() / 1000).toString();
 }
@@ -1421,6 +1454,30 @@ async function requestZhihuSearch(query: string, apiKey: string): Promise<Aggreg
   const request = http.createHttp();
   try {
     const response = await request.request(zhihuSearchUrl(query, 10), {
+      method: http.RequestMethod.GET,
+      header: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ' + apiKey.trim(),
+        'X-Request-Timestamp': zhihuTimestamp(),
+        'Content-Type': 'application/json'
+      },
+      usingProtocol: http.HttpProtocol.HTTP1_1,
+      connectTimeout: 10000,
+      readTimeout: 30000
+    });
+    return {
+      code: response.responseCode,
+      text: responseText(response.result)
+    };
+  } finally {
+    request.destroy();
+  }
+}
+
+async function requestZhihuHotList(limit: number, apiKey: string): Promise<AggregateHttpResult> {
+  const request = http.createHttp();
+  try {
+    const response = await request.request(zhihuHotListUrl(limit), {
       method: http.RequestMethod.GET,
       header: {
         'Accept': 'application/json',
@@ -1516,6 +1573,38 @@ export function zhihuPostsFromSearchPayload(rawJson: string): AggregateSearchPos
   return posts;
 }
 
+export function zhihuPostsFromHotListPayload(rawJson: string): AggregateSearchPost[] {
+  const posts: AggregateSearchPost[] = [];
+  zhihuItemsFromPayload(rawJson).forEach((item: Object): void => {
+    const record = item as DynamicPostRecord;
+    const title = plainPostText(recordText(record, ['Title', 'title']));
+    const url = recordText(record, ['Url', 'url']);
+    const summary = plainPostText(recordText(record, ['Summary', 'summary']));
+    const thumbnail = recordText(record, ['ThumbnailUrl', 'thumbnailUrl']);
+    if (title.length === 0 && summary.length === 0 && url.length === 0) {
+      return;
+    }
+    const contentId = recordText(record, ['ContentID', 'contentID', 'id']);
+    const identity = contentId || url.split('#')[0] || title + '|' + summary;
+    posts.push({
+      id: 'zhihu-hot-' + encodeURIComponent(identity).slice(0, 512),
+      source: 'zhihu',
+      provider: '知乎',
+      title: title.length > 0 ? title : '知乎热榜',
+      author: '',
+      handle: '',
+      text: summary,
+      url: url,
+      publishedAt: '',
+      score: '',
+      commentCount: '',
+      status: 'success',
+      rows: [{ label: 'Cover', value: thumbnail }]
+    });
+  });
+  return posts;
+}
+
 function statusFromZhihuError(error: Error | Object | string | number | boolean | null | undefined): string {
   const message = errorText(error);
   const lower = message.toLowerCase();
@@ -1550,6 +1639,33 @@ async function appendZhihuPosts(
   }
 }
 
+async function appendZhihuHotListPosts(
+  config: AggregateZhihuConfig,
+  limit: number,
+  posts: AggregateSearchPost[],
+  statuses: AggregateSearchSourceStatus[]
+): Promise<void> {
+  const apiKey = config.apiKey.trim();
+  if (apiKey.length === 0) {
+    statuses.push(statusFor('zhihu', 'needs_auth', '未配置 ZHIHU_API_KEY（知乎 Access Secret）。', 0));
+    return;
+  }
+  try {
+    const response = await requestZhihuHotList(limit, apiKey);
+    if (response.code < 200 || response.code >= 300) {
+      throw new Error('HTTP ' + response.code.toString() + ': ' + response.text.substring(0, 240));
+    }
+    const nextPosts = zhihuPostsFromHotListPayload(response.text);
+    nextPosts.forEach((post: AggregateSearchPost): void => {
+      posts.push(post);
+    });
+    statuses.push(statusFor('zhihu', nextPosts.length > 0 ? 'success' : 'empty',
+      '知乎热榜返回 ' + nextPosts.length.toString() + ' 条。', nextPosts.length));
+  } catch (error) {
+    statuses.push(statusFor('zhihu', statusFromZhihuError(error), '知乎热榜 API 调用失败：' + errorText(error), 0));
+  }
+}
+
 function emptyZhihuConfig(): AggregateZhihuConfig {
   return {
     apiKey: ''
@@ -1571,6 +1687,7 @@ class AggregateSearchPartialThrottle {
   }
 
   publish(snapshot: AggregateSearchResult): void {
+    if (snapshot.videos.length === 0 && snapshot.posts.length === 0) return;
     if (this.intervalMs === 0) {
       this.observer(snapshot);
       return;
@@ -1994,6 +2111,22 @@ async function aggregateZhihuSourceBatch(config: AggregateZhihuConfig, query: st
   };
 }
 
+export async function aggregateZhihuHotListBatch(
+  config: AggregateZhihuConfig,
+  limit: number = 10
+): Promise<AggregateSearchSourceBatch> {
+  const posts: AggregateSearchPost[] = [];
+  const statuses: AggregateSearchSourceStatus[] = [];
+  await appendZhihuHotListPosts(config, limit, posts, statuses);
+  return {
+    source: 'zhihu',
+    videos: [],
+    posts: posts.slice(0, limit),
+    status: statuses.length > 0 ? statuses[0] : statusFor('zhihu', 'empty', '知乎热榜返回 0 条。', 0),
+    continuation: null
+  };
+}
+
 function doubanPost(item: DoubanPublicSearchItem): AggregateSearchPost {
   const rows: AggregateSearchRowData[] = [];
   if (item.imageUrl.length > 0) {
@@ -2077,6 +2210,8 @@ function twitchPost(item: TwitchChannelSearchItem): AggregateSearchPost {
     details.push('科技热门');
   } else if (item.kind === 'game') {
     details.push('游戏热门');
+  } else {
+    details.push('关键词搜索');
   }
   if (item.gameName.length > 0) {
     details.push(item.gameName);
@@ -2105,17 +2240,10 @@ async function aggregateTwitchSourceBatch(
   policy: AggregateSearchPolicy,
   context: AggregateSearchSourceContext
 ): Promise<AggregateSearchSourceBatch> {
-  if (context !== 'interest') {
-    return {
-      source: 'twitch', videos: [], posts: [],
-      status: statusFor('twitch', 'unsupported', 'Twitch 仅用于发现流，普通聚合搜索不会发起请求。', 0),
-      continuation: null, rawCount: 0
-    };
-  }
-  const result: TwitchChannelSearchBatch = await discoverTwitchInterestStreams(
-    runtimeExternalProviderConfig.twitch,
-    { multilingual: policy.multilingual, technologyLimit: 3 }
-  );
+  const cursor = continuation !== null && continuation.kind === 'cursor' ? continuation.value : null;
+  const result: TwitchChannelSearchBatch = context === 'interest' ? await discoverTwitchInterestStreams(
+    runtimeExternalProviderConfig.twitch, { multilingual: policy.multilingual, technologyLimit: 3 }
+  ) : await searchTwitchChannels(runtimeExternalProviderConfig.twitch, query, limit, cursor);
   const posts = result.items.filter((item: TwitchChannelSearchItem): boolean =>
     twitchItemAllowedByPolicy(item, policy)).map((item: TwitchChannelSearchItem): AggregateSearchPost =>
     twitchPost(item));
@@ -2158,6 +2286,18 @@ function aggregateSourceBatch(
   }
   if (source === 'twitch') {
     return aggregateTwitchSourceBatch(query, continuation, limit, policy, context);
+  }
+  if (source === 'cnnews') {
+    return loadCnNewsSource(limit, context === 'search' ? query : '');
+  }
+  if (source === 'github') {
+    return context === 'interest' ? discoverPublicGitHub(limit) : searchPublicGitHub(query, limit);
+  }
+  if (source === 'steam') {
+    return discoverSteamNews(context === 'search' ? query : '', limit);
+  }
+  if (source === 'globalnews') {
+    return loadGlobalNews(runtimeExternalProviderConfig.globalNews, context === 'search' ? query : '', limit);
   }
   if (source === 'x') {
     const args: AggregateXSearchArgs = {

@@ -1,7 +1,7 @@
 import { WaterfallContinuation, WaterfallFeedState } from './WaterfallAnythingCore';
 
 export type AggregateSearchSource = 'youtube' | 'bilibili' | 'x' | 'hackernews' | 'reddit' | 'zhihu' |
-  'douban' | 'applepodcasts' | 'twitch';
+  'douban' | 'applepodcasts' | 'twitch' | 'github' | 'steam' | 'cnnews' | 'globalnews';
 export type AggregateSearchStatus = 'success' | 'empty' | 'needs_auth' | 'unsupported' | 'error';
 export type AggregateSearchLanguageTag = 'zh-Hans' | 'zh-Hant' | 'en';
 export type AggregateSearchLanguageFilterMode = 'intrinsic' | 'native' | 'regional' | 'post_filter' | 'none';
@@ -123,6 +123,18 @@ export function aggregateSourceLabel(source: AggregateSearchSource): string {
   }
   if (source === 'applepodcasts') {
     return 'Apple Podcasts';
+  }
+  if (source === 'github') {
+    return 'GitHub';
+  }
+  if (source === 'steam') {
+    return 'Steam';
+  }
+  if (source === 'cnnews') {
+    return 'CNNews';
+  }
+  if (source === 'globalnews') {
+    return 'GlobalNews';
   }
   return 'Twitch';
 }

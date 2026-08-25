@@ -4,6 +4,7 @@ import {
   aggregateSearchDefaultEnabledSourceIdsAfter,
   aggregateSearchRegistryVersion,
   aggregateSearchRegistrySourceIds,
+  redditImageDeliveryUrl,
   WaterfallCandidate,
   WaterfallExplicitPreference,
   WaterfallFormat,
@@ -27,6 +28,7 @@ export type WaterfallCardAction = 'like' | 'dislike' | 'save';
 export interface WaterfallSavedCard {
   id: string;
   source: string;
+  provider?: string;
   mediaType: WaterfallMediaType;
   title: string;
   summary: string;
@@ -243,6 +245,7 @@ function validMetric(value: WaterfallMetric): boolean {
 function validSavedCard(value: WaterfallSavedCard): boolean {
   return value !== null && typeof value.id === 'string' && value.id.trim().length > 0 &&
     typeof value.source === 'string' && value.source.trim().length > 0 &&
+    (value.provider === undefined || typeof value.provider === 'string') &&
     (value.mediaType === 'video' || value.mediaType === 'image_text' || value.mediaType === 'post') &&
     typeof value.title === 'string' && typeof value.summary === 'string' && typeof value.url === 'string' &&
     typeof value.coverUrl === 'string' &&
@@ -272,11 +275,12 @@ function copySavedCard(value: WaterfallSavedCard): WaterfallSavedCard {
   return {
     id: value.id,
     source: value.source,
+    provider: value.provider,
     mediaType: value.mediaType,
     title: value.title,
     summary: value.summary,
     url: value.url,
-    coverUrl: value.coverUrl,
+    coverUrl: redditImageDeliveryUrl(value.coverUrl),
     mediaUrl: value.mediaUrl ?? '',
     publishedAt: value.publishedAt,
     authorName: value.authorName,
@@ -319,6 +323,7 @@ function savedCardFromCandidate(candidate: WaterfallCandidate): WaterfallSavedCa
   return {
     id: candidate.id.trim(),
     source: candidate.source.trim(),
+    provider: candidate.provider?.trim(),
     mediaType: candidate.mediaType,
     title: candidate.title,
     summary: candidate.summary,
@@ -338,6 +343,7 @@ export function waterfallCandidateFromSavedCard(value: WaterfallSavedCard): Wate
   return {
     id: value.id,
     source: value.source,
+    provider: value.provider,
     mediaType: value.mediaType,
     title: value.title,
     summary: value.summary,

@@ -6,6 +6,7 @@ const TWITCH_TOKEN_URL: string = 'https://id.twitch.tv/oauth2/token';
 const TWITCH_GAMES_URL: string = 'https://api.twitch.tv/helix/games';
 const TWITCH_TOP_GAMES_URL: string = 'https://api.twitch.tv/helix/games/top';
 const TWITCH_STREAMS_URL: string = 'https://api.twitch.tv/helix/streams';
+const TWITCH_CHANNEL_SEARCH_URL: string = 'https://api.twitch.tv/helix/search/channels';
 const DEFAULT_RESULT_LIMIT: number = 10;
 const MAX_RESULT_LIMIT: number = 100;
 const TOKEN_EXPIRY_SKEW_MS: number = 5 * 60 * 1000;
@@ -51,6 +52,29 @@ interface TwitchStreamsPayload {
   data?: TwitchStreamPayload[];
 }
 
+interface TwitchChannelPayload {
+  broadcaster_language?: string;
+  broadcaster_login?: string;
+  display_name?: string;
+  game_id?: string;
+  game_name?: string;
+  id?: string;
+  is_live?: boolean;
+  tags?: string[];
+  thumbnail_url?: string;
+  title?: string;
+  started_at?: string;
+}
+
+interface TwitchPaginationPayload {
+  cursor?: string;
+}
+
+interface TwitchChannelsPayload {
+  data?: TwitchChannelPayload[];
+  pagination?: TwitchPaginationPayload;
+}
+
 interface TwitchTokenPayload {
   access_token?: string;
   expires_in?: number;
@@ -66,7 +90,7 @@ export interface TwitchInterestDiscoveryOptions {
   technologyLimit?: number;
 }
 
-export type TwitchInterestStreamKind = 'tech' | 'game';
+export type TwitchInterestStreamKind = 'tech' | 'game' | 'search';
 
 export interface TwitchChannelSearchItem {
   id: string;
@@ -227,6 +251,16 @@ export function twitchStreamsUrl(
   return TWITCH_STREAMS_URL + '?' + encodedQuery(params);
 }
 
+export function twitchChannelSearchUrl(query: string, limit: number, continuation: string = ''): string {
+  const params: string[][] = [
+    ['query', query.trim()],
+    ['live_only', 'true'],
+    ['first', normalizedLimit(limit).toString()]
+  ];
+  if (continuation.trim().length > 0) params.push(['after', continuation.trim()]);
+  return TWITCH_CHANNEL_SEARCH_URL + '?' + encodedQuery(params);
+}
+
 export function twitchHelixHeaders(clientId: string, accessToken: string): Record<string, string> {
   return {
     'Accept': 'application/json',
@@ -253,6 +287,10 @@ function normalizedTags(value: string[] | undefined): string[] {
   return tags;
 }
 
+function normalizedThumbnailUrl(value: TwitchPayloadValue): string {
+  return textOf(value).trim().replace('{width}', '640').replace('{height}', '360');
+}
+
 function streamFromPayload(item: TwitchStreamPayload, kind: TwitchInterestStreamKind): TwitchChannelSearchItem | null {
   const id = textOf(item.id).trim();
   const login = textOf(item.user_login).trim();
@@ -270,7 +308,7 @@ function streamFromPayload(item: TwitchStreamPayload, kind: TwitchInterestStream
     gameName: textOf(item.game_name).trim(),
     language: textOf(item.language).trim().toLowerCase(),
     isLive: true,
-    thumbnailUrl: textOf(item.thumbnail_url).trim().replace('{width}', '640').replace('{height}', '360'),
+    thumbnailUrl: normalizedThumbnailUrl(item.thumbnail_url),
     startedAt: textOf(item.started_at).trim(),
     url: twitchChannelUrl(login),
     tags: normalizedTags(item.tags),
@@ -292,6 +330,43 @@ function streamsFromPayload(rawJson: string, kind: TwitchInterestStreamKind): Tw
   items.sort((left: TwitchChannelSearchItem, right: TwitchChannelSearchItem): number =>
     right.viewerCount - left.viewerCount || left.id.localeCompare(right.id));
   return items;
+}
+
+function channelsFromPayload(rawJson: string): TwitchChannelSearchBatch {
+  const payload = JSON.parse(rawJson) as TwitchChannelsPayload;
+  const rawItems = payload.data !== undefined && Array.isArray(payload.data) ? payload.data : [];
+  const items: TwitchChannelSearchItem[] = [];
+  rawItems.forEach((rawItem: TwitchChannelPayload): void => {
+    const id = textOf(rawItem.id).trim();
+    const login = textOf(rawItem.broadcaster_login).trim();
+    const displayName = textOf(rawItem.display_name).trim();
+    if (id.length === 0 || login.length === 0 || rawItem.is_live !== true) return;
+    items.push({
+      id: id,
+      broadcasterLogin: login,
+      broadcasterName: displayName.length > 0 ? displayName : login,
+      title: textOf(rawItem.title).trim(),
+      gameId: textOf(rawItem.game_id).trim(),
+      gameName: textOf(rawItem.game_name).trim(),
+      language: textOf(rawItem.broadcaster_language).trim().toLowerCase(),
+      isLive: true,
+      thumbnailUrl: normalizedThumbnailUrl(rawItem.thumbnail_url),
+      startedAt: textOf(rawItem.started_at).trim(),
+      url: twitchChannelUrl(login),
+      tags: normalizedTags(rawItem.tags),
+      viewerCount: 0,
+      kind: 'search'
+    });
+  });
+  const cursor = textOf(payload.pagination?.cursor).trim();
+  return {
+    items: items,
+    status: items.length > 0 ? 'success' : 'empty',
+    reason: items.length > 0 ? 'success' : 'empty',
+    message: 'Twitch 关键词搜索返回 ' + items.length.toString() + ' 个直播频道。',
+    continuation: cursor.length > 0 ? cursor : null,
+    httpStatus: 200
+  };
 }
 
 function gamesFromPayload(rawJson: string): TwitchGamePayload[] {
@@ -332,9 +407,9 @@ class SystemTwitchRcpSession implements TwitchRcpSession {
     request.configuration = {
       transfer: {
         timeout: {
-          connectMs: 10000,
-          transferMs: 30000,
-          inactivityMs: 30000
+          connectMs: 4000,
+          transferMs: 10000,
+          inactivityMs: 10000
         }
       }
     };
@@ -852,6 +927,70 @@ async function discoverTwitchInterestStreamsWithoutClosing(
   return result.batch;
 }
 
+async function executeTwitchChannelSearch(
+  clientId: string,
+  accessToken: string,
+  query: string,
+  limit: number,
+  continuation: string,
+  transport: TwitchSearchTransport
+): Promise<TwitchChannelSearchBatch> {
+  const response = await discoveryGet(
+    transport, twitchChannelSearchUrl(query, limit, continuation),
+    twitchHelixHeaders(clientId, accessToken), '关键词搜索');
+  const failure = helixFailure(response, '关键词搜索');
+  if (failure !== null) return failure;
+  try {
+    return channelsFromPayload(response.text);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : JSON.stringify(error);
+    return failedBatch('error', 'provider_error',
+      'Twitch 关键词搜索响应解析失败：' + message.substring(0, 160), response.code);
+  }
+}
+
+async function searchTwitchChannelsWithoutClosing(
+  config: TwitchSearchConfig,
+  query: string,
+  limit: number,
+  continuation: string | null,
+  transport: TwitchSearchTransport,
+  nowMs: number
+): Promise<TwitchChannelSearchBatch> {
+  const clientId = config.clientId.trim();
+  const clientSecret = config.clientSecret.trim();
+  const cleanQuery = query.trim();
+  if (cleanQuery.length === 0) return failedBatch('empty', 'empty', 'Twitch 搜索词为空。', 200);
+  if (clientId.length === 0 || clientSecret.length === 0) {
+    return failedBatch('unsupported', 'disabled',
+      'Twitch 来源已禁用：缺少 TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET；未发起网络请求。', 0);
+  }
+  const normalizedConfig: TwitchSearchConfig = { clientId: clientId, clientSecret: clientSecret };
+  let accessToken: string;
+  try {
+    accessToken = await acquireTwitchAppToken(normalizedConfig, transport, nowMs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : JSON.stringify(error);
+    return failedBatch('needs_auth', 'auth',
+      'Twitch app access token 获取失败：' + message.substring(0, 160), 0);
+  }
+  let batch = await executeTwitchChannelSearch(
+    clientId, accessToken, cleanQuery, limit, continuation ?? '', transport);
+  if (batch.httpStatus === 401) {
+    invalidateTwitchToken(accessToken);
+    try {
+      accessToken = await acquireTwitchAppToken(normalizedConfig, transport, nowMs);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      return failedBatch('needs_auth', 'auth',
+        'Twitch app access token 刷新失败：' + message.substring(0, 160), 0);
+    }
+    batch = await executeTwitchChannelSearch(
+      clientId, accessToken, cleanQuery, limit, continuation ?? '', transport);
+  }
+  return batch;
+}
+
 async function closeTwitchSearchTransport(transport: TwitchSearchTransport): Promise<void> {
   if (transport.close === undefined) {
     return;
@@ -871,6 +1010,21 @@ export async function discoverTwitchInterestStreams(
 ): Promise<TwitchChannelSearchBatch> {
   try {
     return await discoverTwitchInterestStreamsWithoutClosing(config, options, transport, nowMs);
+  } finally {
+    await closeTwitchSearchTransport(transport);
+  }
+}
+
+export async function searchTwitchChannels(
+  config: TwitchSearchConfig,
+  query: string,
+  limit: number = DEFAULT_RESULT_LIMIT,
+  continuation: string | null = null,
+  transport: TwitchSearchTransport = new DefaultTwitchSearchTransport(),
+  nowMs: number = Date.now()
+): Promise<TwitchChannelSearchBatch> {
+  try {
+    return await searchTwitchChannelsWithoutClosing(config, query, limit, continuation, transport, nowMs);
   } finally {
     await closeTwitchSearchTransport(transport);
   }

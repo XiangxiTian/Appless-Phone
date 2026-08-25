@@ -27,9 +27,13 @@ import {
 import {
   APP_LOGO_APPLE_PODCASTS,
   APP_LOGO_BILIBILI,
+  APP_LOGO_CNNEWS,
   APP_LOGO_DOUBAN,
+  APP_LOGO_GITHUB,
+  APP_LOGO_GLOBALNEWS,
   APP_LOGO_HACKERNEWS,
   APP_LOGO_REDDIT,
+  APP_LOGO_STEAM,
   APP_LOGO_TWITCH,
   APP_LOGO_X,
   APP_LOGO_YOUTUBE,
@@ -1540,6 +1544,10 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-collection-empty { padding: 22vh 16px 0; color: var(--muted); font-size: 14px; text-align: center; }
 .waterfall-toast.actionable { display: flex; align-items: center; gap: 16px; pointer-events: auto; }
 .waterfall-toast.actionable button { border: 0; background: transparent; color: #f0c7b8; padding: 4px 0; font: inherit; font-weight: 780; }
+@media (max-width: 480px) {
+  .waterfall-reader-context { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .waterfall-reader-source { flex-wrap: wrap; }
+}
 @media (max-width: 360px) {
   .waterfall-reader-signals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -1632,6 +1640,7 @@ const WATERFALL_JS: string = `
   var mode = directDiscovery ? 'discovering' : 'entry';
   var enabledSources = state && state.enabledSources ? state.enabledSources.slice() : [];
   var preferenceBaseline = '';
+  var committedPreferenceSources = null;
   var aggregateHtml = state && state.aggregateHtml ? state.aggregateHtml : '';
   var advancePending = false;
   var renderedCurrentId = '';
@@ -1729,6 +1738,12 @@ const WATERFALL_JS: string = `
       if (labels[index].source === source) return labels[index].label;
     }
     return source;
+  }
+  function cardSourceLabel(item) {
+    var primary = sourceLabel(item.source);
+    var provider = text(item.provider).trim();
+    return (item.source === 'cnnews' || item.source === 'globalnews') && provider && provider !== primary ?
+      primary + ' · ' + provider : primary;
   }
   function sourceTone(source) {
     var key = text(source).trim().toLowerCase();
@@ -2449,9 +2464,10 @@ const WATERFALL_JS: string = `
     if (!node) return index * track.clientHeight;
     return snapTopForNode(node, index, Math.max(1, track.clientHeight));
   }
-  function realignPresentedCard() {
+  function realignPresentedCard(snapToCard) {
     var run = function () {
       if (cardMetrics.length === 0) refreshCardMetrics();
+      if (snapToCard && track) track.scrollTop = scrollTopForCard(visibleCardIndex());
       updateCardPresentation(true);
     };
     if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run);
@@ -2539,7 +2555,12 @@ const WATERFALL_JS: string = `
       }
     }
     state = payload;
-    enabledSources = payload.enabledSources ? payload.enabledSources.slice() : [];
+    var payloadSources = payload.enabledSources ? payload.enabledSources.slice() : [];
+    if (committedPreferenceSources) {
+      if (payloadSources.join('|') === committedPreferenceSources.join('|')) committedPreferenceSources = null;
+      else payloadSources = committedPreferenceSources.slice();
+    }
+    enabledSources = payloadSources;
     if (oldEnabledSources !== enabledSources.join('|')) alignToCurrent = true;
     advancePending = false;
   }
@@ -2660,7 +2681,7 @@ const WATERFALL_JS: string = `
       escapeHtml(title) + '" referrerpolicy="no-referrer" onerror="this.hidden=true" /></div>' :
       (item.mediaType === 'video' ? videoStage : '');
     var context = '<div class="waterfall-reader-context"><div class="waterfall-reader-source">' +
-      sourceLogoMarkup(item.source) + '<span>' + escapeHtml(sourceLabel(item.source)) + '</span>' +
+      sourceLogoMarkup(item.source) + '<span>' + escapeHtml(cardSourceLabel(item)) + '</span>' +
       authorMarkup(item) + '</div><span>' +
       escapeHtml(publishedLabel(item.publishedAt)) + '</span></div>';
     var copy = '<div class="waterfall-reader-copy">' + context + '<h2>' + escapeHtml(title) + '</h2>' +
@@ -2729,7 +2750,7 @@ const WATERFALL_JS: string = `
     var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
     var cardClass = cardClassName(item);
     var meta = '<div class="waterfall-cinema-meta">' + sourceLogoMarkup(item.source) + '<span>' +
-      escapeHtml(sourceLabel(item.source)) + '</span>' + authorMarkup(item) + '</div>';
+      escapeHtml(cardSourceLabel(item)) + '</span>' + authorMarkup(item) + '</div>';
     var twitchEmbedUrl = item.source === 'twitch' ? twitchEmbedForUrl(text(item.url)) : '';
     var inlinePlay = twitchEmbedUrl ? '<button type="button" class="waterfall-inline-play" data-waterfall-inline-play="' +
       escapeHtml(item.id) + '" aria-label="播放 Twitch 直播">播放</button>' : '';
@@ -2805,7 +2826,7 @@ const WATERFALL_JS: string = `
       return '<article class="waterfall-collection-row" role="button" tabindex="0" ' +
         'data-waterfall-collection-row="' + escapeHtml(item.id) + '"><div class="waterfall-collection-cover">' +
         cover + '</div><div class="waterfall-collection-copy"><div class="waterfall-collection-meta">' +
-        escapeHtml(sourceLabel(item.source)) + (item.authorName ? ' · ' + escapeHtml(item.authorName) : '') +
+        escapeHtml(cardSourceLabel(item)) + (item.authorName ? ' · ' + escapeHtml(item.authorName) : '') +
         '</div><h3>' + escapeHtml(text(item.title).trim() || sourceLabel(item.source) + ' 内容') +
         '</h3><span>' + escapeHtml(savedTimeLabel(item.savedAt)) + '</span></div>' +
         cardActionButton(item, 'save', '取消收藏', 'bookmark') + '</article>';
@@ -2924,15 +2945,20 @@ const WATERFALL_JS: string = `
     if (track && track.scrollTop !== preferencesFeedScrollTop) {
       track.scrollTop = preferencesFeedScrollTop;
     }
-    realignPresentedCard();
     enabledSources = selectedSources;
+    if (changed) committedPreferenceSources = selectedSources.slice();
+    interactionActive = false;
+    scrollActive = false;
+    pageAnchorIndex = -1;
     if (preferenceApplyTimer !== null) clearTimeout(preferenceApplyTimer);
-    preferenceApplyTimer = changed ? setTimeout(function () {
-      preferenceApplyTimer = null;
-      if (pendingPayload) flushPendingPayload(selectedSources);
-    }, 100) : null;
+    preferenceApplyTimer = null;
+    if (changed) {
+      if (!flushPendingPayload(selectedSources)) render();
+      cardMetrics = [];
+    }
+    realignPresentedCard(changed);
     if (changed) postSourceSelection();
-    if (pendingPayload || changed) scheduleIdleFlush(selectedSources, changed);
+    if (pendingPayload) scheduleIdleFlush(selectedSources, false);
     if (directDiscovery) setFullscreen(false);
   }
   function render() {
@@ -3665,6 +3691,7 @@ export function buildWaterfallHomePayload(
       const savedCard: WaterfallSavedCardView = {
         id: card.id,
         source: card.source,
+        provider: card.provider,
         mediaType: card.mediaType,
         title: card.title,
         summary: card.summary,
@@ -3780,10 +3807,12 @@ function waterfallUiIconMarkup(name: string): string {
 export function renderAggregateSearchHomeDocument(
   document: HtmlHomeDocument,
   isBusy: boolean = false,
-  startInDiscovery: boolean = false
+  startInDiscovery: boolean = false,
+  deferInitialPayload: boolean = false
 ): string {
   const waterfall = buildWaterfallHomePayload(document, isBusy);
-  const waterfallJson = waterfall === null ? 'null' : JSON.stringify(waterfall).replace(/</g, '\\u003c');
+  const waterfallJson = waterfall === null || deferInitialPayload ? 'null' :
+    JSON.stringify(waterfall).replace(/</g, '\\u003c');
   const sourceLogosJson = JSON.stringify({
     youtube: APP_LOGO_YOUTUBE,
     bilibili: APP_LOGO_BILIBILI,
@@ -3792,7 +3821,11 @@ export function renderAggregateSearchHomeDocument(
     reddit: APP_LOGO_REDDIT,
     zhihu: APP_LOGO_ZHIHU,
     applepodcasts: APP_LOGO_APPLE_PODCASTS,
-    twitch: APP_LOGO_TWITCH
+    twitch: APP_LOGO_TWITCH,
+    github: APP_LOGO_GITHUB,
+    steam: APP_LOGO_STEAM,
+    cnnews: APP_LOGO_CNNEWS,
+    globalnews: APP_LOGO_GLOBALNEWS
   }).replace(/</g, '\\u003c');
   const uiIconsJson = JSON.stringify({
     back: waterfallUiIconMarkup('back'),
@@ -3825,7 +3858,8 @@ export function renderAggregateSearchHomeDocument(
     '<style>', AGGREGATE_CSS, WATERFALL_CSS, '</style></head><body',
     startInDiscovery ? ' class="waterfall-direct"' : '', '>',
     '<main class="aggregate-shell">',
-    waterfall === null ? renderAggregateMainContent(document, isBusy, false) : waterfall.aggregateHtml,
+    deferInitialPayload ? '' :
+      (waterfall === null ? renderAggregateMainContent(document, isBusy, false) : waterfall.aggregateHtml),
     '</main>', waterfall !== null ? '<section id="waterfall-discovery" class="waterfall-overlay' +
       (startInDiscovery ? ' active' : '') + '">' +
       '<div id="waterfall-toolbar" class="waterfall-toolbar">' +
@@ -4019,7 +4053,8 @@ function renderPostMedia(block: HtmlHomeBlock): string {
     return '';
   }
   return '<div class="aggregate-post-media-grid">' + urls.map((url: string) => {
-    return '<img class="aggregate-post-media" src="' + escapeAttribute(url) + '" alt="帖子图片" loading="lazy" />';
+    return '<img class="aggregate-post-media" src="' + escapeAttribute(url) +
+      '" alt="帖子图片" loading="lazy" onerror="this.hidden=true" />';
   }).join('') + '</div>';
 }
 
@@ -4114,6 +4149,18 @@ function sourceLogoUrl(source: string): string {
   if (source === 'twitch') {
     return APP_LOGO_TWITCH;
   }
+  if (source === 'github') {
+    return APP_LOGO_GITHUB;
+  }
+  if (source === 'steam') {
+    return APP_LOGO_STEAM;
+  }
+  if (source === 'cnnews') {
+    return APP_LOGO_CNNEWS;
+  }
+  if (source === 'globalnews') {
+    return APP_LOGO_GLOBALNEWS;
+  }
   return '';
 }
 
@@ -4125,7 +4172,7 @@ function sourceCssValue(source: string): string {
   const clean = source.trim().toLowerCase();
   if (clean === 'youtube' || clean === 'bilibili' || clean === 'x' || clean === 'hackernews' ||
     clean === 'reddit' || clean === 'zhihu' || clean === 'douban' || clean === 'applepodcasts' ||
-    clean === 'twitch') {
+    clean === 'twitch' || clean === 'github' || clean === 'steam' || clean === 'cnnews' || clean === 'globalnews') {
     return clean;
   }
   return 'unknown';
@@ -4158,6 +4205,18 @@ function aggregateSourceLabel(source: string, fallback: string): string {
   }
   if (source === 'twitch') {
     return 'Twitch';
+  }
+  if (source === 'github') {
+    return 'GitHub';
+  }
+  if (source === 'steam') {
+    return 'Steam';
+  }
+  if (source === 'cnnews') {
+    return 'CNNews';
+  }
+  if (source === 'globalnews') {
+    return 'GlobalNews';
   }
   return fallback;
 }

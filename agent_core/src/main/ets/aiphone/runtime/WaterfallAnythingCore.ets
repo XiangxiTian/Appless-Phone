@@ -46,6 +46,11 @@ function usesChineseDiscoveryQuery(source: string): boolean {
   return source === 'zhihu' || source === 'bilibili';
 }
 
+function usesPopularDiscovery(source: string): boolean {
+  return source === 'zhihu' || source === 'github' || source === 'steam' || source === 'cnnews' ||
+    source === 'globalnews';
+}
+
 export function planWaterfallInterestRecall(
   _profile: WaterfallPreferenceSnapshot,
   _recentPositiveCandidates: WaterfallRankedCandidate[],
@@ -65,6 +70,10 @@ export function planWaterfallInterestRecall(
     if (source === 'youtube') {
       return { route: 'popular', query: '', sources: [source], weight: 1, continuation: null };
     }
+    if (usesPopularDiscovery(source)) {
+      fallbackIndex++;
+      return { route: 'popular', query: '', sources: [source], weight: 1, continuation: null };
+    }
     if (source === 'twitch') {
       return { route: 'explore', query: '', sources: [source], weight: 1, continuation: null };
     }
@@ -79,6 +88,7 @@ export function planWaterfallInterestRecall(
 export interface WaterfallCandidate {
   id: string;
   source: string;
+  provider?: string;
   mediaType: WaterfallMediaType;
   title: string;
   summary: string;
@@ -430,6 +440,7 @@ function toRankedCandidate(item: RankedCandidateInternal): WaterfallRankedCandid
   return {
     id: item.candidate.id,
     source: item.candidate.source,
+    provider: item.candidate.provider,
     mediaType: item.candidate.mediaType,
     title: item.candidate.title,
     summary: item.candidate.summary,
@@ -1290,6 +1301,7 @@ function rankedToCandidates(items: WaterfallRankedCandidate[]): WaterfallCandida
   return items.map((item: WaterfallRankedCandidate): WaterfallCandidate => ({
     id: item.id,
     source: item.source,
+    provider: item.provider,
     mediaType: item.mediaType,
     title: item.title,
     summary: item.summary,
@@ -1348,6 +1360,7 @@ function deferredRankedCandidate(candidate: WaterfallCandidate): WaterfallRanked
   return {
     id: candidate.id,
     source: candidate.source,
+    provider: candidate.provider,
     mediaType: candidate.mediaType,
     title: candidate.title,
     summary: candidate.summary,

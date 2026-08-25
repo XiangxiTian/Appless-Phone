@@ -3540,7 +3540,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('https://i1.hdslb.com/bfs/archive/cover.jpg')).assertLarger(-1);
     });
 
-    it('renders official local icons for active new aggregate search sources', 0, () => {
+    it('renders local icons and secondary publishers for the four new aggregate sources', 0, () => {
       const doc = aggregateSearchDocumentFixture();
       doc.blocks.push({
         id: 'status-applepodcasts', kind: 'aggregate-source-status', title: 'Apple Podcasts', subtitle: 'ok',
@@ -3548,8 +3548,29 @@ export default function htmlHomeRendererTest() {
       }, {
         id: 'status-twitch', kind: 'aggregate-source-status', title: 'Twitch', subtitle: 'ok',
         status: 'success', source: 'twitch', metrics: [], rows: [], actions: []
+      }, {
+        id: 'status-github', kind: 'aggregate-source-status', title: 'GitHub', subtitle: 'ok',
+        status: 'success', source: 'github', metrics: [], rows: [], actions: []
+      }, {
+        id: 'status-steam', kind: 'aggregate-source-status', title: 'Steam', subtitle: 'ok',
+        status: 'success', source: 'steam', metrics: [], rows: [], actions: []
+      }, {
+        id: 'status-cnnews', kind: 'aggregate-source-status', title: 'CNNews', subtitle: 'ok',
+        status: 'success', source: 'cnnews', metrics: [], rows: [], actions: []
+      }, {
+        id: 'status-globalnews', kind: 'aggregate-source-status', title: 'GlobalNews', subtitle: 'ok',
+        status: 'success', source: 'globalnews', metrics: [], rows: [], actions: []
       });
-      doc.waterfall = waterfallRendererFixture().waterfall;
+      const state = waterfallRendererFixture().waterfall;
+      if (state?.current !== null && state?.current !== undefined) {
+        state.current.source = 'cnnews';
+        state.current.provider = 'IT 之家';
+      }
+      if (state !== undefined && state.stable.length > 0) {
+        state.stable[0].source = 'globalnews';
+        state.stable[0].provider = 'The Guardian';
+      }
+      doc.waterfall = state;
 
       const html = renderHtmlHomeDocument(doc);
 
@@ -3557,6 +3578,18 @@ export default function htmlHomeRendererTest() {
         .assertLarger(-1);
       expect(html.indexOf('data-source="twitch" aria-label="Twitch"><img src="data:image/svg+xml;base64,'))
         .assertLarger(-1);
+      expect(html.indexOf('data-source="github" aria-label="GitHub"><img src="data:image/svg+xml;base64,'))
+        .assertLarger(-1);
+      expect(html.indexOf('data-source="steam" aria-label="Steam"><img src="data:image/svg+xml;base64,'))
+        .assertLarger(-1);
+      expect(html.indexOf('data-source="cnnews" aria-label="CNNews"><img src="data:image/svg+xml;base64,'))
+        .assertLarger(-1);
+      expect(html.indexOf('data-source="globalnews" aria-label="GlobalNews"><img src="data:image/svg+xml;base64,'))
+        .assertLarger(-1);
+      expect(html.indexOf('"provider":"IT 之家"')).assertLarger(-1);
+      expect(html.indexOf('"provider":"The Guardian"')).assertLarger(-1);
+      expect(html.indexOf('"chinanews"')).assertEqual(-1);
+      expect(html.indexOf('"ithome"')).assertEqual(-1);
       expect(html.indexOf('data-source="douban"')).assertEqual(-1);
       expect(html.indexOf('"douban":"data:image')).assertEqual(-1);
       expect(html.indexOf('"applepodcasts":"data:image/png;base64,')).assertLarger(-1);
@@ -3651,7 +3684,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('waterfall-status waterfall-status--empty')).assertLarger(-1);
       expect(html.indexOf('var sourceNames = sources.map')).assertEqual(-1);
       expect(html.indexOf('var sourceNames = directDiscovery ? ["youtube"')).assertLarger(-1);
-      expect(html.indexOf('"applepodcasts","twitch"] : ["youtube"')).assertLarger(-1);
+      expect(html.indexOf('"applepodcasts","twitch","github","steam","cnnews","globalnews"] : ["youtube"')).assertLarger(-1);
       expect(html.indexOf('target="_blank" rel="noopener noreferrer">查看来源</a>')).assertEqual(-1);
       expect(html.indexOf('target="_self" rel="noopener noreferrer">查看来源</a>')).assertEqual(-1);
       expect(html.indexOf('data-waterfall-reason')).assertLarger(-1);
@@ -3793,6 +3826,14 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('window.__aiphoneWaterfallDirect=true')).assertLarger(-1);
       expect(html.indexOf('aria-label="返回首页"')).assertLarger(-1);
       expect(html.indexOf('waterfall.home.back')).assertLarger(-1);
+    });
+
+    it('loads a stable aggregate shell before pushing the first waterfall payload', 0, () => {
+      const html = renderAggregateSearchHomeDocument(waterfallRendererFixture(), false, false, true);
+
+      expect(html.indexOf('window.__aiphoneWaterfallInitial=null')).assertLarger(-1);
+      expect(html.indexOf('window.__aiphoneApplyWaterfallUpdate')).assertLarger(-1);
+      expect(html.indexOf('video-1 title')).assertEqual(-1);
     });
 
     it('labels ordinary source windows as content instead of payment', 0, () => {

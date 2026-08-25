@@ -1723,7 +1723,7 @@ struct Index {
     if (this.waterfallShellHtml.length > 0 && this.waterfallShellSurfaceId === surfaceId) {
       return;
     }
-    this.waterfallShellHtml = renderHtmlHomeDocument(document, false);
+    this.waterfallShellHtml = renderAggregateSearchHomeDocument(document, false, false, true);
     this.waterfallShellSurfaceId = surfaceId;
   }
 
@@ -9539,6 +9539,77 @@ struct Index {
   }
 
   @Builder
+  private ConfigPageContent() {
+    ConfigPage({
+      baseUrl: $baseUrl,
+      apiKey: $apiKey,
+      selectedModel: $selectedModel,
+      customParametersJson: $customParametersJson,
+      aggregateDomesticOnly: $aggregateDomesticOnly,
+      aggregateMultilingual: $aggregateMultilingual,
+      foodProviderDelayEnabled: $foodProviderDelayEnabled,
+      foodProviderDelayMs: $foodProviderDelayMs,
+      foodPartialThrottleMs: $foodPartialThrottleMs,
+      ignoreToolSurfaceUpdates: $ignoreToolSurfaceUpdates,
+      htmlHomeDebugExportEnabled: $htmlHomeDebugExportEnabled,
+      htmlHomeDebugExportPath: this.htmlHomeDebugExportPath,
+      didiMcpSandboxEnabled: $didiMcpSandboxEnabled,
+      showAdvancedSettings: $showAdvancedSettings,
+      connectionStatus: this.connectionStatus,
+      connectionMessage: this.connectionMessage,
+      isBusy: this.isBusy,
+      lastModelRequest: this.lastModelRequest,
+      lastModelOutput: this.lastModelOutput,
+      lastError: this.lastError,
+      refreshTick: this.refreshTick,
+      personaPacks: this.personaPacks,
+      selectedPersonaId: $selectedPersonaId,
+      personaSoulDraft: $personaSoulDraft,
+      personaMemoryDraft: $personaMemoryDraft,
+      personaSaveMessage: this.personaSaveMessage,
+      composioUserId: this.composioUserId,
+      composioAuthItems: this.composioAuthItems,
+      composioAuthMessage: this.composioAuthMessage,
+      composioAuthBusy: this.composioAuthBusy,
+      onBack: () => {
+        this.showConfigPage = false;
+      },
+      onSelectModelPreset: (preset: string) => {
+        this.saveModelPreset(preset);
+      },
+      onOpenUiAgentLab: () => {
+        this.openUiAgentLab();
+      },
+      onTestConnection: () => {
+        this.testConnection();
+      },
+      onSelectPersona: (personaId: string) => {
+        this.selectPersonaForEdit(personaId);
+      },
+      onSavePersona: () => {
+        this.savePersonaDraft();
+      },
+      onResetPersona: () => {
+        this.resetPersonaDraft();
+      },
+      onExportHtmlHomeDocument: () => {
+        this.exportCurrentHtmlHomeDocument();
+      },
+      onToggleDidiMcpSandbox: (isOn: boolean) => {
+        this.configureDidiMcpSandboxRuntime(isOn);
+      },
+      onToggleAggregateDomesticOnly: (isOn: boolean) => {
+        this.aggregateDomesticOnly = isOn;
+        this.saveAggregateSearchPolicy();
+      },
+      onToggleAggregateMultilingual: (isOn: boolean) => {
+        this.aggregateMultilingual = isOn;
+        this.saveAggregateSearchPolicy();
+      }
+    })
+  }
+
+  @Builder
   private BimSpace() {
     if (this.selectedBimId.length > 0 && this.selectedBimRecordSnapshot !== null &&
       this.selectedBimRecordSnapshot.id === this.selectedBimId) {
@@ -9616,74 +9687,6 @@ struct Index {
         },
         onOpenExternalAuth: (url: string) => {
           this.openExternalUrl(url);
-        }
-      })
-    } else if (this.showConfigPage) {
-      ConfigPage({
-        baseUrl: $baseUrl,
-        apiKey: $apiKey,
-        selectedModel: $selectedModel,
-        customParametersJson: $customParametersJson,
-        aggregateDomesticOnly: $aggregateDomesticOnly,
-        aggregateMultilingual: $aggregateMultilingual,
-        foodProviderDelayEnabled: $foodProviderDelayEnabled,
-        foodProviderDelayMs: $foodProviderDelayMs,
-        foodPartialThrottleMs: $foodPartialThrottleMs,
-        ignoreToolSurfaceUpdates: $ignoreToolSurfaceUpdates,
-        htmlHomeDebugExportEnabled: $htmlHomeDebugExportEnabled,
-        htmlHomeDebugExportPath: this.htmlHomeDebugExportPath,
-        didiMcpSandboxEnabled: $didiMcpSandboxEnabled,
-        showAdvancedSettings: $showAdvancedSettings,
-        connectionStatus: this.connectionStatus,
-        connectionMessage: this.connectionMessage,
-        isBusy: this.isBusy,
-        lastModelRequest: this.lastModelRequest,
-        lastModelOutput: this.lastModelOutput,
-        lastError: this.lastError,
-        refreshTick: this.refreshTick,
-        personaPacks: this.personaPacks,
-        selectedPersonaId: $selectedPersonaId,
-        personaSoulDraft: $personaSoulDraft,
-        personaMemoryDraft: $personaMemoryDraft,
-        personaSaveMessage: this.personaSaveMessage,
-        composioUserId: this.composioUserId,
-        composioAuthItems: this.composioAuthItems,
-        composioAuthMessage: this.composioAuthMessage,
-        composioAuthBusy: this.composioAuthBusy,
-        onBack: () => {
-          this.showConfigPage = false;
-        },
-        onSelectModelPreset: (preset: string) => {
-          this.saveModelPreset(preset);
-        },
-        onOpenUiAgentLab: () => {
-          this.openUiAgentLab();
-        },
-        onTestConnection: () => {
-          this.testConnection();
-        },
-        onSelectPersona: (personaId: string) => {
-          this.selectPersonaForEdit(personaId);
-        },
-        onSavePersona: () => {
-          this.savePersonaDraft();
-        },
-        onResetPersona: () => {
-          this.resetPersonaDraft();
-        },
-        onExportHtmlHomeDocument: () => {
-          this.exportCurrentHtmlHomeDocument();
-        },
-        onToggleDidiMcpSandbox: (isOn: boolean) => {
-          this.configureDidiMcpSandboxRuntime(isOn);
-        },
-        onToggleAggregateDomesticOnly: (isOn: boolean) => {
-          this.aggregateDomesticOnly = isOn;
-          this.saveAggregateSearchPolicy();
-        },
-        onToggleAggregateMultilingual: (isOn: boolean) => {
-          this.aggregateMultilingual = isOn;
-          this.saveAggregateSearchPolicy();
         }
       })
     } else {
@@ -9893,6 +9896,7 @@ struct Index {
         this.bimRootIndex = index;
         if (index === 1) this.ensureInterestWaterfall();
       })
+      .bindContentCover(this.showConfigPage, this.ConfigPageContent, ModalTransition.NONE)
     }
   }
 }

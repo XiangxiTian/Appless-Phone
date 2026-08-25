@@ -264,7 +264,7 @@ export default function waterfallInterestRefillTest() {
       expect(nonTwitchRequests.map((request: WaterfallInterestRecallRequest): string =>
         request.sources[0]).join(',')).assertEqual('youtube,x,reddit,zhihu,bilibili');
       expect(nonTwitchRequests.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
-        .assertEqual(',tech news,artificial intelligence,编程开发,科学科普');
+        .assertEqual(',tech news,artificial intelligence,,科学科普');
       expect(twitchRequests.length).assertEqual(1);
       expect(twitchRequests[0].query).assertEqual('');
       expect(twitchRequests[0].sources.join(',')).assertEqual('twitch');

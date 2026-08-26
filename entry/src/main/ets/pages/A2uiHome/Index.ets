@@ -1039,6 +1039,7 @@ struct Index {
   @State pendingFirecrawlToolId: string = '';
   @State inputText: string = '';
   @State bimRootIndex: number = 0;
+  @State showBimPage: boolean = false;
   @State selectedBimId: string = '';
   @State bimInputText: string = '';
   @State bimRecords: BimRecord[] = [];
@@ -2760,6 +2761,7 @@ struct Index {
     this.loadWaterfallPreferences();
     this.loadFoodAddressBook();
     this.loadFoodFavorites();
+    this.loadPublicPersona();
     this.subscribeTrainPresaleHandoff();
     this.subscribeWaterfallConversationTypedTest();
     this.requestPendingTrainPresaleResume();
@@ -2863,6 +2865,7 @@ struct Index {
 
   private openPublicPersona(): void {
     aiLogInfo('[AIPhone][PublicPersonaEntry] open=true');
+    this.loadPublicPersona();
     this.showPublicPersonaPage = true;
   }
 
@@ -3899,7 +3902,10 @@ struct Index {
 
   private openBimRoot(): void {
     this.bimUiError = '';
-    this.bimRootController.changeIndex(0, !this.bimReduceMotion);
+    this.selectedBimId = '';
+    this.selectedBimRecordSnapshot = null;
+    this.refreshBimRecords();
+    this.showBimPage = true;
   }
 
   private openBimDetail(bimId: string): void {
@@ -9769,6 +9775,18 @@ struct Index {
       this.showConfigPage = false;
       return true;
     }
+    if (this.showPublicPersonaPage) {
+      this.showPublicPersonaPage = false;
+      return true;
+    }
+    if (this.showBimPage) {
+      if (this.selectedBimId.length > 0) {
+        this.closeBimDetail();
+      } else {
+        this.showBimPage = false;
+      }
+      return true;
+    }
     if (!this.showComposioAuthPage) {
       if (this.bimRootIndex === 1) {
         this.interestWaterfallBackRequestTick = this.interestWaterfallBackRequestTick + 1;
@@ -9913,6 +9931,86 @@ struct Index {
     }
   }
 
+  @Builder
+  private BimPageContent() {
+    Column() {
+      Row() {
+        Button('‹')
+          .width(42)
+          .height(42)
+          .fontSize(28)
+          .fontColor('#2B3033')
+          .backgroundColor('#CCFFFFFF')
+          .borderRadius(21)
+          .onClick((): void => {
+            if (this.selectedBimId.length > 0) {
+              this.closeBimDetail();
+            } else {
+              this.showBimPage = false;
+            }
+          })
+        Text('心上事')
+          .layoutWeight(1)
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111415')
+          .textAlign(TextAlign.Center)
+          .margin({ right: 42 })
+      }
+      .width('100%')
+      .height(54)
+      .alignItems(VerticalAlign.Center)
+      .padding({ left: 16, right: 16 })
+
+      Column() {
+        this.BimSpace()
+      }
+      .width('100%')
+      .layoutWeight(1)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#F9FAFB')
+  }
+
+  @Builder
+  private PublicPersonaPageContent() {
+    PublicPersonaPage({
+      phase: this.publicPersonaPhase,
+      candidates: this.publicPersonaCandidates,
+      progress: this.publicPersonaProgress,
+      snapshot: this.publicPersonaSnapshot,
+      errorMessage: this.publicPersonaError,
+      onBack: (): void => {
+        this.showPublicPersonaPage = false;
+      },
+      onChooseSetup: (): void => {
+        this.publicPersonaPhase = 'input';
+      },
+      onSkip: (): void => {
+        this.skipPublicPersonaOnboarding();
+      },
+      onStartDiscovery: (username: string, mode: PublicPersonaSearchMode): void => {
+        this.startPublicPersonaDiscovery(username, mode);
+      },
+      onConfirm: (candidateIds: string[]): void => {
+        this.confirmPublicPersona(candidateIds);
+      },
+      onSaveMarkdown: (markdown: string): boolean => {
+        return this.savePublicPersonaMarkdown(markdown);
+      },
+      onReinferMbti: (): void => {
+        this.reinferPublicPersonaMbti();
+      },
+      onSetMbtiHidden: (hidden: boolean): void => {
+        this.setPublicPersonaMbtiHidden(hidden);
+      },
+      onDelete: (): boolean => {
+        return this.deletePublicPersona();
+      }
+    })
+  }
+
   build() {
     if (this.showComposioAuthPage) {
       ComposioAuthPage({
@@ -9935,6 +10033,10 @@ struct Index {
       })
     } else if (this.showConfigPage) {
       this.ConfigPageContent();
+    } else if (this.showPublicPersonaPage) {
+      this.PublicPersonaPageContent();
+    } else if (this.showBimPage) {
+      this.BimPageContent();
     } else {
       Swiper(this.bimRootController) {
       HomePage({
@@ -9989,6 +10091,15 @@ struct Index {
         reduceMotion: this.bimReduceMotion,
         onOpenConfig: () => {
           this.showConfigPage = true;
+        },
+        onOpenPublicPersona: () => {
+          this.openPublicPersona();
+        },
+        onToggleHistory: () => {
+          this.showHistory = !this.showHistory;
+        },
+        onOpenBim: () => {
+          this.openBimRoot();
         },
         onResetSession: () => {
           this.resetCurrentSession();
@@ -10090,6 +10201,7 @@ struct Index {
           .width('100%')
           .height('100%')
           .objectFit(ImageFit.Cover)
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
           .hitTestBehavior(HitTestMode.Transparent)
           .align(Alignment.TopStart)
 
@@ -10133,6 +10245,7 @@ struct Index {
       }
       .width('100%')
       .height('100%')
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       }
       .width('100%')
       .height('100%')

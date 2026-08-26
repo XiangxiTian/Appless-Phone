@@ -191,7 +191,7 @@ export function voiceInputTextAfterRecognition(current: string, recognized: stri
 
 export function connectionStatusLabel(status: string): string {
   if (status === 'checking') {
-    return '检查中';
+    return '连接中';
   }
   if (status === 'ready') {
     return '连接正常';

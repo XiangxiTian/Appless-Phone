@@ -12,9 +12,6 @@ import {
   COLOR_INK,
   COLOR_LINE,
   COLOR_MUTED,
-  COLOR_PAGE,
-  COLOR_PANEL,
-  COLOR_PANEL_SHADOW,
   COLOR_TEXT,
   statusBackground,
   statusColor
@@ -37,6 +34,17 @@ import {
   ComposioToolkitSummary
 } from './ComposioAuthViewData';
 import { composioToolkitLogoResource } from './ComposioLogoResource';
+
+const CONFIG_GUIDE_CARD_BACKGROUND: string = '#FAFFFFFF';
+const CONFIG_GUIDE_CARD_EDGE: string = '#7AFFFFFF';
+const CONFIG_GUIDE_CARD_SHADOW: string = '#21000000';
+const CONFIG_GUIDE_CARD_RADIUS: number = 30;
+const CONNECTION_BADGE_IDLE_BACKGROUND: string = '#F1EEEA';
+const CONNECTION_BADGE_CHECKING_BACKGROUND: string = '#F4E9E3';
+const CONNECTION_BADGE_READY_BACKGROUND: string = '#E8F2EC';
+const CONNECTION_BADGE_ERROR_BACKGROUND: string = '#F7E9E7';
+const CONNECTION_BADGE_READY_COLOR: string = '#397154';
+const CONNECTION_BADGE_ERROR_COLOR: string = '#A44D45';
 
 @Component
 export struct ConfigPage {
@@ -96,14 +104,54 @@ export struct ConfigPage {
 
   @Builder
   StatusBadge() {
-    Text(connectionStatusLabel(this.connectionStatus))
-      .fontSize(12)
-      .fontWeight(FontWeight.Medium)
-      .fontColor(statusColor(this.connectionStatus))
-      .padding({ left: 10, right: 10, top: 5, bottom: 5 })
-      .backgroundColor(statusBackground(this.connectionStatus))
-      .borderRadius(9)
-      .border({ width: 1, color: statusColor(this.connectionStatus) })
+    Row({ space: 6 }) {
+      if (this.connectionStatus === 'checking') {
+        LoadingProgress()
+          .width(12)
+          .height(12)
+          .color(COLOR_ACCENT_DEEP)
+      } else {
+        Circle()
+          .width(7)
+          .height(7)
+          .fill(this.connectionBadgeColor())
+      }
+
+      Text(connectionStatusLabel(this.connectionStatus))
+        .fontSize(11)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.connectionBadgeColor())
+    }
+    .height(28)
+    .padding({ left: 11, right: 12 })
+    .backgroundColor(this.connectionBadgeBackground())
+    .borderRadius(14)
+  }
+
+  private connectionBadgeColor(): string {
+    if (this.connectionStatus === 'checking') {
+      return COLOR_ACCENT_DEEP;
+    }
+    if (this.connectionStatus === 'ready') {
+      return CONNECTION_BADGE_READY_COLOR;
+    }
+    if (this.connectionStatus === 'error') {
+      return CONNECTION_BADGE_ERROR_COLOR;
+    }
+    return COLOR_MUTED;
+  }
+
+  private connectionBadgeBackground(): string {
+    if (this.connectionStatus === 'checking') {
+      return CONNECTION_BADGE_CHECKING_BACKGROUND;
+    }
+    if (this.connectionStatus === 'ready') {
+      return CONNECTION_BADGE_READY_BACKGROUND;
+    }
+    if (this.connectionStatus === 'error') {
+      return CONNECTION_BADGE_ERROR_BACKGROUND;
+    }
+    return CONNECTION_BADGE_IDLE_BACKGROUND;
   }
 
   private selectedPersona(): PersonaPack | null {
@@ -437,10 +485,10 @@ export struct ConfigPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(18)
-    .backgroundColor(COLOR_PANEL)
-    .borderRadius(16)
-    .border({ width: 1, color: COLOR_CARD_EDGE })
-    .shadow({ radius: 22, color: COLOR_PANEL_SHADOW, offsetX: 0, offsetY: 10 })
+    .backgroundColor(CONFIG_GUIDE_CARD_BACKGROUND)
+    .borderRadius(CONFIG_GUIDE_CARD_RADIUS)
+    .border({ width: 1, color: CONFIG_GUIDE_CARD_EDGE })
+    .shadow({ radius: 22, color: CONFIG_GUIDE_CARD_SHADOW, offsetX: 0, offsetY: 12 })
     .margin({ bottom: 14 })
   }
 
@@ -697,16 +745,24 @@ export struct ConfigPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(18)
-    .backgroundColor(COLOR_PANEL)
-    .borderRadius(16)
-    .border({ width: 1, color: COLOR_CARD_EDGE })
-    .shadow({ radius: 22, color: COLOR_PANEL_SHADOW, offsetX: 0, offsetY: 10 })
+    .backgroundColor(CONFIG_GUIDE_CARD_BACKGROUND)
+    .borderRadius(CONFIG_GUIDE_CARD_RADIUS)
+    .border({ width: 1, color: CONFIG_GUIDE_CARD_EDGE })
+    .shadow({ radius: 22, color: CONFIG_GUIDE_CARD_SHADOW, offsetX: 0, offsetY: 12 })
     .margin({ bottom: 14 })
   }
 
   build() {
-    Scroll() {
-      Column() {
+    Stack({ alignContent: Alignment.Center }) {
+      Image($r('app.media.home_light_aurora_background'))
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Cover)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .hitTestBehavior(HitTestMode.Transparent)
+
+      Scroll() {
+        Column() {
         Row() {
           Button('返回')
             .height(40)
@@ -1041,16 +1097,21 @@ export struct ConfigPage {
         .width('100%')
         .alignItems(HorizontalAlign.Start)
         .padding(18)
-        .backgroundColor(COLOR_PANEL)
-        .borderRadius(16)
-        .border({ width: 1, color: COLOR_CARD_EDGE })
-        .shadow({ radius: 22, color: COLOR_PANEL_SHADOW, offsetX: 0, offsetY: 10 })
+        .backgroundColor(CONFIG_GUIDE_CARD_BACKGROUND)
+        .borderRadius(CONFIG_GUIDE_CARD_RADIUS)
+        .border({ width: 1, color: CONFIG_GUIDE_CARD_EDGE })
+        .shadow({ radius: 22, color: CONFIG_GUIDE_CARD_SHADOW, offsetX: 0, offsetY: 12 })
+        }
+        .width('100%')
+        .padding(16)
       }
       .width('100%')
-      .padding(16)
+      .height('100%')
+      .backgroundColor('#00000000')
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(COLOR_PAGE)
+    .backgroundColor('#FFFDF9')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

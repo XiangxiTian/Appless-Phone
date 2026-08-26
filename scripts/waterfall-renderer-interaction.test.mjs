@@ -316,6 +316,11 @@ assert.doesNotMatch(waterfallJs, /data-waterfall-top-hotzone/);
 assert.match(waterfallCss, /\.waterfall-toolbar\s*\{[^}]*opacity:\s*1/s);
 assert.match(waterfallCss, /\.waterfall-toolbar\s*\{[^}]*left:\s*0[^}]*right:\s*0[^}]*background:\s*linear-gradient/s,
   'discovery chrome must fade into the feed instead of sitting on a solid strip');
+assert.match(waterfallCss,
+  /\.waterfall-toolbar\s*\{[^}]*grid-template-columns:\s*1fr auto 1fr/s,
+  'the fixed search title must stay centered between the back action and toolbar tools');
+assert.match(waterfallCss, /\.waterfall-toolbar-label\s*\{[^}]*white-space:\s*nowrap/s,
+  'the compact back label must never wrap onto two lines');
 assert.match(waterfallCss, /\.waterfall-toolbar button,[^}]*\.waterfall-toolbar-title\s*\{[^}]*border:\s*0[^}]*box-shadow:\s*none/s,
   'persistent top-bar controls must not keep floating button surfaces');
 assert.match(waterfallJs, /data-waterfall-open/);
@@ -344,6 +349,18 @@ assert.match(renderer, /data-waterfall-search-open/,
   'direct discovery needs one explicit search entry in its existing toolbar');
 assert.match(renderer, /id="waterfall-search-form"/,
   'search must expand in the discovery toolbar instead of opening another page');
+assert.match(renderer, /id="waterfall-toolbar-title"/,
+  'the persistent discovery title must expose one stateful search indicator');
+assert.match(waterfallJs, /function syncSearchTitle\(\)[\s\S]*?searchActive && searchSubmitted \? '搜索' : '发现'[\s\S]*?waterfallToolbarTitle\.textContent/,
+  'submitted results must identify search without clipping a repeated keyword in the toolbar');
+assert.match(waterfallJs,
+  /waterfallBack\.setAttribute\('aria-label', searchActive && searchSubmitted \? '返回发现' : '返回首页'\)/,
+  'the back action accessibility label must follow the visible search hierarchy');
+assert.match(waterfallJs, /function closeSearchUi[\s\S]*?syncSearchTitle\(\)/,
+  'leaving search must restore the discovery title before the feed is revealed');
+assert.match(waterfallJs,
+  /function syncSearchMode\(payload\)\s*\{\s*if \(!directDiscovery \|\| searchRestorePending \|\|/,
+  'late search payloads must not reactivate search while Discovery is being restored');
 assert.match(waterfallCss,
   /\.waterfall-toolbar\.is-searching[\s\S]*?\.waterfall-search-form[\s\S]*?transform:\s*none/,
   'the selected A interaction must morph the search field in place');
@@ -364,6 +381,9 @@ assert.match(waterfallJs, /searchInput\.blur\(\)/,
 assert.match(indexPage,
   /\.onChange\(\(index: number\)[\s\S]*?index === 1[\s\S]*?else inputMethod\.getController\(\)\.hideTextInput\(\)/,
   'returning home must dismiss a keyboard opened by discovery search');
+assert.match(indexPage,
+  /actionId\.length === 0 && sourceBimId\.length === 0 \?\s*waterfallSearchQueryForHomePrompt\(trimmed\)[\s\S]*?appendMessage\('user', visibleText\)[\s\S]*?ensureInterestWaterfall\(false\)[\s\S]*?startInterestWaterfallSearch\([\s\S]*?bimRootController\.changeIndex\(1/,
+  'only Home aggregate intents may preserve the user turn and route directly into Waterfall search');
 assert.match(indexPage,
   /if \(document\.kind !== 'aggregate-search'\) \{[\s\S]*?return document;[\s\S]*?return createHtmlHomeDocument\(\{[\s\S]*?messages: this\.messages/,
   'a persisted legacy aggregate surface must fall back to the normal home without deleting conversation history');
@@ -541,6 +561,11 @@ assert.doesNotMatch(waterfallJs, /querySelector\('\[data-waterfall-reader-close\
 assert.match(waterfallCss,
   /\.waterfall-preferences\s*\{[^}]*transform:\s*translate3d\(0, 24px, 0\)[^}]*opacity:\s*0/s,
   'the source sheet must enter with a short slide and fade');
+assert.match(waterfallCss,
+  /\.waterfall-preferences\s*\{[^}]*border:\s*1px solid rgba\(255, 255, 255, 0\.72\)[^}]*background:\s*linear-gradient\(145deg, rgba\(255, 255, 255, 0\.68\), rgba\(243, 240, 236, 0\.54\)\)[^}]*backdrop-filter:\s*blur\(38px\) saturate\(145%\) brightness\(1\.08\)/s,
+  'source settings must keep the in-page glass material while suppressing feed text behind it');
+assert.match(waterfallCss, /@media \(prefers-reduced-transparency: reduce\)[\s\S]*?\.waterfall-preferences\s*\{[^}]*backdrop-filter:\s*none/s,
+  'the glass source sheet needs a legible reduced-transparency fallback');
 assert.match(waterfallCss,
   /\.waterfall-preferences\.active\s*\{[^}]*transform:\s*translate3d\(0, 0, 0\)[^}]*transition-delay:\s*0s/s);
 assert.match(waterfallCss,

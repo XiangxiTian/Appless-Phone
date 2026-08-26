@@ -268,6 +268,11 @@ export function hasAggregateSearchIntent(prompt: string): boolean {
   return asksMixedView || mentionsVideoSource && mentionsTextSource || !mentionsVideoSource && !mentionsTextSource;
 }
 
+export function waterfallSearchQueryForHomePrompt(prompt: string): string {
+  const normalized = prompt.trim();
+  return hasAggregateSearchIntent(normalized) ? aggregateSearchQueryFromArgs(normalized, null) : '';
+}
+
 function inferredDailyBriefToolIdForPrompt(prompt: string): string {
   const hasDailyBrief = containsAny(prompt, ['今日日报', '今日简报', '个人日报']);
   const hasOpenVerb = containsAny(prompt, ['看', '查看', '打开', '生成', '重新生成', '重做', '刷新']);

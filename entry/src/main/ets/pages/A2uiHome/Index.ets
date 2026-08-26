@@ -439,7 +439,8 @@ import {
   directRideToolIdForActionId,
   hasAggregateSearchIntent,
   resolveA2uiHomeSubmitToolRequest,
-  resolveA2uiHomeToolRequest
+  resolveA2uiHomeToolRequest,
+  waterfallSearchQueryForHomePrompt
 } from './render/A2uiHomeToolRequest';
 import {
   createDailyBriefErrorSurface,
@@ -2059,7 +2060,7 @@ struct Index {
     if (recallSources.length > 0) this.runInterestRecall(recallSources);
   }
 
-  private ensureInterestWaterfall(): void {
+  private ensureInterestWaterfall(startRecall: boolean = true): void {
     if (this.interestWaterfallFeedState === null) {
       this.interestWaterfallGeneration += 1;
       this.interestRecallRound = 0;
@@ -2096,7 +2097,7 @@ struct Index {
       this.interestWaterfallHtml = renderAggregateSearchHomeDocument(document, false, true);
       this.publishInterestWaterfallPayload();
     }
-    if (!this.interestRecallStarted) {
+    if (startRecall && !this.interestRecallStarted) {
       this.interestRecallStarted = true;
       this.runInterestRecall();
     }
@@ -5493,6 +5494,23 @@ struct Index {
       return;
     }
     this.isBusy = true;
+    const waterfallQuery = actionId.length === 0 && sourceBimId.length === 0 ?
+      waterfallSearchQueryForHomePrompt(trimmed) : '';
+    if (waterfallQuery.length > 0) {
+      try {
+        this.inputText = inputTextAfterPromptSubmit(this.inputText);
+        this.appendMessage('user', visibleText);
+        if (this.showDeepSearch) this.closeDeepSearch();
+        this.ensureInterestWaterfall(false);
+        this.interestRecallStarted = true;
+        this.startInterestWaterfallSearch(waterfallQuery);
+        this.bimRootController.changeIndex(1, !this.bimReduceMotion);
+        aiLogInfo('[AIPhone][WaterfallSearchAutoRouted] queryChars=' + waterfallQuery.length.toString());
+      } finally {
+        this.isBusy = false;
+      }
+      return;
+    }
     let autoDeep = false;
     if (actionId.length === 0) {
       const explicitDecision = explicitDeepSearchRouteDecision(trimmed);

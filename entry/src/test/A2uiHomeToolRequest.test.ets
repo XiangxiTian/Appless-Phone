@@ -5,7 +5,8 @@ import {
   resolveA2uiHomeSubmitToolRequest,
   resolveA2uiHomeToolRequest,
   surfaceHasSatisfiedToolResult,
-  surfaceHasVisibleToolResult
+  surfaceHasVisibleToolResult,
+  waterfallSearchQueryForHomePrompt
 } from '../main/ets/pages/A2uiHome/render/A2uiHomeToolRequest';
 import {
   A2uiComponent,
@@ -624,6 +625,14 @@ export default function a2uiHomeToolRequestTest() {
 
       expect(resolved.hasTool).assertFalse();
       expect(resolved.toolId).assertEqual('');
+    });
+
+    it('extracts only legacy aggregate intents for direct Waterfall search', 0, () => {
+      expect(waterfallSearchQueryForHomePrompt('我想看看有关 openai codex 的相关新闻和讨论'))
+        .assertEqual('openai codex');
+      expect(waterfallSearchQueryForHomePrompt('帮我在 YouTube 搜索 qwen max 官方介绍视频'))
+        .assertEqual('');
+      expect(waterfallSearchQueryForHomePrompt('你好')).assertEqual('');
     });
 
     it('does not reroute mistaken X-only tool choice into aggregate search', 0, () => {

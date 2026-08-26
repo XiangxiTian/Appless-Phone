@@ -10156,6 +10156,13 @@ struct Index {
         onSendPrompt: () => {
           this.sendPrompt();
         },
+        onSendWelcomePrompt: (prompt: string): void => {
+          void this.submitPrompt(prompt, prompt);
+        },
+        onOpenWaterfall: (): void => {
+          this.ensureInterestWaterfall();
+          this.bimRootController.changeIndex(1, !this.bimReduceMotion);
+        },
         onStartVoiceInput: () => {
           this.startVoiceInput();
         },

@@ -268,6 +268,8 @@ export struct HomePage {
   onOpenPublicPersona: () => void = () => {};
   onToggleHistory: () => void = () => {};
   onSendPrompt: () => void = () => {};
+  onSendWelcomePrompt: (prompt: string) => void = (_prompt: string): void => {};
+  onOpenWaterfall: () => void = (): void => {};
   onStartVoiceInput: () => void = () => {};
   onStopVoiceInput: () => void = () => {};
   onResetSession: () => void = () => {};
@@ -361,7 +363,7 @@ export struct HomePage {
     if (this.isBusy || this.isVoiceListening) {
       return;
     }
-    this.inputText = prompt;
+    this.onSendWelcomePrompt(prompt);
   }
 
   private useNativeSurface(): boolean {
@@ -542,6 +544,9 @@ export struct HomePage {
           isVoiceListening: this.isVoiceListening,
           onChoosePrompt: (prompt: string): void => {
             this.chooseWelcomePrompt(prompt);
+          },
+          onOpenWaterfall: (): void => {
+            this.onOpenWaterfall();
           }
         })
       }

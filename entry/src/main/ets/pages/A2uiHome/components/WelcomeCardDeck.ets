@@ -21,6 +21,7 @@ export struct WelcomeCardDeck {
   private settleTimerId: number = -1;
   private blockClickUntilMs: number = 0;
   onChoosePrompt: (prompt: string) => void = (_prompt: string): void => {};
+  onOpenWaterfall: () => void = (): void => {};
 
   aboutToDisappear(): void {
     this.clearTimers();
@@ -163,37 +164,40 @@ export struct WelcomeCardDeck {
     }, SETTLE_MS);
   }
 
-  private choose(index: number, prompt: string): void {
+  private choose(index: number, prompt: string, openWaterfall: boolean): void {
     if (index !== this.activeIndex || this.isBusy || this.isVoiceListening || this.settling ||
       Date.now() < this.blockClickUntilMs) {
+      return;
+    }
+    if (openWaterfall) {
+      this.onOpenWaterfall();
       return;
     }
     this.onChoosePrompt(prompt);
   }
 
   @Builder
-  private ReceiptVisual() {
+  private NearbyFoodVisual() {
     Stack({ alignContent: Alignment.Center }) {
       Row() {}
-        .width(248)
-        .height(88)
-        .backgroundColor('#F3E9DE')
-        .borderRadius(12)
-        .rotate({ angle: 7 })
-      Row() {}
-        .width(190)
-        .height(92)
-        .backgroundColor('#DCE8ED')
-        .borderRadius(12)
-        .rotate({ angle: -5 })
-      Image($r('app.media.icon_history'))
-        .width(38)
-        .height(38)
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#F4E8DF')
+      Image($r('app.media.persona_avatar_food'))
+        .width(98)
+        .height(98)
+        .objectFit(ImageFit.Contain)
+      Text('附近 · 吃点好的')
+        .fontSize(13)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#7A584B')
+        .position({ x: 18, y: 16 })
     }
     .width('100%')
     .height(156)
-    .backgroundColor('#F1F2F2')
+    .backgroundColor('#F4E8DF')
     .borderRadius(20)
+    .clip(true)
   }
 
   @Builder
@@ -221,23 +225,41 @@ export struct WelcomeCardDeck {
   }
 
   @Builder
-  private FollowingVisual() {
-    Row({ space: 14 }) {
-      Image($r('app.media.persona_avatar_food')).width(50).height(50)
-      Image($r('app.media.persona_avatar_travel')).width(50).height(50)
-      Image($r('app.media.persona_avatar_shopping')).width(50).height(50)
-      Image($r('app.media.persona_avatar_work')).width(50).height(50)
+  private WaterfallVisual() {
+    Column({ space: 8 }) {
+      Row({ space: 10 }) {
+        Image($r('app.media.persona_avatar_food')).width(34).height(34)
+        Column({ space: 6 }) {
+          Row() {}.width(148).height(8).borderRadius(4).backgroundColor('#D6C8D7')
+          Row() {}.width(104).height(7).borderRadius(4).backgroundColor('#E3D9E4')
+        }.alignItems(HorizontalAlign.Start)
+      }
+      Row({ space: 10 }) {
+        Image($r('app.media.persona_avatar_travel')).width(34).height(34)
+        Column({ space: 6 }) {
+          Row() {}.width(132).height(8).borderRadius(4).backgroundColor('#C8D9D4')
+          Row() {}.width(164).height(7).borderRadius(4).backgroundColor('#DCE7E3')
+        }.alignItems(HorizontalAlign.Start)
+      }
+      Row({ space: 10 }) {
+        Image($r('app.media.persona_avatar_entertainment')).width(34).height(34)
+        Column({ space: 6 }) {
+          Row() {}.width(158).height(8).borderRadius(4).backgroundColor('#DCCFC4')
+          Row() {}.width(118).height(7).borderRadius(4).backgroundColor('#E9E0D8')
+        }.alignItems(HorizontalAlign.Start)
+      }
     }
     .width('100%')
     .height(156)
     .justifyContent(FlexAlign.Center)
-    .alignItems(VerticalAlign.Center)
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 24, right: 18 })
     .backgroundColor('#F3EEF4')
     .borderRadius(20)
   }
 
   @Builder
-  private Card(index: number, kicker: string, title: string, prompt: string) {
+  private Card(index: number, kicker: string, title: string, prompt: string, openWaterfall: boolean = false) {
     Column() {
       Text(kicker)
         .width('100%')
@@ -252,11 +274,11 @@ export struct WelcomeCardDeck {
         .fontColor('#111415')
         .margin({ top: 6, bottom: 13 })
       if (index === 0) {
-        this.ReceiptVisual()
+        this.NearbyFoodVisual()
       } else if (index === 1) {
         this.WeekendVisual()
       } else {
-        this.FollowingVisual()
+        this.WaterfallVisual()
       }
     }
     .width('82%')
@@ -277,15 +299,15 @@ export struct WelcomeCardDeck {
     })
     .accessibilityText(kicker + '，' + title)
     .onClick(() => {
-      this.choose(index, prompt);
+      this.choose(index, prompt, openWaterfall);
     })
   }
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
-      this.Card(0, '最近的行程里似乎留下了一些待整理信息', '去整理', '帮我整理最近行程里的票据和待办')
-      this.Card(1, '你本周末似乎还没有计划', '去规划', '结合我的偏好，帮我规划本周末')
-      this.Card(2, '你关注的内容最近有新的更新', '去查看', '帮我总结最近值得关注的更新')
+      this.Card(0, '想找附近值得去的餐厅？', '查附近美食', '附近有什么好吃的')
+      this.Card(1, '准备出发，但还没有完整安排？', '规划出行', '帮我查询出行方案并规划一次旅行')
+      this.Card(2, '看看今天有什么值得关注的内容', '去发现', '', true)
     }
     .width('100%')
     .height(CARD_HEIGHT + 14)

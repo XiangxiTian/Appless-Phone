@@ -417,6 +417,8 @@ import {
 } from './state/AggregateSearchPolicy';
 import {
   ConnectionPanelState,
+  createTurnConversationSurface,
+  createTurnFailureSurface,
   createInitialConnectionPanelState,
   deepSearchRouteDecisionFromModelText,
   deepSearchRouteDecisionPrompt,
@@ -431,6 +433,7 @@ import {
   shouldShowQueryPendingSurface,
   shouldShowWelcome,
   updateConnectionPanelState,
+  visibleTurnFailureMessage,
   voiceInputTextAfterRecognition
 } from './state/A2uiHomeState';
 import {
@@ -4252,8 +4255,7 @@ struct Index {
     )) {
       return false;
     }
-    this.applySurface(this.ownedSurface(surface, owner, generation));
-    return true;
+    return this.applySurface(this.ownedSurface(surface, owner, generation));
   }
 
   private parsedDataModel(): A2uiRuntimeDataModel | null {
@@ -5604,6 +5606,16 @@ struct Index {
       }
       const readyMessage: string = result.message.length > 0 ?
         result.message : this.currentSurface.title;
+      this.appendMessage('assistant', readyMessage);
+      const hasCurrentTurnSurface = this.currentSurface.runtimeOwner === 'multi_agent' &&
+        this.currentSurface.runtimeGeneration === turnGeneration;
+      if (!hasCurrentTurnSurface) {
+        this.applyRuntimeSurface(
+          createTurnConversationSurface(turnGeneration),
+          'multi_agent',
+          turnGeneration
+        );
+      }
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
         ok: true,
         status: 'ready',
@@ -5612,7 +5624,6 @@ struct Index {
         assistantDebug: readyMessage,
         error: ''
       }));
-      this.appendMessage('assistant', readyMessage);
     } catch (error) {
       if (this.runtimeGeneration !== turnGeneration) {
         return;
@@ -5620,7 +5631,13 @@ struct Index {
       this.isAwaitingFirstSurface = false;
       const message = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][A2uiHomeModelException] ' + logSnippet(message));
-      const visibleError = 'A2UI 生成异常，请到配置页查看详情。';
+      const visibleError = visibleTurnFailureMessage(message);
+      this.appendMessage('assistant', visibleError);
+      this.applyRuntimeSurface(
+        createTurnFailureSurface(visibleError, turnGeneration),
+        'multi_agent',
+        turnGeneration
+      );
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
         ok: false,
         status: 'error',
@@ -5629,7 +5646,6 @@ struct Index {
         assistantDebug: this.lastModelOutput,
         error: message
       }));
-      this.appendMessage('assistant', visibleError);
     } finally {
       if (this.runtimeGeneration === turnGeneration) {
         this.isAwaitingFirstSurface = false;

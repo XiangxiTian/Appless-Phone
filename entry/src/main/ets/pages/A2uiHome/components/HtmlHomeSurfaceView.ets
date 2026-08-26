@@ -70,6 +70,7 @@ export struct HtmlHomeSurfaceView {
   private popupController: webview.WebviewController = new webview.WebviewController();
   private bridge: HtmlHomeActionBridge = new HtmlHomeActionBridge();
   private loadedKey: string = '';
+  private loadedRenderTick: number = -1;
   private webReady: boolean = false;
   private lastMailDetailEventJson: string = '';
   private lastMailReplyEventJson: string = '';
@@ -145,10 +146,11 @@ export struct HtmlHomeSurfaceView {
     }
     const patchPending = this.luckinInlinePatchTick > this.appliedLuckinPatchTick &&
       this.luckinInlinePatchJson.length > 0;
-    if (patchPending && this.html === this.loadedKey) {
+    if (patchPending && this.html === this.loadedKey && this.renderTick === this.loadedRenderTick) {
       return;
     }
-    if (this.html.length === 0 || this.html === this.loadedKey) {
+    if (this.html.length === 0 ||
+      (this.html === this.loadedKey && this.renderTick === this.loadedRenderTick)) {
       return;
     }
     try {
@@ -157,6 +159,7 @@ export struct HtmlHomeSurfaceView {
       this.publishWaterfallFullscreen();
       this.controller.loadData(this.html, 'text/html', 'UTF-8', 'https://aiphone.local/');
       this.loadedKey = this.html;
+      this.loadedRenderTick = this.renderTick;
       this.lastMailDetailEventJson = '';
       this.lastMailReplyEventJson = '';
       this.lastMailCalendarEventJson = '';

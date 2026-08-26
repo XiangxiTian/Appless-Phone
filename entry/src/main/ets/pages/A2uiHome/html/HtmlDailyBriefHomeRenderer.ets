@@ -278,7 +278,7 @@ function renderDiscoveryItem(
   const actionLabel = item.mediaType === 'video' ? '进入发现流' : '在 App 内查看';
   const cover = coverUrl.length > 0 ?
     '<div class="daily-discovery-cover"><img src="' + escapeAttribute(coverUrl) + '" alt="' +
-      escapeAttribute(item.title + ' 封面') + '" loading="lazy" onerror="this.onerror=null;this.src=\'resource://rawfile/daily/discovery-video-fallback.png\'" />' +
+      escapeAttribute(item.title + ' 封面') + '" loading="lazy" onerror="this.onerror=null;this.src=\'resource://rawfile/daily/discovery-video-fallback.jpeg\'" />' +
       '<span>视频精华预览</span></div>' : '';
   return [
     '<article class="daily-discovery-card', cover.length === 0 ? ' no-cover' : '', '">', cover,
@@ -293,7 +293,7 @@ function renderDiscoveryItem(
 
 function discoveryCoverUrl(snapshot: DailyBriefSnapshot, item: DailyBriefDiscoveryItem): string {
   if (item.mediaType === 'video' && snapshot.waterfall === null) {
-    return 'resource://rawfile/daily/discovery-video-fallback.png';
+    return 'resource://rawfile/daily/discovery-video-fallback.jpeg';
   }
   const waterfall = snapshot.waterfall;
   if (waterfall === null) return '';

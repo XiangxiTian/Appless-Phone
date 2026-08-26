@@ -1669,7 +1669,7 @@ const RIDE_HAILING_HOME_JS: string = `
   var hero = add(shell, 'header', 'ride-hero');
   var cover = add(hero, 'div', 'ride-cover-media');
   var coverImage = add(cover, 'img', 'ride-cover-image');
-  coverImage.src = rideAssetUrl('ride_cover_taxi_v2.png');
+  coverImage.src = rideAssetUrl('ride_cover_taxi_v2.jpeg');
   coverImage.alt = '';
   coverImage.setAttribute('aria-hidden', 'true');
   add(cover, 'div', 'ride-hero-kicker', '打车方案 · 实时叫车');

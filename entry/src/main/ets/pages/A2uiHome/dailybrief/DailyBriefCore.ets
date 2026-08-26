@@ -488,7 +488,8 @@ function normalizeCandidate(value: WaterfallRankedCandidate): WaterfallRankedCan
     title: value.title,
     summary: value.summary,
     url: value.url,
-    coverUrl: value.coverUrl,
+    coverUrl: value.coverUrl === 'resource://rawfile/daily/discovery-video-fallback.png' ?
+      'resource://rawfile/daily/discovery-video-fallback.jpeg' : value.coverUrl,
     publishedAt: value.publishedAt,
     originalIndex: value.originalIndex,
     normalizedUrl: value.normalizedUrl,
@@ -726,7 +727,7 @@ export function dailyBriefDemoScenario(date: string): DailyBriefDemoScenario {
       preferredVehicle: '六座舒适型',
       outfitTitle: '机场出行 · 轻便分层',
       outfitSummary: '橄榄绿外套搭白色针织和深蓝旅行裤，空调环境可加围巾。',
-      outfitImage: 'resource://rawfile/daily/outfit-airport-real.png'
+      outfitImage: 'resource://rawfile/daily/outfit-airport-real.jpeg'
     };
   }
   if (Number.isFinite(day) && day % 3 === 1) {
@@ -742,7 +743,7 @@ export function dailyBriefDemoScenario(date: string): DailyBriefDemoScenario {
       preferredVehicle: '舒适型',
       outfitTitle: '晴天办公 · 轻盈商务休闲',
       outfitSummary: '浅沙色薄外套搭白色针织和深蓝长裤，适合园区步行与室内会议。',
-      outfitImage: 'resource://rawfile/daily/outfit-clear-real.png'
+      outfitImage: 'resource://rawfile/daily/outfit-clear-real.jpeg'
     };
   }
   return {
@@ -757,7 +758,7 @@ export function dailyBriefDemoScenario(date: string): DailyBriefDemoScenario {
     preferredVehicle: '舒适型',
     outfitTitle: '雨天通勤 · 防水利落',
     outfitSummary: '深蓝防水夹克搭浅蓝衬衫和炭灰长裤，带伞并选择防滑鞋。',
-    outfitImage: 'resource://rawfile/daily/outfit-office-real.png'
+    outfitImage: 'resource://rawfile/daily/outfit-office-real.jpeg'
   };
 }
 
@@ -1203,7 +1204,7 @@ export function dailyBriefDiscoveryWaterfall(snapshot: DailyBriefSnapshot): Wate
     title: item.title,
     summary: item.summary,
     url: item.url,
-    coverUrl: item.mediaType === 'video' ? 'resource://rawfile/daily/discovery-video-fallback.png' : '',
+    coverUrl: item.mediaType === 'video' ? 'resource://rawfile/daily/discovery-video-fallback.jpeg' : '',
     publishedAt: snapshot.generatedAt,
     duration: item.timeBudgetLabel,
     originalIndex: index,

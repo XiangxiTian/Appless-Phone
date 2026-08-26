@@ -1988,15 +1988,15 @@ export default function htmlHomeRendererTest() {
 
       expect(officeHtml.indexOf('穿衣推荐')).assertLarger(-1);
       expect(officeHtml.indexOf('秋港花园 → 坂田华为基地 D 区')).assertLarger(-1);
-      expect(officeHtml.indexOf('resource://rawfile/daily/outfit-office-real.png')).assertLarger(-1);
+      expect(officeHtml.indexOf('resource://rawfile/daily/outfit-office-real.jpeg')).assertLarger(-1);
       expect(airportHtml.indexOf('穿衣推荐')).assertLarger(-1);
       expect(airportHtml.indexOf('秋港花园 → 深圳宝安机场')).assertLarger(-1);
-      expect(airportHtml.indexOf('resource://rawfile/daily/outfit-airport-real.png')).assertLarger(-1);
+      expect(airportHtml.indexOf('resource://rawfile/daily/outfit-airport-real.jpeg')).assertLarger(-1);
       expect(airportHtml.indexOf('Demo 衣橱素材')).assertEqual(-1);
 
       const clear = dailyBriefDocumentFixture();
       (clear.dailyBrief as DailyBriefSnapshot).date = '2026-08-13';
-      expect(renderHtmlHomeDocument(clear).indexOf('resource://rawfile/daily/outfit-clear-real.png')).assertLarger(-1);
+      expect(renderHtmlHomeDocument(clear).indexOf('resource://rawfile/daily/outfit-clear-real.jpeg')).assertLarger(-1);
     });
 
     it('keeps daily controls compact and spending actions preview-only', 0, () => {
@@ -2033,7 +2033,7 @@ export default function htmlHomeRendererTest() {
 
       const html = renderHtmlHomeDocument(doc);
 
-      expect(html.indexOf('resource://rawfile/daily/discovery-video-fallback.png')).assertLarger(-1);
+      expect(html.indexOf('resource://rawfile/daily/discovery-video-fallback.jpeg')).assertLarger(-1);
       expect(html.indexOf('onerror=')).assertLarger(-1);
       expect(html.indexOf('进入发现流')).assertLarger(-1);
     });
@@ -2378,7 +2378,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('未查询到司机坐标前不展示地图或真实路线')).assertEqual(-1);
       expect(html.indexOf('打开滴滴/高德不会自动下单')).assertEqual(-1);
       expect(html.indexOf('images.unsplash.com')).assertEqual(-1);
-      expect(html.indexOf("rideAssetUrl('ride_cover_taxi_v2.png')")).assertLarger(-1);
+      expect(html.indexOf("rideAssetUrl('ride_cover_taxi_v2.jpeg')")).assertLarger(-1);
       expect(html.indexOf('ride-cover-image')).assertLarger(-1);
       expect(html.indexOf('ride-cover-title')).assertLarger(-1);
       expect(html.indexOf('ride-hero-route')).assertEqual(-1);

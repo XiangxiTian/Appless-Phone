@@ -526,6 +526,16 @@ export default function dailyBriefCoreTest() {
       expect(hostless?.current?.mediaUrl ?? '').assertEqual('');
     });
 
+    it('migrates deleted legacy discovery fallback URLs in frozen snapshots', 0, () => {
+      const video = rankedCandidate('legacy-video', 'video', 'https://example.com/legacy', 1, '01:20');
+      video.coverUrl = 'resource://rawfile/daily/discovery-video-fallback.png';
+
+      const normalized = normalizeDailyBriefWaterfall(waterfallState(video, [], []));
+
+      expect(normalized?.current?.coverUrl ?? '').assertEqual(
+        'resource://rawfile/daily/discovery-video-fallback.jpeg');
+    });
+
     it('maps adjacent dates to bounded office and airport scenarios', 0, () => {
       const office: DailyBriefDemoScenario = dailyBriefDemoScenario('2026-08-13');
       const airport: DailyBriefDemoScenario = dailyBriefDemoScenario('2026-08-12');
@@ -739,7 +749,7 @@ export default function dailyBriefCoreTest() {
       expect(surface === null).assertFalse();
       expect(serialized.indexOf('fixture-video-' + value.date)).assertLarger(-1);
       expect(serialized.indexOf('fixture-discussion-' + value.date)).assertLarger(-1);
-      expect(serialized.indexOf('resource://rawfile/daily/discovery-video-fallback.png')).assertLarger(-1);
+      expect(serialized.indexOf('resource://rawfile/daily/discovery-video-fallback.jpeg')).assertLarger(-1);
     });
 
     it('keeps regenerate and discovery actions only when args are absent', 0, () => {

@@ -997,51 +997,48 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   margin: 0;
   padding: 10px 12px;
   border-radius: 16px 16px 5px 16px;
-  background: var(--accent-soft);
+  background: #f1e6e1;
   color: var(--ink-soft);
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.plain-chat-response {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  gap: 10px;
-  margin-top: 16px;
-  padding: 17px;
-  border: 1px solid rgba(73, 63, 56, 0.11);
-  border-radius: 21px;
-  background: rgba(255, 255, 255, 0.69);
-  box-shadow: 0 10px 26px rgba(82, 59, 44, 0.07);
-  backdrop-filter: blur(22px);
+.plain-chat-user-text {
+  display: block;
 }
-.plain-chat-assistant-head {
-  display: flex;
-  align-items: center;
-  min-height: 32px;
+.plain-chat-assistant-turn {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  margin-top: 12px;
+}
+.plain-chat-assistant-identity {
+  display: block;
+}
+.plain-chat-response {
+  margin: 0;
+  padding: 16px 16px 17px;
+  border: 1px solid #eadfd8;
+  border-radius: 8px 20px 20px 20px;
+  background: #fffaf7;
+  box-shadow: 0 8px 22px rgba(82, 59, 44, 0.07);
 }
 .plain-chat-assistant-mark {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
   background: rgba(153, 95, 76, 0.1);
   color: var(--accent);
   font-family: Georgia, serif;
-  font-size: 17px;
+  font-size: 13px;
   font-style: italic;
 }
-.plain-chat-assistant-copy {
-  min-width: 0;
-}
-.plain-chat-assistant-label {
-  color: var(--accent);
-  font-size: 11px;
-}
 .plain-chat-response-copy {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--ink-soft);
   font-size: 13px;
   line-height: 1.72;
@@ -1157,13 +1154,13 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
 }
 .plain-chat-hero {
   margin-bottom: 4px;
-  padding: 24px 4px 20px;
+  padding: 0 4px 12px;
   border-bottom: 0;
 }
 .plain-chat-hero h1 {
   margin: 0;
   color: var(--ink);
-  font-size: 28px;
+  font-size: 25px;
   line-height: 1.15;
   font-weight: 500;
   letter-spacing: -0.025em;
@@ -1174,272 +1171,46 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   font-size: 12px;
   line-height: 1.45;
 }
-.thinking-hero {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
+.conversation-thinking {
+  min-height: 82px;
+}
+.conversation-thinking-indicator {
+  display: inline-flex;
   align-items: center;
-  gap: 13px;
-  margin-bottom: 4px;
-  padding: 20px 4px 16px;
-  border-bottom: 0;
-}
-.thinking-hero-orbit {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: rgba(153, 95, 76, 0.1);
-  color: var(--accent);
-}
-.thinking-hero-orbit::before {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  border: 1px dashed rgba(153, 95, 76, 0.38);
-  border-radius: 50%;
-  animation: thinking-orbit-spin 6s linear infinite;
-}
-.thinking-hero-orbit::after {
-  content: '✦';
-  position: relative;
-  z-index: 1;
-  color: var(--accent);
-  font-family: Georgia, serif;
-  font-size: 23px;
-  line-height: 1;
-}
-@keyframes thinking-orbit-spin {
-  to { transform: rotate(360deg); }
-}
-.thinking-hero-copy {
-  min-width: 0;
-}
-.thinking-hero .eyebrow {
-  margin-bottom: 6px;
-}
-.thinking-hero h1 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 26px;
-  line-height: 1.15;
-  font-weight: 520;
-  letter-spacing: -0.025em;
-}
-.thinking-hero .subtitle {
-  margin: 6px 0 0;
+  gap: 5px;
+  min-height: 30px;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-.thinking-scene {
-  margin-top: 0;
-}
-.thinking-request-summary {
-  margin-top: 0;
-  padding: 13px 14px;
-  border: 1px solid rgba(73, 63, 56, 0.11);
-  border-radius: 21px;
-  background: rgba(255, 255, 255, 0.69);
-  box-shadow: 0 10px 26px rgba(82, 59, 44, 0.07);
-  backdrop-filter: blur(22px);
-}
-.thinking-request-label {
-  color: var(--accent);
-  font-size: 10px;
-}
-.thinking-request-copy {
-  margin-top: 5px;
-  color: var(--ink-soft);
   font-size: 13px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-.thinking-steps {
-  position: relative;
-  display: grid;
-  gap: 0;
-  margin: 17px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.thinking-steps::before {
-  content: '';
-  position: absolute;
-  top: 19px;
-  bottom: 19px;
-  left: 17px;
-  width: 1px;
-  background: rgba(73, 63, 56, 0.13);
-}
-.thinking-step {
-  position: relative;
-  display: grid;
-  grid-template-columns: 35px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  min-height: 65px;
-  padding: 8px 3px;
-}
-.thinking-step-icon {
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 35px;
-  height: 35px;
-  border-radius: 50%;
-  background: rgba(240, 234, 228, 0.98);
-  color: var(--muted);
-  font-size: 14px;
   line-height: 1;
 }
-.thinking-step-done .thinking-step-icon {
-  background: rgba(57, 122, 85, 0.12);
-  color: #397a55;
-}
-.thinking-step-running .thinking-step-icon {
-  background: rgba(153, 95, 76, 0.13);
-  color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(153, 95, 76, 0.06);
-}
-.thinking-step-copy {
-  min-width: 0;
-}
-.thinking-step-copy strong {
-  display: block;
-  color: var(--ink-soft);
-  font-size: 12px;
-  line-height: 1.35;
-  font-weight: 680;
-  overflow-wrap: anywhere;
-}
-.thinking-step-copy p {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-.thinking-step-status {
-  align-self: start;
-  padding-top: 4px;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-.thinking-step-done .thinking-step-status { color: #397a55; }
-.thinking-step-running .thinking-step-status { color: var(--accent); }
-.thinking-context {
-  margin-top: 15px;
-  border-top: 1px solid rgba(73, 63, 56, 0.1);
-}
-.thinking-context > summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 12px 2px;
-  color: var(--ink-soft);
-  cursor: pointer;
-  list-style: none;
-  font-size: 11px;
-}
-.thinking-context > summary::-webkit-details-marker { display: none; }
-.thinking-context-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.thinking-context-icon {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border: 0;
-  border-radius: 4px;
-  background: rgba(153, 95, 76, 0.06);
-}
-.thinking-context-icon::before {
-  content: '';
-  position: absolute;
-  width: 10px;
+.conversation-thinking-dot {
+  width: 7px;
   height: 7px;
-  border: 1.2px solid var(--accent);
-  border-radius: 3px;
-  transform: translate(-1px, -1px);
+  border-radius: 50%;
+  background: var(--accent);
+  animation: conversation-thinking-pulse 1.15s ease-in-out infinite;
 }
-.thinking-context-icon::after {
-  content: '';
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  border-right: 1.2px solid var(--accent);
-  border-bottom: 1.2px solid var(--accent);
-  border-radius: 0 0 2px 0;
-  transform: translate(4px, 4px) rotate(8deg);
+.conversation-thinking-dot:nth-child(2) { animation-delay: 140ms; }
+.conversation-thinking-dot:nth-child(3) { animation-delay: 280ms; }
+@keyframes conversation-user-enter {
+  from { opacity: 0; transform: translate3d(12px, 8px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
-.thinking-context-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  min-height: 20px;
+@keyframes conversation-thinking-pulse {
+  0%, 70%, 100% { opacity: 0.24; transform: scale(0.72); }
+  35% { opacity: 1; transform: scale(1); }
 }
-.thinking-context-meta .meta {
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1;
+body[data-view="conversation"],
+body[data-view="conversation-thinking"] {
+  background: transparent;
 }
-.thinking-context-chevron {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1;
+body[data-view="conversation"] .shell,
+body[data-view="conversation-thinking"] .shell {
+  padding-top: 0;
 }
-.thinking-context-chevron::before { content: '+'; }
-.thinking-context[open] .thinking-context-chevron {
-  font-size: 0;
-}
-.thinking-context[open] .thinking-context-chevron::before {
-  content: '-';
-  font-size: 15px;
-}
-.thinking-context-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 0 2px 10px;
-}
-.thinking-context-turn {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-}
-.thinking-context-role {
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.55;
-}
-.thinking-context-turn-assistant .thinking-context-role { color: var(--accent); }
-.thinking-context-copy {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: 11px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.thinking-empty-step {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
+body[data-view="conversation-thinking"][data-user-motion="enter"] .plain-chat-user-text,
+.plain-chat-user-text.is-refreshing {
+  animation: conversation-user-enter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 body[data-scene] {
   --scene-accent: #995f4c;
@@ -3291,7 +3062,6 @@ body[data-scene] .block,
 /* Keep chat and thinking typography aligned with the shared scene hierarchy. */
 .plain-chat-user-role { font-size: 12px; }
 .plain-chat-user-copy { font-size: 15px; }
-.plain-chat-assistant-label { font-size: 12px; }
 .plain-chat-response-copy { font-size: 15px; }
 .plain-chat-context > summary { font-size: 13px; }
 .plain-chat-context-meta .meta { font-size: 12px; }
@@ -3299,22 +3069,9 @@ body[data-scene] .block,
 .plain-chat-context[open] .plain-chat-context-chevron::before { font-size: 13px; }
 .plain-chat-role { font-size: 12px; }
 .plain-chat-turn-copy { font-size: 15px; }
-.plain-chat-hero h1 { font-size: 32px; }
+.plain-chat-hero h1 { font-size: 27px; }
 .plain-chat-hero .subtitle { font-size: 15px; }
-.thinking-hero h1 { font-size: 32px; }
-.thinking-hero .subtitle { font-size: 15px; }
-.thinking-request-label { font-size: 12px; }
-.thinking-request-copy { font-size: 15px; }
-.thinking-step-copy strong { font-size: 15px; }
-.thinking-step-copy p { font-size: 12px; }
-.thinking-step-status { font-size: 12px; }
-.thinking-context > summary { font-size: 13px; }
-.thinking-context-meta .meta { font-size: 12px; }
-.thinking-context-chevron { font-size: 13px; }
-.thinking-context[open] .thinking-context-chevron::before { font-size: 13px; }
-.thinking-context-role { font-size: 12px; }
-.thinking-context-copy { font-size: 15px; }
-.thinking-empty-step { font-size: 12px; }
+.conversation-thinking-indicator { font-size: 15px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -3355,6 +3112,13 @@ const HTML_HOME_JS: string = `
       document.body.setAttribute('data-scene', scene);
     } else {
       document.body.removeAttribute('data-scene');
+    }
+    if (isThinkingDocument()) {
+      document.body.setAttribute('data-view', 'conversation-thinking');
+    } else if (isPlainChatScene(list(data.blocks), list(data.timeline), list(data.history))) {
+      document.body.setAttribute('data-view', 'conversation');
+    } else {
+      document.body.removeAttribute('data-view');
     }
   }
   var MAIL_ICON_GMAIL = '${APP_LOGO_GMAIL}';
@@ -3806,28 +3570,10 @@ const HTML_HOME_JS: string = `
       timeline.length === 0 &&
       latestAssistant(history) !== null;
   }
-  function addPlainChat(parent, history) {
-    var assistant = latestAssistant(history);
-    if (!assistant) { return; }
-    var currentUser = latestUserBefore(history, assistant);
-    var section = add(parent, 'section', 'section plain-chat');
-    if (currentUser) {
-      var userMessage = add(section, 'article', 'plain-chat-user-message');
-      add(userMessage, 'span', 'plain-chat-user-role', '你');
-      add(userMessage, 'p', 'plain-chat-user-copy', text(currentUser.content));
-    }
-    var response = add(section, 'article', 'plain-chat-response');
-    add(response, 'div', 'plain-chat-assistant-mark', 'A');
-    var assistantCopy = add(response, 'div', 'plain-chat-assistant-copy');
-    add(assistantCopy, 'div', 'plain-chat-assistant-head');
-    add(assistantCopy.querySelector('.plain-chat-assistant-head'), 'span', 'plain-chat-assistant-label', 'Appless');
-    add(assistantCopy, 'p', 'plain-chat-response-copy', text(assistant.content));
-    var contextItems = [];
-    history.forEach(function (item) {
-      if (item !== assistant) { contextItems.push(item); }
-    });
+  function addPlainChatContext(parent, contextItems) {
     if (contextItems.length === 0) { return; }
-    var disclosure = add(section, 'details', 'plain-chat-context');
+    var disclosure = add(parent, 'details', 'plain-chat-context');
+    disclosure.setAttribute('data-context-key', plainChatContextKey(contextItems));
     var summary = add(disclosure, 'summary');
     var summaryLabel = add(summary, 'span', 'plain-chat-context-label');
     add(summaryLabel, 'span', 'plain-chat-context-icon');
@@ -3844,6 +3590,39 @@ const HTML_HOME_JS: string = `
       add(turn, 'p', 'plain-chat-turn-copy', text(item && item.content));
     });
   }
+  function plainChatContextKey(contextItems) {
+    return JSON.stringify(contextItems.map(function (item) {
+      return {
+        role: text(item && item.role),
+        content: text(item && item.content)
+      };
+    }));
+  }
+  function addPlainChatAssistantIdentity(parent) {
+    var identity = add(parent, 'div', 'plain-chat-assistant-identity');
+    add(identity, 'div', 'plain-chat-assistant-mark', 'A');
+  }
+  function addPlainChat(parent, history) {
+    var assistant = latestAssistant(history);
+    if (!assistant) { return; }
+    var currentUser = latestUserBefore(history, assistant);
+    var section = add(parent, 'section', 'section plain-chat');
+    if (currentUser) {
+      var userMessage = add(section, 'article', 'plain-chat-user-message');
+      add(userMessage, 'span', 'plain-chat-user-role', '你');
+      var userCopy = add(userMessage, 'p', 'plain-chat-user-copy');
+      add(userCopy, 'span', 'plain-chat-user-text', text(currentUser.content));
+    }
+    var assistantTurn = add(section, 'div', 'plain-chat-assistant-turn');
+    addPlainChatAssistantIdentity(assistantTurn);
+    var response = add(assistantTurn, 'article', 'plain-chat-response');
+    add(response, 'p', 'plain-chat-response-copy', text(assistant.content));
+    var contextItems = [];
+    history.forEach(function (item) {
+      if (item !== assistant) { contextItems.push(item); }
+    });
+    addPlainChatContext(section, contextItems);
+  }
   function thinkingRequest(timeline, history) {
     for (var index = 0; index < timeline.length; index += 1) {
       var item = timeline[index];
@@ -3859,97 +3638,181 @@ const HTML_HOME_JS: string = `
     }
     return text(data.subtitle).trim() || '已收到请求，正在整理执行步骤。';
   }
-  function thinkingTitle() {
-    var title = text(data.title).trim();
-    if (title.length === 0 || title.toLowerCase() === 'generating' ||
-      (text(data.source) === 'pending' && (scene === 'generic' || title === 'Appless'))) {
-      return '正在整理结果';
-    }
-    return title;
-  }
-  function thinkingStepState(value) {
-    var key = text(value).toLowerCase().replace(/[ -]+/g, '_');
-    if (key === 'ready' || key === 'success' || key === 'done' || key === 'completed' || key === 'complete') {
-      return 'done';
-    }
-    if (key === 'pending' || key === 'thinking' || key === 'running' || key === 'in_progress' || key === 'executing') {
-      return 'running';
-    }
-    return 'waiting';
-  }
-  function thinkingStepLabel(value) {
-    var state = thinkingStepState(value);
-    if (state === 'done') { return '完成'; }
-    if (state === 'running') { return '进行中'; }
-    var raw = text(value).toLowerCase();
-    if (raw === 'waiting' || raw === 'queued' || raw === 'pending') { return '等待'; }
-    return text(value).trim().length > 0 ? statusLabel(value) : '等待';
-  }
-  function addThinkingHero(parent) {
-    var hero = add(parent, 'header', 'hero thinking-hero');
-    add(hero, 'div', 'thinking-hero-orbit');
-    var copy = add(hero, 'div', 'thinking-hero-copy');
-    var status = isBusy || text(data.source) === 'pending' ? '执行中' : (statusLabel(data.source) || '执行中');
-    add(copy, 'div', 'eyebrow', status);
-    add(copy, 'h1', '', thinkingTitle());
-    add(copy, 'p', 'subtitle', thinkingRequest(list(data.timeline), list(data.history)));
+  function addConversationHero(parent) {
+    var hero = add(parent, 'header', 'hero plain-chat-hero');
+    add(hero, 'h1', '', '和 Appless 聊聊');
+    add(hero, 'p', 'subtitle', '回答优先，历史内容按需展开');
   }
   function addThinkingScene(parent, timeline, history) {
-    var section = add(parent, 'section', 'section thinking-scene');
-    var request = add(section, 'article', 'thinking-request-summary');
-    add(request, 'div', 'thinking-request-label', '用户请求');
-    add(request, 'p', 'thinking-request-copy', thinkingRequest(timeline, history));
-    var steps = [];
-    timeline.forEach(function (item) {
-      if (text(item && item.title).toLowerCase() !== 'prompt') {
-        steps.push(item);
+    var section = add(parent, 'section', 'section plain-chat thinking-chat');
+    var userMessage = add(section, 'article', 'plain-chat-user-message');
+    add(userMessage, 'span', 'plain-chat-user-role', '你');
+    var userCopy = add(userMessage, 'p', 'plain-chat-user-copy');
+    add(userCopy, 'span', 'plain-chat-user-text', thinkingRequest(timeline, history));
+    var assistantTurn = add(section, 'div', 'plain-chat-assistant-turn');
+    addPlainChatAssistantIdentity(assistantTurn);
+    var response = add(assistantTurn, 'article', 'plain-chat-response conversation-thinking');
+    response.setAttribute('role', 'status');
+    response.setAttribute('aria-live', 'polite');
+    var indicator = add(response, 'div', 'conversation-thinking-indicator');
+    add(indicator, 'span', 'conversation-thinking-dot');
+    add(indicator, 'span', 'conversation-thinking-dot');
+    add(indicator, 'span', 'conversation-thinking-dot');
+    var contextItems = [];
+    var latestUserIndex = -1;
+    for (var index = history.length - 1; index >= 0; index -= 1) {
+      if (text(history[index] && history[index].role) === 'user') {
+        latestUserIndex = index;
+        break;
       }
-    });
-    var stepList = add(section, 'ol', 'thinking-steps');
-    if (steps.length === 0) {
-      var waitingStep = add(stepList, 'li', 'thinking-step thinking-step-waiting');
-      add(waitingStep, 'span', 'thinking-step-icon', '·');
-      var waitingCopy = add(waitingStep, 'div', 'thinking-step-copy');
-      add(waitingCopy, 'strong', '', '准备执行');
-      add(waitingCopy, 'p', '', '已收到请求，等待执行状态更新');
-      add(waitingStep, 'small', 'thinking-step-status', '等待');
-    } else {
-      steps.forEach(function (item) {
-        var state = thinkingStepState(item && item.status);
-        var step = add(stepList, 'li', 'thinking-step thinking-step-' + state);
-        add(step, 'span', 'thinking-step-icon', state === 'done' ? '✓' : (state === 'running' ? '•' : '·'));
-        var stepCopy = add(step, 'div', 'thinking-step-copy');
-        add(stepCopy, 'strong', '', text(item && item.title) || '执行步骤');
-        add(stepCopy, 'p', '', text(item && item.subtitle));
-        add(step, 'small', 'thinking-step-status', thinkingStepLabel(item && item.status));
-      });
     }
-    if (history.length === 0) { return; }
-    var disclosure = add(section, 'details', 'thinking-context');
-    var summary = add(disclosure, 'summary');
-    var summaryLabel = add(summary, 'span', 'thinking-context-label');
-    add(summaryLabel, 'span', 'thinking-context-icon');
-    add(summaryLabel, 'span', '', '本次上下文');
-    var summaryMeta = add(summary, 'span', 'thinking-context-meta');
-    add(summaryMeta, 'span', 'meta', String(history.length) + ' 条');
-    add(summaryMeta, 'span', 'thinking-context-chevron');
-    var contextList = add(disclosure, 'div', 'thinking-context-list');
-    history.forEach(function (item) {
-      var role = text(item && item.role) === 'assistant' ? 'assistant' : 'user';
-      var turn = add(contextList, 'article', 'thinking-context-turn thinking-context-turn-' + role);
-      add(turn, 'div', 'thinking-context-role', role === 'assistant' ? 'Appless' : '你');
-      add(turn, 'p', 'thinking-context-copy', text(item && item.content));
+    history.forEach(function (item, index) {
+      if (index !== latestUserIndex) { contextItems.push(item); }
     });
+    addPlainChatContext(section, contextItems);
+  }
+  function conversationContextItems(history, assistant, thinking) {
+    var contextItems = [];
+    if (!thinking) {
+      history.forEach(function (item) {
+        if (item !== assistant) { contextItems.push(item); }
+      });
+      return contextItems;
+    }
+    var latestUserIndex = -1;
+    for (var index = history.length - 1; index >= 0; index -= 1) {
+      if (text(history[index] && history[index].role) === 'user') {
+        latestUserIndex = index;
+        break;
+      }
+    }
+    history.forEach(function (item, index) {
+      if (index !== latestUserIndex) { contextItems.push(item); }
+    });
+    return contextItems;
+  }
+  function replacePlainChatContext(section, contextItems) {
+    var current = section.querySelector('.plain-chat-context');
+    var nextKey = plainChatContextKey(contextItems);
+    if (current && text(current.getAttribute('data-context-key')) === nextKey) { return; }
+    if (!current && contextItems.length === 0) { return; }
+    var wasOpen = !!(current && current.open);
+    if (current && current.parentNode) { current.parentNode.removeChild(current); }
+    addPlainChatContext(section, contextItems);
+    var next = section.querySelector('.plain-chat-context');
+    if (next && wasOpen) { next.open = true; }
+  }
+  function ensurePlainChatUser(section, assistantTurn) {
+    var userMessage = section.querySelector('.plain-chat-user-message');
+    if (!userMessage) {
+      userMessage = document.createElement('article');
+      userMessage.className = 'plain-chat-user-message';
+      if (assistantTurn) {
+        section.insertBefore(userMessage, assistantTurn);
+      } else {
+        section.appendChild(userMessage);
+      }
+    }
+    var role = userMessage.querySelector('.plain-chat-user-role');
+    if (!role) {
+      role = document.createElement('span');
+      role.className = 'plain-chat-user-role';
+      role.textContent = '你';
+      userMessage.insertBefore(role, userMessage.firstChild);
+    }
+    var copy = userMessage.querySelector('.plain-chat-user-copy');
+    if (!copy) { copy = add(userMessage, 'p', 'plain-chat-user-copy'); }
+    var userText = copy.querySelector('.plain-chat-user-text');
+    if (!userText) {
+      var previousText = text(copy.textContent);
+      copy.textContent = '';
+      userText = add(copy, 'span', 'plain-chat-user-text', previousText);
+    }
+    return userText;
+  }
+  function replaceAssistantResponse(response, assistant, thinking) {
+    var currentThinking = response.classList.contains('conversation-thinking');
+    var expectedText = text(assistant && assistant.content);
+    var currentCopy = response.querySelector('.plain-chat-response-copy');
+    if (thinking && currentThinking && response.querySelector('.conversation-thinking-indicator')) { return; }
+    if (!thinking && !currentThinking && currentCopy && text(currentCopy.textContent) === expectedText) { return; }
+    while (response.firstChild) { response.removeChild(response.firstChild); }
+    if (thinking) {
+      response.className = 'plain-chat-response conversation-thinking';
+      response.setAttribute('role', 'status');
+      response.setAttribute('aria-live', 'polite');
+      var indicator = add(response, 'div', 'conversation-thinking-indicator');
+      add(indicator, 'span', 'conversation-thinking-dot');
+      add(indicator, 'span', 'conversation-thinking-dot');
+      add(indicator, 'span', 'conversation-thinking-dot');
+      return;
+    }
+    response.className = 'plain-chat-response';
+    response.removeAttribute('role');
+    response.removeAttribute('aria-live');
+    add(response, 'p', 'plain-chat-response-copy', expectedText);
+  }
+  function applyConversationUpdate(nextData, animateUserText) {
+    var section = document.querySelector('.plain-chat');
+    if (!section || !nextData || typeof nextData !== 'object') { return false; }
+    var previousData = data;
+    var previousBusy = isBusy;
+    var previousScene = scene;
+    data = nextData;
+    isBusy = text(data.isBusy).toLowerCase() === 'true';
+    scene = sceneKey();
+    var blocks = list(data.blocks);
+    var timeline = list(data.timeline);
+    var history = list(data.history);
+    var thinking = isThinkingDocument() && blocks.length === 0;
+    var assistant = latestAssistant(history);
+    var plainChat = isPlainChatScene(blocks, timeline, history);
+    if (!thinking && !plainChat) {
+      data = previousData;
+      isBusy = previousBusy;
+      scene = previousScene;
+      return false;
+    }
+    var assistantTurn = section.querySelector('.plain-chat-assistant-turn');
+    var response = assistantTurn ? assistantTurn.querySelector('.plain-chat-response') : null;
+    if (!assistantTurn || !response) {
+      data = previousData;
+      isBusy = previousBusy;
+      scene = previousScene;
+      return false;
+    }
+    var currentUser = thinking ? null : latestUserBefore(history, assistant);
+    var requestText = thinking ? thinkingRequest(timeline, history) : text(currentUser && currentUser.content);
+    var userText = ensurePlainChatUser(section, assistantTurn);
+    if (text(userText.textContent) !== requestText) {
+      userText.classList.remove('is-refreshing');
+      userText.textContent = requestText;
+      if (animateUserText) {
+        userText.offsetWidth;
+        userText.classList.add('is-refreshing');
+        userText.addEventListener('animationend', function () {
+          userText.classList.remove('is-refreshing');
+        }, { once: true });
+      }
+    }
+    replaceAssistantResponse(response, assistant, thinking);
+    replacePlainChatContext(section, conversationContextItems(history, assistant, thinking));
+    if (document.body) {
+      document.body.setAttribute('data-view', thinking ? 'conversation-thinking' : 'conversation');
+      document.body.removeAttribute('data-scene');
+      document.body.removeAttribute('data-user-motion');
+    }
+    var currentDataNode = document.getElementById('home-data');
+    if (currentDataNode) { currentDataNode.textContent = JSON.stringify(data); }
+    return true;
   }
   function addLegacyHero(parent) {
     var plainChat = isPlainChatScene(list(data.blocks), list(data.timeline), list(data.history));
-    var hero = add(parent, 'header', plainChat ? 'hero plain-chat-hero' : 'hero');
     if (plainChat) {
-      add(hero, 'div', 'eyebrow', '基础对话');
-      add(hero, 'h1', '', '和 Appless 聊聊');
-      add(hero, 'p', 'subtitle', '回答优先，历史内容按需展开');
+      addConversationHero(parent);
       return;
     }
+    var hero = add(parent, 'header', 'hero');
     var eyebrow = text(data.kind) === 'welcome' ? '' : kindLabel(data.kind);
     if (eyebrow.length > 0) { add(hero, 'div', 'eyebrow', eyebrow); }
     add(hero, 'h1', '', heroTitle());
@@ -4021,7 +3884,7 @@ const HTML_HOME_JS: string = `
     });
   }
   function renderSceneHero(parent) {
-    if (isThinkingDocument()) { addThinkingHero(parent); return; }
+    if (isThinkingDocument()) { addConversationHero(parent); return; }
     if (!isEnhancedScene()) { addLegacyHero(parent); return; }
     if (scene === 'gmail') { addGmailHero(parent); return; }
     addLegacyHero(parent);
@@ -6141,6 +6004,9 @@ const HTML_HOME_JS: string = `
     return true;
   }
   window.AIPhoneHome = window.AIPhoneHome || {};
+  window.__aiphoneApplyConversationUpdate = function (nextData, animateUserText) {
+    return applyConversationUpdate(nextData, !!animateUserText);
+  };
   window.AIPhoneHome.patchLuckinPaymentStatus = function (patchJson) {
     try {
       return refreshLuckinPaymentStatusHeader(JSON.parse(patchJson));
@@ -6168,7 +6034,8 @@ export function renderHtmlHomeDocument(
   isBusy: boolean = false,
   foodLocation?: FoodLocationViewModel,
   foodAddressBook: FoodSavedAddressViewModel[] = [],
-  foodFavorites: FoodFavoriteViewModel[] = []
+  foodFavorites: FoodFavoriteViewModel[] = [],
+  animateLatestUser: boolean = false
 ): string {
   if (shouldRenderMultiTaskHomeDocument(document)) {
     return renderMultiTaskHomeDocument(document, isBusy);
@@ -6226,6 +6093,13 @@ export function renderHtmlHomeDocument(
   const title = escapeHtmlText(document.title.length > 0 ? document.title : document.kind);
   const enhancedScene: boolean = document.kind === 'gmail' || document.kind === 'social' || document.kind === 'luckin';
   const bodyScene = enhancedScene ? ` data-scene="${escapeHtmlText(document.kind)}"` : '';
+  const conversationThinking: boolean = document.kind === 'thinking' || document.source === 'pending';
+  const conversationReady: boolean = document.kind === 'generic' && document.source === 'model' &&
+    document.blocks.length === 0 && document.timeline.length === 0 &&
+    document.history.some((item) => item.role === 'assistant' && item.content.trim().length > 0);
+  const bodyView = conversationThinking ? ' data-view="conversation-thinking"' :
+    (conversationReady ? ' data-view="conversation"' : '');
+  const bodyUserMotion = conversationThinking && animateLatestUser ? ' data-user-motion="enter"' : '';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -6234,7 +6108,7 @@ export function renderHtmlHomeDocument(
 <title>${title}</title>
 <style>${HTML_HOME_CSS}</style>
 </head>
-<body${bodyScene}>
+<body${bodyScene}${bodyView}${bodyUserMotion}>
 <div id="app"></div>
 <script id="home-data" type="application/json">${json}</script>
 <script>${HTML_HOME_JS}</script>

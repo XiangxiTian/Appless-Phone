@@ -1109,6 +1109,8 @@ struct Index {
   private travelConflictRefreshGeneration: number = 0;
   private htmlHomeCacheKey: string = '';
   private htmlHomeCacheHtml: string = '';
+  private promptSubmitMotionGeneration: number = 0;
+  private renderedPromptSubmitMotionGeneration: number = 0;
   private readonly registeredPageSnapshotStore: RegisteredPageSnapshotStore =
     new RegisteredPageSnapshotStore();
   private registeredPageRenderGeneration: number = 0;
@@ -4397,6 +4399,8 @@ struct Index {
       return this.htmlHomeCacheHtml;
     }
     const document = this.withMultiTaskActiveSection(this.currentHtmlHomeDocument());
+    const animateLatestUser: boolean = document.kind === 'thinking' && document.source === 'pending' &&
+      this.promptSubmitMotionGeneration > this.renderedPromptSubmitMotionGeneration;
     const html = renderHtmlHomeDocument(document, this.isBusy,
       document.kind === 'food' && document.surfaceId === this.foodLocationOwnerSurfaceId ? {
         longitude: this.foodLocationLongitude,
@@ -4406,7 +4410,11 @@ struct Index {
         address: this.foodLocationAddress
       } : undefined,
       document.kind === 'food' ? this.foodSavedAddresses : [],
-      document.kind === 'food' ? this.foodFavorites : []);
+      document.kind === 'food' ? this.foodFavorites : [],
+      animateLatestUser);
+    if (animateLatestUser) {
+      this.renderedPromptSubmitMotionGeneration = this.promptSubmitMotionGeneration;
+    }
     this.recordRenderedPageSnapshot(this.currentSurface, document);
     if (this.htmlHomeDebugExportEnabled) {
       this.writeHtmlHomeDebugExport(document, 'auto');
@@ -5500,6 +5508,10 @@ struct Index {
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
+    this.appendMessage('user', visibleText);
+    this.inputText = inputTextAfterPromptSubmit(this.inputText);
+    this.isAwaitingFirstSurface = true;
+    this.promptSubmitMotionGeneration++;
     this.isBusy = true;
     let autoDeep = false;
     if (actionId.length === 0) {
@@ -5518,13 +5530,12 @@ struct Index {
     }
     if (autoDeep && trimmed.length > 0) {
       try {
-        this.inputText = inputTextAfterPromptSubmit(this.inputText);
-        this.appendMessage('user', visibleText);
         const contextJson = await this.buildDeepSearchContext();
         this.openDeepSearch(trimmed, contextJson);
         aiLogInfo('[AIPhone][DeepSearchAutoRouted] queryChars=' + trimmed.length.toString() +
           ' context=' + contextJson.length.toString() + 'chars');
       } finally {
+        this.isAwaitingFirstSurface = false;
         this.isBusy = false;
       }
       return;
@@ -5547,6 +5558,7 @@ struct Index {
         assistantDebug: this.lastModelOutput,
         error: 'Base URL 为空'
       }));
+      this.isAwaitingFirstSurface = false;
       this.isBusy = false;
       return;
     }
@@ -5557,15 +5569,12 @@ struct Index {
     this.bimRememberError = '';
     const turnGeneration: number = this.beginRuntimeTurn('multi_agent');
     this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
-    this.appendMessage('user', visibleText);
     aiLogInfo('[AIPhone][A2uiHomeSubmitPrompt] chars=' + request.prompt.length.toString() +
       ' model=' + this.selectedModel +
       ' baseUrl=' + this.baseUrl);
-    this.inputText = inputTextAfterPromptSubmit(this.inputText);
     this.multiTaskActiveSectionId = '';
     this.multiTaskUserPinnedSection = false;
     this.multiTaskShellHtml = '';
-    this.isAwaitingFirstSurface = true;
     this.markChecking('正在生成 A2UI...');
     try {
       configureLocalToolDebugConfig({
@@ -5589,8 +5598,6 @@ struct Index {
         throw new Error(result.message.length > 0 ?
           result.message : 'Multi-agent runtime failed to complete the turn.');
       }
-      this.isBusy = false;
-      this.isAwaitingFirstSurface = false;
       if (result.surfaceId.length > 0 &&
         result.surfaceId === this.currentSurface.surfaceId &&
         result.personaId.length > 0) {
@@ -5628,7 +5635,6 @@ struct Index {
       if (this.runtimeGeneration !== turnGeneration) {
         return;
       }
-      this.isAwaitingFirstSurface = false;
       const message = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][A2uiHomeModelException] ' + logSnippet(message));
       const visibleError = visibleTurnFailureMessage(message);

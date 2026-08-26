@@ -750,6 +750,8 @@ function dynamicVideoUrl(result: DynamicGenericToolResult): string {
 
 function videoFromDynamic(source: AggregateSearchSource, result: DynamicGenericToolResult, index: number): AggregateSearchVideo {
   const providerId = rowValue(result, source === 'youtube' ? 'Video ID' : 'BVID');
+  const thumbnail = source === 'youtube' && /^[A-Za-z0-9_-]{11}$/.test(providerId) ?
+    'https://wsrv.nl/?url=i.ytimg.com/vi/' + providerId + '/mqdefault.jpg' : rowValue(result, 'Thumbnail');
   return {
     id: source + '-' + (providerId.length > 0 ? providerId : index.toString()),
     source: source,
@@ -757,7 +759,7 @@ function videoFromDynamic(source: AggregateSearchSource, result: DynamicGenericT
     title: result.title,
     summary: result.summary,
     url: dynamicVideoUrl(result),
-    thumbnail: rowValue(result, 'Thumbnail'),
+    thumbnail: thumbnail,
     publishedAt: rowValue(result, 'Published'),
     duration: rowValue(result, 'Duration'),
     status: result.status === 'success' ? 'success' : 'error',

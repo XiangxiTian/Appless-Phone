@@ -697,7 +697,7 @@ function aggregateSearchDocumentFixture(): HtmlHomeDocument {
       title: 'Codex demo',
       embedUrl: 'https://www.youtube.com/embed/abc123',
       pageUrl: 'https://www.youtube.com/watch?v=abc123',
-      thumbnail: ''
+      thumbnail: 'https://wsrv.nl/?url=i.ytimg.com/vi/abc123/mqdefault.jpg'
     }
   }, {
     id: 'post-1',
@@ -2543,6 +2543,13 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('异常或提示')).assertEqual(-1);
       expect(html.indexOf('返回日报')).assertEqual(-1);
       expect(html.indexOf('data-aggregate-action="')).assertEqual(-1);
+      expect(html.indexOf('<a href="https://www.youtube.com/embed/abc123" target="_blank" rel="noopener noreferrer"><img class="aggregate-embed"'))
+        .assertLarger(-1);
+      expect(html.indexOf('<a href="https://www.youtube.com/watch?v=abc123"')).assertEqual(-1);
+      expect(html.indexOf('<img class="aggregate-embed" src="https://wsrv.nl/?url=i.ytimg.com/vi/abc123/mqdefault.jpg"'))
+        .assertLarger(-1);
+      expect(html.indexOf('<iframe class="aggregate-embed" src="https://www.youtube.com/embed/abc123"'))
+        .assertEqual(-1);
       expect(html.indexOf('class="aggregate-link-preview" href="https://news.ycombinator.com/item?id=123" target="_blank"'))
         .assertLarger(-1);
       expect(html.indexOf('class="aggregate-link-preview" href="https://news.ycombinator.com/item?id=123" target="_self"'))

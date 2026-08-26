@@ -690,6 +690,7 @@ h1, h2, h3, p { margin: 0; }
 .aggregate-embed {
   width: 100%;
   aspect-ratio: 16 / 9;
+  object-fit: cover;
   margin-top: 12px;
   border: 0;
   border-radius: 12px;
@@ -4613,6 +4614,12 @@ function renderFilterButton(value: string, label: string, source: string, active
 function renderEmbed(block: HtmlHomeBlock): string {
   if (block.mediaEmbed === undefined || block.mediaEmbed === null || text(block.mediaEmbed.embedUrl).length === 0) {
     return '';
+  }
+  const thumbnail = text(block.mediaEmbed.thumbnail);
+  if (text(block.source) === 'youtube' && thumbnail.length > 0) {
+    return '<a href="' + escapeAttribute(block.mediaEmbed.embedUrl) +
+      '" target="_blank" rel="noopener noreferrer"><img class="aggregate-embed" src="' + escapeAttribute(thumbnail) +
+      '" alt="' + escapeAttribute(block.mediaEmbed.title) + '" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></a>';
   }
   return '<iframe class="aggregate-embed" src="' + escapeAttribute(block.mediaEmbed.embedUrl) +
     '" title="' + escapeAttribute(block.mediaEmbed.title) +

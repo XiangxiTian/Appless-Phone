@@ -41,6 +41,7 @@ import {
   aggregateSearchRegistrySourceIds,
   aggregateSearchSearchSourceIds,
   aggregateYouTubeRelevanceLanguage,
+  aggregateVideoSourceBatchFromDynamicResults,
   aggregateMediaCandidates,
   aggregateXSearchQuery,
   streamAggregateSearchSourceBatches,
@@ -1055,6 +1056,28 @@ export default function aggregateSearchClientTest() {
       expect(candidates[2].mediaType).assertEqual('post');
       expect(candidates[2].coverUrl).assertEqual('');
       expect(candidates[2].providerScore === undefined).assertTrue();
+    });
+
+    it('routes YouTube covers through the phone-direct image proxy', 0, () => {
+      const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', [{
+        sourceTag: 'YouTube Data API', toolName: 'youtube.video.search', title: 'Video title',
+        status: 'success', summary: 'Video summary', rawPreview: '', rows: [
+          { label: 'Video ID', value: 'vHeDD9IluHc' },
+          { label: 'Watch URL', value: 'https://www.youtube.com/watch?v=vHeDD9IluHc' },
+          { label: 'Thumbnail', value: 'https://i.ytimg.com/vi/vHeDD9IluHc/mqdefault.jpg' }
+        ]
+      }, {
+        sourceTag: 'YouTube Data API', toolName: 'youtube.video.search', title: 'Invalid video',
+        status: 'success', summary: 'Invalid video summary', rawPreview: '', rows: [
+          { label: 'Video ID', value: 'vHeDD9IluH/' },
+          { label: 'Watch URL', value: 'https://www.youtube.com/watch?v=vHeDD9IluH/' },
+          { label: 'Thumbnail', value: 'https://example.com/fallback.jpg' }
+        ]
+      }], null, 10);
+
+      expect(batch.videos[0].thumbnail)
+        .assertEqual('https://wsrv.nl/?url=i.ytimg.com/vi/vHeDD9IluHc/mqdefault.jpg');
+      expect(batch.videos[1].thumbnail).assertEqual('https://example.com/fallback.jpg');
     });
 
     it('carries provider metrics and author identity into Waterfall candidates', 0, () => {

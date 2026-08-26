@@ -9,6 +9,34 @@ type HtmlHomeActionValue = Object | string | number | boolean | null | undefined
 
 type HtmlHomePostedAction = Record<string, HtmlHomeActionValue>;
 
+const HTML_HOME_DATA_OPEN = '<script id="home-data" type="application/json">';
+const HTML_HOME_DATA_CLOSE = '</script>';
+
+function htmlHomeBodyOpenTag(html: string): string {
+  const bodyStart = html.indexOf('<body');
+  if (bodyStart < 0) return '';
+  const bodyEnd = html.indexOf('>', bodyStart);
+  return bodyEnd < 0 ? '' : html.substring(bodyStart, bodyEnd);
+}
+
+export function isHtmlHomeConversationDocument(html: string): boolean {
+  const bodyTag = htmlHomeBodyOpenTag(html);
+  return bodyTag.indexOf('data-view="conversation"') >= 0 ||
+    bodyTag.indexOf('data-view="conversation-thinking"') >= 0;
+}
+
+export function htmlHomeDataPayload(html: string): string {
+  const openIndex = html.indexOf(HTML_HOME_DATA_OPEN);
+  if (openIndex < 0) return '';
+  const payloadStart = openIndex + HTML_HOME_DATA_OPEN.length;
+  const closeIndex = html.indexOf(HTML_HOME_DATA_CLOSE, payloadStart);
+  return closeIndex < 0 ? '' : html.substring(payloadStart, closeIndex);
+}
+
+export function htmlHomeAnimatesLatestUser(html: string): boolean {
+  return htmlHomeBodyOpenTag(html).indexOf('data-user-motion="enter"') >= 0;
+}
+
 export function waterfallLayerFullscreen(rendererFullscreen: boolean, popupVisible: boolean): boolean {
   return rendererFullscreen || popupVisible;
 }
@@ -70,6 +98,7 @@ export struct HtmlHomeSurfaceView {
   private popupController: webview.WebviewController = new webview.WebviewController();
   private bridge: HtmlHomeActionBridge = new HtmlHomeActionBridge();
   private loadedKey: string = '';
+  private loadedRenderTick: number = -1;
   private webReady: boolean = false;
   private lastMailDetailEventJson: string = '';
   private lastMailReplyEventJson: string = '';
@@ -81,6 +110,7 @@ export struct HtmlHomeSurfaceView {
   private appliedWaterfallBackRequestTick: number = 0;
   private waterfallPayloadPushInFlight: boolean = false;
   private appliedLuckinPatchTick: number = -1;
+  private conversationPatchInFlight: boolean = false;
   private rendererWaterfallFullscreen: boolean = false;
   @State private popupVisible: boolean = false;
   @State private popupTitle: string = '支付确认';
@@ -145,18 +175,70 @@ export struct HtmlHomeSurfaceView {
     }
     const patchPending = this.luckinInlinePatchTick > this.appliedLuckinPatchTick &&
       this.luckinInlinePatchJson.length > 0;
-    if (patchPending && this.html === this.loadedKey) {
+    if (patchPending && this.html === this.loadedKey && this.renderTick === this.loadedRenderTick) {
       return;
     }
-    if (this.html.length === 0 || this.html === this.loadedKey) {
+    if (this.html.length === 0 ||
+      (this.html === this.loadedKey && this.renderTick === this.loadedRenderTick)) {
       return;
     }
+    if (this.conversationPatchInFlight) return;
+    if (isHtmlHomeConversationDocument(this.loadedKey) &&
+      isHtmlHomeConversationDocument(this.html) && this.tryPatchConversation()) {
+      return;
+    }
+    this.loadFullHtml(this.html, this.renderTick);
+  }
+
+  private tryPatchConversation(): boolean {
+    const targetHtml = this.html;
+    const targetRenderTick = this.renderTick;
+    const payload = htmlHomeDataPayload(targetHtml);
+    if (payload.length === 0) return false;
+    const animateUserText = htmlHomeAnimatesLatestUser(targetHtml);
+    const encodedPayload = JSON.stringify(payload);
+    try {
+      this.conversationPatchInFlight = true;
+      this.controller.runJavaScript(
+        '(function(){' +
+        'if(!window.__aiphoneApplyConversationUpdate){throw new Error("CONVERSATION_UPDATE_BRIDGE_MISSING");}' +
+        'var applied=window.__aiphoneApplyConversationUpdate(JSON.parse(' + encodedPayload + '),' +
+        (animateUserText ? 'true' : 'false') + ');' +
+        'if(!applied){throw new Error("CONVERSATION_UPDATE_REJECTED");}' +
+        'return "ok";' +
+        '})()'
+      ).then((): void => {
+        this.loadedKey = targetHtml;
+        this.loadedRenderTick = targetRenderTick;
+        this.conversationPatchInFlight = false;
+        aiLogInfo('[AIPhone][HtmlHomeConversationPatch] chars=' + targetHtml.length.toString() +
+          ' contentDigest=' + sha256Digest(targetHtml) +
+          ' renderTick=' + targetRenderTick.toString() +
+          ' animateUserText=' + (animateUserText ? 'true' : 'false'));
+        this.loadHtmlIfNeeded();
+      }).catch((error: Error): void => {
+        this.conversationPatchInFlight = false;
+        aiLogError('[AIPhone][HtmlHomeConversationPatchError] ' + JSON.stringify(error));
+        if (this.webReady && this.html.length > 0) {
+          this.loadFullHtml(this.html, this.renderTick);
+        }
+      });
+      return true;
+    } catch (error) {
+      this.conversationPatchInFlight = false;
+      aiLogError('[AIPhone][HtmlHomeConversationPatchError] ' + JSON.stringify(error));
+      return false;
+    }
+  }
+
+  private loadFullHtml(targetHtml: string, targetRenderTick: number): void {
     try {
       this.webReady = false;
       this.rendererWaterfallFullscreen = false;
       this.publishWaterfallFullscreen();
-      this.controller.loadData(this.html, 'text/html', 'UTF-8', 'https://aiphone.local/');
-      this.loadedKey = this.html;
+      this.controller.loadData(targetHtml, 'text/html', 'UTF-8', 'https://aiphone.local/');
+      this.loadedKey = targetHtml;
+      this.loadedRenderTick = targetRenderTick;
       this.lastMailDetailEventJson = '';
       this.lastMailReplyEventJson = '';
       this.lastMailCalendarEventJson = '';
@@ -165,9 +247,9 @@ export struct HtmlHomeSurfaceView {
       this.lastWaterfallPayloadJson = '';
       this.lastWaterfallPayloadTick = -1;
       this.appliedLuckinPatchTick = this.luckinInlinePatchTick;
-      aiLogInfo('[AIPhone][HtmlHomeSurfaceLoad] chars=' + this.html.length.toString() +
-        ' contentDigest=' + sha256Digest(this.html) +
-        ' renderTick=' + this.renderTick.toString() +
+      aiLogInfo('[AIPhone][HtmlHomeSurfaceLoad] chars=' + targetHtml.length.toString() +
+        ' contentDigest=' + sha256Digest(targetHtml) +
+        ' renderTick=' + targetRenderTick.toString() +
         ' busy=' + (this.isBusy ? 'true' : 'false'));
     } catch (error) {
       aiLogError('[AIPhone][HtmlHomeSurfaceLoadError] ' + JSON.stringify(error));
@@ -399,7 +481,7 @@ export struct HtmlHomeSurfaceView {
   build() {
     Stack({ alignContent: Alignment.Top }) {
       Web({
-        src: 'data:text/html;charset=utf-8,<body style="margin:0;background:rgba(255,255,255,0.48)"></body>',
+        src: 'data:text/html;charset=utf-8,<body style="margin:0;background:transparent"></body>',
         controller: this.controller
       })
         .javaScriptAccess(true)
@@ -506,14 +588,6 @@ export struct HtmlHomeSurfaceView {
         .backgroundColor(COLOR_PAGE)
       }
 
-      Row()
-        .width('100%')
-        .height(8)
-        .linearGradient({
-          angle: 180,
-          colors: [['#8AFFFFFF', 0], ['#00FFFFFF', 1]]
-        })
-        .hitTestBehavior(HitTestMode.Transparent)
     }
       .width('100%')
       .height('100%')

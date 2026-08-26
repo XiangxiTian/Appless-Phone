@@ -43,6 +43,7 @@ import {
   A2UI_MOTION_NORMAL_MS
 } from '../style/A2uiHomeMotion';
 import { formatBimCount } from './BimHomePage';
+import { WelcomeCardDeck } from './WelcomeCardDeck';
 
 const A2UI_HISTORY_EMPTY_HEIGHT: number = 108;
 const A2UI_HISTORY_ROW_HEIGHT: number = 76;
@@ -68,6 +69,8 @@ const A2UI_COMPOSER_TEXT_UNITS_PER_LINE: number = 30;
 const A2UI_COMPOSER_TEXT_MAX_LINES: number = 4;
 const A2UI_COMPOSER_DOCK_EXTRA_HEIGHT: number = 8;
 const A2UI_HOME_COMPOSER_BOTTOM_PADDING: number = 4;
+const A2UI_HOME_COMPOSER_SAFE_AREA_OVERLAP: number = 10;
+const A2UI_HOME_COMPOSER_MIN_SAFE_PADDING: number = 2;
 const A2UI_HOME_CLOCK_INTERVAL_MS: number = 30000;
 const A2UI_HOME_SHELL_BACKGROUND: string = '#FFFDF9';
 const A2UI_HOME_GLASS_BACKGROUND: string = '#B8FFFFFF';
@@ -79,9 +82,9 @@ const A2UI_HOME_SEND_SHADOW: string = '#38995F4C';
 const A2UI_HOME_HEADER_BUTTON_BACKGROUND: string = '#CCFFFFFF';
 const A2UI_HOME_HEADER_BUTTON_EDGE: string = '#B8E7D8CE';
 const A2UI_HOME_HEADER_BUTTON_SHADOW: string = '#188C6A53';
-const A2UI_HOME_AI_LABEL_BACKGROUND: string = '#F6EAE4';
-const A2UI_HOME_AI_LABEL_EDGE: string = '#D8B8AA';
-const A2UI_HOME_AI_LABEL_TEXT: string = '#714737';
+const A2UI_HOME_AI_DISCLOSURE_TEXT: string = '#B8B8B8';
+const A2UI_WELCOME_TOOLBAR_BUTTON_SIZE: number = 50;
+const A2UI_WELCOME_TOOLBAR_ICON_SIZE: number = 24;
 
 function padHomeClockPart(value: number): string {
   return value < 10 ? '0' + value.toString() : value.toString();
@@ -200,6 +203,8 @@ export type BimRememberState = 'ready' | 'saving' | 'saved' | 'error';
 @Component
 export struct HomePage {
   @Link inputText: string;
+  @StorageProp('a2uiSystemTopInsetVp') systemTopInsetVp: number = 24;
+  @StorageProp('a2uiSystemBottomInsetVp') systemBottomInsetVp: number = 12;
   @Prop isBusy: boolean = false;
   @Prop showHistory: boolean = false;
   @Prop messages: A2uiMessage[] = [];
@@ -261,7 +266,10 @@ export struct HomePage {
   private previousKeyboardAvoidMode: KeyboardAvoidMode = KeyboardAvoidMode.OFFSET;
   onOpenConfig: () => void = () => {};
   onOpenPublicPersona: () => void = () => {};
+  onToggleHistory: () => void = () => {};
   onSendPrompt: () => void = () => {};
+  onSendWelcomePrompt: (prompt: string) => void = (_prompt: string): void => {};
+  onOpenWaterfall: () => void = (): void => {};
   onStartVoiceInput: () => void = () => {};
   onStopVoiceInput: () => void = () => {};
   onResetSession: () => void = () => {};
@@ -349,6 +357,13 @@ export struct HomePage {
 
   private canResetSession(): boolean {
     return !this.isBusy && (!this.showWelcome || this.inputText.trim().length > 0);
+  }
+
+  private chooseWelcomePrompt(prompt: string): void {
+    if (this.isBusy || this.isVoiceListening) {
+      return;
+    }
+    this.onSendWelcomePrompt(prompt);
   }
 
   private useNativeSurface(): boolean {
@@ -457,92 +472,90 @@ export struct HomePage {
     }
   }
 
+  private composerBottomPadding(): number {
+    return A2UI_HOME_COMPOSER_BOTTOM_PADDING + Math.max(
+      A2UI_HOME_COMPOSER_MIN_SAFE_PADDING,
+      this.systemBottomInsetVp - A2UI_HOME_COMPOSER_SAFE_AREA_OVERLAP
+    );
+  }
+
   @Builder
   private HomeBackdrop() {
     Image($r('app.media.home_light_aurora_background'))
       .width('100%')
       .height('100%')
       .objectFit(ImageFit.Cover)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .hitTestBehavior(HitTestMode.Transparent)
   }
 
   @Builder
-  private AiGeneratedDisclosure() {
-    Row() {
-      Text('AI生成')
-        .fontSize(12)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(A2UI_HOME_AI_LABEL_TEXT)
-        .maxLines(1)
+  private WelcomeToolbarButton(icon: Resource, label: string, onClick: () => void) {
+    Stack({ alignContent: Alignment.Center }) {
+      Image(icon)
+        .width(A2UI_WELCOME_TOOLBAR_ICON_SIZE)
+        .height(A2UI_WELCOME_TOOLBAR_ICON_SIZE)
+        .objectFit(ImageFit.Contain)
     }
-    .height(26)
-    .padding({ left: 10, right: 10 })
-    .margin({ left: 10 })
+    .width(A2UI_WELCOME_TOOLBAR_BUTTON_SIZE)
+    .height(A2UI_WELCOME_TOOLBAR_BUTTON_SIZE)
+    .backgroundColor('#A8FFFFFF')
+    .borderRadius(23)
+    .border({ width: 1, color: '#8AFFFFFF' })
+    .shadow({ radius: 10, color: '#12000000', offsetX: 0, offsetY: 4 })
+    .accessibilityText(label)
+    .onClick(onClick)
+  }
+
+  @Builder
+  private WelcomeToolbar() {
+    Row({ space: 10 }) {
+      this.WelcomeToolbarButton($r('app.media.icon_history'), '历史记录', () => {
+        this.onToggleHistory();
+      })
+      this.WelcomeToolbarButton($r('app.media.icon_settings'), '设置', () => {
+        this.onOpenConfig();
+      })
+    }
+    .width('100%')
+    .height(A2UI_WELCOME_TOOLBAR_BUTTON_SIZE)
+    .justifyContent(FlexAlign.Center)
     .alignItems(VerticalAlign.Center)
-    .backgroundColor(A2UI_HOME_AI_LABEL_BACKGROUND)
-    .borderRadius(13)
-    .border({ width: 1, color: A2UI_HOME_AI_LABEL_EDGE })
+    .margin({ top: 4 })
   }
 
   @Builder
   private WelcomeHero() {
     Column() {
-      Column() {
-        Text(homeTimeText(this.homeClockEpochMs))
-          .fontSize(this.composerFocused ? 38 : 76)
-          .fontWeight(FontWeight.Normal)
-          .fontColor('#624838')
-          .letterSpacing(this.composerFocused ? 0.4 : 1)
-          .maxLines(1)
-          .animation({ duration: 280, curve: A2UI_MOTION_MOVE_CURVE })
+      Text(homeGreetingText(this.homeClockEpochMs) + '，\n有什么我可以帮你的吗？')
+        .width('100%')
+        .fontSize(this.composerFocused ? 24 : 32)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111415')
+        .lineHeight(this.composerFocused ? 31 : 39)
+        .maxLines(2)
+        .margin({ top: this.composerFocused ? 10 : 22, bottom: this.composerFocused ? 14 : 34 })
+        .animation({ duration: 280, curve: A2UI_MOTION_MOVE_CURVE })
 
-        Text(homeDateText(this.homeClockEpochMs))
-          .fontSize(this.composerFocused ? 12 : 15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#795C4A')
-          .margin({ top: this.composerFocused ? 2 : 8 })
-          .animation({ duration: 280, curve: A2UI_MOTION_MOVE_CURVE })
+      if (!this.composerFocused) {
+        WelcomeCardDeck({
+          reduceMotion: this.reduceMotion,
+          isBusy: this.isBusy,
+          isVoiceListening: this.isVoiceListening,
+          onChoosePrompt: (prompt: string): void => {
+            this.chooseWelcomePrompt(prompt);
+          },
+          onOpenWaterfall: (): void => {
+            this.onOpenWaterfall();
+          }
+        })
       }
-      .width('100%')
-      .alignItems(this.composerFocused ? HorizontalAlign.Start : HorizontalAlign.Center)
-      .animation({ duration: 280, curve: A2UI_MOTION_MOVE_CURVE })
-
-      Column() {
-        Text(homeGreetingText(this.homeClockEpochMs))
-          .fontSize(this.composerFocused ? 16 : 21)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#4A3428')
-          .maxLines(1)
-          .animation({ duration: 280, curve: A2UI_MOTION_MOVE_CURVE })
-
-        Text(homePromptTitle(
-          this.homeClockEpochMs,
-          this.isBusy,
-          this.isVoiceListening,
-          this.composerFocused
-        ))
-          .fontSize(this.composerFocused ? 18 : 22)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#4A3428')
-          .lineHeight(this.composerFocused ? 25 : 32)
-          .maxLines(2)
-          .margin({ top: this.composerFocused ? 4 : 8 })
-          .animation({ duration: 280, curve: A2UI_MOTION_MOVE_CURVE })
-      }
-      .width('100%')
-      .alignItems(HorizontalAlign.Start)
-      .margin({ top: this.composerFocused ? 16 : 36 })
-      .animation({ duration: 280, curve: A2UI_MOTION_MOVE_CURVE })
     }
     .width('100%')
     .layoutWeight(1)
     .alignItems(HorizontalAlign.Start)
-    .padding({
-      left: this.composerFocused ? 12 : 28,
-      right: this.composerFocused ? 12 : 28,
-      top: this.composerFocused ? 0 : 6,
-      bottom: 24
-    })
+    .padding({ left: 10, right: 0, bottom: 24 })
+    .clip(true)
     .animation({ duration: 280, curve: A2UI_MOTION_MOVE_CURVE })
   }
 
@@ -597,65 +610,65 @@ export struct HomePage {
 
       Column() {
         if (shouldShowHomeChrome(this.waterfallFullscreen)) {
-        Row() {
-          Image($r('app.media.logo_appless'))
-            .width(A2UI_HEADER_LOGO_SIZE)
-            .height(A2UI_HEADER_LOGO_SIZE)
-            .objectFit(ImageFit.Contain)
+        if (this.showWelcome) {
+          this.WelcomeToolbar()
+        } else {
+          Row() {
+            Image($r('app.media.logo_appless'))
+              .width(A2UI_HEADER_LOGO_SIZE)
+              .height(A2UI_HEADER_LOGO_SIZE)
+              .objectFit(ImageFit.Contain)
 
-          if (hasLlmReply(this.messages)) {
-            this.AiGeneratedDisclosure()
+            Blank()
+              .layoutWeight(1)
+
+            A2uiButtonView({
+              icon: $r('app.media.icon_reset'),
+              hasIcon: true,
+              shape: 'circle',
+              circleSize: A2UI_HEADER_BUTTON_SIZE,
+              iconSize: A2UI_HEADER_BUTTON_ICON_SIZE,
+              tone: 'secondary',
+              isEnabled: this.canResetSession(),
+              customBackgroundColor: A2UI_HOME_HEADER_BUTTON_BACKGROUND,
+              customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
+              shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
+              shadowRadius: 8,
+              shadowOffsetY: 3
+            })
+              .enabled(this.canResetSession())
+              .onClick(() => {
+                if (!this.canResetSession()) {
+                  return;
+                }
+                this.onResetSession();
+              })
+              .margin({ left: A2UI_HEADER_BUTTON_GAP })
+
+            A2uiButtonView({
+              icon: $r('app.media.icon_settings'),
+              hasIcon: true,
+              shape: 'circle',
+              circleSize: A2UI_HEADER_BUTTON_SIZE,
+              iconSize: A2UI_HEADER_BUTTON_ICON_SIZE,
+              tone: 'secondary',
+              customBackgroundColor: A2UI_HOME_HEADER_BUTTON_BACKGROUND,
+              customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
+              shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
+              shadowRadius: 8,
+              shadowOffsetY: 3
+            })
+              .onClick(() => {
+                this.onOpenConfig();
+              })
+              .margin({ left: A2UI_HEADER_BUTTON_GAP })
           }
-
-          Blank()
-            .layoutWeight(1)
-
-          A2uiButtonView({
-            icon: $r('app.media.icon_reset'),
-            hasIcon: true,
-            shape: 'circle',
-            circleSize: A2UI_HEADER_BUTTON_SIZE,
-            iconSize: A2UI_HEADER_BUTTON_ICON_SIZE,
-            tone: 'secondary',
-            isEnabled: this.canResetSession(),
-            customBackgroundColor: A2UI_HOME_HEADER_BUTTON_BACKGROUND,
-            customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
-            shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
-            shadowRadius: 8,
-            shadowOffsetY: 3
-          })
-            .enabled(this.canResetSession())
-            .onClick(() => {
-              if (!this.canResetSession()) {
-                return;
-              }
-              this.onResetSession();
-            })
-            .margin({ left: A2UI_HEADER_BUTTON_GAP })
-
-          A2uiButtonView({
-            icon: $r('app.media.icon_settings'),
-            hasIcon: true,
-            shape: 'circle',
-            circleSize: A2UI_HEADER_BUTTON_SIZE,
-            iconSize: A2UI_HEADER_BUTTON_ICON_SIZE,
-            tone: 'secondary',
-            customBackgroundColor: A2UI_HOME_HEADER_BUTTON_BACKGROUND,
-            customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
-            shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
-            shadowRadius: 8,
-            shadowOffsetY: 3
-          })
-            .onClick(() => {
-              this.onOpenConfig();
-            })
-            .margin({ left: A2UI_HEADER_BUTTON_GAP })
+          .width('100%')
+          .height(44)
+          .alignItems(VerticalAlign.Center)
+          .padding({ left: 0, right: 0 })
+          .margin({ bottom: A2UI_HOME_SECTION_GAP })
         }
-        .width('100%')
-        .height(44)
-        .alignItems(VerticalAlign.Center)
-        .padding({ left: 0, right: 0 })
-        .margin({ bottom: this.showWelcome ? 0 : A2UI_HOME_SECTION_GAP })
 
         Column() {
           if (this.showHistory) {
@@ -929,6 +942,15 @@ export struct HomePage {
         .onTouch((event: TouchEvent) => {
           this.handleComposerHoldTouch(event);
         })
+
+        Text('内容由 AI 生成')
+          .width('100%')
+          .height(16)
+          .fontSize(11)
+          .fontWeight(FontWeight.Normal)
+          .fontColor(A2UI_HOME_AI_DISCLOSURE_TEXT)
+          .textAlign(TextAlign.Center)
+          .margin({ top: 4 })
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
@@ -941,8 +963,8 @@ export struct HomePage {
       .padding({
         left: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_X,
         right: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_X,
-        top: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_TOP,
-        bottom: this.waterfallFullscreen ? 0 : A2UI_HOME_COMPOSER_BOTTOM_PADDING
+        top: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_TOP + this.systemTopInsetVp,
+        bottom: this.waterfallFullscreen ? 0 : this.composerBottomPadding()
       })
       .backgroundColor('#00000000')
 
@@ -950,6 +972,7 @@ export struct HomePage {
     .width('100%')
     .height('100%')
     .backgroundColor(A2UI_HOME_SHELL_BACKGROUND)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }
 

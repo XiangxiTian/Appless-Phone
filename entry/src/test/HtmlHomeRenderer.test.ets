@@ -59,6 +59,9 @@ import {
 } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
 import { WaterfallCardRecord } from '../main/ets/pages/A2uiHome/waterfall/WaterfallPreferencesStore';
 import {
+  htmlHomeAnimatesLatestUser,
+  htmlHomeDataPayload,
+  isHtmlHomeConversationDocument,
   parseHtmlHomeAction,
   popupSubtitleFromTitle,
   popupTitleFromUrl
@@ -2214,6 +2217,7 @@ export default function htmlHomeRendererTest() {
 
       expect(html.indexOf('<!DOCTYPE html>')).assertEqual(0);
       expect(html.indexOf('<html')).assertLarger(-1);
+      expect(isHtmlHomeConversationDocument(html)).assertFalse();
       expect(html.indexOf('Project Brief')).assertLarger(-1);
       expect(html.indexOf('Known Block')).assertLarger(-1);
       expect(html.indexOf('Run Action')).assertLarger(-1);
@@ -2239,12 +2243,55 @@ export default function htmlHomeRendererTest() {
       const html = renderHtmlHomeDocument(plainChatDocumentFixture());
 
       expect(html.indexOf('plain-chat')).assertLarger(-1);
+      expect(html.indexOf('plain-chat-user-text')).assertLarger(-1);
+      expect(html.indexOf("add(parent, 'div', 'plain-chat-assistant-identity')")).assertLarger(-1);
+      expect(html.indexOf('class="plain-chat-assistant-label"')).assertEqual(-1);
+      expect(html.indexOf('基础对话')).assertEqual(-1);
       expect(html.indexOf('plain-chat-response')).assertLarger(-1);
       expect(html.indexOf('plain-chat-context')).assertLarger(-1);
+      expect(html.indexOf('data-context-key')).assertLarger(-1);
       expect(html.indexOf('plain-chat-timeline')).assertLarger(-1);
       expect(html.indexOf('details')).assertLarger(-1);
       expect(html.indexOf('plain-chat-role-user')).assertLarger(-1);
       expect(html.indexOf('plain-chat-role-assistant')).assertLarger(-1);
+      expect(html.indexOf('__aiphoneApplyConversationUpdate')).assertLarger(-1);
+      expect(html.indexOf("text(userText.textContent) !== requestText")).assertLarger(-1);
+      expect(isHtmlHomeConversationDocument(html)).assertTrue();
+      expect(htmlHomeDataPayload(html).indexOf('"source":"model"')).assertLarger(-1);
+      expect(htmlHomeAnimatesLatestUser(html)).assertFalse();
+    });
+
+    it('keeps a pending turn in the conversation layout without the execution dashboard', 0, () => {
+      const pending = createHtmlHomeDocument({
+        messages: [
+          { id: 'm1', role: 'user', content: '附近有什么好吃的' },
+          { id: 'm2', role: 'assistant', content: '上一轮的美食回复' },
+          { id: 'm3', role: 'user', content: '你好' }
+        ],
+        isBusy: true,
+        isAwaitingFirstSurface: true
+      });
+      const html = renderHtmlHomeDocument(pending, true);
+      const animatedHtml = renderHtmlHomeDocument(pending, true, undefined, [], [], true);
+
+      expect(html.indexOf('conversation-thinking')).assertLarger(-1);
+      expect(html.indexOf('conversation-thinking-indicator')).assertLarger(-1);
+      expect(html.indexOf('plain-chat-user-message')).assertLarger(-1);
+      expect(html.indexOf("add(parent, 'div', 'plain-chat-assistant-identity')")).assertLarger(-1);
+      expect(html.indexOf('正在思考')).assertEqual(-1);
+      expect(html.indexOf('conversation-thinking-dot')).assertLarger(-1);
+      expect(html.indexOf('plain-chat-context')).assertLarger(-1);
+      expect(html.indexOf('plain-chat-timeline')).assertLarger(-1);
+      expect(html.indexOf('thinking-request-summary')).assertEqual(-1);
+      expect(html.indexOf('thinking-steps')).assertEqual(-1);
+      expect(html.indexOf('body[data-view="conversation-thinking"]')).assertLarger(-1);
+      expect(html.indexOf('<body data-view="conversation-thinking">')).assertLarger(-1);
+      expect(html.indexOf('<body data-view="conversation-thinking" data-user-motion="enter">')).assertEqual(-1);
+      expect(animatedHtml.indexOf('<body data-view="conversation-thinking" data-user-motion="enter">')).assertLarger(-1);
+      expect(animatedHtml.indexOf('.plain-chat-user-text.is-refreshing')).assertLarger(-1);
+      expect(isHtmlHomeConversationDocument(animatedHtml)).assertTrue();
+      expect(htmlHomeDataPayload(animatedHtml).indexOf('"source":"pending"')).assertLarger(-1);
+      expect(htmlHomeAnimatesLatestUser(animatedHtml)).assertTrue();
     });
 
     it('keeps task result wording for a generic tool document', 0, () => {

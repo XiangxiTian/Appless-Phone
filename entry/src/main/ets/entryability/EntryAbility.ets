@@ -1,6 +1,6 @@
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { preferences } from '@kit.ArkData';
 import util from '@ohos.util';
@@ -28,6 +28,10 @@ import {
 } from '../pages/A2uiHome/train/TrainPresaleTaskStore';
 
 const DOMAIN = 0x0000;
+const A2UI_SYSTEM_TOP_INSET_STORAGE_KEY = 'a2uiSystemTopInsetVp';
+const A2UI_SYSTEM_BOTTOM_INSET_STORAGE_KEY = 'a2uiSystemBottomInsetVp';
+const A2UI_SYSTEM_TOP_INSET_FALLBACK: number = 24;
+const A2UI_SYSTEM_BOTTOM_INSET_FALLBACK: number = 12;
 const PERSONA_MANIFEST_RAWFILE = 'personas/personas.json';
 const PERSONA_IDS: string[] = [
   'default_companion',
@@ -496,6 +500,39 @@ export default class EntryAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
+
+    try {
+      const mainWindow = windowStage.getMainWindowSync();
+      let systemTopInsetVp = A2UI_SYSTEM_TOP_INSET_FALLBACK;
+      let systemBottomInsetVp = A2UI_SYSTEM_BOTTOM_INSET_FALLBACK;
+      try {
+        const density = display.getDefaultDisplaySync().densityPixels;
+        if (density > 0) {
+          const systemArea = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+          const navigationArea = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+          systemTopInsetVp = Math.max(0, systemArea.topRect.height / density);
+          systemBottomInsetVp = Math.max(0, navigationArea.bottomRect.height / density);
+        }
+      } catch (error) {
+        hilog.warn(DOMAIN, 'testTag', 'Failed to read system insets. Cause: %{public}s', describeError(error));
+      }
+      AppStorage.setOrCreate<number>(A2UI_SYSTEM_TOP_INSET_STORAGE_KEY, systemTopInsetVp);
+      AppStorage.setOrCreate<number>(A2UI_SYSTEM_BOTTOM_INSET_STORAGE_KEY, systemBottomInsetVp);
+      mainWindow.setWindowLayoutFullScreen(true)
+        .then((): Promise<void> => {
+          return mainWindow.setWindowSystemBarProperties({
+            statusBarColor: '#00000000',
+            statusBarContentColor: '#211B17',
+            navigationBarColor: '#00000000',
+            navigationBarContentColor: '#211B17'
+          });
+        })
+        .catch((error: Error): void => {
+          hilog.warn(DOMAIN, 'testTag', 'Failed to enable immersive window. Cause: %{public}s', error.message);
+        });
+    } catch (error) {
+      hilog.warn(DOMAIN, 'testTag', 'Failed to access main window. Cause: %{public}s', describeError(error));
+    }
 
     windowStage.loadContent('pages/A2uiHome/Index', (err) => {
       if (err.code) {

@@ -3,6 +3,8 @@ import { A2uiAction, A2uiGenericToolResultData, A2uiSurfaceState } from '@loop/a
 import {
   A2UI_SEND_SPINNER_STEP_DEG,
   createInitialConnectionPanelState,
+  createTurnConversationSurface,
+  createTurnFailureSurface,
   deepSearchRouteDecisionFromModelText,
   deepSearchRouteDecisionPrompt,
   explicitDeepSearchRouteDecision,
@@ -19,6 +21,7 @@ import {
   shouldShowQueryPendingSurface,
   shouldApplySurfaceUpdate,
   updateConnectionPanelState,
+  visibleTurnFailureMessage,
   voiceInputTextAfterRecognition
 } from '../main/ets/pages/A2uiHome/state/A2uiHomeState';
 import { buildRideToolPanelState } from '../main/ets/pages/A2uiHome/state/RideToolResultsState';
@@ -108,6 +111,10 @@ export default function a2uiHomeStateTest() {
         multi,
         surface(1, 'ready', 'surface_next', 'legacy', 5)
       )).assertTrue();
+      expect(shouldApplySurfaceUpdate(
+        multi,
+        surface(12, 'ready', 'surface_multi', 'multi_agent', 5)
+      )).assertTrue();
     });
 
     it('accepts callback state only for the generation and owner captured at submit', 0, () => {
@@ -185,6 +192,22 @@ export default function a2uiHomeStateTest() {
       expect(explicitDeepSearchRouteDecision('请勿深度搜索')).assertEqual('agent');
       expect(explicitDeepSearchRouteDecision('不要普通搜索，请深度搜索')).assertEqual('deepsearch');
       expect(explicitDeepSearchRouteDecision('比较两款芯片的最新进展')).assertEqual(null);
+    });
+
+    it('replaces a stale tool surface with the current turn result or failure', 0, () => {
+      const conversation = createTurnConversationSurface(12);
+      const failureMessage = visibleTurnFailureMessage('HTTP 429 throttling_error');
+      const failure = createTurnFailureSurface(failureMessage, 13);
+
+      expect(conversation.intent).assertEqual('general');
+      expect(conversation.status).assertEqual('ready');
+      expect(conversation.runtimeGeneration).assertEqual(12);
+      expect(failure.intent).assertEqual('general');
+      expect(failure.status).assertEqual('error');
+      expect(failure.runtimeGeneration).assertEqual(13);
+      expect(failure.error).assertEqual('模型请求过于频繁，请稍后重试。');
+      expect(failure.components[2].component).assertEqual('ErrorNotice');
+      expect(visibleTurnFailureMessage('LEADER_PLAN_FAILED')).assertEqual('这次请求没有完成，请稍后重试。');
     });
 
     it('keeps send spinner rotation monotonic while loading', 0, () => {

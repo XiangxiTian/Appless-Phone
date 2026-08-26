@@ -1,4 +1,10 @@
-import { A2uiSurfaceState, RuntimeOwner } from '@loop/agent-core';
+import {
+  A2UI_COMPONENT_COLUMN,
+  A2UI_COMPONENT_ERROR_NOTICE,
+  A2UI_COMPONENT_SURFACE_ROOT,
+  A2uiSurfaceState,
+  RuntimeOwner
+} from '@loop/agent-core';
 
 export const A2UI_SEND_SPINNER_STEP_DEG: number = 24;
 
@@ -47,6 +53,9 @@ export function shouldApplySurfaceUpdate(current: A2uiSurfaceState, next: A2uiSu
   const nextGeneration: number = next.runtimeGeneration === undefined ? 0 : next.runtimeGeneration;
   if (nextGeneration < currentGeneration) {
     return false;
+  }
+  if (nextGeneration > currentGeneration) {
+    return true;
   }
   if (nextGeneration === currentGeneration && current.runtimeOwner !== undefined &&
     next.runtimeOwner !== undefined && current.runtimeOwner !== next.runtimeOwner) {
@@ -142,6 +151,60 @@ export function deepSearchRouteDecisionPrompt(query: string): string {
     '用户明确要求或拒绝深度搜索时优先服从。用户请求：' + JSON.stringify(query.trim());
 }
 
+export function visibleTurnFailureMessage(raw: string): string {
+  const normalized = raw.toLowerCase();
+  if (normalized.indexOf('429') >= 0 || normalized.indexOf('ratelimit') >= 0 ||
+    normalized.indexOf('rate limit') >= 0 || normalized.indexOf('throttling') >= 0 ||
+    normalized.indexOf('请求增长过快') >= 0) {
+    return '模型请求过于频繁，请稍后重试。';
+  }
+  return '这次请求没有完成，请稍后重试。';
+}
+
+export function createTurnFailureSurface(message: string, generation: number): A2uiSurfaceState {
+  return {
+    surfaceId: 'surface_turn_error_' + generation.toString(),
+    rootId: 'root',
+    title: '这次请求没有完成',
+    intent: 'general',
+    status: 'error',
+    components: [
+      { id: 'root', component: A2UI_COMPONENT_SURFACE_ROOT, child: 'body' },
+      { id: 'body', component: A2UI_COMPONENT_COLUMN, children: ['notice'] },
+      {
+        id: 'notice',
+        component: A2UI_COMPONENT_ERROR_NOTICE,
+        title: '请稍后再试',
+        body: message,
+        status: 'error'
+      }
+    ],
+    dataModelJson: '{}',
+    error: message,
+    sequence: 1,
+    runtimeOwner: 'multi_agent',
+    runtimeGeneration: generation
+  };
+}
+
+export function createTurnConversationSurface(generation: number): A2uiSurfaceState {
+  return {
+    surfaceId: 'surface_turn_conversation_' + generation.toString(),
+    rootId: 'root',
+    title: 'Appless 回答',
+    intent: 'general',
+    status: 'ready',
+    components: [
+      { id: 'root', component: A2UI_COMPONENT_SURFACE_ROOT }
+    ],
+    dataModelJson: '{}',
+    error: '',
+    sequence: 1,
+    runtimeOwner: 'multi_agent',
+    runtimeGeneration: generation
+  };
+}
+
 export function shouldShowQueryPendingSurface(isBusy: boolean, isAwaitingFirstSurface: boolean): boolean {
   return isBusy && isAwaitingFirstSurface;
 }
@@ -191,7 +254,7 @@ export function voiceInputTextAfterRecognition(current: string, recognized: stri
 
 export function connectionStatusLabel(status: string): string {
   if (status === 'checking') {
-    return '检查中';
+    return '连接中';
   }
   if (status === 'ready') {
     return '连接正常';

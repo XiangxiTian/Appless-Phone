@@ -1,10 +1,10 @@
 # 当前工具能力总表
 
-更新时间：2026-08-14
+更新时间：2026-08-24
 
 来源：`agent_core/src/main/ets/aiphone/AiphoneToolDefinitions.ets`、`agent_core/src/main/ets/aiphone/runtime/ToolDefinitionRegistry.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentRuntime.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets`、`agent_core/src/main/ets/aiphone/runtime/AggregateSearchClient.ets`、`agent_core/src/main/ets/aiphone/runtime/ComposioDynamicBackend.ets`、`scripts/aiphone-device-smoke.mjs`、支付/Composio 相关单测。
 
-当前 agent 工具箱：54 个固定 `ToolDefinition`（31 个 Data Agent + 23 个 Action Agent）+ `memory.update` + `dynamic.search` 两个虚拟 owner。`hotel.navigate`、`hotel.booking.open` 与 `gmail.message.send` 只从当前 surface 派生，不直接暴露给模型；结合按 query 收窄的瑞幸预览，运行时模型只看到当前允许的工具。Composio 不新增固定 toolId，主要挂在 `dynamic.search`；自动回归以 core/full/manual-only/excluded/review-required 标记为准。
+当前 agent 工具箱：54 个固定 `ToolDefinition`（31 个 Data Agent + 23 个 Action Agent）+ `dynamic.search` 虚拟 Data owner + `memory.remember` / `memory.update` / `memory.forget` 三个 Leader-owned 本地记忆能力。三个记忆能力不属于 Action Agent，不生成 A2UI；`hotel.navigate`、`hotel.booking.open` 与 `gmail.message.send` 只从当前 surface 派生，不直接暴露给模型。Composio 不新增固定 toolId，主要挂在 `dynamic.search`；自动回归以 core/full/manual-only/excluded/review-required 标记为准。
 
 授权页统一显示 app 名称。Slack、X 的读取和授权统一走当前用户的 Composio connected account；用户确认发送 Slack 回复时固定执行 `SLACK_CHAT_POST_MESSAGE`，X 回复仍不支持。QQ 邮箱、瑞幸、滴滴继续使用当前默认凭证和原有 provider 逻辑，授权页只新增各自官方授权/开发者页面入口，不会把网页登录结果自动写回 App。
 
@@ -18,7 +18,7 @@ UI Lab 的 GitHub 用户看板是 `dynamic.search` 的宿主受信 profile，不
 
 ## multi-Agent smoke 证据边界
 
-自动 smoke 以同一 `conversation`、`turn`、`task` 下的 `MultiAgentInput`、Data/UI task 与 terminal、`MultiAgentTurnResult` 为主证据；并行任务必须全部 terminal，依赖任务必须出现递增的 `round-*`。`success`、`partial`、`empty`、`error`、`canceled` 保留原状态，不把旧 `LoopBackend`/页面 ready/HTTP 200 单独当成成功。当前 surface 动作还要求 `MultiAgentActionRun` 与同一 surface/run 的 `MultiAgentActionResult`；virtual action 使用精确 `MultiAgentActionPlan` request 与 terminal result 关联。
+自动 smoke 以同一 `conversation`、`turn`、`task` 下的 `MultiAgentInput`、Data/UI task 与 terminal、`MultiAgentTurnResult` 为主证据；并行任务必须全部 terminal，依赖任务必须出现递增的 `round-*`。`success`、`partial`、`empty`、`error`、`canceled` 保留原状态，不把旧 `LoopBackend`/页面 ready/HTTP 200 单独当成成功。当前 surface 动作还要求 `MultiAgentActionRun` 与同一 surface/run 的 `MultiAgentActionResult`；virtual action 使用精确 `MultiAgentActionPlan` request 与 terminal result 关联。Leader-owned 记忆不产生 Data/Action/UI task：增补和更新要求当轮 `LeaderMemoryRecall` 与同一 `conversation/turn/task` 的 `LeaderMemoryTool` terminal，并确认无 `MultiAgentActionPlan`；遗忘统一进入宿主记忆管理卡，用户可多选后直接写本地 memory runtime，不产生 Action Agent 计划。逐条写入只汇总一次，日志只包含操作、状态和计数，不记录 fact 或 memoryId。
 
 `node scripts/aiphone-device-smoke.mjs --list-cases` 只列 C01-C23，`--full-regression --list-cases` 再列 F01-F16，均不运行设备或 provider。`gmail.message.send` 不进入自动列表；只有同时配置 `AIPHONE_GMAIL_SAFE_THREAD_ID` 与 `AIPHONE_GMAIL_SAFE_RECIPIENT` 时，`--gmail-send-manual --list-cases` 才显示 manual-only M01，且脚本不会自动发送。X02“不确认直接发送”继续 excluded。
 
@@ -76,7 +76,9 @@ UI Lab 的 GitHub 用户看板是 `dynamic.search` 的宿主受信 profile，不
 | `ride.order.create` | Action Agent | manual-only | 当前估价卡的精确车型/trace/路线确认 |
 | `ride.order.cancel` | Action Agent | manual-only | 当前订单可见取消动作与真实 orderId |
 | `ride.driver.location` | Data Agent | manual-only | 需要真实 orderId |
-| `memory.update` | Action Agent（virtual） | core | 用户明确稳定偏好；回归结束恢复 |
+| `memory.remember` | Leader（phone-local） | core | Leader 整理 1–5 条原子事实后直接写入；无 Action Agent / A2UI |
+| `memory.update` | Leader（phone-local） | core | 只允许更新当轮预召回中的精确 memoryId；无 Action Agent / A2UI |
+| `memory.forget` | Leader（phone-local） | core | Leader 只触发宿主记忆管理卡；卡片默认零选、支持多选，用户点击“删除已选”后 Host 才按隐藏的精确 memoryId 逐条删除；不经过 Action Agent |
 | `dynamic.search` | Data Agent（virtual） | core | 只读 operation；create/update/delete/send/write 一律拒绝 |
 
 | 领域 | toolId | 核心 query | 预期结果 | 风险 | 授权/配置 | VPN/网络 | 走 Composio | 覆盖 |
@@ -137,7 +139,7 @@ UI Lab 的 GitHub 用户看板是 `dynamic.search` 的宿主受信 profile，不
 | 打车 | `ride.order.create` | 从真实估价卡确认叫车 | 只在显式确认后创建真实订单；自动回归不执行 | `write` | `DIDI_MCP_KEY` + 真实路线/车型/乘客上下文 | 取决于滴滴网络 | 否 | manual-only |
 | 打车 | `ride.order.cancel` | 取消已创建的真实订单 | 必须保留真实 orderId；无测试订单不执行 | `write` | `DIDI_MCP_KEY` + 真实 orderId | 取决于滴滴网络 | 否 | manual-only |
 | 打车 | `ride.driver.location` | 查询已创建订单的司机位置 | 必须保留真实 orderId；无测试订单不执行 | `read` | `DIDI_MCP_KEY` + 真实 orderId | 取决于滴滴网络 | 否 | manual-only |
-| 数字分身 | `memory.update` | `我只喝瑞幸咖啡` | 更新当前分身 memory，显示记忆更新卡；不同时搜索 | `draft` | 无 | 不需要 | 否 | 默认 smoke |
+| 长期记忆 | `memory.remember` / `memory.update` / `memory.forget` | `请长期记住：我点咖啡时只选燕麦奶` | 非 DeepSearch 主链先在手机本地全局预召回；遗忘时把本轮 1–5 条召回交给宿主管理卡，默认零选中，用户可多选后按隐藏精确 ID 删除；部分失败保留失败项重试，不经过 Action Agent | `draft` | 本地 BGE + Vector RDB | 不需要 | 否 | core C11 可逆生命周期；管理卡需专项真机验证 |
 | 动态工具/本地 | `dynamic.search` | `帮我查明天深圳天气` | 本地 catalog 命中 `weather.query`；找不到就 `no_tool_found` | `read` | 本地 catalog 凭据；天气通常走高德 key | 高德天气通常不需要 VPN | 否 | `--dynamic-tools` |
 | Composio/GitHub | `dynamic.search` | `帮我在 GitHub 里找 Appless-Phone 最近的 pr` | Composio GitHub 结果；优先 `GITHUB_FIND_PULL_REQUESTS`，展示 Appless-Phone PR | `read` | `COMPOSIO_API_KEY` + `COMPOSIO_USER_ID` + GitHub connected account | 通常需要外网/VPN | 是 | `--composio-tools` |
 | Composio/GitHub UI Lab | `dynamic.search` + host-only `operationTarget` | `为 GitHub 用户 sindresorhus 生成资料、仓库和近期动态看板` | 一次 `github.user.dashboard` 任务聚合真实公开资料、当前页仓库统计和近期事件；分区失败显式标注来源，不生成贡献日历 | `read` | `COMPOSIO_API_KEY` + `COMPOSIO_USER_ID` + GitHub connected account；仅 UI Lab trusted profile | 通常需要外网/VPN | 是 | Hypium；UI Lab 真机 `manual-only` |
@@ -161,4 +163,4 @@ UI Lab 的 GitHub 用户看板是 `dynamic.search` 的宿主受信 profile，不
 
 ## 更新规则
 
-改工具时只同步这张表：新增/删除静态工具看 `ToolDefinitionRegistry.ets`；新增 virtual owner 或 runtime action 看 `MultiAgentCanaryRuntime.ets` 与 `MultiAgentRuntime.ets`；新增聚合搜索来源看 `AggregateSearchClient.ets`；新增 Composio app/query 看 `ComposioDynamicBackend.ets` 和 `scripts/aiphone-device-smoke.mjs`；新增支付专项场景看 `entry/src/test/*Payment*.test.ets`。
+改工具时只同步这张表：新增/删除静态工具看 `ToolDefinitionRegistry.ets`；新增 virtual owner 或 runtime action 看 `MultiAgentCanaryRuntime.ets` 与 `MultiAgentRuntime.ets`；新增 Leader-owned 记忆能力看 `LeaderCapabilityOwnership.ets`、`LeaderAgent.ets` 和手机本地 memory runtime；新增聚合搜索来源看 `AggregateSearchClient.ets`；新增 Composio app/query 看 `ComposioDynamicBackend.ets` 和 `scripts/aiphone-device-smoke.mjs`；新增支付专项场景看 `entry/src/test/*Payment*.test.ets`。

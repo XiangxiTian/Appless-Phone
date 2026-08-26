@@ -10,8 +10,7 @@ export function leaderPersonaContext(previousPersonaId: string): LeaderPersonaMe
     return {
       personaId: pack.manifest.id,
       name: pack.manifest.name,
-      soul: pack.soul,
-      memory: pack.memory,
+      domains: pack.manifest.domains.slice(),
       previous: pack.manifest.id === previousPersonaId,
       activeSkills: active.map((skill: PersonaSkillMarkdown): LeaderSkillMetadata => ({
         skillId: skill.id,

@@ -164,6 +164,12 @@ export default function agentMessageTest() {
       const input: UserInputPayload = {
         text: '查询天气',
         recentMessages: [{ role: 'user', content: '我在北京' }],
+        recalledMemories: [{
+          memoryId: 'memory-1',
+          fact: '用户常住北京。',
+          personaTag: 'global',
+          authority: 'leader'
+        }],
         previousPersonaId: 'travel_companion',
         currentSurfaceSummary: {
           surfaceId: 'surface-1',
@@ -186,6 +192,7 @@ export default function agentMessageTest() {
       expect(AgentMessageType.TURN_RESULT).assertEqual('TURN.RESULT');
       expect(AgentMessageType.ACTION_PLAN_REQUEST).assertEqual('ACTION.PLAN.REQUEST');
       expect(input.recentMessages!.length).assertEqual(1);
+      expect(input.recalledMemories![0].memoryId).assertEqual('memory-1');
       expect(turn.roundCount).assertEqual(2);
       expect(turn.personaId).assertEqual('travel_companion');
     });

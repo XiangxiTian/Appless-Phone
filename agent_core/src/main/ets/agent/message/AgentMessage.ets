@@ -1,4 +1,5 @@
 import { LeaderBimContextUpdate, LeaderBimSuggestion } from '../leader/LeaderTypes';
+import { MemoryAuthority } from '../../memory/MemoryTypes';
 
 export enum AgentMessageType {
   INPUT_USER = 'INPUT.USER',
@@ -52,10 +53,58 @@ export interface ObservationDigest {
   entityRefs: string[];
 }
 
+/**
+ * A bounded projection of one phone-local long-term memory for Leader planning.
+ * It intentionally excludes embeddings, hashes, source turns, and storage fields.
+ */
+export interface RecalledMemoryContext {
+  memoryId: string;
+  fact: string;
+  personaTag: string;
+  authority: MemoryAuthority;
+}
+
+export type MemoryRecallOrigin = 'prefetch' | 'leader';
+export type MemoryRecallStatus = 'success' | 'empty' | 'error';
+/** Matches the per-message model-visible context bound used by the session pipeline. */
+export const MEMORY_RECALL_OBSERVATION_QUERY_MAX_CHARS: number = 2000;
+
+/**
+ * One bounded, model-visible item returned by the Leader-local memory.recall tool.
+ * Retrieval order carries relevance rank. Numeric retrieval scores remain internal and
+ * are intentionally excluded from the model-visible observation.
+ */
+export interface MemoryRecallItem extends RecalledMemoryContext {}
+
+/** First-class internal tool observation; it is serialized as text for non-tool-call models. */
+export interface MemoryRecallObservation {
+  callId: string;
+  origin: MemoryRecallOrigin;
+  query: string;
+  status: MemoryRecallStatus;
+  items: MemoryRecallItem[];
+}
+
+export interface MemorySelectionPayload {
+  operation: 'forget';
+  originTurnId: string;
+  sourceTaskId: string;
+  personaId: string;
+  /** Every bounded memory recalled for the origin turn, in its original order (1-5 items). */
+  candidates: RecalledMemoryContext[];
+}
+
 export interface UserInputPayload {
   text: string;
   recentMessages?: ConversationTurnMessage[];
+  /** Rolling, model-generated summary of older session messages. Untrusted conversation context only. */
+  sessionSummary?: string;
+  recalledMemories?: RecalledMemoryContext[];
+  /** Optional continuity hint only; every new turn still selects its own persona. */
+  lastTurnPersonaId?: string;
+  /** @deprecated compatibility alias for callers not yet migrated. */
   previousPersonaId?: string;
+  memoryRecallObservation?: MemoryRecallObservation;
   currentSurfaceSummary?: CurrentSurfaceSummary;
   recentObservations?: ObservationDigest[];
   orderedContinuationAuthorized?: boolean;
@@ -72,6 +121,7 @@ export interface TurnResultPayload {
   skillId?: string;
   bimSuggestion?: LeaderBimSuggestion;
   bimContextUpdate?: LeaderBimContextUpdate;
+  memorySelection?: MemorySelectionPayload;
 }
 
 export interface UiTaskPayload {

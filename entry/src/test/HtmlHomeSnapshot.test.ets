@@ -7,6 +7,10 @@ import {
 import { isHtmlHomeActionAllowed } from '../main/ets/pages/A2uiHome/html/HtmlHomeActionPolicy';
 import { HtmlHomeBlock, HtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
 import {
+  MemoryCandidatesForgetActionArgs,
+  memoryCandidateSelectionSurface
+} from '../main/ets/model/MemoryCandidateSelectionSurface';
+import {
   createDailyBriefSurface,
   defaultDailyBriefPreference
 } from '../main/ets/pages/A2uiHome/dailybrief/DailyBriefCore';
@@ -97,6 +101,49 @@ function aggregateSearchDataModelJson(result: AggregateSearchResult): string {
 
 export default function htmlHomeSnapshotTest() {
   describe('htmlHomeSnapshot', () => {
+    it('projects memory forget candidates with opaque exact visible actions', 0, () => {
+      const candidateSurface = memoryCandidateSelectionSurface('memory-selection:test', {
+        selectionId: 'selection-test',
+        revision: 1,
+        candidates: [{
+          candidateKey: 'candidate-a', fact: '用户喝咖啡时选择半糖。',
+          personaTag: 'food_companion', authority: 'leader'
+        }, {
+          candidateKey: 'candidate-b', fact: '用户喝咖啡时优先选择燕麦奶。',
+          personaTag: 'food_companion', authority: 'leader'
+        }]
+      });
+      const document = createHtmlHomeDocument({
+        surface: candidateSurface, messages: [], isBusy: false, isAwaitingFirstSurface: false
+      });
+      const block = document.blocks[0];
+      const template = block.actions[0];
+      const allowedArgs: MemoryCandidatesForgetActionArgs = {
+        selectionId: 'selection-test', revision: 1, candidateKeys: ['candidate-a', 'candidate-b']
+      };
+      const forgedArgs: MemoryCandidatesForgetActionArgs = {
+        selectionId: 'selection-test', revision: 1, candidateKeys: ['forged']
+      };
+      const allowed: A2uiAction = {
+        id: template.id, label: '删除已选（2）', prompt: template.prompt,
+        variant: template.variant, kind: template.kind, args: allowedArgs
+      };
+      const forged: A2uiAction = {
+        id: template.id, label: '删除已选（1）', prompt: template.prompt,
+        variant: template.variant, kind: template.kind, args: forgedArgs
+      };
+
+      expect(block.kind).assertEqual('memory-candidate-selection');
+      expect(block.rows.length).assertEqual(2);
+      expect(block.memoryCandidates?.length).assertEqual(2);
+      expect(document.actions.length).assertEqual(0);
+      expect(block.actions.length).assertEqual(1);
+      expect(JSON.stringify(allowed.args).indexOf('memoryId')).assertEqual(-1);
+      expect(isHtmlHomeActionAllowed(document, template as A2uiAction)).assertFalse();
+      expect(isHtmlHomeActionAllowed(document, allowed)).assertTrue();
+      expect(isHtmlHomeActionAllowed(document, forged)).assertFalse();
+    });
+
     it('presents terminal mail reads without requesting the body again', 0, () => {
       const successResult: A2uiGenericToolResultData = {
         sourceTag: 'QQ Mail',

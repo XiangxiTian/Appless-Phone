@@ -2,7 +2,6 @@ import {
   AGENT_CORE_DEBUG,
   A2uiAgentRunner,
   ActionExecutionResult,
-  ConversationTurnMessage,
   CurrentSurfaceSummary,
   DataResult,
   LlmProvider,
@@ -107,6 +106,10 @@ import {
   callDirectModel,
   DirectModelCallResult
 } from '../../model/LocalModelClient';
+import {
+  ActiveSessionContext,
+  SessionContextCompactor
+} from './agent/SessionContextCompaction';
 import { GMAIL_MCP_AUTH_SETUP_URL, GMAIL_WEB_URL, GOOGLE_CALENDAR_WEB_URL, GOOGLE_OAUTH_SETUP_URL } from '@loop/agent-core';
 import { A2uiSurfaceStore, createSeedA2uiSurface } from '@loop/agent-core';
 import {
@@ -209,7 +212,6 @@ import { DEEP_SEARCH_ROUTE_URL, DeepSearchRouteParams } from './deepsearch/DeepS
 import {
   isStableWaterfallContentPreference,
   mergePersonaStablePreference,
-  waterfallExplicitPreferencesFromMemory,
   waterfallExplicitPreferencesFromStatement,
   PersonaMemoryUpdateRequest
 } from '../../model/PersonaMemoryUpdate';
@@ -259,6 +261,11 @@ import {
 import { ConfigPage } from './components/ConfigPage';
 import { PublicPersonaPage } from './components/PublicPersonaPage';
 import { PublicPersonaClient } from '../../publicpersona/PublicPersonaClient';
+import { PhoneLocalMemoryRuntime } from '../../memory/PhoneLocalMemoryRuntime';
+import {
+  PhoneLocalMemoryAvailabilityPort,
+  phoneLocalMemoryAvailabilityForContext
+} from '../../memory/PhoneLocalMemoryAvailability';
 import {
   PublicPersonaCandidate,
   PublicPersonaPhase,
@@ -279,9 +286,13 @@ import {
 import {
   MailDetailInPlaceEvent,
   MailDetailWriteLease,
+  MemoryCandidateManagerActionResult,
   MultiAgentCanaryOptions,
   MultiAgentCanaryRuntime
 } from './agent/MultiAgentCanaryRuntime';
+import {
+  MEMORY_CANDIDATES_FORGET_ACTION_ID
+} from '../../model/MemoryCandidateSelectionSurface';
 import {
   MailDetailSuggestionGuard,
   MailDetailUiEvent,
@@ -1181,6 +1192,8 @@ struct Index {
   private luckinReturnSurface: A2uiSurfaceState | null = null;
   private hotelReturnSurface: A2uiSurfaceState | null = null;
   private multiAgentRuntime: MultiAgentCanaryRuntime | null = null;
+  private phoneLocalMemoryRuntime: PhoneLocalMemoryRuntime | null = null;
+  private phoneLocalMemoryAvailability: PhoneLocalMemoryAvailabilityPort | null = null;
   private bimStoreInstance: BimStore | null = null;
   private bimCuratorTail: Promise<void> = Promise.resolve();
   private pendingBimEvidence: BimTurnEvidence | null = null;
@@ -1190,6 +1203,8 @@ struct Index {
     this.bimReduceMotion = enabled;
   };
   private multiAgentModel: LocalModel | null = null;
+  private readonly sessionContextCompactor: SessionContextCompactor =
+    new SessionContextCompactor((): LocalModel => this.canaryModel());
   private hotelAgentRuntimeFingerprint: string = '';
   private runtimeGeneration: number = 0;
   private readonly mailDetailSuggestionGuard: MailDetailSuggestionGuard =
@@ -3760,12 +3775,6 @@ struct Index {
       this.waterfallCardRecords = [];
       this.waterfallReactionProjection = { topicWeights: [], sourceWeights: [], formatWeights: [] };
     }
-    try {
-      this.waterfallPreferenceProfile = this.waterfallPreferencesStore().replaceExplicitPreferences(
-        waterfallExplicitPreferencesFromMemory(personaPackForId('entertainment_companion').memory));
-    } catch (_error) {
-      aiLogError('[AIPhone][WaterfallPreferenceProjection] ok=false source=startup');
-    }
     configureWaterfallEnabledSourcesForRuntime(
       this.waterfallPreferenceProfile.discoveryEnabledSources as AggregateSearchSource[]);
     configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile(false));
@@ -4065,14 +4074,6 @@ struct Index {
         }
         return accepted;
       },
-      onMemoryUpdate: (update: PersonaMemoryUpdateRequest, generation: number): boolean => {
-        if (runtimeCallbackIsCurrent(
-          this.activeRuntimeOwner, this.runtimeGeneration, 'multi_agent', generation
-        )) {
-          return this.applyPersonaMemoryUpdate(update);
-        }
-        return false;
-      },
       onMailDetail: async (
         result: MailDetailInPlaceEvent,
         generation: number,
@@ -4129,12 +4130,31 @@ struct Index {
       settingsFingerprint: fingerprint,
       focusedRelease: true
     };
+    const memoryAvailability = this.localMemoryAvailability();
+    options.memoryAvailability = memoryAvailability;
+    if (memoryAvailability.isAvailable()) options.memoryRuntime = this.localMemoryRuntime();
     if (ENABLE_MULTI_AGENT_UI_LAYOUT_LLM && provider.isConfigured()) {
       options.uiLayoutPlanner = new A2uiAgentRunner(new OpenAiA2uiModel(provider));
     }
     this.multiAgentRuntime = new MultiAgentCanaryRuntime(options);
     this.hotelAgentRuntimeFingerprint = fingerprint;
     return this.multiAgentRuntime;
+  }
+
+  private localMemoryRuntime(): PhoneLocalMemoryRuntime {
+    if (this.phoneLocalMemoryRuntime === null) {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      this.phoneLocalMemoryRuntime = new PhoneLocalMemoryRuntime(context);
+    }
+    return this.phoneLocalMemoryRuntime;
+  }
+
+  private localMemoryAvailability(): PhoneLocalMemoryAvailabilityPort {
+    if (this.phoneLocalMemoryAvailability === null) {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      this.phoneLocalMemoryAvailability = phoneLocalMemoryAvailabilityForContext(context);
+    }
+    return this.phoneLocalMemoryAvailability;
   }
 
   private disposeHotelRuntime(): void {
@@ -4940,6 +4960,7 @@ struct Index {
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;
     this.messages = [];
+    this.sessionContextCompactor.reset();
     this.waterfallSessionTopicWeights = [];
     this.waterfallSessionSourceWeights = [];
     this.waterfallSessionFormatWeights = [];
@@ -4987,18 +5008,11 @@ struct Index {
     return this.messages.slice(this.messages.length - 8);
   }
 
-  private multiAgentInput(text: string): UserInputPayload {
-    const recentMessages: ConversationTurnMessage[] = [];
-    const pageMessages = this.recentMessages();
-    for (let index = 0; index < pageMessages.length; index++) {
-      const role = pageMessages[index].role;
-      if (role === 'user' || role === 'assistant') {
-        recentMessages.push({
-          role: role === 'user' ? 'user' : 'assistant',
-          content: pageMessages[index].content
-        });
-      }
-    }
+  private async multiAgentInput(text: string, currentUserMessageId: string): Promise<UserInputPayload> {
+    const activeContext: ActiveSessionContext = await this.sessionContextCompactor.activeContext(
+      this.messages,
+      currentUserMessageId
+    );
     const surface: CurrentSurfaceSummary = {
       surfaceId: this.currentSurface.surfaceId,
       kind: this.currentSurface.intent,
@@ -5008,21 +5022,43 @@ struct Index {
     };
     return {
       text,
-      recentMessages,
-      previousPersonaId: '',
+      recentMessages: activeContext.recentMessages,
+      sessionSummary: activeContext.rollingSummary,
       currentSurfaceSummary: surface,
       recentObservations: []
     };
   }
 
-  private appendMessage(role: string, content: string): void {
+  private appendMessage(role: string, content: string): string {
     const next = this.messages.slice();
+    const messageId: string = Date.now().toString() + '-' + next.length.toString();
     next.push({
-      id: Date.now().toString() + '-' + next.length.toString(),
+      id: messageId,
       role: role,
       content: content
     });
     this.messages = next;
+    return messageId;
+  }
+
+  private showMemoryResultToast(message: string): void {
+    if (!/^已记住\s*\d+\s*条|^已更新长期记忆|^已忘记这条长期记忆/.test(message)) {
+      return;
+    }
+    this.getUIContext().getPromptAction().showToast({
+      message,
+      duration: 2500,
+      alignment: Alignment.Top
+    });
+  }
+
+  private showMemoryCandidateActionToast(message: string): void {
+    if (message.trim().length === 0) return;
+    this.getUIContext().getPromptAction().showToast({
+      message,
+      duration: 2500,
+      alignment: Alignment.Top
+    });
   }
 
   private currentDynamicToolConnect(): A2uiDynamicToolConnectData | null {
@@ -5509,7 +5545,7 @@ struct Index {
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
-    this.appendMessage('user', visibleText);
+    const currentUserMessageId: string = this.appendMessage('user', visibleText);
     this.inputText = inputTextAfterPromptSubmit(this.inputText);
     this.isAwaitingFirstSurface = true;
     this.promptSubmitMotionGeneration++;
@@ -5601,9 +5637,10 @@ struct Index {
         foodPartialThrottleMs: normalizeFoodPartialThrottleMs(this.foodPartialThrottleMs)
       });
       this.markChecking('正在生成 A2UI...');
+      const input: UserInputPayload = await this.multiAgentInput(request.prompt, currentUserMessageId);
       const outcome: MultiAgentTurnOutcome = await this.canaryRuntime().submit(
         request.prompt,
-        this.multiAgentInput(request.prompt),
+        input,
         turnGeneration
       );
       if (!runtimeCallbackIsCurrent(
@@ -5631,6 +5668,7 @@ struct Index {
       }
       const readyMessage: string = result.message.length > 0 ?
         result.message : this.currentSurface.title;
+      this.showMemoryResultToast(readyMessage);
       this.appendMessage('assistant', readyMessage);
       const hasCurrentTurnSurface = this.currentSurface.runtimeOwner === 'multi_agent' &&
         this.currentSurface.runtimeGeneration === turnGeneration;
@@ -5649,6 +5687,7 @@ struct Index {
         assistantDebug: readyMessage,
         error: ''
       }));
+      void this.sessionContextCompactor.compactAfterTurn(this.messages);
     } catch (error) {
       if (this.runtimeGeneration !== turnGeneration) {
         return;
@@ -5670,6 +5709,7 @@ struct Index {
         assistantDebug: this.lastModelOutput,
         error: message
       }));
+      void this.sessionContextCompactor.compactAfterTurn(this.messages);
     } finally {
       if (this.runtimeGeneration === turnGeneration) {
         this.isAwaitingFirstSurface = false;
@@ -7803,6 +7843,32 @@ struct Index {
     }));
   }
 
+  private async handleMemoryCandidateClientAction(action: A2uiAction): Promise<void> {
+    const runtime = this.multiAgentRuntime;
+    if (runtime === null) {
+      this.showMemoryCandidateActionToast('这张记忆选择卡已失效，请重新发起请求。');
+      return;
+    }
+    this.isBusy = true;
+    try {
+      const result: MemoryCandidateManagerActionResult = await runtime.handleMemoryCandidateAction(action);
+      if (!result.handled || !result.presented || !result.notify) return;
+      this.showMemoryCandidateActionToast(result.message);
+      const completed = result.status === 'success' || result.status === 'partial';
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: completed,
+        status: completed ? 'ready' : 'error',
+        message: result.message,
+        requestDebug: 'memory-candidate-client-action',
+        assistantDebug: result.message,
+        error: completed ? '' : result.message
+      }));
+      if (completed) this.appendMessage('assistant', result.message);
+    } finally {
+      this.isBusy = false;
+    }
+  }
+
   private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
     if (action.id === 'food_store_map_open') {
@@ -9029,6 +9095,10 @@ struct Index {
         this.logLuckinPaymentAction(action, 'blocked_not_allowed');
       }
       this.logHtmlHomeActionError(action, 'not_allowed');
+      return;
+    }
+    if (action.id === MEMORY_CANDIDATES_FORGET_ACTION_ID && action.kind === 'client') {
+      await this.handleMemoryCandidateClientAction(action);
       return;
     }
     if (this.isLuckinPaymentActionId(action.id)) {

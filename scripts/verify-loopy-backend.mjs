@@ -527,23 +527,110 @@ function executableDeclarationBody(source, declaration) {
   return declarationBody(maskNonCode(source), declaration);
 }
 
+function callArgumentLists(source, callee) {
+  const calls = [];
+  let searchStart = 0;
+  while (searchStart < source.length) {
+    const calleeStart = source.indexOf(callee, searchStart);
+    if (calleeStart < 0) {
+      break;
+    }
+    let open = calleeStart + callee.length;
+    while (/\s/.test(source[open] ?? '')) {
+      open++;
+    }
+    if (source[open] !== '(') {
+      searchStart = open;
+      continue;
+    }
+    const args = [];
+    let argumentStart = open + 1;
+    let parentheses = 1;
+    let brackets = 0;
+    let braces = 0;
+    let quote = '';
+    let escaped = false;
+    let closed = false;
+    for (let index = open + 1; index < source.length; index++) {
+      const character = source[index];
+      if (quote.length > 0) {
+        if (escaped) {
+          escaped = false;
+        } else if (character === '\\') {
+          escaped = true;
+        } else if (character === quote) {
+          quote = '';
+        }
+        continue;
+      }
+      if (character === "'" || character === '"' || character === '`') {
+        quote = character;
+      } else if (character === '(') {
+        parentheses++;
+      } else if (character === ')') {
+        parentheses--;
+        if (parentheses === 0) {
+          args.push(source.substring(argumentStart, index).trim());
+          calls.push(args);
+          searchStart = index + 1;
+          closed = true;
+          break;
+        }
+      } else if (character === '[') {
+        brackets++;
+      } else if (character === ']') {
+        brackets--;
+      } else if (character === '{') {
+        braces++;
+      } else if (character === '}') {
+        braces--;
+      } else if (character === ',' && parentheses === 1 && brackets === 0 && braces === 0) {
+        args.push(source.substring(argumentStart, index).trim());
+        argumentStart = index + 1;
+      }
+    }
+    if (!closed) {
+      break;
+    }
+  }
+  return calls;
+}
+
 function hasBoundedLeaderModelCalls(source) {
   const live = stripComments(source);
   const plan = declarationBody(live, 'async plan(');
   const prompt = declarationBody(live, 'private prompt(');
   const bounded = declarationBody(live, 'private completeBounded(');
   const modelCalls = live.match(/this\.model\.complete\s*\(/g) ?? [];
+  const boundedCalls = callArgumentLists(plan, 'this.completeBounded');
+  const initialCall = boundedCalls[0] ?? [];
+  const repairCalls = boundedCalls.slice(1);
   return /const\s+MAX_LEADER_TOOL_CATALOG_CHARS\s*:\s*number\s*=\s*64000\s*;/.test(live) &&
     /const\s+MAX_LEADER_PROMPT_CHARS\s*:\s*number\s*=\s*100000\s*;/.test(live) &&
     prompt.includes('toolCatalog.length > MAX_LEADER_TOOL_CATALOG_CHARS') &&
     prompt.includes("throw new Error('LEADER_TOOL_CATALOG_LIMIT')") &&
-    bounded.includes('prompt.length > MAX_LEADER_PROMPT_CHARS') &&
+    prompt.includes('const memoryAvailable: boolean = context.tools.some(') &&
+    prompt.includes('(tool: LeaderToolMetadata): boolean => this.memoryCapabilityId(tool.toolId)') &&
+    prompt.includes('const stableSystemPromptRaw: string = [') &&
+    prompt.includes('leaderSystemPrompt(memoryAvailable)') &&
+    prompt.includes("'Registry capabilities: ' + toolCatalog") &&
+    prompt.includes('memoryAvailable ? C10_C11_SELECTION_CONTRACT : C10_C11_SELECTION_CONTRACT_WITHOUT_MEMORY') &&
+    prompt.includes("memoryAvailable ? MEMORY_MUTATION_CONTRACT : ''") &&
+    prompt.includes('const dynamicPrompt: string = [') &&
+    prompt.includes('const stableSystemPrompt: string = stableSystemPromptRaw;') &&
+    prompt.includes('return { stableSystemPrompt, dynamicPrompt }') &&
+    bounded.includes('stableSystemPrompt.length + prompt.length > MAX_LEADER_PROMPT_CHARS') &&
     bounded.includes("throw new Error('LEADER_PROMPT_LIMIT')") &&
-    bounded.includes('return this.model.complete(prompt, conversation, LEADER_SYSTEM_PROMPT)') &&
+    bounded.includes('return this.model.complete(prompt, conversation, stableSystemPrompt)') &&
     bounded.includes('ConversationContext.fromMessages(messages)') &&
-    plan.includes('await this.completeBounded(prompt, input)') &&
-    plan.includes('await this.completeBounded(prompt +') &&
-    plan.includes('correction') &&
+    boundedCalls.length === 5 &&
+    initialCall.length === 3 &&
+    initialCall[0] === 'prompt' &&
+    initialCall[1] === 'input' &&
+    initialCall[2] === 'promptParts.stableSystemPrompt' &&
+    repairCalls.every((args) => args.length === 3 && args[0].startsWith('prompt +') &&
+      args[1] === 'input' && args[2] === 'promptParts.stableSystemPrompt') &&
+    repairCalls.some((args) => args[0].includes('correction')) &&
     modelCalls.length === 1;
 }
 
@@ -1513,8 +1600,8 @@ function verifySourceContracts() {
   assert(
     !hasBoundedLeaderModelCalls(
       canaryLeaderPlanner.replace(
-        'await this.completeBounded(prompt + \'\\n\' + correction, input)',
-        'await this.model.complete(prompt + \'\\n\' + correction, input)'
+        /this\.completeBounded(?=\(\s*prompt \+ '\\n' \+ correction)/,
+        'this.model.complete'
       )
     ),
     'verifier rejects a repair model call that bypasses the prompt bound'
@@ -1522,8 +1609,8 @@ function verifySourceContracts() {
   assert(
     !hasBoundedLeaderModelCalls(
       canaryLeaderPlanner.replace(
-        'await this.completeBounded(prompt, input)',
-        'await this.model.complete(prompt, input)'
+        'this.completeBounded(',
+        'this.model.complete('
       )
     ),
     'verifier rejects an initial model call that bypasses the prompt bound'
@@ -1536,6 +1623,24 @@ function verifySourceContracts() {
       )
     ),
     'verifier rejects removal of the live tool catalog bound'
+  );
+  assert(
+    !hasBoundedLeaderModelCalls(
+      canaryLeaderPlanner.replace(
+        'leaderSystemPrompt(memoryAvailable)',
+        'leaderSystemPrompt(true)'
+      )
+    ),
+    'verifier rejects a stable system schema that bypasses memory availability'
+  );
+  assert(
+    !hasBoundedLeaderModelCalls(
+      canaryLeaderPlanner.replace(
+        'const stableSystemPrompt: string = stableSystemPromptRaw;',
+        'const stableSystemPrompt: string = leaderSystemPrompt(memoryAvailable);'
+      )
+    ),
+    'verifier rejects removal of the availability-projected stable system prompt'
   );
   assertContains(index, "export { runAiphoneTool }", 'public export includes runAiphoneTool');
   assertContains(index, 'aiphoneInfoJsonl', 'public export includes final answer helper');
@@ -1560,8 +1665,10 @@ function verifySourceContracts() {
     ['./src/main/ets/agent/leader/LeaderCapabilityOwnership', [
       'leaderActionCapabilityIds',
       'leaderDataCapabilityIds',
+      'leaderMemoryCapabilityIds',
       'leaderIsActionCapability',
       'leaderIsDataCapability',
+      'leaderIsMemoryCapability',
       'leaderIsExplicitActionOwner'
     ], 'Leader capability ownership exports'],
     ['./src/main/ets/agent/data/DataAgent', ['DataAgent'], 'Data Agent exports'],
@@ -1717,21 +1824,23 @@ function verifySourceContracts() {
   assertContains(skillStore, 'await ensureBundledSkillsInSandbox(context)', 'sandbox skills are initialized before loading');
   for (const [skillName, source, expectedIds] of [
     ['food search', foodSearchSkill, [
-      'food.search', 'luckin.order.preview', 'memory.update',
+      'food.search', 'luckin.order.preview', 'memory.remember', 'memory.update', 'memory.forget',
       'maps.place.search', 'maps.place.details'
     ]],
     ['media search', mediaSearchSkill, [
       'movie.open', 'media.video.search', 'media.aggregate.search', 'youtube.video.search',
-      'youtube.mine.playlists', 'youtube.mine.subscriptions', 'worldcup.open', 'memory.update'
+      'youtube.mine.playlists', 'youtube.mine.subscriptions', 'worldcup.open',
+      'memory.remember', 'memory.update', 'memory.forget'
     ]],
     ['travel planning', travelPlanningSkill, [
-      'travel.search', 'train.search', 'flight.search', 'memory.update'
+      'travel.search', 'train.search', 'flight.search',
+      'memory.remember', 'memory.update', 'memory.forget'
     ]],
     ['work assistant', workAssistantSkill, [
       'mail.search', 'mail.thread.read', 'gmail.mail.search', 'gmail.thread.read',
       'mail.draft.create', 'gmail.draft.create', 'gmail.draft.apply',
       'calendar.events.search', 'calendar.event.create', 'calendar.event.update',
-      'calendar.event.delete', 'memory.update'
+      'calendar.event.delete', 'memory.remember', 'memory.update', 'memory.forget'
     ]]
   ]) {
     assert(

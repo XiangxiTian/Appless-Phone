@@ -1,4 +1,5 @@
 export { DEBUG as AGENT_CORE_DEBUG } from './BuildProfile';
+export * from './src/main/ets/memory/Index';
 export { ChatMessage, ConversationContext, ConversationRole } from './src/main/ets/agent/ConversationContext';
 export {
   ApplessCapabilityEnvironment,
@@ -48,8 +49,10 @@ export {
 export {
   leaderActionCapabilityIds,
   leaderDataCapabilityIds,
+  leaderMemoryCapabilityIds,
   leaderIsActionCapability,
   leaderIsDataCapability,
+  leaderIsMemoryCapability,
   leaderIsExplicitActionOwner
 } from './src/main/ets/agent/leader/LeaderCapabilityOwnership';
 export { DataAgent } from './src/main/ets/agent/data/DataAgent';

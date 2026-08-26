@@ -27,6 +27,9 @@ entry/src/main/resources/rawfile/aiphone_provider_config.json
 entry/src/main/resources/rawfile/composio_config.json
 entry/src/main/resources/rawfile/agconnect-services.json
 
+# Local phone-memory spike artifact (large generated model; keep manifest/vocab tracked).
+entry/src/main/resources/rawfile/memory/bge-small-zh-v1.5.ms
+
 # Local verification captures
 /aiphone-*.jpeg
 /aiphonedemo-*.jpeg

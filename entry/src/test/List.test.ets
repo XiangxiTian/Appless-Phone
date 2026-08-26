@@ -1,5 +1,6 @@
 import localUnitTest from './LocalUnit.test';
 import conversationContextTest from './ConversationContext.test';
+import sessionContextCompactionTest from './SessionContextCompaction.test';
 import agentCorePublicContractTest from './AgentCorePublicContract.test';
 import a2uiParserTest from './A2uiParser.test';
 import a2uiSurfaceStoreTest from './A2uiSurfaceStore.test';
@@ -88,6 +89,7 @@ import voiceInputBridgeTest from './VoiceInputBridge.test';
 import personaStoreTest from './PersonaStore.test';
 import personaA2uiTest from './PersonaA2ui.test';
 import personaMemoryUpdateTest from './PersonaMemoryUpdate.test';
+import memoryCandidateSelectionTest from './MemoryCandidateSelection.test';
 import deepSearchEngineTest from './DeepSearchEngine.test';
 import personaMarkdownTest from './PersonaMarkdown.test';
 import skillMarkdownParserTest from './SkillMarkdownParser.test';
@@ -132,11 +134,19 @@ import dailyBriefSchedulerTest from './DailyBriefScheduler.test';
 import travelSearchPreflightTest from './TravelSearchPreflight.test';
 import travelBookingProviderTest from './TravelBookingProvider.test';
 import travelCalendarActionTest from './TravelCalendarAction.test';
+import conversationMemoryCoreTest from './ConversationMemoryCore.test';
+import phoneLocalMemoryProviderTest from './PhoneLocalMemoryProvider.test';
+import phoneLocalMemoryRuntimeTest from './PhoneLocalMemoryRuntime.test';
+import phoneLocalMemoryBlobFallbackTest from './PhoneLocalMemoryBlobFallback.test';
+import phoneLocalMemoryAvailabilityTest from './PhoneLocalMemoryAvailability.test';
+import bertWordPieceTokenizerTest from './BertWordPieceTokenizer.test';
+import bgeMindSporeEmbeddingPortTest from './BgeMindSporeEmbeddingPort.test';
 
 export default function testsuite() {
   movieDemoContractTest();
   localUnitTest();
   conversationContextTest();
+  sessionContextCompactionTest();
   agentCorePublicContractTest();
   a2uiParserTest();
   a2uiSurfaceStoreTest();
@@ -254,6 +264,7 @@ export default function testsuite() {
   personaStoreTest();
   personaA2uiTest();
   personaMemoryUpdateTest();
+  memoryCandidateSelectionTest();
   deepSearchEngineTest();
   htmlHomeSnapshotTest();
   htmlHomeRendererTest();
@@ -268,4 +279,11 @@ export default function testsuite() {
   travelSearchPreflightTest();
   travelBookingProviderTest();
   travelCalendarActionTest();
+  conversationMemoryCoreTest();
+  phoneLocalMemoryProviderTest();
+  phoneLocalMemoryRuntimeTest();
+  phoneLocalMemoryBlobFallbackTest();
+  phoneLocalMemoryAvailabilityTest();
+  bertWordPieceTokenizerTest();
+  bgeMindSporeEmbeddingPortTest();
 }

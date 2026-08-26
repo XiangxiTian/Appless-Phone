@@ -48,6 +48,12 @@ interface HtmlMailCalendarPayload {
   messageId?: HtmlHomePolicyValue;
 }
 
+interface HtmlMemoryCandidatesForgetPayload {
+  selectionId?: HtmlHomePolicyValue;
+  revision?: HtmlHomePolicyValue;
+  candidateKeys?: HtmlHomePolicyValue;
+}
+
 interface LuckinPreviewArgs {
   deptId?: HtmlHomePolicyValue;
   productId?: HtmlHomePolicyValue;
@@ -110,6 +116,9 @@ export function isHtmlHomeActionAllowed(document: HtmlHomeDocument, action: A2ui
 function isHtmlHomeActionAllowedInDocument(document: HtmlHomeDocument, action: A2uiAction): boolean {
   if (action.id.length === 0) {
     return false;
+  }
+  if (action.id === 'memory_candidates_forget') {
+    return memoryCandidatesForgetAllowedInDocument(document, action);
   }
   if (action.id === 'flight_retry_date') {
     return hasBlockKind(document, 'flight-option');
@@ -191,6 +200,43 @@ function isHtmlHomeActionAllowedInDocument(document: HtmlHomeDocument, action: A
   }
   if (luckinPaymentPageAllowed(document, action)) {
     return true;
+  }
+  return false;
+}
+
+function memoryCandidatesForgetAllowedInDocument(document: HtmlHomeDocument, action: A2uiAction): boolean {
+  if (action.kind !== 'client' || action.args === undefined || action.args === null ||
+    typeof action.args !== 'object' || Array.isArray(action.args)) return false;
+  const actual = action.args as HtmlMemoryCandidatesForgetPayload;
+  if (Object.keys(actual).sort().join(',') !== 'candidateKeys,revision,selectionId' ||
+    typeof actual.selectionId !== 'string' || typeof actual.revision !== 'number' ||
+    !Number.isSafeInteger(actual.revision) || !Array.isArray(actual.candidateKeys) ||
+    actual.candidateKeys.length < 1 || actual.candidateKeys.length > 5) return false;
+  for (let blockIndex = 0; blockIndex < document.blocks.length; blockIndex++) {
+    const block = document.blocks[blockIndex];
+    if (block.kind !== 'memory-candidate-selection' ||
+      block.memorySelectionId !== actual.selectionId ||
+      block.memorySelectionRevision !== actual.revision || block.memoryCandidates === undefined) continue;
+    const template = block.actions.find((candidate: HtmlHomeAction): boolean =>
+      candidate.id === 'memory_candidates_forget');
+    if (template === undefined || template.kind !== action.kind || template.prompt !== action.prompt ||
+      template.args === undefined) continue;
+    const templateArgs = template.args as HtmlMemoryCandidatesForgetPayload;
+    if (templateArgs.selectionId !== actual.selectionId || templateArgs.revision !== actual.revision ||
+      !Array.isArray(templateArgs.candidateKeys) || templateArgs.candidateKeys.length !== 0) continue;
+    const allowed = new Set<string>(block.memoryCandidates.map((candidate): string => candidate.candidateKey));
+    const seen = new Set<string>();
+    const candidateKeys: Object[] = actual.candidateKeys as Object[];
+    let valid = true;
+    for (let keyIndex = 0; keyIndex < candidateKeys.length; keyIndex++) {
+      const key: Object = candidateKeys[keyIndex];
+      if (typeof key !== 'string' || key.trim().length === 0 || seen.has(key) || !allowed.has(key)) {
+        valid = false;
+        break;
+      }
+      seen.add(key);
+    }
+    if (valid) return true;
   }
   return false;
 }

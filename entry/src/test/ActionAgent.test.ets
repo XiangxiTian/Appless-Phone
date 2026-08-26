@@ -81,8 +81,8 @@ class ActionLookup implements ToolDefinitionLookup {
     if (toolId === 'social.reply.draft' || toolId === 'gmail.draft.create') {
       return definition(toolId, 'draft', []);
     }
-    if (toolId === 'memory.update') {
-      return definition(toolId, 'draft', ['memory.update']);
+    if (toolId === 'gmail.draft.apply') {
+      return definition(toolId, 'draft', ['gmail.draft.apply']);
     }
     if (toolId === 'luckin.order.preview') {
       return definition(toolId, 'draft', []);
@@ -148,7 +148,7 @@ class ExactActionSurface implements SurfaceActionAuthorizer {
     if (actionId === 'social.reply.draft') {
       return JSON.stringify(args) === '{}';
     }
-    if (actionId === 'memory.update') {
+    if (actionId === 'gmail.draft.apply') {
       return conversationId === 'conversation-1' &&
         turnId === 'turn-1' &&
         surfaceId === 'virtual:virtual-request' &&
@@ -329,10 +329,10 @@ class MemoryVirtualIntentResolver implements VirtualActionIntentResolver {
       return null;
     }
     return {
-      sourceToolId: 'memory.update',
+      sourceToolId: 'gmail.draft.apply',
       offer: {
         offerId: 'memory-update',
-        actionId: 'memory.update',
+        actionId: 'gmail.draft.apply',
         label: '更新记忆',
         variant: 'primary',
         args: JSON.parse(
@@ -719,7 +719,7 @@ export default function actionAgentTest() {
         uiTaskId: 'input-1:round-1:virtual',
         dataTaskIds: [],
         goal: 'Remember the explicit user statement',
-        allowedActionIds: ['memory.update'],
+        allowedActionIds: ['gmail.draft.apply'],
         personaId: 'travel_companion',
         skillId: '',
         inputText: '我在北京',
@@ -739,7 +739,7 @@ export default function actionAgentTest() {
       expect(result.surfaceId).assertEqual('virtual:virtual-request');
       expect(virtualResolver.calls).assertEqual(1);
       expect(compiler.goals.length).assertEqual(0);
-      expect(executor.actionIds.join(',')).assertEqual('memory.update');
+      expect(executor.actionIds.join(',')).assertEqual('gmail.draft.apply');
       expect(executor.serializedArgs.join(',')).assertEqual(
         '{"personaId":"travel_companion","summary":"我在北京",' +
         '"memoryText":"No saved preference. 我在北京",' +
@@ -771,7 +771,7 @@ export default function actionAgentTest() {
           uiTaskId: 'input-1:round-1:virtual',
           dataTaskIds: [],
           goal: 'Unowned virtual request',
-          allowedActionIds: ['memory.update'],
+          allowedActionIds: ['gmail.draft.apply'],
           personaId: 'travel_companion',
           skillId: '',
           inputText: '我在北京',

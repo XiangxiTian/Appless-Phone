@@ -110,6 +110,30 @@ class AnswerPlanner implements LeaderPlanner {
   }
 }
 
+class MemoryClarificationPlanner implements LeaderPlanner {
+  async plan(
+    _message: AgentMessage,
+    _input: InputUserPayload,
+    _context: LeaderPlanningContext,
+    _round: number = 1
+  ): Promise<LeaderDecision> {
+    return {
+      personaId: 'travel_companion',
+      skillId: '',
+      requestedCapabilityIds: ['memory.forget'],
+      roundAction: 'execute',
+      dataTasks: [],
+      uiIntent: {
+        purpose: 'choose memory to forget', preferredDensity: 'comfortable', requiredSections: []
+      },
+      memoryClarification: {
+        operation: 'forget'
+      },
+      reasonCode: 'memory_forget_clarification'
+    };
+  }
+}
+
 class HotelRoundPlanner implements LeaderPlanner {
   async plan(
     _message: AgentMessage,
@@ -361,7 +385,7 @@ class ControlledWriter implements UiSurfaceWriter {
 
 class TestLookup implements ToolDefinitionLookup {
   find(toolId: string): ToolDefinition | null {
-    if (toolId === 'memory.update') {
+    if (toolId === 'memory.remember' || toolId === 'memory.update' || toolId === 'memory.forget') {
       return {
         toolId,
         domain: 'memory',
@@ -372,7 +396,7 @@ class TestLookup implements ToolDefinitionLookup {
         inputSchema: 'memoryUpdateRequest',
         outputSchema: 'memoryUpdateResult',
         a2uiComponent: 'MemoryUpdate',
-        actions: ['memory.update']
+        actions: [toolId]
       };
     }
     if (toolId === 'calendar.event.create' || toolId === 'calendar.event.update' ||
@@ -491,17 +515,17 @@ class VirtualMemoryPlanner implements LeaderPlanner {
     return {
       personaId: 'travel_companion',
       skillId: '',
-      requestedCapabilityIds: ['memory.update'],
+      requestedCapabilityIds: ['calendar.event.create'],
       roundAction: 'execute',
       dataTasks: [],
       uiIntent: {
-        purpose: 'memory.update',
+        purpose: 'calendar.event.create',
         preferredDensity: 'comfortable',
         requiredSections: []
       },
       actionIntent: {
         goal: 'Remember an explicit preference',
-        allowedActionIds: ['memory.update']
+        allowedActionIds: ['calendar.event.create']
       },
       reasonCode: 'stable_preference'
     };
@@ -511,10 +535,10 @@ class VirtualMemoryPlanner implements LeaderPlanner {
 class StaticVirtualResolver implements VirtualActionIntentResolver {
   async resolve(_request: ActionPlanRequestPayload): Promise<VirtualActionIntent | null> {
     return {
-      sourceToolId: 'memory.update',
+      sourceToolId: 'calendar.event.create',
       offer: {
         offerId: 'memory-offer',
-        actionId: 'memory.update',
+        actionId: 'calendar.event.create',
         label: 'Remember',
         variant: 'primary',
         args: JSON.parse('{"value":"remember me"}') as Object
@@ -658,14 +682,14 @@ function planningContext(): LeaderPlanningContext {
         actions: []
       },
       {
-        toolId: 'memory.update',
-        domain: 'persona',
-        intent: 'memory.update',
+        toolId: 'calendar.event.create',
+        domain: 'calendar',
+        intent: 'calendar.event.create',
         riskLevel: 'draft',
         registeredBackends: ['local_adapter'],
-        inputSchema: 'memoryUpdateRequest',
-        outputSchema: 'memoryUpdateResult',
-        actions: ['memory.update']
+        inputSchema: 'calendarEventRequest',
+        outputSchema: 'calendarEventResult',
+        actions: []
       },
       {
         toolId: 'dynamic.search',
@@ -691,8 +715,7 @@ function planningContext(): LeaderPlanningContext {
     personas: [{
       personaId: 'travel_companion',
       name: 'Travel Companion',
-      soul: 'Use real data.',
-      memory: '常用出发地：北京。',
+      domains: ['travel'],
       previous: true,
       activeSkills: []
     }]
@@ -1269,8 +1292,8 @@ export default function multiAgentRuntimeTest() {
       expect(result.surfaceId).assertEqual('');
       const input = planner.lastInput as InputUserPayload;
       expect(input.text).assertEqual('查询天气');
-      expect(input.recentMessages!.length).assertEqual(8);
-      expect(input.recentMessages![0].content).assertEqual('message-2');
+      expect(input.recentMessages!.length).assertEqual(10);
+      expect(input.recentMessages![0].content).assertEqual('message-0');
       expect(input.previousPersonaId).assertEqual('travel_companion');
       expect(input.currentSurfaceSummary!.surfaceId).assertEqual('surface-previous');
       runtime.dispose();
@@ -1775,7 +1798,7 @@ export default function multiAgentRuntimeTest() {
           completedStepIds: ['step-1'],
           outputs: [{
             stepId: 'step-1',
-            output: JSON.parse('{"surfaceId":"calendar-review:999"}') as Object
+            output: JSON.parse('{"surfaceId":"memory-update:999"}') as Object
           }]
         } as ActionResultPayload
       });
@@ -1922,6 +1945,30 @@ export default function multiAgentRuntimeTest() {
       expect(result.bimSuggestion?.keywords.length).assertEqual(4);
       expect(result.bimContextUpdate?.summary).assertEqual('东京旅行，机票待确认');
       expect(result.bimContextUpdate?.facts[0]).assertEqual('八月出发');
+      runtime.dispose();
+    });
+
+    it('settles and preserves a validated Leader forget selection payload', 0, async () => {
+      const bus = new CountingBus();
+      const options = runtimeOptions(bus, new MemoryClarificationPlanner(), new ControlledWriter());
+      options.planningContext.tools.push({
+        toolId: 'memory.forget', domain: 'memory', intent: 'memory.forget', riskLevel: 'draft',
+        registeredBackends: ['local_adapter'], inputSchema: 'memoryForgetRequest',
+        outputSchema: 'memoryMutationResult', actions: []
+      });
+      const runtime = new MultiAgentRuntime(options);
+      const result = await runtime.submit('忘掉咖啡偏好', {
+        text: '忘掉咖啡偏好',
+        recalledMemories: [{
+          memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
+          personaTag: 'food_companion', authority: 'leader'
+        }]
+      }) as MultiAgentSettledOutcome;
+
+      expect(result.status).assertEqual('success');
+      expect(result.memorySelection?.operation).assertEqual('forget');
+      expect(result.memorySelection?.candidates.length).assertEqual(1);
+      expect(result.memorySelection?.candidates[0].memoryId).assertEqual('memory-coffee-1');
       runtime.dispose();
     });
 

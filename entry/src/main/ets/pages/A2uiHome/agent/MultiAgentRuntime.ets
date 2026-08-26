@@ -20,11 +20,14 @@ import {
   DataResult,
   LeaderBimContextUpdate,
   LeaderBimSuggestion,
+  MemorySelectionPayload,
   validLeaderBimDashboardItems,
   LeaderAgent,
   LeaderPlanningContext,
   LinkedMessageBus,
+  MEMORY_RECALL_MAX_TOP_K,
   ObservationDigest,
+  RecalledMemoryContext,
   TaskErrorPayload,
   TurnResultPayload,
   TurnResultStatus,
@@ -51,8 +54,12 @@ import { StructuredToolUiRenderer } from './StructuredToolUiRenderer';
 const DEFAULT_SUBMIT_TIMEOUT_MS: number = 30000;
 const DEFAULT_ACTION_TIMEOUT_MS: number = 15000;
 const MAX_TIMEOUT_MS: number = 120000;
-const CONTEXT_MESSAGE_LIMIT: number = 8;
+const CONTEXT_MESSAGE_LIMIT: number = 512;
+const CONTEXT_SUMMARY_LIMIT: number = 4000;
 const CONTEXT_OBSERVATION_LIMIT: number = 8;
+const CONTEXT_MEMORY_LIMIT: number = 5;
+const CONTEXT_MEMORY_FACT_LIMIT: number = 240;
+const CONTEXT_MEMORY_TOTAL_LIMIT: number = 1200;
 
 interface PendingTurn {
   conversationId: string;
@@ -117,7 +124,8 @@ function settled(
   personaId: string = '',
   skillId: string = '',
   bimSuggestion?: LeaderBimSuggestion,
-  bimContextUpdate?: LeaderBimContextUpdate
+  bimContextUpdate?: LeaderBimContextUpdate,
+  memorySelection?: MemorySelectionPayload
 ): MultiAgentSettledOutcome {
   const outcome: MultiAgentSettledOutcome = {
     kind: 'settled',
@@ -133,6 +141,9 @@ function settled(
   }
   if (bimContextUpdate !== undefined) {
     outcome.bimContextUpdate = bimContextUpdate;
+  }
+  if (memorySelection !== undefined) {
+    outcome.memorySelection = memorySelection;
   }
   return outcome;
 }
@@ -519,7 +530,9 @@ export class MultiAgentRuntime {
       ): void => this.recordDecisionPersona(
         conversationId, turnId, taskId, requestedCapabilityIds, personaId, skillId
       ),
-      options.currentLocalDateProvider
+      options.currentLocalDateProvider,
+      options.memoryToolExecutor,
+      options.memoryRecallToolExecutor
     );
     this.planningContextProvider = options.planningContextProvider === undefined ?
       null : options.planningContextProvider;
@@ -981,7 +994,7 @@ export class MultiAgentRuntime {
     const messageText: string = result.status === 'success' ?
       'Action completed.' : nonempty(result.message) ? result.message as string : 'Action failed.';
     const surfaceId: string = this.actionOutputSurfaceId(pending, result);
-    if (status !== 'success') {
+    if (status === 'error' || status === 'canceled') {
       this.publishCancel(pending.turnId, 'virtual_action_' + status);
     }
     this.publishRuntimeTurnResult(pending, status, messageText, surfaceId);
@@ -993,6 +1006,12 @@ export class MultiAgentRuntime {
     }
     const result: TurnResultPayload = message.payload as TurnResultPayload;
     if (!this.validTurnResult(result)) {
+      return;
+    }
+    if (result.memorySelection !== undefined &&
+      (result.memorySelection.originTurnId !== message.turnId ||
+        result.memorySelection.sourceTaskId !== message.taskId ||
+        result.memorySelection.personaId !== result.personaId)) {
       return;
     }
     if (pending.personaId.length > 0 &&
@@ -1043,7 +1062,8 @@ export class MultiAgentRuntime {
         pending.personaId,
         pending.skillId,
         hasOwnKey(result, 'bimSuggestion') ? result.bimSuggestion : undefined,
-        hasOwnKey(result, 'bimContextUpdate') ? result.bimContextUpdate : undefined
+        hasOwnKey(result, 'bimContextUpdate') ? result.bimContextUpdate : undefined,
+        hasOwnKey(result, 'memorySelection') ? result.memorySelection : undefined
       ));
       return;
     }
@@ -1055,7 +1075,8 @@ export class MultiAgentRuntime {
       pending.personaId,
       pending.skillId,
       hasOwnKey(result, 'bimSuggestion') ? result.bimSuggestion : undefined,
-      hasOwnKey(result, 'bimContextUpdate') ? result.bimContextUpdate : undefined
+      hasOwnKey(result, 'bimContextUpdate') ? result.bimContextUpdate : undefined,
+      hasOwnKey(result, 'memorySelection') ? result.memorySelection : undefined
     ));
   }
 
@@ -1326,13 +1347,16 @@ export class MultiAgentRuntime {
     const rawKeys: string[] = Object.keys(result);
     const hasBimSuggestion: boolean = hasOwnKey(result, 'bimSuggestion');
     const hasBimContextUpdate: boolean = hasOwnKey(result, 'bimContextUpdate');
+    const hasMemorySelection: boolean = hasOwnKey(result, 'memorySelection');
     if ((!hasBimSuggestion && hasKey(result, 'bimSuggestion')) ||
-      (!hasBimContextUpdate && hasKey(result, 'bimContextUpdate'))) {
+      (!hasBimContextUpdate && hasKey(result, 'bimContextUpdate')) ||
+      (!hasMemorySelection && hasKey(result, 'memorySelection'))) {
       return false;
     }
     const keys: string = rawKeys
       .filter((key: string): boolean => key !== 'bimSuggestion')
       .filter((key: string): boolean => key !== 'bimContextUpdate')
+      .filter((key: string): boolean => key !== 'memorySelection')
       .sort()
       .join(',');
     return (keys === 'message,roundCount,status' ||
@@ -1352,7 +1376,35 @@ export class MultiAgentRuntime {
       (!hasBimSuggestion || (result.bimSuggestion !== undefined &&
         this.validBimSuggestion(result.bimSuggestion))) &&
       (!hasBimContextUpdate || (result.bimContextUpdate !== undefined &&
-        this.validBimContextUpdate(result.bimContextUpdate)));
+        this.validBimContextUpdate(result.bimContextUpdate))) &&
+      (!hasMemorySelection || (result.memorySelection !== undefined &&
+        result.status === 'success' && this.validMemorySelection(result.memorySelection)));
+  }
+
+  private validMemorySelection(value: MemorySelectionPayload): boolean {
+    if (value === null || typeof value !== 'object' || Array.isArray(value) ||
+      Object.keys(value).sort().join(',') !==
+        'candidates,operation,originTurnId,personaId,sourceTaskId' ||
+      value.operation !== 'forget' || !this.validBoundedText(value.originTurnId, 128) ||
+      !this.validBoundedText(value.sourceTaskId, 256) ||
+      !this.validBoundedText(value.personaId, 128) || !Array.isArray(value.candidates) ||
+      value.candidates.length < 1 || value.candidates.length > MEMORY_RECALL_MAX_TOP_K) {
+      return false;
+    }
+    const ids: Set<string> = new Set<string>();
+    for (let index = 0; index < value.candidates.length; index++) {
+      const candidate = value.candidates[index];
+      if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate) ||
+        Object.keys(candidate).sort().join(',') !== 'authority,fact,memoryId,personaTag' ||
+        !this.validBoundedText(candidate.memoryId, 128) || ids.has(candidate.memoryId) ||
+        !this.validBoundedText(candidate.fact, 240) ||
+        !this.validBoundedText(candidate.personaTag, 128) ||
+        (candidate.authority !== 'leader' && candidate.authority !== 'seed')) {
+        return false;
+      }
+      ids.add(candidate.memoryId);
+    }
+    return true;
   }
 
   private validBimSuggestion(value: LeaderBimSuggestion): boolean {
@@ -1427,9 +1479,6 @@ export class MultiAgentRuntime {
       return pending.virtualAllowedActionIds.indexOf('calendar.event.create') >= 0 ||
         pending.virtualAllowedActionIds.indexOf('calendar.event.update') >= 0;
     }
-    if (/^memory-update:[1-9]\d*$/.test(surfaceId)) {
-      return pending.virtualAllowedActionIds.indexOf('memory.update') >= 0;
-    }
     return false;
   }
 
@@ -1437,11 +1486,50 @@ export class MultiAgentRuntime {
     const result: UserInputPayload = {
       text,
       recentMessages: this.boundedMessages(context.recentMessages),
-      previousPersonaId: context.previousPersonaId === undefined ? '' : context.previousPersonaId,
+      sessionSummary: context.sessionSummary === undefined ? '' :
+        context.sessionSummary.trim().substring(0, CONTEXT_SUMMARY_LIMIT),
+      recalledMemories: this.boundedRecalledMemories(context.recalledMemories),
+      lastTurnPersonaId: context.lastTurnPersonaId === undefined ?
+        (context.previousPersonaId === undefined ? '' : context.previousPersonaId) : context.lastTurnPersonaId,
+      previousPersonaId: context.lastTurnPersonaId === undefined ?
+        (context.previousPersonaId === undefined ? '' : context.previousPersonaId) : context.lastTurnPersonaId,
+      memoryRecallObservation: context.memoryRecallObservation,
       currentSurfaceSummary: this.copySurface(context.currentSurfaceSummary),
       recentObservations: this.boundedObservations(context.recentObservations)
     };
     return result;
+  }
+
+  private boundedRecalledMemories(values: RecalledMemoryContext[] | undefined): RecalledMemoryContext[] {
+    if (values === undefined) return [];
+    const memories: RecalledMemoryContext[] = [];
+    const seen: Set<string> = new Set<string>();
+    let remaining: number = CONTEXT_MEMORY_TOTAL_LIMIT;
+    for (let index = 0; index < values.length && memories.length < CONTEXT_MEMORY_LIMIT && remaining > 0;
+      index += 1) {
+      const value = values[index];
+      if (value === null || typeof value !== 'object' || Array.isArray(value) ||
+        typeof value.memoryId !== 'string' || value.memoryId.trim().length === 0 ||
+        value.memoryId.length > 128 || seen.has(value.memoryId) ||
+        typeof value.fact !== 'string' || value.fact.trim().length === 0 ||
+        typeof value.personaTag !== 'string' || value.personaTag.length > 64 ||
+        (value.authority !== 'leader' && value.authority !== 'seed')) {
+        continue;
+      }
+      const fact = value.fact.trim().substring(
+        0, Math.min(CONTEXT_MEMORY_FACT_LIMIT, remaining)
+      );
+      if (fact.length === 0) continue;
+      seen.add(value.memoryId);
+      memories.push({
+        memoryId: value.memoryId,
+        fact,
+        personaTag: value.personaTag,
+        authority: value.authority
+      });
+      remaining -= fact.length;
+    }
+    return memories;
   }
 
   private boundedMessages(values: ConversationTurnMessage[] | undefined): ConversationTurnMessage[] {

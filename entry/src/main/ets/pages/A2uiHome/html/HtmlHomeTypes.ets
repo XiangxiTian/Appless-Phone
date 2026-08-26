@@ -55,6 +55,11 @@ export interface HtmlHomeStripeReceiving {
   currentlyDue: string[];
 }
 
+export interface HtmlHomeMemoryCandidate {
+  candidateKey: string;
+  fact: string;
+}
+
 export interface HtmlHomeBlock {
   id: string;
   kind: string;
@@ -81,6 +86,9 @@ export interface HtmlHomeBlock {
   embeddedDocument?: HtmlHomeDocument;
   foodFavoriteId?: string;
   foodFavorite?: boolean;
+  memorySelectionId?: string;
+  memorySelectionRevision?: number;
+  memoryCandidates?: HtmlHomeMemoryCandidate[];
 }
 
 export interface HtmlHomeHistoryItem {

@@ -27,6 +27,7 @@ import {
 import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer';
 import { createFirecrawlPendingDocument } from '../main/ets/pages/A2uiHome/html/HtmlFirecrawlHomeRenderer';
 import { createHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeSnapshot';
+import { memoryCandidateSelectionSurface } from '../main/ets/model/MemoryCandidateSelectionSurface';
 import {
   findFoodFavoriteIndex,
   FoodFavoriteViewModel,
@@ -1695,6 +1696,41 @@ function expectCalmUtilityPalette(
 
 export default function htmlHomeRendererTest() {
   describe('htmlHomeRenderer', () => {
+    it('renders forget candidates as row-bound opaque client buttons', 0, () => {
+      const surface = memoryCandidateSelectionSurface('memory-selection:test', {
+        selectionId: 'selection-test',
+        revision: 2,
+        candidates: [{
+          candidateKey: 'candidate-a', fact: '用户喝咖啡时选择半糖。',
+          personaTag: 'food_companion', authority: 'leader'
+        }, {
+          candidateKey: 'candidate-b', fact: '用户喝咖啡时优先选择燕麦奶。',
+          personaTag: 'food_companion', authority: 'leader'
+        }]
+      });
+      const document = createHtmlHomeDocument({
+        surface, messages: [], isBusy: false, isAwaitingFirstSurface: false
+      });
+      const html = renderHtmlHomeDocument(document);
+
+      expect(html.indexOf('memory-candidate-card')).assertLarger(-1);
+      expect(html.indexOf('用户喝咖啡时选择半糖')).assertLarger(-1);
+      expect(html.indexOf('memory_candidates_forget')).assertLarger(-1);
+      expect(html.indexOf('删除已选（0）')).assertLarger(-1);
+      expect(html.indexOf('selectedKeys.has(candidateKey)')).assertLarger(-1);
+      expect(html.indexOf('memory_candidate_forget')).assertEqual(-1);
+      expect(html.indexOf('memory-coffee')).assertEqual(-1);
+      const memoryFunctionStart = html.indexOf('function addMemoryCandidateCard');
+      const toggleStart = html.indexOf("button.addEventListener('click', function (event)",
+        memoryFunctionStart);
+      const deleteStart = html.indexOf("deleteButton.addEventListener('click', function (event)", toggleStart);
+      expect(memoryFunctionStart).assertLarger(-1);
+      expect(toggleStart).assertLarger(-1);
+      expect(deleteStart).assertLarger(toggleStart);
+      expect(html.substring(toggleStart, deleteStart).indexOf('postAction(')).assertEqual(-1);
+      expect(html.substring(deleteStart).indexOf('postAction({')).assertLarger(-1);
+    });
+
     it('renders the complete personal daily brief from the frozen snapshot', 0, () => {
       const html = renderHtmlHomeDocument(dailyBriefDocumentFixture());
       const required = [

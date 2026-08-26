@@ -802,6 +802,63 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   background: var(--accent);
   vertical-align: 2px;
 }
+.memory-candidate-card {
+  padding: 14px;
+}
+.memory-candidate-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 13px;
+}
+.memory-candidate-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.84);
+}
+.memory-candidate-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.memory-candidate-label {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 780;
+}
+.memory-candidate-fact {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 640;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.memory-candidate-toggle,
+.memory-candidate-delete {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 760;
+}
+.memory-candidate-toggle.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.memory-candidate-delete {
+  width: 100%;
+  margin-top: 12px;
+}
+.memory-candidate-toggle:disabled,
+.memory-candidate-delete:disabled {
+  opacity: 0.54;
+}
 .timeline {
   border-left: 1px solid var(--line);
   margin-left: 7px;
@@ -3181,6 +3238,8 @@ const HTML_HOME_JS: string = `
     if (kind === 'flight-option') { return '航班'; }
     if (kind === 'food-result') { return '餐饮'; }
     if (kind === 'persona-memory-update') { return '记忆更新'; }
+    if (kind === 'memory-candidate-selection') { return '记忆选择'; }
+    if (kind === 'memory-forget-confirmation') { return '记忆已删除'; }
     if (kind === 'dynamic-tool-connect') { return '授权'; }
     if (kind === 'generic-tool-result') { return '工具结果'; }
     if (kind === 'ride-tool-panel') { return '打车'; }
@@ -3280,6 +3339,9 @@ const HTML_HOME_JS: string = `
   function sourceKey(block) {
     var kind = text(block && block.kind).toLowerCase();
     if (kind === 'persona-memory-update') {
+      return 'persona-memory';
+    }
+    if (kind === 'memory-candidate-selection' || kind === 'memory-forget-confirmation') {
       return 'persona-memory';
     }
     if (kind === 'food-result' && text(block && block.source).indexOf(' / ') >= 0) {
@@ -3399,7 +3461,8 @@ const HTML_HOME_JS: string = `
 	    if (kind === 'ride-tool-panel') {
 	      return false;
 	    }
-	    if (kind === 'persona-memory-update' || kind === 'generic-tool-result') {
+	    if (kind === 'persona-memory-update' || kind === 'memory-candidate-selection' ||
+	      kind === 'memory-forget-confirmation' || kind === 'generic-tool-result') {
 	      return false;
 	    }
 	    return kind === 'travel-option' || kind === 'train-option' || kind === 'flight-option' || kind === 'food-result';
@@ -4758,6 +4821,86 @@ const HTML_HOME_JS: string = `
     addMemoryPanel(grid, 'Soul 摘要', rowValue(block, 'Soul 摘要'));
     addActions(wrap, block.actions);
   }
+  function addMemoryCandidateCard(parent, block) {
+    var wrap = add(parent, 'div', 'memory-candidate-card');
+    var head = add(wrap, 'div', 'memory-update-head');
+    var avatar = add(head, 'div', 'memory-update-avatar',
+      text(block.kind) === 'memory-candidate-selection' ? '记' : '✓');
+    avatar.setAttribute('aria-hidden', 'true');
+    var title = add(head, 'div', 'memory-update-title');
+    add(title, 'h3', '', text(block.title) || '选择要忘记的长期记忆');
+    add(title, 'div', 'memory-update-kicker',
+      text(block.kind) === 'memory-candidate-selection' ? '需要确认' : '删除成功');
+    if (text(block.subtitle).length > 0) {
+      add(title, 'div', 'memory-update-reason', block.subtitle);
+    }
+    var listNode = add(wrap, 'div', 'memory-candidate-list');
+    var selectionMode = text(block.kind) === 'memory-candidate-selection';
+    var candidates = selectionMode ? list(block.memoryCandidates) : list(block.rows).map(function (row, index) {
+      return { candidateKey: '', fact: text(row && row.value), label: text(row && row.label) || ('结果 ' + String(index + 1)) };
+    });
+    var selectedKeys = new Set();
+    var toggleButtons = [];
+    candidates.forEach(function (candidate, index) {
+      var item = add(listNode, 'div', 'memory-candidate-item');
+      var copy = add(item, 'div', 'memory-candidate-copy');
+      add(copy, 'div', 'memory-candidate-label', text(candidate.label) || ('候选 ' + String(index + 1)));
+      add(copy, 'div', 'memory-candidate-fact', text(candidate.fact));
+      if (!selectionMode) { return; }
+      var candidateKey = text(candidate.candidateKey);
+      item.setAttribute('data-candidate-key', candidateKey);
+      var button = add(item, 'button', 'memory-candidate-toggle', '选择');
+      button.type = 'button';
+      button.disabled = isBusy;
+      button.setAttribute('aria-pressed', 'false');
+      if (isBusy) { button.setAttribute('aria-disabled', 'true'); }
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        if (isBusy || candidateKey.length === 0) { return; }
+        if (selectedKeys.has(candidateKey)) { selectedKeys.delete(candidateKey); }
+        else { selectedKeys.add(candidateKey); }
+        syncSelection();
+      });
+      toggleButtons.push({ candidateKey: candidateKey, button: button, item: item });
+    });
+    if (selectionMode) {
+      var deleteAction = list(block.actions).find(function (action) {
+        return text(action && action.id) === 'memory_candidates_forget';
+      });
+      var deleteButton = add(wrap, 'button', 'memory-candidate-delete', '删除已选（0）');
+      deleteButton.type = 'button';
+      function syncSelection() {
+        toggleButtons.forEach(function (entry) {
+          var selected = selectedKeys.has(entry.candidateKey);
+          entry.button.classList.toggle('selected', selected);
+          entry.item.classList.toggle('selected', selected);
+          entry.button.textContent = selected ? '取消选择' : '选择';
+          entry.button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+        deleteButton.textContent = '删除已选（' + String(selectedKeys.size) + '）';
+        deleteButton.disabled = isBusy || !deleteAction || selectedKeys.size === 0;
+        if (deleteButton.disabled) { deleteButton.setAttribute('aria-disabled', 'true'); }
+        else { deleteButton.removeAttribute('aria-disabled'); }
+      }
+      deleteButton.addEventListener('click', function (event) {
+        event.stopPropagation();
+        if (isBusy || !deleteAction || selectedKeys.size === 0) { return; }
+        postAction({
+          id: text(deleteAction.id),
+          label: '删除已选（' + String(selectedKeys.size) + '）',
+          prompt: text(deleteAction.prompt),
+          variant: text(deleteAction.variant),
+          kind: text(deleteAction.kind),
+          args: {
+            selectionId: text(block.memorySelectionId),
+            revision: Number(block.memorySelectionRevision) || 0,
+            candidateKeys: Array.from(selectedKeys)
+          }
+        });
+      });
+      syncSelection();
+    }
+  }
   function actionArg(action, key) {
     var args = action && action.args;
     if (!args || typeof args !== 'object') { return ''; }
@@ -5822,6 +5965,9 @@ const HTML_HOME_JS: string = `
       ].join(' '));
       if (text(block.kind) === 'persona-memory-update') {
         addPersonaMemoryUpdateCard(card, block);
+      } else if (text(block.kind) === 'memory-candidate-selection' ||
+        text(block.kind) === 'memory-forget-confirmation') {
+        addMemoryCandidateCard(card, block);
       } else if (isLuckinShopSelectBlock(block)) {
         card.classList.add('luckin-shop-block');
         addLuckinShopPicker(card, block);

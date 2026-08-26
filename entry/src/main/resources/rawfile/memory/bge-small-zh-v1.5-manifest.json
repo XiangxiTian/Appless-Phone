@@ -1,0 +1,103 @@
+{
+  "artifacts": {
+    "mindspore_lite": {
+      "path": "artifacts/bge-small-zh-v1.5.ms",
+      "sha256": "50e892695ab46c44393ce6e2bdc980a9ad9faf2b5ced380d076f1370847cbed6",
+      "size_bytes": 94014216
+    },
+    "onnx": {
+      "path": "artifacts/bge-small-zh-v1.5.onnx",
+      "sha256": "850b4a0715957010af42482ded887279b2beb7e388dc604096f22377a5200426",
+      "size_bytes": 94827580
+    },
+    "source_lock": {
+      "path": "sources.lock.json",
+      "sha256": "a33f62ab6d4ab48828ab3e7b6cb0f614c070e12edb2215ef752fae9310895f02",
+      "size_bytes": 467
+    },
+    "source_weight": {
+      "path": "models/bge-small-zh-v1.5/model.safetensors",
+      "sha256": "354763b9b1357bc9c44f62c6be2276321081ed2567773608c0d0785b61d5a026",
+      "size_bytes": 95827648
+    },
+    "tokenizer": [
+      {
+        "path": "models/bge-small-zh-v1.5/config.json",
+        "sha256": "3853a7979202c348751b753e36f579c41d8da7d36af617d3d907e1fc9b441f2a",
+        "size_bytes": 776
+      },
+      {
+        "path": "models/bge-small-zh-v1.5/special_tokens_map.json",
+        "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+        "size_bytes": 125
+      },
+      {
+        "path": "models/bge-small-zh-v1.5/tokenizer.json",
+        "sha256": "48cea5d44424912a6fd1ea647bf4fe50b55ab8b1e5879c3275f80e339e8fae26",
+        "size_bytes": 439125
+      },
+      {
+        "path": "models/bge-small-zh-v1.5/tokenizer_config.json",
+        "sha256": "e6f3b96db926a37d4039995fbf5ad17de158dfb8f6343d607e4dbaad18d75f5a",
+        "size_bytes": 367
+      },
+      {
+        "path": "models/bge-small-zh-v1.5/vocab.txt",
+        "sha256": "45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c",
+        "size_bytes": 109540
+      }
+    ],
+    "validation": {
+      "path": "artifacts/validation.json",
+      "sha256": "b6fc5a44da14816c76e1b367ff183195eb93f580c43e6d5d59c8af5249bf41d6",
+      "size_bytes": 497
+    }
+  },
+  "contract": {
+    "batch_size": 1,
+    "embedding_dimension": 512,
+    "input_dtype": "int32",
+    "input_names": [
+      "input_ids",
+      "attention_mask",
+      "token_type_ids"
+    ],
+    "l2_normalized": false,
+    "output_dtype": "float32",
+    "output_name": "raw_cls",
+    "pooling": "cls",
+    "postprocess": "provider_l2_normalize",
+    "sequence_length": 128
+  },
+  "converter_contract": {
+    "input_shape": "input_ids:1,128;attention_mask:1,128;token_type_ids:1,128",
+    "runtime_input_dtype": "int32",
+    "weight_fp16": false
+  },
+  "export_contract": {
+    "attention_implementation": "eager",
+    "dynamo": false,
+    "external_data": false,
+    "onnx_input_dtype": "int64",
+    "onnx_opset": 13,
+    "torch_version": "2.10.0",
+    "transformers_version": "4.30.2",
+    "use_cache": false
+  },
+  "model": {
+    "converter_version": "2.1.0",
+    "id": "BAAI/bge-small-zh-v1.5",
+    "source_revision": "7999e1d3359715c523056ef9478215996d62a620",
+    "source_weight_file": "model.safetensors",
+    "source_weight_sha256": "354763b9b1357bc9c44f62c6be2276321081ed2567773608c0d0785b61d5a026"
+  },
+  "schema_version": 1,
+  "tokenizer_contract": {
+    "algorithm": "bert_wordpiece",
+    "do_lower_case": false,
+    "padding": "max_length",
+    "padding_side": "right",
+    "truncation": true,
+    "truncation_side": "right"
+  }
+}

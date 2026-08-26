@@ -73,6 +73,11 @@ import { gmailOpenDraftAction, gmailReplyDraftAction } from '@loop/agent-core';
 import { mailReplyDraftAction } from '@loop/agent-core';
 import { isMediaVideoResult, mediaVideoPlaybackAction, officialMediaVideoPlaybackUrl } from '@loop/agent-core';
 import {
+  MemoryCandidateSelectionData,
+  MEMORY_CANDIDATE_SELECTION_COMPONENT_ID,
+  MEMORY_FORGET_CONFIRMATION_COMPONENT_ID
+} from '../../../model/MemoryCandidateSelectionSurface';
+import {
   travelCalendarActionForFlight,
   travelCalendarActionForOption,
   travelCalendarActionForTrain
@@ -89,6 +94,7 @@ import {
   HtmlHomeDocument,
   HtmlHomeHistoryItem,
   HtmlHomeKind,
+  HtmlHomeMemoryCandidate,
   HtmlHomeMediaEmbed,
   HtmlHomeMetric,
   HtmlHomePersona,
@@ -257,7 +263,10 @@ export function createHtmlHomeDocument(params: CreateHtmlHomeDocumentParams): Ht
   }
 
   surface.components.forEach((component: A2uiComponent) => {
-    appendComponentActions(document.actions, component);
+    if (component.id !== MEMORY_CANDIDATE_SELECTION_COMPONENT_ID &&
+      component.id !== MEMORY_FORGET_CONFIRMATION_COMPONENT_ID) {
+      appendComponentActions(document.actions, component);
+    }
     appendBlocksForComponent(document, surface, component);
   });
   if (kind === 'aggregate-search' && aggregateComponent === null && aggregate !== null && hasAggregateData(aggregate)) {
@@ -1494,6 +1503,12 @@ function mailDetailReadAction(result: A2uiGenericToolResultData): A2uiAction | n
 }
 
 function appendGenericComponentBlock(document: HtmlHomeDocument, surface: A2uiSurfaceState, component: A2uiComponent): void {
+  if (component.component === A2UI_COMPONENT_INFO_ROWS &&
+    (component.id === MEMORY_CANDIDATE_SELECTION_COMPONENT_ID ||
+      component.id === MEMORY_FORGET_CONFIRMATION_COMPONENT_ID)) {
+    appendMemoryCandidateBlock(document, surface, component);
+    return;
+  }
   if (component.component === A2UI_COMPONENT_INFO_ROWS && component.id === 'memory_update') {
     appendPersonaMemoryUpdateBlock(document, surface, component);
     return;
@@ -1516,6 +1531,49 @@ function appendGenericComponentBlock(document: HtmlHomeDocument, surface: A2uiSu
     component.component === A2UI_COMPONENT_TRAIN_OPTIONS || component.component === A2UI_COMPONENT_FLIGHT_BOARD) {
     document.blocks.push(block);
   }
+}
+
+interface MemoryCandidateSelectionDataModel {
+  memoryCandidateSelection?: MemoryCandidateSelectionData;
+}
+
+function appendMemoryCandidateBlock(
+  document: HtmlHomeDocument,
+  surface: A2uiSurfaceState,
+  component: A2uiComponent
+): void {
+  const selection = component.id === MEMORY_CANDIDATE_SELECTION_COMPONENT_ID;
+  const block = newBlock(
+    component.id,
+    selection ? 'memory-candidate-selection' : 'memory-forget-confirmation',
+    componentTitleOf(component)
+  );
+  block.subtitle = componentBodyOf(component);
+  block.status = componentStatusOf(component, '');
+  block.source = 'phone-local-memory';
+  labelValues(surface, component).forEach((row: A2uiLabelValueData) => {
+    appendMetric(block.rows, row.label, row.value);
+  });
+  block.actions = htmlActions(actionsOf(component), component.id);
+  if (selection) {
+    try {
+      const model = JSON.parse(surface.dataModelJson) as MemoryCandidateSelectionDataModel;
+      const memorySelection = model.memoryCandidateSelection;
+      if (memorySelection !== undefined) {
+        block.memorySelectionId = memorySelection.selectionId;
+        block.memorySelectionRevision = memorySelection.revision;
+        block.memoryCandidates = memorySelection.candidates.map(
+          (candidate): HtmlHomeMemoryCandidate => ({
+            candidateKey: candidate.candidateKey,
+            fact: candidate.fact
+          })
+        );
+      }
+    } catch (_error) {
+      block.memoryCandidates = [];
+    }
+  }
+  document.blocks.push(block);
 }
 
 function appendPersonaMemoryUpdateBlock(document: HtmlHomeDocument, surface: A2uiSurfaceState, component: A2uiComponent): void {

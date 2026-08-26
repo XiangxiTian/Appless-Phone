@@ -84,13 +84,11 @@ export class OpenAiCompatibleModel implements LocalModel {
       chunkSequence++;
       const chunk = decoder.decodeToString(new Uint8Array(data), { stream: true });
       rawResponse += chunk;
-      const preview = chunk.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
       aiLogInfo(
         '[AIPhone][ModelResponseChunk] seq=' + chunkSequence.toString() +
         ' bytes=' + data.byteLength.toString() +
         ' chars=' + chunk.length.toString() +
-        ' elapsedMs=' + (Date.now() - requestStartMs).toString() +
-        ' data=' + preview
+        ' elapsedMs=' + (Date.now() - requestStartMs).toString()
       );
     });
     httpRequest.on('dataEnd', () => {

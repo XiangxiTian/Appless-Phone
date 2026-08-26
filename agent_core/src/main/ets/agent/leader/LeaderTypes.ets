@@ -1,8 +1,27 @@
-import { AgentMessage, UserInputPayload } from '../message/AgentMessage';
+import {
+  AgentMessage,
+  MemoryRecallObservation,
+  MemoryRecallOrigin,
+  UserInputPayload
+} from '../message/AgentMessage';
 import { ToolBackendType, ToolRiskLevel } from '../../aiphone/runtime/ToolDefinitionTypes';
 
 export const MAX_LEADER_DATA_TASKS_PER_ROUND: number = 8;
 export const MAX_LEADER_DATA_TASKS_PER_TURN: number = 24;
+export const MEMORY_RECALL_DEFAULT_TOP_K: number = 5;
+export const MEMORY_RECALL_MIN_TOP_K: number = 1;
+export const MEMORY_RECALL_MAX_TOP_K: number = 20;
+export const MEMORY_RECALL_FACT_MAX_CHARS: number = 240;
+export const MEMORY_RECALL_TOTAL_MAX_CHARS: number = 4800;
+
+export function validMemoryRecallTopK(topK: number): boolean {
+  return Number.isSafeInteger(topK) && topK >= MEMORY_RECALL_MIN_TOP_K &&
+    topK <= MEMORY_RECALL_MAX_TOP_K;
+}
+
+export function memoryRecallTotalMaxChars(topK: number): number {
+  return Math.min(topK * MEMORY_RECALL_FACT_MAX_CHARS, MEMORY_RECALL_TOTAL_MAX_CHARS);
+}
 
 export type InputUserPayload = UserInputPayload;
 
@@ -24,6 +43,80 @@ export type LeaderRoundAction = 'execute' | 'answer' | 'clarify';
 export interface LeaderActionIntent {
   goal: string;
   allowedActionIds: string[];
+}
+
+export interface LeaderMemoryRememberFact {
+  fact: string;
+}
+
+export interface LeaderMemoryRememberMutation {
+  operation: 'remember';
+  facts: LeaderMemoryRememberFact[];
+}
+
+export interface LeaderMemoryUpdateMutation {
+  operation: 'update';
+  memoryId: string;
+  fact: string;
+}
+
+export interface LeaderMemoryForgetMutation {
+  operation: 'forget';
+  memoryId: string;
+}
+
+export interface LeaderMemoryForgetClarification {
+  operation: 'forget';
+}
+
+export type LeaderMemoryMutation = LeaderMemoryRememberMutation |
+  LeaderMemoryUpdateMutation | LeaderMemoryForgetMutation;
+
+export interface LeaderMemoryToolRequest {
+  conversationId: string;
+  turnId: string;
+  sourceTaskId: string;
+  personaId: string;
+  mutation: LeaderMemoryMutation;
+}
+
+export interface LeaderMemoryToolResult {
+  status: 'success' | 'partial' | 'error';
+  message: string;
+}
+
+export interface LeaderMemoryToolExecutionGuard {
+  isActive(): boolean;
+}
+
+export interface LeaderMemoryToolExecutor {
+  execute(
+    request: LeaderMemoryToolRequest,
+    guard: LeaderMemoryToolExecutionGuard
+  ): Promise<LeaderMemoryToolResult>;
+}
+
+export interface LeaderMemoryRecallToolCall {
+  toolId: 'memory.recall';
+  query: string;
+  topK?: number;
+}
+
+export interface LeaderMemoryRecallToolRequest {
+  callId: string;
+  conversationId: string;
+  turnId: string;
+  sourceTaskId: string;
+  origin: MemoryRecallOrigin;
+  query: string;
+  topK: number;
+}
+
+export interface LeaderMemoryRecallToolExecutor {
+  recall(
+    request: LeaderMemoryRecallToolRequest,
+    guard: LeaderMemoryToolExecutionGuard
+  ): Promise<MemoryRecallObservation>;
 }
 
 export interface LeaderDecisionDataTask {
@@ -116,6 +209,9 @@ export interface LeaderDecision {
   normalizationCurrentLocalDate?: string;
   normalizedActionInputText?: string;
   actionIntent?: LeaderActionIntent;
+  memoryMutation?: LeaderMemoryMutation;
+  memoryClarification?: LeaderMemoryForgetClarification;
+  leaderToolCall?: LeaderMemoryRecallToolCall;
   answer?: string;
   bimSuggestion?: LeaderBimSuggestion;
   bimContextUpdate?: LeaderBimContextUpdate;
@@ -156,8 +252,7 @@ export interface LeaderSkillMetadata {
 export interface LeaderPersonaMetadata {
   personaId: string;
   name: string;
-  soul: string;
-  memory: string;
+  domains: string[];
   previous: boolean;
   activeSkills: LeaderSkillMetadata[];
 }

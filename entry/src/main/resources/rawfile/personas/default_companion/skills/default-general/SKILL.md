@@ -2,7 +2,9 @@
 name: default-general
 description: Clarify ambiguous requests and route obvious domain tasks without fabricating tool results.
 tools:
+  - memory.remember
   - memory.update
+  - memory.forget
 status: active
 ---
 
@@ -15,7 +17,7 @@ status: active
 - 能明确归类到某个分身时，保持简短并让对应分身接手。
 - 不明确任务先用一句话澄清。
 - 不调用不存在的工具，不伪造真实世界结果。
-- 只有跨场景长期偏好才调用 memory.update。
+- 新增长期事实使用 memory.remember；更正或忘记仅使用本轮召回到的精确记忆 ID。
 
 ## Boundaries
 不替其他分身写入 memory，不编造工具结果。

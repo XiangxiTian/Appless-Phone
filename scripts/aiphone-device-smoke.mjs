@@ -282,9 +282,26 @@ const coreRegressionCases = [
   { id: 'C08', query: '我想看看有关 OpenAI Codex 的相关新闻和讨论', expectsTool: false, expectedToolId: '' },
   { id: 'C09', query: '帮我查看我今天 X 和 Slack 上的消息', expectsTool: true, expectedToolId: 'social.feed.search', verifySocialDraft: true },
   { id: 'C10', query: '帮我查看 X 上 OpenAI 最近的公开 post', expectsTool: true, expectedToolId: 'x.post.search' },
-  { id: 'C11a', query: '点一杯咖啡', expectsTool: true, expectedToolId: 'food.search' },
-  { id: 'C11b', query: '我只喝瑞幸咖啡', expectsTool: false, expectedToolId: '', expectedToolIds: ['memory.update'] },
-  { id: 'C11c', query: '点一杯咖啡', expectsTool: true, expectedToolId: 'food.search', expectedPersonaMemory: 'luckin_only' },
+  {
+    id: 'C11a', query: '帮我搜索附近的咖啡店', expectsTool: true,
+    expectedToolId: 'food.search', verifyMemoryRecall: true
+  },
+  {
+    id: 'C11b', query: '请长期记住这一条偏好：我点咖啡时只选燕麦奶。', expectsTool: false,
+    expectedToolId: '', expectedLeaderMemoryCapability: 'memory.remember', verifyMemoryRecall: true
+  },
+  {
+    id: 'C11c', query: '按我的长期偏好帮我搜索附近的咖啡店', expectsTool: true,
+    expectedToolId: 'food.search', verifyMemoryRecall: true, expectedMemoryPreference: 'oat_milk'
+  },
+  {
+    id: 'C11d', query: '忘掉“我点咖啡时只选燕麦奶”这一条长期偏好。', expectsTool: false,
+    expectedToolId: '', expectedLeaderMemoryCapability: 'memory.forget', verifyMemoryRecall: true
+  },
+  {
+    id: 'C11e', query: '再按我现在的长期偏好帮我搜索附近的咖啡店', expectsTool: true,
+    expectedToolId: 'food.search', verifyMemoryRecall: true, expectMemoryPreferenceAbsent: 'oat_milk'
+  },
   { id: 'C12', query: '我想看世界杯下一场比赛和赛程', expectsTool: true, expectedToolId: 'worldcup.open' },
   { id: 'C13', query: '帮我查明天深圳天气', expectsTool: true, expectedToolId: 'dynamic.search', expectedDiscoveredToolId: 'weather.query' },
   { id: 'C14', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
@@ -337,6 +354,20 @@ const coreRegressionCases = [
   { id: 'C23', query: '我想看看现在热映电影、票房和明星动态', expectsTool: true, expectedToolId: 'movie.open' },
   { id: 'C24', query: '我想查看今日日报', expectsTool: true, expectedToolId: 'daily.brief.open' }
 ];
+const memoryForgetSelectionQueryArg = process.argv.slice(2)
+  .find((arg) => arg.startsWith('--memory-forget-query='));
+const memoryForgetSelectionQuery = (
+  memoryForgetSelectionQueryArg === undefined ?
+    process.env.AIPHONE_MEMORY_FORGET_QUERY || '' : memoryForgetSelectionQueryArg.slice('--memory-forget-query='.length)
+).trim();
+const memoryForgetSelectionCase = {
+  id: 'MFS01',
+  query: memoryForgetSelectionQuery,
+  expectsTool: false,
+  expectedToolId: '',
+  verifyMemoryRecall: true,
+  verifyMemoryForgetSelection: true
+};
 
 const retainedFullCases = [
   { id: 'F01', query: '帮我查明天北京到上海的航班', expectsTool: true, expectedToolId: 'flight.search' },
@@ -395,7 +426,8 @@ const coreScenarioManifest = [
   ['C05', ['mail.search']],
   ['C06', ['gmail.mail.search']], ['C07', ['media.video.search']],
   ['C08', []], ['C09', ['social.feed.search']],
-  ['C10', ['x.post.search']], ['C11', ['food.search', 'memory.update']],
+  ['C10', ['x.post.search']],
+  ['C11', ['food.search', 'memory.remember', 'memory.forget']],
   ['C12', ['worldcup.open']], ['C13', ['dynamic.search']],
   ['C14', ['ride.estimate']], ['C15', ['luckin.order.preview']],
   ['C17', ['payment.send']],
@@ -634,6 +666,7 @@ const dailyBriefTruthfulStateMarkers = [
 ];
 
 const argv = process.argv.slice(2);
+const hdcCommand = (process.env.AIPHONE_HDC_COMMAND || 'hdc').trim() || 'hdc';
 const cleanData = process.env.AIPHONE_SMOKE_CLEAN_DATA === '1' || argv.includes('--clean-data');
 const runDynamicCases = argv.includes('--dynamic-tools');
 const runComposioCases = argv.includes('--composio-tools');
@@ -644,7 +677,19 @@ const runCoreRegression = argv.includes('--core-regression');
 const runGmailSendManual = argv.includes('--gmail-send-manual');
 const runBimSmoke = argv.includes('--bim');
 const runPublicPersona = argv.includes('--public-persona');
+const runMemoryForgetSelection = argv.includes('--memory-forget-selection');
 const listCases = argv.includes('--list-cases');
+const memoryCandidateIndicesArg = argv.find((arg) => arg.startsWith('--memory-candidate-indices='));
+const memoryCandidateIndexArg = argv.find((arg) => arg.startsWith('--memory-candidate-index='));
+const memoryCandidateIndicesRaw = memoryCandidateIndicesArg !== undefined ?
+  memoryCandidateIndicesArg.slice('--memory-candidate-indices='.length) :
+  (process.env.AIPHONE_MEMORY_CANDIDATE_INDICES ||
+    (memoryCandidateIndexArg !== undefined ? memoryCandidateIndexArg.slice('--memory-candidate-index='.length) :
+      process.env.AIPHONE_MEMORY_CANDIDATE_INDEX || '1,2'));
+const memoryCandidateIndices = [...new Set(String(memoryCandidateIndicesRaw).split(',')
+  .map((value) => Number.parseInt(value.trim(), 10)))]
+  .filter((value) => Number.isSafeInteger(value) && value > 0)
+  .sort((left, right) => left - right);
 const queryArgs = argv.filter((arg) => arg !== '--clean-data' &&
   arg !== '--dynamic-tools' &&
   arg !== '--composio-tools' &&
@@ -655,16 +700,35 @@ const queryArgs = argv.filter((arg) => arg !== '--clean-data' &&
   arg !== '--gmail-send-manual' &&
   arg !== '--bim' &&
   arg !== '--public-persona' &&
+  arg !== '--memory-forget-selection' &&
+  !arg.startsWith('--memory-forget-query=') &&
+  !arg.startsWith('--memory-candidate-indices=') &&
+  !arg.startsWith('--memory-candidate-index=') &&
   arg !== '--list-cases');
-const selectedDefaultCases = runComposioCases ? composioCases :
+const selectedDefaultCases = runMemoryForgetSelection ? [memoryForgetSelectionCase] :
+  (runComposioCases ? composioCases :
   (runFullRegression ? fullRegressionCases :
-    (runCoreRegression ? defaultCases :
+    (runCoreRegression ? coreRegressionCases :
       (runGoogleApps ? defaultCases.concat(googleAppCases) :
-        (runDynamicCases ? defaultCases.concat(dynamicCases) : defaultCases))));
+        (runDynamicCases ? defaultCases.concat(dynamicCases) : defaultCases)))));
 const useDefaultCases = queryArgs.length === 0;
 const queries = useDefaultCases ? selectedDefaultCases.map((testCase) => testCase.query) : queryArgs;
 const queryRetryLimit = Number.parseInt(process.env.AIPHONE_QUERY_RETRY_LIMIT || '2', 10);
 if (listCases) {
+  if (runMemoryForgetSelection) {
+    console.log(JSON.stringify([{
+      id: memoryForgetSelectionCase.id,
+      mode: 'memory-forget-selection',
+      automated: true,
+      defaultCore: false,
+      queryConfigured: memoryForgetSelectionQuery.length > 0,
+      candidateIndices: memoryCandidateIndices,
+      requires: ['AIPHONE_MEMORY_FORGET_QUERY or --memory-forget-query=<query>',
+        'one-to-five recalled memories',
+        'AIPHONE_MEMORY_CANDIDATE_INDICES or --memory-candidate-indices=1,2 (defaults to 1,2)']
+    }], null, 2));
+    process.exit(0);
+  }
   if (runBimSmoke) {
     console.log(JSON.stringify([{
       id: 'BIM',
@@ -817,10 +881,13 @@ function expectedCaseForQuery(query) {
   if (configuredCase !== undefined) {
     return configuredCase;
   }
-  if (isPersonaMemoryUpdateQuery(query)) {
+  const memoryCapability = expectedLeaderMemoryCapabilityForQuery(query);
+  if (memoryCapability.length > 0) {
     return {
       expectsTool: false,
-      expectedToolId: ''
+      expectedToolId: '',
+      expectedLeaderMemoryCapability: memoryCapability,
+      verifyMemoryRecall: true
     };
   }
   if (/^你好$|问候|打招呼/.test(query)) {
@@ -1060,7 +1127,7 @@ function expectedCaseForQuery(query) {
 }
 
 function firstTarget() {
-  const result = spawnSync('hdc', ['list', 'targets'], { encoding: 'utf8', timeout: 12000 });
+  const result = spawnSync(hdcCommand, ['list', 'targets'], { encoding: 'utf8', timeout: 12000 });
   const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
   if (result.error !== undefined) {
     throw new Error(`hdc list targets failed before finding a device: ${result.error.message}`);
@@ -1076,12 +1143,15 @@ function firstTarget() {
 }
 
 function hdc(args, options = {}) {
-  const result = spawnSync('hdc', ['-t', target, ...args], {
+  const result = spawnSync(hdcCommand, ['-t', target, ...args], {
     encoding: 'utf8',
     maxBuffer: 20 * 1024 * 1024,
     ...options
   });
   const output = `${result.stdout || ''}${result.stderr || ''}`;
+  if (result.error !== undefined) {
+    throw new Error(`hdc ${args.join(' ')} failed: ${result.error.message}`);
+  }
   if (result.status !== 0 || /Connect server failed/i.test(output)) {
     throw new Error(`hdc ${args.join(' ')} failed:\n${result.stdout}\n${result.stderr}`);
   }
@@ -1145,8 +1215,6 @@ function cleanBundleData() {
   }
 }
 
-const personaStorePath = '/data/app/el2/100/base/com.jiuwen.appless/haps/entry/preferences/aiphone_persona_store';
-const personaBackupPath = `/data/local/tmp/aiphone-persona-store-${smokeRunId}`;
 const publicPersonaStorePath = '/data/app/el2/100/base/com.jiuwen.appless/haps/entry/preferences/aiphone_public_persona';
 
 function publicPersonaSnapshotExists() {
@@ -1159,38 +1227,8 @@ function publicPersonaSnapshotExists() {
   return output === 'PRESENT';
 }
 
-function backupPersonaMemoryStore() {
-  hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
-  const output = hdc(['shell',
-    `if [ -f ${personaStorePath} ]; then cp ${personaStorePath} ${personaBackupPath} && echo PRESENT; else echo ABSENT; fi`
-  ]).trim();
-  if (output !== 'PRESENT' && output !== 'ABSENT') {
-    throw new Error(`Could not determine persona store state before C11: ${output}`);
-  }
-  return {
-    existed: output === 'PRESENT',
-    backupPath: personaBackupPath
-  };
-}
-
-function restorePersonaMemoryStore(backup) {
-  hdc(['shell', 'aa', 'force-stop', 'com.jiuwen.appless']);
-  const restoreCommand = backup.existed
-    ? `cp ${backup.backupPath} ${personaStorePath} && cmp -s ${backup.backupPath} ${personaStorePath} && echo RESTORED`
-    : `rm -f ${personaStorePath} && [ ! -f ${personaStorePath} ] && echo RESTORED`;
-  const output = hdc(['shell', restoreCommand]).trim();
-  hdc(['shell', `rm -f ${backup.backupPath}`]);
-  if (output !== 'RESTORED') {
-    throw new Error(`Persona store restoration could not be verified: ${output}`);
-  }
-  return {
-    ok: true,
-    existedBeforeRun: backup.existed
-  };
-}
-
 function probeLocalModel() {
-  const result = spawnSync('hdc', ['-t', target, 'shell', 'curl', '-sS', '-m', '3', 'http://127.0.0.1:11434/v1/models'], {
+  const result = spawnSync(hdcCommand, ['-t', target, 'shell', 'curl', '-sS', '-m', '3', 'http://127.0.0.1:11434/v1/models'], {
     encoding: 'utf8',
     maxBuffer: 2 * 1024 * 1024
   });
@@ -1214,7 +1252,7 @@ function probeLocalModel() {
 }
 
 function startModelFoundation() {
-  const result = spawnSync('hdc', ['-t', target, 'shell', 'aa', 'start', '-b', 'com.huawei.hmos.hmmodelfoundation', '-a', 'EntryAbility'], {
+  const result = spawnSync(hdcCommand, ['-t', target, 'shell', 'aa', 'start', '-b', 'com.huawei.hmos.hmmodelfoundation', '-a', 'EntryAbility'], {
     encoding: 'utf8',
     maxBuffer: 2 * 1024 * 1024
   });
@@ -1253,13 +1291,35 @@ function cleanupHilogProcesses() {
       }
       const match = /^(\d+)\s+/.exec(line);
       if (match !== null) {
-        spawnSync('kill', [`-${signal}`, match[1]], { encoding: 'utf8' });
+        if (process.platform === 'win32') {
+          const args = ['/PID', match[1], '/T'];
+          if (signal === 'KILL') args.push('/F');
+          spawnSync('taskkill', args, { encoding: 'utf8' });
+        } else {
+          spawnSync('kill', [`-${signal}`, match[1]], { encoding: 'utf8' });
+        }
       }
     }
   };
   killMatching('TERM');
-  spawnSync('sleep', ['0.3']);
+  if (process.platform === 'win32') {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+  } else {
+    spawnSync('sleep', ['0.3']);
+  }
   killMatching('KILL');
+}
+
+if (runMemoryForgetSelection && memoryForgetSelectionQuery.length === 0) {
+  console.error('Memory forget selection smoke requires AIPHONE_MEMORY_FORGET_QUERY or --memory-forget-query=<query>.');
+  process.exit(2);
+}
+if (runMemoryForgetSelection && (memoryCandidateIndices.length === 0 ||
+  memoryCandidateIndices.length > 5 || memoryCandidateIndices.join(',') !==
+    String(memoryCandidateIndicesRaw).split(',').map((value) => Number.parseInt(value.trim(), 10))
+      .sort((left, right) => left - right).join(','))) {
+  console.error('Memory candidate indices must be one-to-five unique positive 1-based integers.');
+  process.exit(2);
 }
 
 function sleep(ms) {
@@ -1783,7 +1843,7 @@ function lineMatchesPid(line, pid) {
 
 async function captureWhile(appPid, runAction, lifecycleOptions = null) {
   const logs = [];
-  const child = spawn('hdc', ['-t', target, 'hilog'], {
+  const child = spawn(hdcCommand, ['-t', target, 'hilog'], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.setEncoding('utf8');
@@ -1827,8 +1887,7 @@ async function captureWhile(appPid, runAction, lifecycleOptions = null) {
         multiAgentTurnEvidence(text, lifecycleOptions);
       const hasTerminalOutcome =
         /\[AIPhone\]\[(ToolResult|A2uiHomeToolResult)\] ok=/.test(text) ||
-        /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest)\] none/.test(text) ||
-        /\[AIPhone\]\[PersonaMemoryUpdate\]/.test(text);
+        /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest)\] none/.test(text);
       const done = customCompletion !== null ? customCompletion.complete :
         lifecycleOptions === null ?
         (hotelActionEvidencePopulated || hotelToolLifecycleComplete || hasTerminalOutcome) :
@@ -1890,7 +1949,7 @@ async function captureWhile(appPid, runAction, lifecycleOptions = null) {
 
 async function captureAppLogsFor(appPid, runAction, durationMs = 2500) {
   const logs = [];
-  const child = spawn('hdc', ['-t', target, 'hilog'], {
+  const child = spawn(hdcCommand, ['-t', target, 'hilog'], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.setEncoding('utf8');
@@ -1947,8 +2006,14 @@ function waitForProcessExit(child, timeoutMs) {
 }
 
 function activeHilogProcesses() {
-  const result = spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
-  return result.stdout
+  const result = process.platform === 'win32' ?
+    spawnSync('C:\\Program Files\\PowerShell\\7\\pwsh.exe', [
+      '-NoProfile', '-Command',
+      "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'hdc.*hilog' } | " +
+        'ForEach-Object { "{0} {1}" -f $_.ProcessId, $_.CommandLine }'
+    ], { encoding: 'utf8' }) :
+    spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
+  return String(result.stdout || '')
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.includes('hdc') && line.includes('hilog'));
@@ -2012,7 +2077,9 @@ function analyze(
   minimumDataRounds = 0,
   expectedDependencies = [],
   expectedDataRounds = [],
-  expectedParallelDataToolIds = []
+  expectedParallelDataToolIds = [],
+  expectedLeaderMemoryCapability = '',
+  verifyMemoryRecall = false
 ) {
   const text = logs.join('\n');
   const dailyBriefDirect = expectedToolId === 'daily.brief.open' ?
@@ -2052,8 +2119,11 @@ function analyze(
     executionEvidence.exactMultiAgentLifecycle ||
     (!executionEvidence.hasMultiAgentInput && rawModelSelectedExpectedToolId);
   const personaCoffeeProof = !isPersonaCoffeeQuery(query) || /饮食搭子上线|饮食搭子/.test(text);
-  const personaMemoryUpdateProof = !isPersonaMemoryUpdateQuery(query) ||
-    /\[AIPhone\]\[PersonaMemoryUpdate\][^\n]*ok=true[^\n]*personaId=food_companion/.test(text);
+  const memoryRecall = leaderMemoryRecallEvidence(text);
+  const leaderMemoryTool = expectedLeaderMemoryCapability.length === 0 ?
+    { observed: false, ok: true, capability: '', operation: '', status: '', succeeded: 0, failed: 0,
+      identityMatches: true, noActionAgent: true } :
+    leaderMemoryToolEvidence(text, expectedLeaderMemoryCapability, multiAgentLifecycle);
   const result = {
     query,
     expectedTool,
@@ -2073,7 +2143,8 @@ function analyze(
     exactMultiAgentToolLifecycle: executionEvidence.exactMultiAgentLifecycle,
     toolExecutionObserved: executionEvidence.observed,
     personaCoffeeProof,
-    personaMemoryUpdateProof,
+    memoryRecall,
+    leaderMemoryTool,
     directIntent: /\[AIPhone\]\[(ToolRequestByIntent|A2uiHomeToolRequestByIntent)\] toolId=/.test(text),
     localToolRequest: /\[AIPhone\]\[LocalToolRequest\] endpoint=local:\/\/aiphone-tools toolId=/.test(text),
     model200: modelTransportEvidence(text, {
@@ -2103,7 +2174,7 @@ function analyze(
     syntheticFallback: forbiddenSyntheticMarkers.some((marker) => text.includes(marker))
   };
   const modelPassed = multiAgentLifecycle.ok;
-  const expectsDirectText = expectedTool === false && !isPersonaMemoryUpdateQuery(query);
+  const expectsDirectText = expectedTool === false;
   const directTextLifecycle = expectsDirectText && multiAgentLifecycle.complete &&
     multiAgentLifecycle.ok && multiAgentLifecycle.status === 'success' &&
     multiAgentLifecycle.textResult && multiAgentLifecycle.surfaceId === 'none' &&
@@ -2130,13 +2201,12 @@ function analyze(
   const basePassed = result.transportPassed && baseWithoutTransport;
   if (dailyBriefDirect !== null) {
     Object.assign(result, dailyBriefDirectAnalysis(result, dailyBriefDirect));
-  } else if (isPersonaMemoryUpdateQuery(query)) {
-    result.modelPassed = result.personaMemoryUpdateProof === true;
+  } else if (expectedLeaderMemoryCapability.length > 0) {
+    result.modelPassed = multiAgentLifecycle.ok && leaderMemoryTool.ok;
     result.transportPassed = true;
-    result.basePassedWithoutTransport = true;
-    result.ok = result.personaMemoryUpdateProof === true && multiAgentLifecycle.ok &&
-      multiAgentLifecycle.toolIds.length === 1 &&
-      multiAgentLifecycle.toolIds[0] === 'memory.update';
+    result.basePassedWithoutTransport = directTextLifecycle;
+    result.ok = result.modelPassed && directTextLifecycle &&
+      (!verifyMemoryRecall || memoryRecall.ok);
   } else if (expectedTool === true) {
     result.ok = basePassed && modelPassed && result.toolRequested && result.toolOk &&
       result.hasExpectedToolId && result.hasExpectedDiscoveredToolId && result.personaCoffeeProof;
@@ -2145,6 +2215,9 @@ function analyze(
   } else {
     result.ok = basePassed && modelPassed &&
       (result.toolRequested ? result.toolOk : result.toolNone);
+  }
+  if (verifyMemoryRecall && !memoryRecall.ok) {
+    result.ok = false;
   }
   return result;
 }
@@ -2157,12 +2230,81 @@ function isPersonaCoffeeQuery(query) {
   return /点一杯咖啡|来一杯咖啡|买杯咖啡/.test(query);
 }
 
-function isPersonaMemoryUpdateQuery(query) {
-  return /瑞幸/.test(query) && /只喝|只买|只点/.test(query);
+function expectedLeaderMemoryCapabilityForQuery(query) {
+  if (/忘掉|忘记|删除.+记忆/.test(query) && /长期偏好|长期记忆/.test(query)) {
+    return 'memory.forget';
+  }
+  if (/长期记住|请记住|帮我记住/.test(query)) {
+    return 'memory.remember';
+  }
+  return '';
 }
 
-function hasLuckinMemoryEvidence(text) {
-  return /只展示瑞幸|只喝瑞幸|瑞幸相关真实结果|瑞幸优先/.test(text);
+function memoryPreferenceVisible(text, preference) {
+  if (preference === 'oat_milk') {
+    return /燕麦奶|燕麦咖啡|燕麦拿铁/.test(text);
+  }
+  return false;
+}
+
+function lineEvidenceFields(line) {
+  const fields = {};
+  for (const match of String(line || '').matchAll(/\b([A-Za-z][A-Za-z0-9]*)=([^\s]+)/g)) {
+    fields[match[1]] = match[2];
+  }
+  return fields;
+}
+
+function leaderMemoryRecallEvidence(text) {
+  const lines = String(text || '').split('\n')
+    .filter((line) => /\[AIPhone\]\[LeaderMemoryRecall\]/.test(line));
+  const line = lines.at(-1) || '';
+  const fields = lineEvidenceFields(line);
+  const count = /^\d+$/.test(fields.count || '') ? Number.parseInt(fields.count, 10) : -1;
+  const durationMs = /^\d+$/.test(fields.durationMs || '') ? Number.parseInt(fields.durationMs, 10) : -1;
+  const status = fields.status || '';
+  const validCount = status === 'hit' || status === 'success' ? count > 0 :
+    (status === 'miss' || status === 'empty' ? count === 0 : false);
+  return {
+    observed: line.length > 0,
+    ok: line.length > 0 && validCount && durationMs >= 0,
+    status,
+    count,
+    durationMs
+  };
+}
+
+function leaderMemoryToolEvidence(text, expectedCapability, lifecycle) {
+  const expectedOperation = String(expectedCapability || '').replace(/^memory\./, '');
+  const lines = [...new Set(String(text || '').split('\n')
+    .filter((line) => /\[AIPhone\]\[LeaderMemoryTool\]/.test(line))
+    .map((line) => line.slice(line.indexOf('[AIPhone][LeaderMemoryTool]'))))];
+  const matching = lines.map((line) => ({ line, fields: lineEvidenceFields(line) }))
+    .filter((item) => item.fields.operation === expectedOperation);
+  const selected = matching.at(-1) || { line: '', fields: {} };
+  const fields = selected.fields;
+  const succeeded = /^\d+$/.test(fields.succeeded || '') ? Number.parseInt(fields.succeeded, 10) : -1;
+  const failed = /^\d+$/.test(fields.failed || '') ? Number.parseInt(fields.failed, 10) : -1;
+  const hasIdentity = typeof fields.conversation === 'string' && fields.conversation.length > 0 &&
+    typeof fields.turn === 'string' && fields.turn.length > 0 &&
+    typeof fields.task === 'string' && fields.task.length > 0;
+  const identityMatches = lifecycle !== null && lifecycle !== undefined &&
+    lifecycle.conversationId.length > 0 && lifecycle.turnId.length > 0 && hasIdentity &&
+    matching.length === 1;
+  const successfulTerminal = fields.status === 'success' && succeeded > 0 && failed === 0;
+  const noActionAgent = !/\[AIPhone\]\[MultiAgentActionPlan\]/.test(text) &&
+    !/\[AIPhone\]\[PersonaMemoryUpdate\]/.test(text);
+  return {
+    observed: selected.line.length > 0,
+    ok: selected.line.length > 0 && identityMatches && successfulTerminal && noActionAgent,
+    capability: expectedCapability,
+    operation: fields.operation || '',
+    status: fields.status || '',
+    succeeded,
+    failed,
+    identityMatches,
+    noActionAgent
+  };
 }
 
 function isGmailEccvQuery(query) {
@@ -2270,7 +2412,7 @@ function isComposioCardQuery(query) {
 }
 
 function layoutExpectationsForQuery(query) {
-  if (isPersonaMemoryUpdateQuery(query)) {
+  if (expectedLeaderMemoryCapabilityForQuery(query).length > 0) {
     return [];
   }
   if (isSocialFeedQuery(query) && !isWhatsAppSendQuery(query)) {
@@ -3479,9 +3621,208 @@ async function verifyMailExpandedActions(layout, index, appPid, targetMarker = '
   };
 }
 
+function exactVisibleTextMatches(layout, marker) {
+  return findTextMatches(layout, marker).filter((item) =>
+    item.text.split('|').some((value) => value.trim() === marker) &&
+    item.bounds.width > 0 && item.bounds.height > 0 && item.bounds.y >= 0 && item.bounds.y <= 2600);
+}
+
+function exactClickableTextMatches(layout, marker) {
+  const matches = [];
+  walk(layout, (node) => {
+    const attrs = node.attributes || {};
+    const bounds = parseBounds(attrs.bounds);
+    if (bounds === null || !attrIsTrue(attrs.clickable) || attrIsFalse(attrs.enabled) ||
+      bounds.width <= 0 || bounds.height <= 0 || bounds.y < 0 || bounds.y > 2600) return;
+    const exact = ['text', 'content', 'description', 'hint', 'accessibilityText']
+      .some((key) => typeof attrs[key] === 'string' && attrs[key].trim() === marker);
+    if (exact) matches.push({ text: marker, bounds });
+  });
+  matches.sort((left, right) => left.bounds.top - right.bounds.top || left.bounds.left - right.bounds.left);
+  return matches;
+}
+
+function sanitizedMemorySelectionLog(text) {
+  return sanitizeExternalUrlLogs(text)
+    .replace(/"candidateMemoryIds"\s*:\s*\[[^\]]*\]/g, '"candidateMemoryIds":["<redacted>"]')
+    .replace(/"memoryId"\s*:\s*"[^"]*"/g, '"memoryId":"<redacted>"')
+    .replace(/"fact"\s*:\s*"[^"]*"/g, '"fact":"<redacted>"')
+    .replace(/\bmemoryId=\S+/g, 'memoryId=<redacted>')
+    .replace(/\bfact=\S+/g, 'fact=<redacted>');
+}
+
+function memorySelectionShownEvidence(text, lifecycle) {
+  const matches = String(text || '').split('\n')
+    .filter((line) => /\[AIPhone\]\[MemorySelection\]/.test(line))
+    .map((line) => ({ line, fields: lineEvidenceFields(line) }))
+    .filter((item) => item.fields.operation === 'forget' && item.fields.status === 'shown');
+  const unique = new Map();
+  matches.forEach((item) => {
+    const key = [item.fields.conversation, item.fields.turn, item.fields.task, item.fields.count].join('|');
+    unique.set(key, item);
+  });
+  const selected = [...unique.values()].at(-1);
+  const count = selected !== undefined && /^\d+$/.test(selected.fields.count || '') ?
+    Number.parseInt(selected.fields.count, 10) : -1;
+  return {
+    ok: unique.size === 1 && count >= 1 && count <= 5 && lifecycle.complete === true,
+    count
+  };
+}
+
+async function finalMemoryCandidateCardEvidence(layout, index, maxSwipes = 6) {
+  let currentLayout = layout;
+  for (let reset = 0; reset < 3; reset += 1) {
+    swipeResultsDown();
+    await sleep(350);
+  }
+  const labels = new Set();
+  let cardVisible = false;
+  for (let attempt = 0; attempt <= maxSwipes; attempt += 1) {
+    if (attempt > 0 || currentLayout === layout) {
+      currentLayout = dumpLayout(`query-${index + 1}-memory-final-count-${attempt + 1}.json`);
+    }
+    const values = collectLayoutText(currentLayout);
+    cardVisible = cardVisible || values.includes('选择要忘记的长期记忆');
+    values.filter((value) => /^候选\s+\d+$/.test(value)).forEach((value) => labels.add(value));
+    if (!cardVisible) break;
+    swipeResultsUp();
+    await sleep(450);
+  }
+  return { cardVisible, count: labels.size };
+}
+
+async function verifyMemoryForgetSelectionAction(layout, index, appPid, lifecycle, initialLogText) {
+  let currentLayout = layout;
+  const candidateLabels = collectLayoutText(currentLayout)
+    .filter((value) => /^候选\s+\d+$/.test(value));
+  const uniqueCandidateLabels = [...new Set(candidateLabels)];
+  const allCandidateLabels = uniqueCandidateLabels;
+  const selectionShown = memorySelectionShownEvidence(initialLogText, lifecycle);
+  const recallEvidence = leaderMemoryRecallEvidence(initialLogText);
+  const authoritativeCandidateCount = selectionShown.ok ? selectionShown.count :
+    (recallEvidence.ok ? recallEvidence.count : -1);
+  const cardVisible = collectLayoutText(layout).includes('选择要忘记的长期记忆');
+  const initialValid = cardVisible && selectionShown.ok && uniqueCandidateLabels.length >= 1 &&
+    memoryCandidateIndices.every((candidateIndex) => candidateIndex <= authoritativeCandidateCount);
+  if (!initialValid) {
+    return {
+      ok: false,
+      cardVisible,
+      candidateCount: authoritativeCandidateCount,
+      visibleCandidateCount: allCandidateLabels.length,
+      clickedCandidateIndices: memoryCandidateIndices,
+      clicked: false,
+      toolOk: false,
+      confirmationVisible: false,
+      noActionAgent: false,
+      reason: 'Memory management card, one-to-five candidates, or the selected row action was not visible.'
+    };
+  }
+
+  for (let selectedIndex = 0; selectedIndex < memoryCandidateIndices.length; selectedIndex += 1) {
+    const requestedLabel = `候选 ${memoryCandidateIndices[selectedIndex]}`;
+    let selectedLabel = exactVisibleTextMatches(currentLayout, requestedLabel)[0];
+    for (let attempt = 0; selectedLabel === undefined && attempt < 4; attempt += 1) {
+      swipeResultsUp();
+      await sleep(800);
+      currentLayout = dumpLayout(
+        `query-${index + 1}-memory-selection-${selectedIndex + 1}-scroll-${attempt + 1}.json`
+      );
+      selectedLabel = exactVisibleTextMatches(currentLayout, requestedLabel)[0];
+    }
+    const toggleButtons = exactClickableTextMatches(currentLayout, '选择');
+    const toggleButton = selectedLabel === undefined ? undefined : toggleButtons
+      .filter((item) => item.bounds.x > selectedLabel.bounds.x)
+      .sort((left, right) =>
+        Math.abs(left.bounds.y - selectedLabel.bounds.y) - Math.abs(right.bounds.y - selectedLabel.bounds.y))[0];
+    if (toggleButton === undefined) {
+      return {
+        ok: false, cardVisible, candidateCount: authoritativeCandidateCount,
+        visibleCandidateCount: allCandidateLabels.length,
+        clickedCandidateIndices: memoryCandidateIndices.slice(0, selectedIndex), clicked: false,
+        toolOk: false, confirmationVisible: false, noActionAgent: false,
+        reason: `Could not toggle candidate index ${memoryCandidateIndices[selectedIndex]}.`
+      };
+    }
+    hdc(['shell', 'uitest', 'uiInput', 'click', String(toggleButton.bounds.x), String(toggleButton.bounds.y)]);
+    await sleep(800);
+    currentLayout = dumpLayout(
+      `query-${index + 1}-memory-selection-selected-${selectedIndex + 1}-layout.json`
+    );
+  }
+
+  const expectedDeleteLabel = `删除已选（${memoryCandidateIndices.length}）`;
+  let deleteButton = exactClickableTextMatches(currentLayout, expectedDeleteLabel)[0];
+  for (let attempt = 0; deleteButton === undefined && attempt < 4; attempt += 1) {
+    swipeResultsUp();
+    await sleep(800);
+    currentLayout = dumpLayout(`query-${index + 1}-memory-delete-scroll-${attempt + 1}.json`);
+    deleteButton = exactClickableTextMatches(currentLayout, expectedDeleteLabel)[0];
+  }
+  if (deleteButton === undefined) {
+    return {
+      ok: false, cardVisible, candidateCount: authoritativeCandidateCount,
+      visibleCandidateCount: allCandidateLabels.length,
+      clickedCandidateIndices: memoryCandidateIndices, clicked: false, toolOk: false,
+      confirmationVisible: false, noActionAgent: false,
+      reason: `Selected state did not expose ${expectedDeleteLabel}.`
+    };
+  }
+
+  clearHilog();
+  const actionLogs = await captureWhile(appPid, async () => {
+    hdc(['shell', 'uitest', 'uiInput', 'click', String(deleteButton.bounds.x), String(deleteButton.bounds.y)]);
+  }, {
+    completionEvidence: (text) => {
+      const evidence = leaderMemoryToolEvidence(text, 'memory.forget', lifecycle);
+      return {
+        complete: evidence.ok && evidence.succeeded === memoryCandidateIndices.length && evidence.failed === 0
+      };
+    },
+    idleActionTimeoutMs: 5000,
+    postCompletionWaitMs: 1200
+  });
+  const actionLogText = actionLogs.join('\n');
+  writeFileSync(
+    join(outDir, `query-${index + 1}-memory-selection-action.log`),
+    sanitizedMemorySelectionLog(actionLogText) + '\n'
+  );
+  await sleep(500);
+  const confirmationLayout = dumpLayout(`query-${index + 1}-memory-selection-confirmation-layout.json`);
+  const confirmationText = collectLayoutText(confirmationLayout).join('\n');
+  writeFileSync(
+    join(outDir, `query-${index + 1}-memory-selection-confirmation-text.txt`),
+    confirmationText + '\n'
+  );
+  const tool = leaderMemoryToolEvidence(actionLogText, 'memory.forget', lifecycle);
+  const exactToolCount = tool.ok && tool.succeeded === memoryCandidateIndices.length && tool.failed === 0;
+  const combinedLogs = `${initialLogText}\n${actionLogText}`;
+  const noActionAgent = !/\[AIPhone\]\[(?:MultiAgentActionPlan|MultiAgentActionRun|PersonaMemoryUpdate)\]/.test(combinedLogs) &&
+    !/ActionAgent/.test(combinedLogs);
+  const finalCard = await finalMemoryCandidateCardEvidence(confirmationLayout, index);
+  const remainingCandidateCount = finalCard.count;
+  const expectedRemainingCount = authoritativeCandidateCount - memoryCandidateIndices.length;
+  const confirmationVisible = expectedRemainingCount === 0 ?
+    new RegExp(`已删除\\s*${memoryCandidateIndices.length}\\s*条长期记忆`).test(confirmationText) :
+    finalCard.cardVisible && remainingCandidateCount === expectedRemainingCount;
+  return {
+    ok: initialValid && exactToolCount && confirmationVisible && noActionAgent,
+    cardVisible,
+    candidateCount: authoritativeCandidateCount,
+    visibleCandidateCount: allCandidateLabels.length,
+    clickedCandidateIndices: memoryCandidateIndices,
+    clicked: true,
+    toolOk: exactToolCount,
+    confirmationVisible,
+    noActionAgent,
+    reason: ''
+  };
+}
+
 async function runQuery(query, index, expectedTool, expectedCaseOverride = null, preserveAppSession = false) {
   const expectedCase = expectedCaseOverride || (useDefaultCases ? selectedDefaultCases[index] : expectedCaseForQuery(query));
-  const expectsDirectText = expectedTool === false && !isPersonaMemoryUpdateQuery(query);
+  const expectsDirectText = expectedTool === false;
   const expectedToolId = expectedCase.expectedToolId || '';
   const lifecycle = lifecycleOptions(expectedCase);
   const expectedToolIds = lifecycle.expectedToolIds;
@@ -3539,13 +3880,14 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
     expectedParallelDataToolIds,
     postCompletionWaitMs: multiAgentPostCompletionWaitMs(expectedCase.id)
   });
-  const safeLogText = sanitizeExternalUrlLogs(logs.join('\n'));
+  const safeLogText = expectedCase.verifyMemoryForgetSelection === true ?
+    sanitizedMemorySelectionLog(logs.join('\n')) : sanitizeExternalUrlLogs(logs.join('\n'));
   const safeLogs = safeLogText.split('\n');
   const logPath = join(outDir, `query-${index + 1}.log`);
   writeFileSync(logPath, safeLogText + '\n');
   const expectedDiscoveredToolId = expectedCase.expectedDiscoveredToolId || '';
   const expectedDynamicQualifiedName = expectedCase.expectedDynamicQualifiedName || '';
-  const expectedPersonaMemory = expectedCase.expectedPersonaMemory || '';
+  const expectedLeaderMemoryCapability = expectedCase.expectedLeaderMemoryCapability || '';
   const summary = analyze(
     query,
     safeLogs,
@@ -3557,10 +3899,12 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
     minimumDataRounds,
     expectedDependencies,
     expectedDataRounds,
-    expectedParallelDataToolIds
+    expectedParallelDataToolIds,
+    expectedLeaderMemoryCapability,
+    expectedCase.verifyMemoryRecall === true
   );
   summary.caseId = expectedCase.id || '';
-  summary.expectedPersonaMemory = expectedPersonaMemory;
+  summary.expectedLeaderMemoryCapability = expectedLeaderMemoryCapability;
   summary.hotelCapabilities = expectedCase.hotelCapabilities || [];
   summary.logPath = logPath;
   const layout = dumpLayout(`query-${index + 1}-final-layout.json`);
@@ -3568,6 +3912,20 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
   const layoutText = layoutTextValues.join('\n');
   const layoutTextPath = join(outDir, `query-${index + 1}-final-layout-text.txt`);
   writeFileSync(layoutTextPath, layoutText + '\n');
+  if (expectedCase.verifyMemoryForgetSelection === true) {
+    const memorySelection = await verifyMemoryForgetSelectionAction(
+      layout, index, appPid, summary.multiAgentLifecycle, safeLogText
+    );
+    summary.memoryForgetSelection = memorySelection;
+    summary.layoutPath = join(outDir, `query-${index + 1}-final-layout.json`);
+    summary.layoutTextPath = layoutTextPath;
+    summary.layoutTextExposed = memorySelection.ok;
+    summary.layoutBlockingHits = [];
+    summary.layoutOk = memorySelection.ok;
+    summary.screenPath = captureScreen(`query-${index + 1}-memory-forget-selection-final-screen.png`);
+    summary.ok = summary.ok && memorySelection.ok;
+    return summary;
+  }
   const directTextEvidence = expectsDirectText && directTextBaselineLayout !== null ? directTextVisibleEvidence(
     safeLogText,
     directTextBaselineLayout,
@@ -3585,14 +3943,20 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
       failures: ['missing_direct_text_baseline'], skipped: false } :
     { ok: true, replyChars: 0, baselineMessageCount: 0, finalMessageCount: 0,
       failures: [], skipped: true });
+  const memoryReplyPattern = expectedLeaderMemoryCapability === 'memory.remember' ?
+    /已记住\s*\d+\s*条长期记忆/ :
+    (expectedLeaderMemoryCapability === 'memory.update' ? /已更新长期记忆/ :
+      (expectedLeaderMemoryCapability === 'memory.forget' ? /已忘记这条长期记忆/ : null));
+  const visibleMemoryReply = memoryReplyPattern === null ? '' :
+    layoutTextValues.find((value) => memoryReplyPattern.test(value)) || '';
   summary.directTextBaselineLayoutPath = expectsDirectText ?
     join(outDir, directTextBaselineName) : '';
   summary.directTextVisible = {
-    ok: directTextEvidence.ok,
-    replyChars: directTextEvidence.replyChars,
+    ok: directTextEvidence.ok || visibleMemoryReply.length > 0,
+    replyChars: visibleMemoryReply.length > 0 ? visibleMemoryReply.length : directTextEvidence.replyChars,
     baselineMessageCount: directTextEvidence.baselineMessageCount,
     finalMessageCount: directTextEvidence.finalMessageCount,
-    failures: directTextEvidence.failures,
+    failures: visibleMemoryReply.length > 0 ? [] : directTextEvidence.failures,
     skipped: directTextEvidence.skipped === true
   };
   const expectedMarkers = layoutExpectationsForQuery(query);
@@ -3611,7 +3975,6 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
   const evidenceLayout = scrollEvidence.currentLayout;
   if (isPersonaCoffeeQuery(query) && /饮食搭子上线|饮食搭子/.test(evidenceText)) {
     summary.personaCoffeeProof = true;
-    summary.personaExpectedMemoryProof = expectedPersonaMemory !== 'luckin_only' || hasLuckinMemoryEvidence(evidenceText);
     if (expectedTool === true &&
       summary.basePassedWithoutTransport === true &&
       summary.modelPassed === true &&
@@ -3619,8 +3982,7 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
       summary.toolExecutionObserved &&
       summary.toolOk &&
       summary.hasExpectedToolId &&
-      summary.hasExpectedDiscoveredToolId &&
-      summary.personaExpectedMemoryProof) {
+      summary.hasExpectedDiscoveredToolId) {
       summary.ok = true;
     }
   }
@@ -3720,10 +4082,12 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
         composioCardMarkersOk &&
         aggregateMediaMarkersOk &&
         summary.gmailEccvKeywordVisible));
-  if (expectedPersonaMemory === 'luckin_only') {
-    summary.personaExpectedMemoryProof = hasLuckinMemoryEvidence(evidenceText);
-    summary.layoutTextExposed = summary.layoutTextExposed && summary.personaExpectedMemoryProof;
-  }
+  summary.memoryPreferenceApplied = expectedCase.expectedMemoryPreference === undefined ?
+    true : memoryPreferenceVisible(evidenceText, expectedCase.expectedMemoryPreference);
+  summary.memoryPreferenceAbsent = expectedCase.expectMemoryPreferenceAbsent === undefined ?
+    true : !memoryPreferenceVisible(evidenceText, expectedCase.expectMemoryPreferenceAbsent);
+  summary.layoutTextExposed = summary.layoutTextExposed && summary.memoryPreferenceApplied &&
+    summary.memoryPreferenceAbsent;
   summary.mailAggregateVisible = expectedToolId !== 'mail.search' ||
     (isMailAggregationQuery(query) ? (/Gmail/.test(evidenceText) && /QQ Mail/.test(evidenceText) && /Outlook/.test(evidenceText)) :
       (isQqMailQuery(query) ? /QQ Mail/.test(evidenceText) : (/Gmail/.test(evidenceText) && /QQ Mail/.test(evidenceText) && /Outlook/.test(evidenceText))));
@@ -3776,9 +4140,9 @@ async function runQuery(query, index, expectedTool, expectedCaseOverride = null,
       date: qaDateIso
     });
   summary.absenceVerified = summary.absenceEvidence.ok;
-  if (isPersonaMemoryUpdateQuery(query)) {
+  if (expectedLeaderMemoryCapability.length > 0) {
     summary.mailAggregateVisible = true;
-    summary.layoutTextExposed = summary.personaMemoryUpdateProof === true;
+    summary.layoutTextExposed = summary.directTextVisible.ok && summary.leaderMemoryTool.ok;
     summary.layoutOk = layoutBlockingHits.length === 0 &&
       forbiddenSocialHubLegacyHits.length === 0 &&
       summary.layoutTextExposed;
@@ -5151,40 +5515,13 @@ let c19CreateSucceeded = true;
 let c19UpdateSucceeded = true;
 let c19CleanupRequired = false;
 const c19Requested = useDefaultCases && selectedDefaultCases.some((testCase) => /^C19/.test(testCase.id || ''));
-let personaMemoryBackup = null;
-let personaMemoryRestore = { ok: true, skipped: true };
-if (useDefaultCases && selectedDefaultCases.some((testCase) => /^C11/.test(testCase.id || ''))) {
-  try {
-    personaMemoryBackup = backupPersonaMemoryStore();
-    personaMemoryRestore = { ok: false, skipped: false, pending: true };
-  } catch (error) {
-    personaMemoryRestore = {
-      ok: false,
-      skipped: false,
-      reason: error instanceof Error ? error.message : String(error)
-    };
-  }
-}
+let c11CleanupRequired = false;
+const c11Requested = useDefaultCases && selectedDefaultCases.some((testCase) => /^C11/.test(testCase.id || ''));
 try {
 for (let index = 0; index < queries.length; index += 1) {
   const query = queries[index];
   console.log(`\n[${index + 1}/${queries.length}] ${query}`);
   const inferredCase = useDefaultCases ? selectedDefaultCases[index] : expectedCaseForQuery(query);
-  if (/^C11/.test(inferredCase.id || '') && personaMemoryBackup === null) {
-    const blockedSummary = {
-      caseId: inferredCase.id || '',
-      query,
-      expectedTool: inferredCase.expectsTool,
-      expectedToolId: inferredCase.expectedToolId || '',
-      status: 'BLOCKED',
-      ok: false,
-      reason: `Persona memory could not be backed up safely: ${personaMemoryRestore.reason || 'unknown backup failure'}`
-    };
-    summaries.push(blockedSummary);
-    captureBlockedCase(inferredCase.id || `query-${index + 1}`, 1, blockedSummary);
-    console.log(JSON.stringify(blockedSummary, null, 2));
-    continue;
-  }
   if (inferredCase.blockedWithoutWhatsAppTestTo === true && whatsappTestTo.length === 0) {
     const blockedSummary = {
       caseId: inferredCase.id || '',
@@ -5253,7 +5590,9 @@ for (let index = 0; index < queries.length; index += 1) {
   const expectedTool = inferredCase.expectsTool;
   const previousCase = index > 0 ?
     (useDefaultCases ? selectedDefaultCases[index - 1] : expectedCaseForQuery(queries[index - 1])) : null;
-  const preserveAppSession = shouldPreserveSmokeAppSession(
+  const preserveC11Session = /^C11[b-e]$/.test(inferredCase.id || '') &&
+    /^C11[a-d]$/.test(previousCase?.id || '');
+  const preserveAppSession = preserveC11Session || shouldPreserveSmokeAppSession(
     inferredCase,
     previousCase,
     summaries.at(-1) || null
@@ -5296,9 +5635,11 @@ for (let index = 0; index < queries.length; index += 1) {
   if (inferredCase.id === 'C19e' && summary.calendarDeleteAction?.ok === true) {
     c19CleanupRequired = false;
   }
-  if (inferredCase.id === 'C11c' && personaMemoryBackup !== null) {
-    personaMemoryRestore = restorePersonaMemoryStore(personaMemoryBackup);
-    personaMemoryBackup = null;
+  if (inferredCase.id === 'C11b' && summary.leaderMemoryTool?.ok === true) {
+    c11CleanupRequired = true;
+  }
+  if (inferredCase.id === 'C11d' && summary.leaderMemoryTool?.ok === true) {
+    c11CleanupRequired = false;
   }
 }
 } finally {
@@ -5334,9 +5675,28 @@ for (let index = 0; index < queries.length; index += 1) {
       console.log(JSON.stringify(finalizer.absence, null, 2));
     }
   }
-  if (personaMemoryBackup !== null) {
-    personaMemoryRestore = restorePersonaMemoryStore(personaMemoryBackup);
-    personaMemoryBackup = null;
+  if (c11Requested && c11CleanupRequired) {
+    const cleanupCase = coreRegressionCases.find((testCase) => testCase.id === 'C11d');
+    if (cleanupCase !== undefined) {
+      try {
+        const cleanup = await runQuery(
+          cleanupCase.query, queries.length + 2, cleanupCase.expectsTool, cleanupCase, true
+        );
+        cleanup.caseId = 'C11d-cleanup';
+        cleanup.status = cleanup.ok ? 'PASS' : 'FAIL';
+        summaries.push(cleanup);
+        snapshotCaseArtifacts(cleanup.caseId, 1, [`query-${queries.length + 3}`], cleanup);
+        c11CleanupRequired = cleanup.leaderMemoryTool?.ok !== true;
+        console.log(JSON.stringify(cleanup, null, 2));
+      } catch (error) {
+        const cleanup = {
+          caseId: 'C11d-cleanup', status: 'FAIL', ok: false,
+          reason: error instanceof Error ? error.message : String(error)
+        };
+        summaries.push(cleanup);
+        console.log(JSON.stringify(cleanup, null, 2));
+      }
+    }
   }
 }
 
@@ -5352,7 +5712,7 @@ const finalLayoutForbiddenActionHits = forbiddenLayoutActionMarkers.filter((mark
 const finalQuery = queries.length > 0 ? queries[queries.length - 1] : '';
 const finalAllowsPartialTravel = /出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(finalQuery);
 const finalSummary = summaries.length > 0 ? summaries[summaries.length - 1] : null;
-const finalAllowsPersonaMemoryUpdate = finalSummary !== null && finalSummary.personaMemoryUpdateProof === true;
+const finalAllowsLeaderMemoryText = finalSummary !== null && finalSummary.leaderMemoryTool?.ok === true;
 const finalAllowsExternalGmailWeb = isGmailWebQuery(finalQuery) &&
   finalSummary !== null &&
   finalSummary.gmailWebOpened === true;
@@ -5431,8 +5791,7 @@ if (finalSummary !== null && finalSummary.expectedToolId === 'gmail.draft.create
 }
 const finalLayoutRouteHits = finalLayoutRouteMarkers.filter((marker) => finalLayoutText.includes(marker));
 const hilogProcesses = activeHilogProcesses();
-const finalExpectsDirectText = finalSummary !== null && finalSummary.expectedTool === false &&
-  !isPersonaMemoryUpdateQuery(finalQuery);
+const finalExpectsDirectText = finalSummary !== null && finalSummary.expectedTool === false;
 let finalDirectTextVisible = {
   ok: false, replyChars: 0, baselineMessageCount: 0, finalMessageCount: 0,
   failures: ['not_direct_text'], skipped: true
@@ -5466,9 +5825,26 @@ if (finalExpectsDirectText && typeof finalSummary.logPath === 'string' &&
     };
   }
 }
-const finalOutputPresent = finalExpectsDirectText ? finalDirectTextVisible.ok :
+const finalMemoryCapability = finalSummary?.expectedLeaderMemoryCapability || '';
+const finalMemoryReplyPattern = finalMemoryCapability === 'memory.remember' ?
+  /已记住\s*\d+\s*条长期记忆/ :
+  (finalMemoryCapability === 'memory.update' ? /已更新长期记忆/ :
+    (finalMemoryCapability === 'memory.forget' ? /已忘记这条长期记忆/ : null));
+const finalMemoryReplyVisible = finalMemoryReplyPattern !== null && finalMemoryReplyPattern.test(finalLayoutText);
+const finalMemorySelectionVisibleOutput = finalSummary?.memoryForgetSelection?.ok === true;
+if (finalAllowsLeaderMemoryText && finalMemoryReplyVisible) {
+  finalDirectTextVisible = {
+    ok: true,
+    replyChars: 1,
+    baselineMessageCount: finalDirectTextVisible.baselineMessageCount,
+    finalMessageCount: finalDirectTextVisible.finalMessageCount,
+    failures: [],
+    skipped: false
+  };
+}
+const finalOutputPresent = finalMemorySelectionVisibleOutput ? true : finalExpectsDirectText ? finalDirectTextVisible.ok :
   (finalAllowsCorrelatedDynamicAuth || finalAllowsSocialHubTruthfulState ||
-    finalAllowsExternalGmailWeb || finalAllowsPersonaMemoryUpdate || finalDailyBriefVisibleOutput ||
+    finalAllowsExternalGmailWeb || finalAllowsLeaderMemoryText || finalDailyBriefVisibleOutput ||
     finalLayoutDomainHits.length > 0 ||
     (finalSummary !== null &&
       !isSocialHubExpectedToolId(finalSummary.expectedToolId) &&
@@ -5502,15 +5878,15 @@ writeFileSync(summaryPath, JSON.stringify({
   timeoutMs,
   cleanData,
   modelHealth,
-  personaMemoryRestore,
+  memoryCleanup: { required: c11CleanupRequired, ok: !c11CleanupRequired },
   summaries,
   visibleOutput,
   processCleanup
 }, null, 2));
 console.log(`\nsummary: ${summaryPath}`);
 console.log(`screenshots: ${screenshotIndexPath}`);
-console.log(`personaMemoryRestore: ${JSON.stringify(personaMemoryRestore, null, 2)}`);
+console.log(`memoryCleanup: ${JSON.stringify({ required: c11CleanupRequired, ok: !c11CleanupRequired }, null, 2)}`);
 console.log(`visibleOutput: ${JSON.stringify(visibleOutput, null, 2)}`);
 console.log(`processCleanup: ${JSON.stringify(processCleanup, null, 2)}`);
 const failed = summaries.filter((summary) => !summary.ok);
-process.exitCode = failed.length === 0 && personaMemoryRestore.ok && visibleOutput.ok && processCleanup.ok ? 0 : 1;
+process.exitCode = failed.length === 0 && !c11CleanupRequired && visibleOutput.ok && processCleanup.ok ? 0 : 1;

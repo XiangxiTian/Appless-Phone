@@ -14,9 +14,13 @@ const ACTION_OWNER_IDS: Set<string> = new Set<string>(actionAgentToolDefinitions
   (definition: ToolDefinition): string => definition.toolId
 ));
 const VIRTUAL_ACTION_OWNER_IDS: Set<string> = new Set<string>([
-  'memory.update',
   'gmail.draft.apply'
 ]);
+
+function memoryCapabilityId(capabilityId: string): boolean {
+  return capabilityId === 'memory.remember' || capabilityId === 'memory.update' ||
+    capabilityId === 'memory.forget';
+}
 
 function toolMetadata(context: LeaderPlanningContext, capabilityId: string): LeaderToolMetadata | null {
   for (let index = 0; index < context.tools.length; index++) {
@@ -54,8 +58,15 @@ export function leaderIsExplicitActionOwner(
   capabilityId: string
 ): boolean {
   const tool: LeaderToolMetadata | null = toolMetadata(context, capabilityId);
-  return tool !== null &&
+  return !memoryCapabilityId(capabilityId) && tool !== null &&
     (ACTION_OWNER_IDS.has(capabilityId) || VIRTUAL_ACTION_OWNER_IDS.has(capabilityId));
+}
+
+export function leaderIsMemoryCapability(
+  context: LeaderPlanningContext,
+  capabilityId: string
+): boolean {
+  return memoryCapabilityId(capabilityId) && toolMetadata(context, capabilityId) !== null;
 }
 
 export function leaderIsActionCapability(
@@ -89,6 +100,17 @@ export function leaderActionCapabilityIds(context: LeaderPlanningContext): strin
       if (leaderIsActionCapability(context, actionId) && result.indexOf(actionId) < 0) {
         result.push(actionId);
       }
+    }
+  }
+  return result;
+}
+
+export function leaderMemoryCapabilityIds(context: LeaderPlanningContext): string[] {
+  const result: string[] = [];
+  for (let index = 0; index < context.tools.length; index++) {
+    const capabilityId: string = context.tools[index].toolId;
+    if (leaderIsMemoryCapability(context, capabilityId) && result.indexOf(capabilityId) < 0) {
+      result.push(capabilityId);
     }
   }
   return result;

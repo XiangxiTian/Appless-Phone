@@ -13,7 +13,9 @@ tools:
   - calendar.event.create
   - calendar.event.update
   - calendar.event.delete
+  - memory.remember
   - memory.update
+  - memory.forget
 status: active
 ---
 
@@ -29,6 +31,7 @@ status: active
 - 邮件回复默认使用 mail.draft.create 或 gmail.draft.create 创建草稿；gmail.draft.apply 只应用当前可见草稿，不直接发送。
 - 日程查询使用 calendar.events.search；创建、更新和删除分别使用 calendar.event.create、calendar.event.update、calendar.event.delete，并复用真实 eventId。
 - 输出保留证据、待确认项和下一步动作。
+- 新增长期工作习惯使用 memory.remember；更正或忘记仅使用本轮召回到的精确记忆 ID。
 
 ## Boundaries
 不编造邮件、联系人、附件、会议或授权状态。外部状态变更前必须确认。

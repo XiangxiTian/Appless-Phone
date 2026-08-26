@@ -17,6 +17,10 @@ import {
   LeaderDataTask,
   LeaderDecision,
   LeaderDecisionDataTask,
+  LeaderMemoryToolExecutionGuard,
+  LeaderMemoryToolExecutor,
+  LeaderMemoryToolRequest,
+  LeaderMemoryToolResult,
   LeaderPlan,
   LeaderPlanner,
   LeaderPlannerResult,
@@ -229,6 +233,46 @@ class RoundScriptedPlanner implements LeaderPlanner {
       throw new Error('No scripted Leader decision');
     }
     return this.decisions.shift() as LeaderDecision;
+  }
+}
+
+class ScriptedMemoryToolExecutor implements LeaderMemoryToolExecutor {
+  requests: LeaderMemoryToolRequest[] = [];
+  private readonly result: LeaderMemoryToolResult;
+
+  constructor(result: LeaderMemoryToolResult) {
+    this.result = result;
+  }
+
+  async execute(
+    request: LeaderMemoryToolRequest,
+    _guard: LeaderMemoryToolExecutionGuard
+  ): Promise<LeaderMemoryToolResult> {
+    this.requests.push(request);
+    return this.result;
+  }
+}
+
+class ControlledMemoryToolExecutor implements LeaderMemoryToolExecutor {
+  requests: LeaderMemoryToolRequest[] = [];
+  guard: LeaderMemoryToolExecutionGuard | null = null;
+  private resolveResult: ((result: LeaderMemoryToolResult) => void) | null = null;
+
+  async execute(
+    request: LeaderMemoryToolRequest,
+    guard: LeaderMemoryToolExecutionGuard
+  ): Promise<LeaderMemoryToolResult> {
+    this.requests.push(request);
+    this.guard = guard;
+    return new Promise<LeaderMemoryToolResult>((resolve: (result: LeaderMemoryToolResult) => void) => {
+      this.resolveResult = resolve;
+    });
+  }
+
+  finish(result: LeaderMemoryToolResult): void {
+    const resolve: ((result: LeaderMemoryToolResult) => void) | null = this.resolveResult;
+    this.resolveResult = null;
+    if (resolve !== null) resolve(result);
   }
 }
 
@@ -473,8 +517,7 @@ function semanticPlanningContext(): LeaderPlanningContext {
     personas: [{
       personaId: 'travel_companion',
       name: 'Travel Companion',
-      soul: 'Use real travel results.',
-      memory: 'No saved preference.',
+      domains: ['travel'],
       previous: false,
       activeSkills: [{
         skillId: 'travel-planning',
@@ -485,6 +528,29 @@ function semanticPlanningContext(): LeaderPlanningContext {
       }]
     }]
   };
+}
+
+function memoryPlanningContext(): LeaderPlanningContext {
+  const context: LeaderPlanningContext = semanticPlanningContext();
+  const ids: string[] = ['memory.remember', 'memory.update', 'memory.forget'];
+  for (let index = 0; index < ids.length; index++) {
+    context.tools.push({
+      toolId: ids[index], domain: 'memory', intent: ids[index], riskLevel: 'draft',
+      registeredBackends: ['local_adapter'], inputSchema: 'memoryMutationRequest',
+      outputSchema: 'memoryMutationResult', actions: []
+    });
+  }
+  return context;
+}
+
+function rememberDecision(tasks: LeaderDecisionDataTask[] = []): LeaderDecision {
+  const decision: LeaderDecision = semanticDecision(tasks);
+  decision.requestedCapabilityIds.push('memory.remember');
+  decision.memoryMutation = {
+    operation: 'remember',
+    facts: [{ fact: '用户喝咖啡时选择半糖。' }]
+  };
+  return decision;
 }
 
 function nineDataPlanningContext(): LeaderPlanningContext {
@@ -1067,6 +1133,12 @@ export default function leaderAgentTest() {
       const payload: InputUserPayload = {
         text: 'Find a Shenzhen hotel',
         recentMessages: [{ role: 'user', content: 'Near Futian' }],
+        recalledMemories: [{
+          memoryId: 'memory-hotel',
+          fact: 'The user prefers quiet hotel rooms.',
+          personaTag: 'travel_companion',
+          authority: 'leader'
+        }],
         previousPersonaId: 'travel_companion',
         currentSurfaceSummary: {
           surfaceId: 'surface-1',
@@ -1096,6 +1168,7 @@ export default function leaderAgentTest() {
       const input = planner.lastInput as InputUserPayload;
 
       expect(input.recentMessages!.length).assertEqual(1);
+      expect(input.recalledMemories![0].memoryId).assertEqual('memory-hotel');
       expect(input.previousPersonaId).assertEqual('travel_companion');
       expect(input.currentSurfaceSummary!.surfaceId).assertEqual('surface-1');
       expect(input.recentObservations![0].toolId).assertEqual('hotel.search');
@@ -1116,6 +1189,7 @@ export default function leaderAgentTest() {
       const input = planner.lastInput as InputUserPayload;
 
       expect(input.recentMessages!.length).assertEqual(0);
+      expect(input.recalledMemories!.length).assertEqual(0);
       expect(input.previousPersonaId).assertEqual('');
       expect(input.currentSurfaceSummary!.surfaceId).assertEqual('');
       expect(input.currentSurfaceSummary!.entityRefs.length).assertEqual(0);
@@ -1156,6 +1230,51 @@ export default function leaderAgentTest() {
       expect(input.recentObservations![0].taskId).assertEqual('task-2');
       expect(input.recentObservations![0].summary.length).assertEqual(240);
       expect(JSON.stringify(input).indexOf('must-not-reach-model')).assertEqual(-1);
+      leader.stop();
+      observer.close();
+    });
+
+    it('exposes only lightweight manifest routing fields and active skills for personas', 0, () => {
+      const persona = realPersonaPlanningContext().personas[0];
+      const keys: string[] = Object.keys(persona);
+
+      expect(keys.indexOf('domains') >= 0).assertTrue();
+      expect(keys.indexOf('activeSkills') >= 0).assertTrue();
+      expect(keys.indexOf('soul')).assertEqual(-1);
+      expect(keys.indexOf('memory')).assertEqual(-1);
+    });
+
+    it('caps recalled memory projection and strips storage-only fields before planning', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const planner = new CapturingLeaderPlanner();
+      const leader = new LeaderAgent(bus, planner, planningContext());
+      const observer = bus.openReader();
+      leader.start();
+      const memories: Object[] = [];
+      for (let index = 0; index < 7; index++) {
+        memories.push(JSON.parse('{"memoryId":"memory-' + index.toString() + '",' +
+          '"fact":"' + 'x'.repeat(300) + '","personaTag":"global","authority":"leader",' +
+          '"embedding":[1,2],"factHash":"secret"}') as Object);
+      }
+      const payload: Object = JSON.parse('{"text":"Find a hotel"}') as Object;
+      (payload as Record<string, Object | string | number | boolean | null | undefined>)['recalledMemories'] =
+        memories;
+      bus.publish({
+        type: AgentMessageType.INPUT_USER,
+        conversationId: 'conversation-bounded-memory',
+        turnId: 'turn-bounded-memory',
+        taskId: 'input-bounded-memory',
+        payload
+      });
+      await receive(observer);
+      await receive(observer);
+      await receive(observer);
+      const input = planner.lastInput as InputUserPayload;
+
+      expect(input.recalledMemories!.length).assertEqual(5);
+      expect(input.recalledMemories![0].fact.length).assertEqual(240);
+      expect(JSON.stringify(input.recalledMemories).indexOf('embedding')).assertEqual(-1);
+      expect(JSON.stringify(input.recalledMemories).indexOf('secret')).assertEqual(-1);
       leader.stop();
       observer.close();
     });
@@ -1498,17 +1617,17 @@ export default function leaderAgentTest() {
     it('rejects an owned requested capability outside the exact execution union', 0, async () => {
       const bus = new LinkedMessageBus();
       const decision = semanticDecision([semanticDataTask('hotel')]);
-      decision.requestedCapabilityIds.push('memory.update');
+      decision.requestedCapabilityIds.push('gmail.draft.apply');
       const context = semanticPlanningContext();
       context.tools.push({
-        toolId: 'memory.update',
+        toolId: 'gmail.draft.apply',
         domain: 'persona',
-        intent: 'memory.update',
+        intent: 'gmail.draft.apply',
         riskLevel: 'draft',
         registeredBackends: ['local_adapter'],
         inputSchema: 'memoryUpdateRequest',
         outputSchema: 'memoryUpdateResult',
-        actions: ['memory.update']
+        actions: ['gmail.draft.apply']
       });
       const leader = new LeaderAgent(bus, new RoundScriptedPlanner([decision]), context);
       const observer = bus.openReader();
@@ -1765,25 +1884,25 @@ export default function leaderAgentTest() {
       observer.close();
     });
 
-    it('publishes only a virtual Action request for a zero-Data semantic execute decision', 0, async () => {
+    it('publishes only a virtual Action request for a zero-Data non-memory execute decision', 0, async () => {
       const bus = new LinkedMessageBus();
       const decision = withNormalizationDate(semanticDecision([]));
       decision.actionIntent = {
         goal: 'Remember the explicit user statement',
-        allowedActionIds: ['memory.update']
+        allowedActionIds: ['gmail.draft.apply']
       };
-      decision.requestedCapabilityIds = ['memory.update'];
+      decision.requestedCapabilityIds = ['gmail.draft.apply'];
       decision.normalizedActionInputText = '我在北京\n已查询的当前本地时间：11:30';
       const context = semanticPlanningContext();
       context.tools.push({
-        toolId: 'memory.update',
+        toolId: 'gmail.draft.apply',
         domain: 'persona',
-        intent: 'memory.update',
+        intent: 'gmail.draft.apply',
         riskLevel: 'draft',
         registeredBackends: ['local_adapter'],
         inputSchema: 'memoryUpdateRequest',
         outputSchema: 'memoryUpdateResult',
-        actions: ['memory.update']
+        actions: ['gmail.draft.apply']
       });
       const leader = new LeaderAgent(
         bus,
@@ -1824,7 +1943,7 @@ export default function leaderAgentTest() {
       expect(request.uiTaskId).assertEqual('input-1:round-1:virtual');
       expect(request.dataTaskIds.length).assertEqual(0);
       expect(request.goal).assertEqual('Remember the explicit user statement');
-      expect(request.allowedActionIds.join(',')).assertEqual('memory.update');
+      expect(request.allowedActionIds.join(',')).assertEqual('gmail.draft.apply');
       expect(request.personaId).assertEqual('travel_companion');
       expect(request.inputText).assertEqual('我在北京\n已查询的当前本地时间：11:30');
       expect(request.virtual).assertTrue();
@@ -1837,14 +1956,14 @@ export default function leaderAgentTest() {
       const decision = semanticDecision([]);
       decision.actionIntent = {
         goal: 'Remember the explicit user statement',
-        allowedActionIds: ['memory.update']
+        allowedActionIds: ['gmail.draft.apply']
       };
-      decision.requestedCapabilityIds = ['memory.update'];
+      decision.requestedCapabilityIds = ['gmail.draft.apply'];
       const context = semanticPlanningContext();
       context.tools.push({
-        toolId: 'memory.update', domain: 'persona', intent: 'memory.update', riskLevel: 'draft',
+        toolId: 'gmail.draft.apply', domain: 'mail', intent: 'gmail.draft.apply', riskLevel: 'draft',
         registeredBackends: ['local_adapter'], inputSchema: 'memoryUpdateRequest',
-        outputSchema: 'memoryUpdateResult', actions: ['memory.update']
+        outputSchema: 'gmailDraftApplyResult', actions: ['gmail.draft.apply']
       });
       const leader = new LeaderAgent(bus, new RoundScriptedPlanner([decision]), context, 10);
       const observer = bus.openReader();
@@ -1884,14 +2003,14 @@ export default function leaderAgentTest() {
       const decision = semanticDecision([]);
       decision.actionIntent = {
         goal: 'Remember the explicit user statement',
-        allowedActionIds: ['memory.update']
+        allowedActionIds: ['gmail.draft.apply']
       };
-      decision.requestedCapabilityIds = ['memory.update'];
+      decision.requestedCapabilityIds = ['gmail.draft.apply'];
       const context = semanticPlanningContext();
       context.tools.push({
-        toolId: 'memory.update', domain: 'persona', intent: 'memory.update', riskLevel: 'draft',
+        toolId: 'gmail.draft.apply', domain: 'mail', intent: 'gmail.draft.apply', riskLevel: 'draft',
         registeredBackends: ['local_adapter'], inputSchema: 'memoryUpdateRequest',
-        outputSchema: 'memoryUpdateResult', actions: ['memory.update']
+        outputSchema: 'gmailDraftApplyResult', actions: ['gmail.draft.apply']
       });
       const leader = new LeaderAgent(bus, new RoundScriptedPlanner([decision]), context, 20);
       const observer = bus.openReader();
@@ -1997,37 +2116,292 @@ export default function leaderAgentTest() {
       observer.close();
     });
 
-    it('accepts a dynamic memory Action owner end to end without a self action declaration', 0, async () => {
+    it('executes pure memory through the Leader-owned executor without Action or A2UI', 0, async () => {
       const bus = new LinkedMessageBus();
-      const decision = semanticDecision([]);
-      decision.actionIntent = {
-        goal: 'Remember the explicit user statement',
-        allowedActionIds: ['memory.update']
-      };
-      decision.requestedCapabilityIds = ['memory.update'];
-      const context = semanticPlanningContext();
-      context.tools.push({
-        toolId: 'memory.update',
-        domain: 'persona',
-        intent: 'memory.update',
-        riskLevel: 'draft',
-        registeredBackends: ['local_adapter'],
-        inputSchema: 'memoryUpdateRequest',
-        outputSchema: 'memoryUpdateResult',
-        actions: []
-      });
-      const leader = new LeaderAgent(bus, new RoundScriptedPlanner([decision]), context);
+      const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: '已记住。' });
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([rememberDecision()]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
       const observer = bus.openReader();
       leader.start();
 
       bus.publish(inputMessage());
       expect((await receive(observer)).type).assertEqual(AgentMessageType.INPUT_USER);
-      const request = await receive(observer);
+      const terminal = await receive(observer);
 
-      expect(request.type).assertEqual(AgentMessageType.ACTION_PLAN_REQUEST);
-      expect((request.payload as ActionPlanRequestPayload).allowedActionIds[0])
-        .assertEqual('memory.update');
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
+      expect((terminal.payload as TurnResultPayload).status).assertEqual('success');
+      expect((terminal.payload as TurnResultPayload).message).assertEqual('已记住。');
+      expect(executor.requests.length).assertEqual(1);
+      expect(executor.requests[0].mutation.operation).assertEqual('remember');
       leader.stop();
+      observer.close();
+    });
+
+    it('rejects Leader-owned update when its memoryId was not recalled in this turn', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const decision: LeaderDecision = semanticDecision([]);
+      decision.requestedCapabilityIds = ['memory.update'];
+      decision.memoryMutation = {
+        operation: 'update', memoryId: 'invented-memory', fact: '用户喝咖啡时选择半糖。'
+      };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext()
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'real-memory', fact: '用户喝咖啡时不加糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }];
+      bus.publish(input);
+      await receive(observer);
+      const error = await receive(observer);
+
+      expect(error.type).assertEqual(AgentMessageType.TASK_ERROR);
+      expect((error.payload as TaskErrorPayload).code).assertEqual('LEADER_PLAN_INVALID');
+      leader.stop();
+      observer.close();
+    });
+
+    it('publishes a host-trusted forget selection without executing memory', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: 'must not run' });
+      const decision: LeaderDecision = semanticDecision([]);
+      decision.requestedCapabilityIds = ['memory.forget'];
+      decision.memoryClarification = { operation: 'forget' };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }, {
+        memoryId: 'memory-coffee-2', fact: '用户喝咖啡时优先选择燕麦奶。',
+        personaTag: 'food_companion', authority: 'seed'
+      }];
+      bus.publish(input);
+      await receive(observer);
+      const terminal = await receive(observer);
+      const result = terminal.payload as TurnResultPayload;
+
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
+      expect(result.status).assertEqual('success');
+      expect(result.memorySelection?.operation).assertEqual('forget');
+      expect(result.memorySelection?.originTurnId).assertEqual(input.turnId);
+      expect(result.memorySelection?.sourceTaskId).assertEqual(input.taskId);
+      expect(result.memorySelection?.candidates.length).assertEqual(2);
+      expect(result.memorySelection?.candidates[0].memoryId).assertEqual('memory-coffee-1');
+      expect(result.memorySelection?.candidates[1].memoryId).assertEqual('memory-coffee-2');
+      expect(result.memorySelection?.candidates[1].authority).assertEqual('seed');
+      expect(executor.requests.length).assertEqual(0);
+      leader.stop();
+      observer.close();
+    });
+
+    it('rejects exact forget with multiple recalls without invoking the executor', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: 'must not run' });
+      const decision: LeaderDecision = semanticDecision([]);
+      decision.requestedCapabilityIds = ['memory.forget'];
+      decision.memoryMutation = { operation: 'forget', memoryId: 'memory-coffee-1' };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }, {
+        memoryId: 'memory-coffee-2', fact: '用户喝咖啡时优先选择燕麦奶。',
+        personaTag: 'food_companion', authority: 'leader'
+      }];
+      bus.publish(input);
+      await receive(observer);
+      const error = await receive(observer);
+
+      expect(error.type).assertEqual(AgentMessageType.TASK_ERROR);
+      expect((error.payload as TaskErrorPayload).code).assertEqual('LEADER_PLAN_INVALID');
+      expect(executor.requests.length).assertEqual(0);
+      leader.stop();
+      observer.close();
+    });
+
+    it('rejects exact forget even when exactly one memory was recalled', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: '已忘记。' });
+      const decision: LeaderDecision = semanticDecision([]);
+      decision.requestedCapabilityIds = ['memory.forget'];
+      decision.memoryMutation = { operation: 'forget', memoryId: 'memory-coffee-1' };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }];
+      bus.publish(input);
+      await receive(observer);
+      const error = await receive(observer);
+
+      expect(error.type).assertEqual(AgentMessageType.TASK_ERROR);
+      expect((error.payload as TaskErrorPayload).code).assertEqual('LEADER_PLAN_INVALID');
+      expect(executor.requests.length).assertEqual(0);
+      leader.stop();
+      observer.close();
+    });
+
+    it('publishes a selection for one recalled memory without invoking the executor', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: 'must not run' });
+      const decision: LeaderDecision = semanticDecision([]);
+      decision.requestedCapabilityIds = ['memory.forget'];
+      decision.memoryClarification = { operation: 'forget' };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }];
+      bus.publish(input);
+      await receive(observer);
+      const terminal = await receive(observer);
+      const result = terminal.payload as TurnResultPayload;
+
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
+      expect(result.memorySelection?.candidates.length).assertEqual(1);
+      expect(result.memorySelection?.candidates[0].memoryId).assertEqual('memory-coffee-1');
+      expect(executor.requests.length).assertEqual(0);
+      leader.stop();
+      observer.close();
+    });
+
+    it('merges mixed Data and memory partial status while preserving the business surface', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ScriptedMemoryToolExecutor({
+        status: 'partial', message: '部分长期记忆保存失败。'
+      });
+      const leader = new LeaderAgent(
+        bus,
+        new RoundScriptedPlanner([rememberDecision([semanticDataTask('hotel')])]),
+        memoryPlanningContext(), 30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+
+      bus.publish(inputMessage());
+      await receive(observer);
+      const dataTask = await receive(observer);
+      bus.publish(dataResultMessage(dataTask));
+      await receive(observer);
+      const uiTask = await receive(observer);
+      bus.publish({
+        type: AgentMessageType.TASK_RESULT_UI,
+        conversationId: uiTask.conversationId,
+        turnId: uiTask.turnId,
+        taskId: uiTask.taskId,
+        payload: { surfaceId: 'surface-memory-mixed', state: 'result' } as UiRenderResultPayload
+      });
+      await receive(observer);
+      const terminal = await receive(observer);
+
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
+      expect((terminal.payload as TurnResultPayload).status).assertEqual('partial');
+      expect((terminal.payload as TurnResultPayload).surfaceId).assertEqual('surface-memory-mixed');
+      expect((terminal.payload as TurnResultPayload).message.indexOf('部分长期记忆保存失败') >= 0)
+        .assertTrue();
+      expect(executor.requests.length).assertEqual(1);
+      leader.stop();
+      observer.close();
+    });
+
+    it('ignores a late Leader memory result after turn cancellation', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ControlledMemoryToolExecutor();
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([rememberDecision()]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage('memory-cancel-conversation', 'memory-cancel-turn', 'memory-cancel-input');
+      bus.publish(input);
+      await receive(observer);
+      await settle();
+      expect(executor.guard!.isActive()).assertTrue();
+      bus.publish({
+        type: AgentMessageType.TURN_CANCEL,
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        taskId: input.taskId,
+        payload: new Object()
+      });
+      await receive(observer);
+      expect(executor.guard!.isActive()).assertFalse();
+      executor.finish({ status: 'success', message: '已记住。' });
+      await settle();
+      bus.publish(inputMessage('marker-conversation', 'marker-turn', 'marker-task'));
+      const marker = await receive(observer);
+
+      expect(marker.taskId).assertEqual('marker-task');
+      leader.stop();
+      observer.close();
+    });
+
+    it('revokes the memory commit guard when the turn times out', 1000, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ControlledMemoryToolExecutor();
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([rememberDecision()]), memoryPlanningContext(),
+        10, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      bus.publish(inputMessage('memory-timeout-conversation', 'memory-timeout-turn', 'memory-timeout-input'));
+      await receive(observer);
+      const timeout = await receive(observer);
+
+      expect(timeout.type).assertEqual(AgentMessageType.TASK_ERROR);
+      expect((timeout.payload as TaskErrorPayload).code).assertEqual('LEADER_TURN_TIMEOUT');
+      expect(executor.guard!.isActive()).assertFalse();
+      leader.stop();
+      observer.close();
+    });
+
+    it('revokes the memory commit guard when the Leader is disposed', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ControlledMemoryToolExecutor();
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([rememberDecision()]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      bus.publish(inputMessage('memory-stop-conversation', 'memory-stop-turn', 'memory-stop-input'));
+      await receive(observer);
+      await settle();
+
+      expect(executor.guard!.isActive()).assertTrue();
+      leader.stop();
+      expect(executor.guard!.isActive()).assertFalse();
       observer.close();
     });
 
@@ -2078,8 +2452,7 @@ export default function leaderAgentTest() {
       context.personas.push({
         personaId: 'default_companion',
         name: 'Default Companion',
-        soul: 'General conversation.',
-        memory: '',
+        domains: ['general'],
         previous: false,
         activeSkills: []
       });

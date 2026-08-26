@@ -24,15 +24,34 @@ import {
   JsonValue,
   LeaderDataTaskInputNormalizer,
   LeaderDecisionDataTask,
+  LeaderMemoryMutation,
+  LeaderMemoryRecallToolExecutor,
+  LeaderMemoryRecallToolRequest,
+  LeaderMemoryToolExecutionGuard,
+  LeaderMemoryToolExecutor,
+  LeaderMemoryToolRequest,
+  LeaderMemoryToolResult,
   LeaderPersonaMetadata,
   LeaderPlanningContext,
   LeaderSkillMetadata,
   LeaderToolMetadata,
   LinkedMessageBus,
   LocalModel,
+  MEMORY_RECALL_DEFAULT_TOP_K,
+  MEMORY_RECALL_FACT_MAX_CHARS,
+  MEMORY_RECALL_MAX_TOP_K,
+  memoryRecallTotalMaxChars,
+  MemoryBatchResult,
+  MemoryCommitGuard,
+  MemorySelectionPayload,
+  MemoryRecallItem,
+  MEMORY_RECALL_OBSERVATION_QUERY_MAX_CHARS,
+  MemoryRecallObservation,
+  MemoryWriteResult,
   MailDetail,
   MailDetailRequest,
   RegisteredActionExecutor,
+  RecalledMemoryContext,
   SurfaceActionAuthorizer,
   ToolDefinition,
   ToolDefinitionLookup,
@@ -48,6 +67,7 @@ import {
   VirtualActionIntentResolver,
   allAiphoneToolDefinitions,
   allToolDefinitions,
+  aiLogInfo,
   callStructuredTool,
   gmailDraftApplyAction,
   genericToolResultsA2ui,
@@ -63,19 +83,26 @@ import {
 } from '@loop/agent-core';
 import { leaderPersonaContext } from '../../../model/LeaderPersonaContext';
 import {
-  isStableWaterfallContentPreference,
-  memoryUpdateSurface,
-  parsePersonaMemoryUpdateInput,
-  PersonaMemoryUpdateRequest
-} from '../../../model/PersonaMemoryUpdate';
-import { personaPackForId } from '../../../model/PersonaStore';
+  PhoneLocalMemoryRuntimePort,
+  PhoneLocalRecalledMemory
+} from '../../../memory/PhoneLocalMemoryRuntime';
+import { PhoneLocalMemoryAvailabilityPort } from '../../../memory/PhoneLocalMemoryAvailability';
+import {
+  MemoryCandidatesForgetActionArgs,
+  MemoryCandidateSelectionItem,
+  MemoryCandidateSelectionSurfaceInput,
+  MEMORY_CANDIDATES_FORGET_ACTION_ID,
+  memoryCandidatesForgetActionArgs,
+  memoryCandidateSelectionSurface,
+  memoryForgetConfirmationSurface
+} from '../../../model/MemoryCandidateSelectionSurface';
 import { MultiAgentLeaderPlanner } from './MultiAgentLeaderPlanner';
 import { MultiAgentActionPlanCompiler } from './MultiAgentActionPlanCompiler';
 import {
   HotelLocalDateProvider
 } from './HotelLeaderPlanner';
 import { mailDetailIdentityDigest, MultiAgentRuntime } from './MultiAgentRuntime';
-import { MultiAgentTurnOutcome } from './MultiAgentRuntimeTypes';
+import { MultiAgentSettledOutcome, MultiAgentTurnOutcome } from './MultiAgentRuntimeTypes';
 import { isHtmlHomeActionAllowed } from '../html/HtmlHomeActionPolicy';
 import { HtmlHomeDocument } from '../html/HtmlHomeTypes';
 import {
@@ -109,10 +136,30 @@ import {
   originalQueryFromBimPrompt
 } from '../bim/BimRuntime';
 
-const MEMORY_ACTION_ID: string = 'memory.update';
+const MEMORY_ACTION_IDS: string[] = [
+  'memory.remember',
+  'memory.update',
+  'memory.forget'
+];
 const TIME_TOOL_ID: string = 'time';
-const MEMORY_SUMMARY_LIMIT: number = 240;
 const TURN_HOST_GENERATION_LIMIT: number = 32;
+
+function memoryPlanningHint(toolId: string): string {
+  if (toolId === 'memory.remember') {
+    return 'Leader-owned local memory write. Use memoryMutation exactly as ' +
+      '{"operation":"remember","facts":["one atomic sentence"]}; facts is a string array with 1-5 items. ' +
+      'For a memory-only turn use roundAction="execute", dataTasks=[], no actionIntent, and omit answer.';
+  }
+  if (toolId === 'memory.update') {
+    return 'Leader-owned local memory update. Use memoryMutation exactly as ' +
+      '{"operation":"update","memoryId":"one recalled ID","fact":"one atomic sentence"}. ' +
+      'For a memory-only turn use roundAction="execute", dataTasks=[], no actionIntent, and omit answer.';
+  }
+  return 'Leader-owned local memory management. For every forget request use memoryClarification exactly as ' +
+    '{"operation":"forget"}; the Host will show all one-to-five memories recalled for this turn with zero ' +
+    'selected by default, and only a later user-confirmed management-card action may delete selected records. ' +
+    'Never emit an exact forget memoryMutation. Use roundAction="execute", dataTasks=[], no actionIntent, and omit answer.';
+}
 
 interface CalendarReviewOutput {
   surfaceId: string;
@@ -179,7 +226,9 @@ export interface MultiAgentCanaryOptions {
   currentHostSurface?: () => A2uiSurfaceState | null;
   currentHostGeneration?: () => number;
   onSurface: (surface: A2uiSurfaceState, runtimeGeneration: number) => boolean;
-  onMemoryUpdate: (update: PersonaMemoryUpdateRequest, runtimeGeneration: number) => boolean;
+  memoryRuntime?: PhoneLocalMemoryRuntimePort;
+  /** Process-lifetime feature gate; omitted preserves existing injected-test behavior. */
+  memoryAvailability?: PhoneLocalMemoryAvailabilityPort;
   onMailDetail?: (
     event: MailDetailInPlaceEvent,
     runtimeGeneration: number,
@@ -570,28 +619,41 @@ export interface MultiAgentCanaryActionContext {
   pageActionId?: string;
 }
 
-function memoryDefinition(): ToolDefinition {
-  return {
-    toolId: MEMORY_ACTION_ID,
-    domain: 'persona',
-    intent: MEMORY_ACTION_ID,
-    riskLevel: 'draft',
-    backendPriority: ['local_adapter'],
-    authModes: ['none'],
-    inputSchema: 'memoryUpdateRequest',
-    outputSchema: 'memoryUpdateResult',
-    a2uiComponent: 'InfoRows',
-    actions: [MEMORY_ACTION_ID]
-  };
-}
-
 class CanaryToolLookup implements ToolDefinitionLookup {
   find(toolId: string): ToolDefinition | null {
-    if (toolId === MEMORY_ACTION_ID) {
-      return memoryDefinition();
-    }
     return toolDefinitionForToolId(toolId);
   }
+}
+
+interface PendingMemoryForgetCandidate {
+  candidateKey: string;
+  memoryId: string;
+  fact: string;
+  personaTag: string;
+  authority: 'leader' | 'seed';
+}
+
+interface PendingMemoryForgetSelection {
+  selectionId: string;
+  conversationId: string;
+  originTurnId: string;
+  sourceTaskId: string;
+  personaId: string;
+  hostGeneration: number;
+  surfaceId: string;
+  revision: number;
+  deletedCount: number;
+  candidates: PendingMemoryForgetCandidate[];
+  inFlight: boolean;
+  consumed: boolean;
+}
+
+export interface MemoryCandidateManagerActionResult {
+  handled: boolean;
+  status: 'success' | 'partial' | 'error' | 'rejected';
+  message: string;
+  presented: boolean;
+  notify: boolean;
 }
 
 class RejectClientAction implements ClientActionAuthorizer {
@@ -757,7 +819,9 @@ function normalizeCanaryTaskInput(
   const originalInput: InputUserPayload = {
     text: originalQueryFromBimPrompt(input.text),
     recentMessages: input.recentMessages,
-    previousPersonaId: input.previousPersonaId,
+    sessionSummary: input.sessionSummary,
+    lastTurnPersonaId: input.lastTurnPersonaId,
+    memoryRecallObservation: input.memoryRecallObservation,
     currentSurfaceSummary: input.currentSurfaceSummary,
     recentObservations: input.recentObservations,
     orderedContinuationAuthorized: input.orderedContinuationAuthorized
@@ -974,28 +1038,8 @@ function calendarReviewSurface(
   ));
 }
 
-function memoryRequest(args: Object): PersonaMemoryUpdateRequest | null {
-  if (args === null || typeof args !== 'object' || Array.isArray(args)) {
-    return null;
-  }
-  const values = args as Record<string, Object | string | number | boolean | null | undefined>;
-  const personaId = values['personaId'];
-  if (typeof personaId !== 'string' || personaId.trim().length === 0) {
-    return null;
-  }
-  return parsePersonaMemoryUpdateInput(JSON.stringify(args), personaId);
-}
-
 class CanaryArgsValidator implements ActionArgsValidator {
   validate(actionId: string, args: Object): ActionValidationResult {
-    if (actionId === MEMORY_ACTION_ID) {
-      const valid = memoryRequest(args) !== null;
-      return {
-        ok: valid,
-        code: valid ? '' : 'MEMORY_UPDATE_ARGS_INVALID',
-        message: valid ? '' : 'Memory update args are invalid.'
-      };
-    }
     return validateRegisteredPageActionArgs(actionId, args);
   }
 }
@@ -1014,10 +1058,6 @@ class CanarySurfaceAuthorizer implements SurfaceActionAuthorizer {
     actionId: string,
     args: Object
   ): boolean {
-    if (actionId === MEMORY_ACTION_ID) {
-      return surfaceId.startsWith('virtual:') &&
-        conversationId.length > 0 && turnId.length > 0 && memoryRequest(args) !== null;
-    }
     return this.hotel.allows(conversationId, turnId, surfaceId, actionId, args);
   }
 }
@@ -1205,7 +1245,7 @@ function exactCurrentGmailDraftApplyAction(
   return authority.action;
 }
 
-class MemoryIntentResolver implements VirtualActionIntentResolver {
+class CanaryVirtualActionIntentResolver implements VirtualActionIntentResolver {
   private readonly currentGmailDraftApply: () => A2uiAction | null;
 
   constructor(currentGmailDraftApply: () => A2uiAction | null) {
@@ -1219,67 +1259,24 @@ class MemoryIntentResolver implements VirtualActionIntentResolver {
       return null;
     }
     const actionId = request.allowedActionIds[0];
-    if (actionId !== MEMORY_ACTION_ID) {
-      let action: A2uiAction | null = null;
-      if (actionId === 'gmail.draft.apply') {
-        action = request.inputText.trim() === '确认应用刚才的 Gmail 草稿' ?
-          this.currentGmailDraftApply() : null;
-      } else {
-        const now: Date | null = calendarNow(request.currentLocalDate);
-        if (now === null) {
-          return null;
-        }
-        action = resolveVirtualRegisteredPageAction(
-          actionId, request.inputText, now
-        );
-      }
-      if (action === null || action.args === undefined) {
-        return null;
-      }
-      const offer: ActionOffer = {
-        offerId: 'initial-action:' + actionId,
-        actionId: actionId,
-        label: actionId,
-        variant: 'primary',
-        args: action.args
-      };
-      const intent: VirtualActionIntent = {
-        sourceToolId: VIRTUAL_ACTION_INTENT_SOURCE_TOOL_ID,
-        offer: offer,
-        autoRun: true
-      };
-      return intent;
+    let action: A2uiAction | null = null;
+    if (actionId === 'gmail.draft.apply') {
+      action = request.inputText.trim() === '确认应用刚才的 Gmail 草稿' ?
+        this.currentGmailDraftApply() : null;
+    } else {
+      const now: Date | null = calendarNow(request.currentLocalDate);
+      if (now === null) return null;
+      action = resolveVirtualRegisteredPageAction(actionId, request.inputText, now);
     }
-    const statement: string = originalQueryFromBimPrompt(request.inputText).trim();
-    if (statement.length === 0) {
-      return null;
-    }
-    const personaId = isStableWaterfallContentPreference(statement) ?
-      'entertainment_companion' : request.personaId;
-    const pack = personaPackForId(personaId);
-    if (pack.manifest.id !== personaId) {
-      return null;
-    }
-    const summary: string = statement.length > MEMORY_SUMMARY_LIMIT ?
-      statement.substring(0, MEMORY_SUMMARY_LIMIT) : statement;
-    const args: PersonaMemoryUpdateRequest = {
-      personaId,
-      summary,
-      memoryText: statement,
-      reason: '用户明确表达了可长期保存的偏好。'
-    };
+    if (action === null || action.args === undefined) return null;
     const offer: ActionOffer = {
-      offerId: 'memory-update:' + personaId,
-      actionId: MEMORY_ACTION_ID,
-      label: '更新记忆',
+      offerId: 'initial-action:' + actionId,
+      actionId: actionId,
+      label: actionId,
       variant: 'primary',
-      args
+      args: action.args
     };
-    return {
-      sourceToolId: MEMORY_ACTION_ID,
-      offer,
-      autoRun: true
-    };
+    return { sourceToolId: VIRTUAL_ACTION_INTENT_SOURCE_TOOL_ID, offer, autoRun: true };
   }
 }
 
@@ -1295,25 +1292,16 @@ const rejectPageAction: RegisteredPageAction = async (
 
 class CanaryRegisteredExecutor implements RegisteredActionExecutor {
   private readonly aiphone: AiphoneRegisteredActionExecutor;
-  private readonly onMemoryUpdate: (
-    update: PersonaMemoryUpdateRequest,
-    context: ActionExecutionContext
-  ) => boolean;
   private readonly onSurface: (surface: A2uiSurfaceState, context: ActionExecutionContext) => void;
   private readonly currentGmailDraftApply: () => A2uiAction | null;
   private sequence: number = 0;
 
   constructor(
     aiphone: AiphoneRegisteredActionExecutor,
-    onMemoryUpdate: (
-      update: PersonaMemoryUpdateRequest,
-      context: ActionExecutionContext
-    ) => boolean,
     onSurface: (surface: A2uiSurfaceState, context: ActionExecutionContext) => void,
     currentGmailDraftApply: () => A2uiAction | null
   ) {
     this.aiphone = aiphone;
-    this.onMemoryUpdate = onMemoryUpdate;
     this.onSurface = onSurface;
     this.currentGmailDraftApply = currentGmailDraftApply;
   }
@@ -1338,55 +1326,222 @@ class CanaryRegisteredExecutor implements RegisteredActionExecutor {
       const output: CalendarReviewOutput = { surfaceId };
       return { status: 'success', output };
     }
-    if (actionId !== MEMORY_ACTION_ID) {
-      if (actionId === 'gmail.draft.apply' && context.virtualAction === true) {
-        const current = this.currentGmailDraftApply();
-        if (current === null || current.args === undefined ||
-          JSON.stringify(current.args) !== JSON.stringify(args)) {
-          return {
-            status: 'error',
-            errorCode: 'GMAIL_DRAFT_SURFACE_STALE',
-            message: 'Gmail draft no longer matches the exact current surface.'
-          };
-        }
+    if (actionId === 'gmail.draft.apply' && context.virtualAction === true) {
+      const current = this.currentGmailDraftApply();
+      if (current === null || current.args === undefined ||
+        JSON.stringify(current.args) !== JSON.stringify(args)) {
+        return {
+          status: 'error',
+          errorCode: 'GMAIL_DRAFT_SURFACE_STALE',
+          message: 'Gmail draft no longer matches the exact current surface.'
+        };
       }
-      return this.aiphone.execute(actionId, args, context);
     }
-    const update = memoryRequest(args);
-    if (update === null) {
-      return {
-        status: 'error',
-        errorCode: 'MEMORY_UPDATE_ARGS_INVALID',
-        message: 'Memory update args are invalid.'
-      };
-    }
-    if (!this.onMemoryUpdate(update, context)) {
-      return {
-        status: 'error',
-        errorCode: 'MEMORY_UPDATE_PERSIST_FAILED',
-        message: 'Memory update could not be persisted.'
-      };
-    }
-    this.sequence++;
-    const surfaceId: string = 'memory-update:' + this.sequence.toString();
-    this.onSurface(memoryUpdateSurface(surfaceId, update), context);
-    const output: MemorySurfaceOutput = { surfaceId };
-    return {
-      status: 'success',
-      output
-    };
+    return this.aiphone.execute(actionId, args, context);
   }
 }
 
-interface MemorySurfaceOutput {
-  surfaceId: string;
+class PhoneLocalLeaderMemoryToolExecutor implements LeaderMemoryToolExecutor,
+  LeaderMemoryRecallToolExecutor {
+  private readonly runtime: PhoneLocalMemoryRuntimePort | null;
+  private readonly recallObserver: ((
+    request: LeaderMemoryRecallToolRequest,
+    observation: MemoryRecallObservation
+  ) => void) | null;
+
+  constructor(
+    runtime: PhoneLocalMemoryRuntimePort | null,
+    recallObserver?: (
+      request: LeaderMemoryRecallToolRequest,
+      observation: MemoryRecallObservation
+    ) => void
+  ) {
+    this.runtime = runtime;
+    this.recallObserver = recallObserver === undefined ? null : recallObserver;
+  }
+
+  async recall(
+    request: LeaderMemoryRecallToolRequest,
+    guard: LeaderMemoryToolExecutionGuard
+  ): Promise<MemoryRecallObservation> {
+    if (!guard.isActive() || this.runtime === null) {
+      return this.observedRecall(request, 'error', []);
+    }
+    try {
+      const recalled: PhoneLocalRecalledMemory[] = await this.runtime.recall(request.query, request.topK);
+      if (!guard.isActive()) return this.observedRecall(request, 'error', []);
+      return this.observedRecall(
+        request,
+        recalled.length === 0 ? 'empty' : 'success',
+        recalled
+      );
+    } catch (_error) {
+      return this.observedRecall(request, 'error', []);
+    }
+  }
+
+  private observedRecall(
+    request: LeaderMemoryRecallToolRequest,
+    status: 'success' | 'empty' | 'error',
+    recalled: PhoneLocalRecalledMemory[]
+  ): MemoryRecallObservation {
+    const observation: MemoryRecallObservation = this.recallObservation(request, status, recalled);
+    const observer = this.recallObserver;
+    if (observer !== null) {
+      try {
+        observer(request, observation);
+      } catch (_error) {
+        // Observation bookkeeping must never turn a read-only recall into a turn failure.
+      }
+    }
+    return observation;
+  }
+
+  private recallObservation(
+    request: LeaderMemoryRecallToolRequest,
+    status: 'success' | 'empty' | 'error',
+    recalled: PhoneLocalRecalledMemory[]
+  ): MemoryRecallObservation {
+    const items: MemoryRecallItem[] = [];
+    let remaining: number = memoryRecallTotalMaxChars(request.topK);
+    for (let index = 0; index < recalled.length && items.length < request.topK && remaining > 0; index++) {
+      const memory: PhoneLocalRecalledMemory = recalled[index];
+      const fact: string = memory.fact.substring(0, Math.min(MEMORY_RECALL_FACT_MAX_CHARS, remaining));
+      if (fact.length === 0) break;
+      items.push({
+        memoryId: memory.memoryId,
+        fact,
+        personaTag: memory.personaTag,
+        authority: memory.authority
+      });
+      remaining -= fact.length;
+    }
+    return {
+      callId: request.callId,
+      origin: request.origin,
+      query: request.query.substring(0, MEMORY_RECALL_OBSERVATION_QUERY_MAX_CHARS),
+      status: status === 'success' && items.length === 0 ? 'empty' : status,
+      items
+    };
+  }
+
+  async execute(
+    request: LeaderMemoryToolRequest,
+    guard: LeaderMemoryToolExecutionGuard
+  ): Promise<LeaderMemoryToolResult> {
+    if (!guard.isActive()) {
+      return this.result(request, 'error', 'Long-term memory operation was canceled.', 0, 0);
+    }
+    if (this.runtime === null) {
+      return this.result(request, 'error', 'Long-term memory is unavailable on this device.', 0, 1);
+    }
+    const commitGuard: MemoryCommitGuard = new LeaderMemoryCommitGuard(guard);
+    const mutation: LeaderMemoryMutation = request.mutation;
+    if (mutation.operation === 'remember') {
+      const facts: string[] = mutation.facts.map((item): string => item.fact);
+      const result: MemoryBatchResult = await this.runtime.remember(
+        facts, request.turnId, request.personaId, commitGuard
+      );
+      if (result.succeededCount <= 0 || result.status === 'error') {
+        return this.result(
+          request,
+          'error',
+          result.error === undefined ? 'Long-term memory could not be saved.' : result.error.message,
+          result.succeededCount,
+          result.failedCount
+        );
+      }
+      if (result.failedCount > 0) {
+        return this.result(
+          request,
+          'partial',
+          '已记住 ' + result.succeededCount.toString() + ' 条，' +
+            result.failedCount.toString() + ' 条保存失败。',
+          result.succeededCount,
+          result.failedCount
+        );
+      }
+      return this.result(
+        request,
+        'success',
+        '已记住 ' + result.succeededCount.toString() + ' 条长期记忆。',
+        result.succeededCount,
+        result.failedCount
+      );
+    }
+    const result: MemoryWriteResult = mutation.operation === 'update' ?
+      await this.runtime.update(
+        mutation.memoryId, mutation.fact, request.turnId, request.personaId, commitGuard
+      ) : await this.runtime.forget(mutation.memoryId, commitGuard);
+    if (result.status === 'error') {
+      return this.result(
+        request,
+        'error',
+        result.error === undefined ? 'Long-term memory could not be changed.' : result.error.message,
+        0,
+        1
+      );
+    }
+    return this.result(
+      request,
+      'success',
+      mutation.operation === 'update' ? '已更新长期记忆。' : '已忘记这条长期记忆。',
+      1,
+      0
+    );
+  }
+
+  private result(
+    request: LeaderMemoryToolRequest,
+    status: 'success' | 'partial' | 'error',
+    message: string,
+    succeeded: number,
+    failed: number
+  ): LeaderMemoryToolResult {
+    aiLogInfo('[AIPhone][LeaderMemoryTool] conversation=' + request.conversationId +
+      ' turn=' + request.turnId + ' task=' + request.sourceTaskId +
+      ' operation=' + request.mutation.operation + ' status=' + status +
+      ' succeeded=' + succeeded.toString() + ' failed=' + failed.toString());
+    return { status, message };
+  }
+}
+
+class LeaderMemoryCommitGuard implements MemoryCommitGuard {
+  private readonly leaderGuard: LeaderMemoryToolExecutionGuard;
+
+  constructor(leaderGuard: LeaderMemoryToolExecutionGuard) {
+    this.leaderGuard = leaderGuard;
+  }
+
+  isActive(): boolean {
+    return this.leaderGuard.isActive();
+  }
+}
+
+class CallbackMemoryCommitGuard implements MemoryCommitGuard {
+  private readonly active: () => boolean;
+
+  constructor(active: () => boolean) {
+    this.active = active;
+  }
+
+  isActive(): boolean {
+    return this.active();
+  }
+}
+
+class AlwaysActiveLeaderMemoryToolExecutionGuard implements LeaderMemoryToolExecutionGuard {
+  isActive(): boolean {
+    return true;
+  }
 }
 
 function canaryPlanningContext(
   previousPersonaId: string,
   _prompt: string = '',
   allowTrustedOperationTargets: boolean = false,
-  focusedRelease: boolean = false
+  focusedRelease: boolean = false,
+  memoryAvailable: boolean = true
 ): LeaderPlanningContext {
   const definitions: ToolDefinition[] = focusedRelease ? allAiphoneToolDefinitions() : allToolDefinitions();
   const tools: LeaderToolMetadata[] = definitions
@@ -1419,7 +1574,6 @@ function canaryPlanningContext(
     }
   );
   if (!focusedRelease) {
-    const memory = memoryDefinition();
     tools.push({
       toolId: 'dynamic.search',
       domain: 'dynamic',
@@ -1431,26 +1585,37 @@ function canaryPlanningContext(
       actions: [],
       planningHint: toolPlanningDescriptionForToolId('dynamic.search', allowTrustedOperationTargets)
     });
+  }
+  for (let index = 0; memoryAvailable && index < MEMORY_ACTION_IDS.length; index += 1) {
     tools.push({
-      toolId: memory.toolId,
-      domain: memory.domain,
-      intent: memory.intent,
-      riskLevel: memory.riskLevel,
-      registeredBackends: memory.backendPriority.slice(),
-      inputSchema: memory.inputSchema,
-      outputSchema: memory.outputSchema,
-      actions: memory.actions.slice()
+      toolId: MEMORY_ACTION_IDS[index],
+      domain: 'memory',
+      intent: MEMORY_ACTION_IDS[index],
+      riskLevel: 'draft',
+      registeredBackends: ['local_adapter'],
+      inputSchema: 'leaderMemoryMutation',
+      outputSchema: 'leaderMemoryToolResult',
+      actions: [],
+      planningHint: memoryPlanningHint(MEMORY_ACTION_IDS[index])
     });
   }
   return {
     tools,
-    personas: scopedLeaderPersonas(previousPersonaId, tools)
+    personas: scopedLeaderPersonas(previousPersonaId, tools, memoryAvailable)
   };
+}
+
+function instructionsWithoutMemoryCapabilityIds(value: string): string {
+  return value.split('\n').filter((line: string): boolean =>
+    MEMORY_ACTION_IDS.every((toolId: string): boolean => line.indexOf(toolId) < 0) &&
+      line.indexOf('memory.recall') < 0
+  ).join('\n');
 }
 
 function scopedLeaderPersonas(
   previousPersonaId: string,
-  tools: LeaderToolMetadata[]
+  tools: LeaderToolMetadata[],
+  memoryAvailable: boolean = true
 ): LeaderPersonaMetadata[] {
   const visibleToolIds: Set<string> = new Set<string>();
   for (let index = 0; index < tools.length; index++) {
@@ -1459,10 +1624,18 @@ function scopedLeaderPersonas(
   return leaderPersonaContext(previousPersonaId).map((persona: LeaderPersonaMetadata): LeaderPersonaMetadata => ({
     personaId: persona.personaId,
     name: persona.name,
-    soul: persona.soul,
-    memory: persona.memory,
+    domains: persona.domains.slice(),
     previous: persona.previous,
-    activeSkills: persona.activeSkills.filter((skill: LeaderSkillMetadata): boolean =>
+    activeSkills: persona.activeSkills.map((skill: LeaderSkillMetadata): LeaderSkillMetadata => ({
+      skillId: skill.skillId,
+      description: skill.description,
+      instructions: memoryAvailable ? skill.instructions :
+        instructionsWithoutMemoryCapabilityIds(skill.instructions),
+      status: skill.status,
+      toolIds: memoryAvailable ? skill.toolIds.slice() : skill.toolIds.filter(
+        (toolId: string): boolean => MEMORY_ACTION_IDS.indexOf(toolId) < 0
+      )
+    })).filter((skill: LeaderSkillMetadata): boolean =>
       skill.toolIds.every((toolId: string): boolean => visibleToolIds.has(toolId))
     )
   }));
@@ -1484,6 +1657,8 @@ export function rememberedPersonaAfterOutcome(
 
 export class MultiAgentCanaryRuntime {
   private readonly runtime: MultiAgentRuntime;
+  private readonly memoryRuntime: PhoneLocalMemoryRuntimePort | null;
+  private readonly memoryAvailable: boolean;
   private readonly authority: HotelSurfaceAuthority;
   private readonly followUpIds: PreparedHotelFollowUpIds;
   private readonly surfaceWriter: HotelRuntimeSurfaceWriter;
@@ -1493,12 +1668,17 @@ export class MultiAgentCanaryRuntime {
   private readonly currentPageSnapshot: () => RegisteredPageSnapshot | null;
   private readonly currentHostSurface: () => A2uiSurfaceState | null;
   private readonly currentHostGeneration: () => number;
+  private readonly onHostSurface: (surface: A2uiSurfaceState, runtimeGeneration: number) => boolean;
   private readonly turnHostGenerations: Map<string, number> = new Map<string, number>();
   private readonly validOriginTurnIds: Set<string> = new Set<string>();
   private readonly turnHostGenerationOrder: string[] = [];
   private pageGeneration: number = 0;
   private pageFingerprint: string = '';
   private gmailDraftApplyCandidate: GmailDraftApplyCandidate | null = null;
+  private pendingMemoryForgetSelection: PendingMemoryForgetSelection | null = null;
+  private readonly manualRecallItemsBySourceTaskId: Map<string, RecalledMemoryContext[]> =
+    new Map<string, RecalledMemoryContext[]>();
+  private memorySelectionSequence: number = 0;
   private surfaceGeneration: number = 0;
   private lastLeaderPersonaId: string = '';
   private submissionSequence: number = 0;
@@ -1509,6 +1689,11 @@ export class MultiAgentCanaryRuntime {
     const conversationId: string = options.conversationId === undefined ?
       'aiphone-canary-' + Date.now().toString() : options.conversationId;
     this.conversationId = conversationId;
+    this.memoryAvailable = options.memoryAvailability === undefined ? true :
+      options.memoryAvailability.isAvailable();
+    this.memoryRuntime = this.memoryAvailable && options.memoryRuntime !== undefined ?
+      options.memoryRuntime : null;
+    this.onHostSurface = options.onSurface;
     this.currentPageSnapshot = options.currentPageSnapshot === undefined ?
       (): RegisteredPageSnapshot | null => null : options.currentPageSnapshot;
     this.currentHostSurface = options.currentHostSurface === undefined ?
@@ -1613,7 +1798,8 @@ export class MultiAgentCanaryRuntime {
     this.aiphoneExecutor = aiphoneExecutor;
     const allowTrustedOperationTargets = options.allowTrustedOperationTargets === true;
     const initialContext = canaryPlanningContext(
-      this.lastLeaderPersonaId, '', allowTrustedOperationTargets, options.focusedRelease === true
+      this.lastLeaderPersonaId, '', allowTrustedOperationTargets, options.focusedRelease === true,
+      this.memoryAvailable
     );
     const dataTaskInputNormalizer: LeaderDataTaskInputNormalizer = (
       input: InputUserPayload,
@@ -1625,6 +1811,13 @@ export class MultiAgentCanaryRuntime {
       undefined,
       dataTaskInputNormalizer
     );
+    const leaderMemoryTools = new PhoneLocalLeaderMemoryToolExecutor(
+      this.memoryRuntime,
+      (
+        request: LeaderMemoryRecallToolRequest,
+        observation: MemoryRecallObservation
+      ): void => this.recordManualRecallObservation(request, observation)
+    );
     this.runtime = new MultiAgentRuntime({
       conversationId,
       bus: options.bus,
@@ -1632,7 +1825,8 @@ export class MultiAgentCanaryRuntime {
       planningContext: initialContext,
       planningContextProvider: (prompt: string): LeaderPlanningContext =>
         canaryPlanningContext(
-          this.lastLeaderPersonaId, prompt, allowTrustedOperationTargets, options.focusedRelease === true
+          this.lastLeaderPersonaId, prompt, allowTrustedOperationTargets, options.focusedRelease === true,
+          this.memoryAvailable
         ),
       currentLocalDateProvider: options.currentLocalDate,
       dataTaskInputNormalizer,
@@ -1646,13 +1840,6 @@ export class MultiAgentCanaryRuntime {
       actionCompiler: new MultiAgentActionPlanCompiler(options.model),
       actionExecutor: new CanaryRegisteredExecutor(
         aiphoneExecutor,
-        (update: PersonaMemoryUpdateRequest, context: ActionExecutionContext): boolean => {
-          const hostGeneration = this.turnHostGenerations.get(context.turnId);
-          if (hostGeneration !== undefined && hostGeneration > 0) {
-            return options.onMemoryUpdate(update, hostGeneration);
-          }
-          return false;
-        },
         (surface: A2uiSurfaceState, context: ActionExecutionContext): void => {
           const hostGeneration = this.turnHostGenerations.get(context.turnId);
           if (hostGeneration === undefined || hostGeneration <= 0) {
@@ -1677,7 +1864,9 @@ export class MultiAgentCanaryRuntime {
         },
         currentGmailDraftApply
       ),
-      virtualActionResolver: new MemoryIntentResolver(currentGmailDraftApply),
+      virtualActionResolver: new CanaryVirtualActionIntentResolver(currentGmailDraftApply),
+      memoryToolExecutor: this.memoryAvailable ? leaderMemoryTools : undefined,
+      memoryRecallToolExecutor: this.memoryAvailable ? leaderMemoryTools : undefined,
       submitTimeoutMs: options.submitTimeoutMs,
       actionTimeoutMs: options.actionTimeoutMs,
       settingsFingerprint: options.settingsFingerprint,
@@ -1700,6 +1889,8 @@ export class MultiAgentCanaryRuntime {
   ): Promise<MultiAgentTurnOutcome> {
     const capturedGeneration = Number.isSafeInteger(hostGeneration) && hostGeneration > 0 ?
       hostGeneration : 0;
+    this.manualRecallItemsBySourceTaskId.clear();
+    this.pendingMemoryForgetSelection = null;
     if (capturedGeneration > 0 &&
       capturedGeneration === this.currentHostGeneration() &&
       text.trim() !== '确认应用刚才的 Gmail 草稿') {
@@ -1707,22 +1898,360 @@ export class MultiAgentCanaryRuntime {
     }
     this.submissionSequence++;
     const submissionSequence: number = this.submissionSequence;
-    const input: UserInputPayload = {
-      text: context.text,
-      recentMessages: context.recentMessages,
-      previousPersonaId: this.lastLeaderPersonaId,
-      currentSurfaceSummary: context.currentSurfaceSummary,
-      recentObservations: context.recentObservations
+    if (!this.memoryAvailable) {
+      const input: UserInputPayload = {
+        text: context.text,
+        recentMessages: context.recentMessages,
+        sessionSummary: context.sessionSummary,
+        lastTurnPersonaId: this.lastLeaderPersonaId,
+        currentSurfaceSummary: context.currentSurfaceSummary,
+        recentObservations: context.recentObservations
+      };
+      return this.runtime.submit(text, input, capturedGeneration)
+        .then((outcome: MultiAgentTurnOutcome): MultiAgentTurnOutcome => {
+          this.lastLeaderPersonaId = rememberedPersonaAfterOutcome(
+            this.lastLeaderPersonaId,
+            outcome,
+            submissionSequence === this.submissionSequence
+          );
+          return outcome;
+        });
+    }
+    let recalledForSubmission: RecalledMemoryContext[] = [];
+    const recallStartedAt: number = Date.now();
+    const guardRecallGeneration: boolean = this.memoryRuntime !== null && capturedGeneration > 0 &&
+      capturedGeneration === this.currentHostGeneration();
+    const prefetchQuery: string = originalQueryFromBimPrompt(text).trim();
+    const prefetchRequest: LeaderMemoryRecallToolRequest = {
+      callId: 'memory-recall-prefetch-' + submissionSequence.toString(),
+      conversationId: this.conversationId,
+      turnId: 'pending-' + submissionSequence.toString(),
+      sourceTaskId: 'host-prefetch',
+      origin: 'prefetch',
+      query: prefetchQuery,
+      topK: MEMORY_RECALL_DEFAULT_TOP_K
     };
-    return this.runtime.submit(text, input, capturedGeneration)
+    const recallExecutor = new PhoneLocalLeaderMemoryToolExecutor(this.memoryRuntime);
+    const emptyObservation: MemoryRecallObservation = {
+      callId: prefetchRequest.callId,
+      origin: 'prefetch',
+      query: prefetchQuery.substring(0, MEMORY_RECALL_OBSERVATION_QUERY_MAX_CHARS),
+      status: 'empty',
+      items: []
+    };
+    const recallGuard: LeaderMemoryToolExecutionGuard = new AlwaysActiveLeaderMemoryToolExecutionGuard();
+    const recall: Promise<MemoryRecallObservation> = prefetchQuery.length === 0 ?
+      Promise.resolve(emptyObservation) : recallExecutor.recall(prefetchRequest, recallGuard);
+    return recall.then((observation: MemoryRecallObservation): Promise<MultiAgentTurnOutcome> => {
+      if (submissionSequence !== this.submissionSequence ||
+        (guardRecallGeneration && capturedGeneration !== this.currentHostGeneration())) {
+        aiLogInfo('[AIPhone][LeaderMemoryRecall] status=canceled count=0 durationMs=' +
+          Math.max(0, Date.now() - recallStartedAt).toString());
+        const canceled: MultiAgentSettledOutcome = {
+          kind: 'settled',
+          ok: false,
+          status: 'canceled',
+          surfaceId: '',
+          message: 'Memory recall no longer belongs to the current turn.',
+          personaId: this.lastLeaderPersonaId,
+          skillId: ''
+        };
+        return Promise.resolve(canceled);
+      }
+      aiLogInfo('[AIPhone][LeaderMemoryRecall] status=' + observation.status +
+        ' count=' + observation.items.length.toString() + ' durationMs=' +
+        Math.max(0, Date.now() - recallStartedAt).toString());
+      const input: UserInputPayload = {
+        text: context.text,
+        recentMessages: context.recentMessages,
+        sessionSummary: context.sessionSummary,
+        recalledMemories: observation.items.map((memory: MemoryRecallItem): RecalledMemoryContext => ({
+          memoryId: memory.memoryId,
+          fact: memory.fact,
+          personaTag: memory.personaTag,
+          authority: memory.authority
+        })),
+        lastTurnPersonaId: this.lastLeaderPersonaId,
+        memoryRecallObservation: observation,
+        currentSurfaceSummary: context.currentSurfaceSummary,
+        recentObservations: context.recentObservations
+      };
+      recalledForSubmission = input.recalledMemories === undefined ? [] : input.recalledMemories;
+      return this.runtime.submit(text, input, capturedGeneration);
+    })
       .then((outcome: MultiAgentTurnOutcome): MultiAgentTurnOutcome => {
         this.lastLeaderPersonaId = rememberedPersonaAfterOutcome(
           this.lastLeaderPersonaId,
           outcome,
           submissionSequence === this.submissionSequence
         );
+        if (submissionSequence === this.submissionSequence && outcome.ok &&
+          outcome.memorySelection !== undefined) {
+          const manualRecalled = this.manualRecallItemsBySourceTaskId.get(
+            outcome.memorySelection.sourceTaskId
+          );
+          const trustedRecalled: RecalledMemoryContext[] = manualRecalled === undefined ?
+            recalledForSubmission : manualRecalled;
+          const surface = this.installMemoryForgetSelection(
+            outcome.memorySelection, trustedRecalled, capturedGeneration
+          );
+          this.manualRecallItemsBySourceTaskId.delete(outcome.memorySelection.sourceTaskId);
+          if (surface !== null) outcome.surfaceId = surface.surfaceId;
+        }
         return outcome;
       });
+  }
+
+  private recordManualRecallObservation(
+    request: LeaderMemoryRecallToolRequest,
+    observation: MemoryRecallObservation
+  ): void {
+    if (request.origin !== 'leader' || request.sourceTaskId.trim().length === 0 ||
+      observation.callId !== request.callId || observation.origin !== 'leader' ||
+      observation.query !== request.query) {
+      return;
+    }
+    const recalled: RecalledMemoryContext[] = observation.items.map(
+      (item: MemoryRecallItem): RecalledMemoryContext => ({
+        memoryId: item.memoryId,
+        fact: item.fact,
+        personaTag: item.personaTag,
+        authority: item.authority
+      })
+    );
+    this.manualRecallItemsBySourceTaskId.set(request.sourceTaskId, recalled);
+  }
+
+  private installMemoryForgetSelection(
+    selection: MemorySelectionPayload,
+    recalled: RecalledMemoryContext[],
+    hostGeneration: number
+  ): A2uiSurfaceState | null {
+    if (selection.operation !== 'forget' || selection.originTurnId.trim().length === 0 ||
+      selection.sourceTaskId.trim().length === 0 || selection.personaId.trim().length === 0 ||
+      selection.candidates.length < 1 || selection.candidates.length > MEMORY_RECALL_MAX_TOP_K ||
+      !Number.isSafeInteger(hostGeneration) || hostGeneration <= 0 ||
+      this.currentHostGeneration() !== hostGeneration ||
+      this.turnHostGenerations.get(selection.originTurnId) !== hostGeneration ||
+      !this.validOriginTurnIds.has(selection.originTurnId)) {
+      aiLogInfo('[AIPhone][MemorySelection] operation=forget status=rejected reason=invalid_context');
+      return null;
+    }
+    const pendingCandidates: PendingMemoryForgetCandidate[] = [];
+    const surfaceCandidates: MemoryCandidateSelectionItem[] = [];
+    const seenMemoryIds: Set<string> = new Set<string>();
+    this.memorySelectionSequence++;
+    const selectionId = 'memory-selection-' + this.memorySelectionSequence.toString() + '-' + Date.now().toString();
+    for (let index = 0; index < selection.candidates.length; index++) {
+      const candidate = selection.candidates[index];
+      if (candidate.memoryId.trim().length === 0 || candidate.fact.trim().length === 0 ||
+        candidate.fact.length > 240 || seenMemoryIds.has(candidate.memoryId)) {
+        aiLogInfo('[AIPhone][MemorySelection] operation=forget status=rejected reason=invalid_candidate');
+        return null;
+      }
+      let recalledCandidate: RecalledMemoryContext | null = null;
+      for (let recalledIndex = 0; recalledIndex < recalled.length; recalledIndex++) {
+        const item = recalled[recalledIndex];
+        if (item.memoryId === candidate.memoryId && item.fact === candidate.fact &&
+          item.personaTag === candidate.personaTag && item.authority === candidate.authority) {
+          recalledCandidate = item;
+          break;
+        }
+      }
+      if (recalledCandidate === null) {
+        aiLogInfo('[AIPhone][MemorySelection] operation=forget status=rejected reason=not_recalled');
+        return null;
+      }
+      seenMemoryIds.add(candidate.memoryId);
+      const candidateKey = 'candidate-' + (index + 1).toString() + '-' + this.memorySelectionSequence.toString();
+      pendingCandidates.push({
+        candidateKey,
+        memoryId: recalledCandidate.memoryId,
+        fact: recalledCandidate.fact,
+        personaTag: recalledCandidate.personaTag,
+        authority: recalledCandidate.authority
+      });
+      surfaceCandidates.push({
+        candidateKey,
+        fact: recalledCandidate.fact,
+        personaTag: recalledCandidate.personaTag,
+        authority: recalledCandidate.authority
+      });
+    }
+    const surfaceId = 'memory-selection:' + selectionId;
+    const surfaceInput: MemoryCandidateSelectionSurfaceInput = {
+      selectionId,
+      revision: 1,
+      candidates: surfaceCandidates
+    };
+    const surface = memoryCandidateSelectionSurface(surfaceId, surfaceInput);
+    surface.runtimeOwner = 'multi_agent';
+    surface.runtimeGeneration = hostGeneration;
+    const pending: PendingMemoryForgetSelection = {
+      selectionId,
+      conversationId: this.conversationId,
+      originTurnId: selection.originTurnId,
+      sourceTaskId: selection.sourceTaskId,
+      personaId: selection.personaId,
+      hostGeneration,
+      surfaceId,
+      revision: 1,
+      deletedCount: 0,
+      candidates: pendingCandidates,
+      inFlight: false,
+      consumed: false
+    };
+    this.pendingMemoryForgetSelection = pending;
+    if (!this.onHostSurface(surface, hostGeneration)) {
+      this.pendingMemoryForgetSelection = null;
+      aiLogInfo('[AIPhone][MemorySelection] operation=forget status=rejected reason=surface_rejected');
+      return null;
+    }
+    aiLogInfo('[AIPhone][MemorySelection] conversation=' + this.conversationId +
+      ' turn=' + selection.originTurnId + ' task=' + selection.sourceTaskId +
+      ' operation=forget status=shown count=' + pendingCandidates.length.toString());
+    return surface;
+  }
+
+  async handleMemoryCandidateAction(action: A2uiAction): Promise<MemoryCandidateManagerActionResult> {
+    if (action.id !== MEMORY_CANDIDATES_FORGET_ACTION_ID) {
+      return {
+        handled: false, status: 'rejected', message: '', presented: false, notify: false
+      };
+    }
+    const args: MemoryCandidatesForgetActionArgs | null = memoryCandidatesForgetActionArgs(action);
+    const pending = this.pendingMemoryForgetSelection;
+    const currentPendingSurface: boolean = pending !== null && this.currentMemorySelectionSurface(pending);
+    if (args === null || pending === null || !this.validMemoryManagerAction(
+      pending, args.selectionId, args.revision
+    )) {
+      aiLogInfo('[AIPhone][MemorySelectionAction] operation=forget status=rejected action=delete');
+      return {
+        handled: true, status: 'rejected', message: '这张记忆管理卡已失效，请重新发起请求。',
+        presented: currentPendingSurface, notify: currentPendingSurface
+      };
+    }
+    const selected: PendingMemoryForgetCandidate[] = [];
+    for (let keyIndex = 0; keyIndex < args.candidateKeys.length; keyIndex++) {
+      const candidate = pending.candidates.find(
+        (item: PendingMemoryForgetCandidate): boolean => item.candidateKey === args.candidateKeys[keyIndex]
+      );
+      if (candidate === undefined) {
+        return {
+          handled: true, status: 'rejected', message: '这张记忆管理卡已失效，请重新发起请求。',
+          presented: currentPendingSurface, notify: currentPendingSurface
+        };
+      }
+      selected.push(candidate);
+    }
+    if (selected.length === 0 || selected.length > 5 || this.memoryRuntime === null) {
+      return {
+        handled: true, status: 'rejected', message: '请先选择要删除的长期记忆。',
+        presented: currentPendingSurface, notify: currentPendingSurface
+      };
+    }
+    pending.inFlight = true;
+    const guard: MemoryCommitGuard = new CallbackMemoryCommitGuard((): boolean =>
+      this.pendingMemoryForgetSelection === pending && !pending.consumed && pending.inFlight &&
+      this.currentHostGeneration() === pending.hostGeneration && this.currentMemorySelectionSurface(pending));
+    const successfulKeys: Set<string> = new Set<string>();
+    let failedCount: number = 0;
+    for (let index = 0; index < selected.length; index++) {
+      const result: MemoryWriteResult = await this.memoryRuntime.forget(selected[index].memoryId, guard);
+      if (result.status === 'success') successfulKeys.add(selected[index].candidateKey);
+      else failedCount++;
+    }
+    const succeededCount = successfulKeys.size;
+    const stillCurrent: boolean = this.pendingMemoryForgetSelection === pending &&
+      this.currentMemorySelectionSurface(pending);
+    const logStatus = succeededCount === 0 ? 'error' : (failedCount > 0 ? 'partial' : 'success');
+    aiLogInfo('[AIPhone][LeaderMemoryTool] conversation=' + pending.conversationId +
+      ' turn=' + pending.originTurnId + ' task=' + pending.sourceTaskId +
+      ' operation=forget status=' + logStatus + ' succeeded=' + succeededCount.toString() +
+      ' failed=' + failedCount.toString());
+    if (!stillCurrent) {
+      pending.consumed = true;
+      if (this.pendingMemoryForgetSelection === pending) this.pendingMemoryForgetSelection = null;
+      return {
+        handled: true,
+        status: succeededCount === 0 ? 'rejected' : (failedCount > 0 ? 'partial' : 'success'),
+        message: '这张记忆管理卡已失效，请重新发起请求。',
+        presented: false,
+        notify: false
+      };
+    }
+    pending.inFlight = false;
+    pending.deletedCount += succeededCount;
+    if (succeededCount > 0) {
+      pending.candidates = pending.candidates.filter(
+        (candidate: PendingMemoryForgetCandidate): boolean => !successfulKeys.has(candidate.candidateKey)
+      );
+    }
+    pending.revision++;
+    let presented: boolean = false;
+    if (pending.candidates.length === 0) {
+      pending.consumed = true;
+      this.pendingMemoryForgetSelection = null;
+      const confirmation = memoryForgetConfirmationSurface(
+        'memory-forget-confirmation:' + pending.selectionId,
+        pending.deletedCount
+      );
+      confirmation.runtimeOwner = 'multi_agent';
+      confirmation.runtimeGeneration = pending.hostGeneration;
+      presented = this.onHostSurface(confirmation, pending.hostGeneration);
+    } else {
+      presented = this.publishPendingMemorySelection(pending);
+      if (!presented) this.pendingMemoryForgetSelection = null;
+    }
+    const message = succeededCount === 0 ? '删除长期记忆失败，已选记录仍可重试。' :
+      (failedCount > 0 ? '已删除 ' + succeededCount.toString() + ' 条，' +
+        failedCount.toString() + ' 条失败，可重试。' :
+        '已删除 ' + succeededCount.toString() + ' 条长期记忆。');
+    return {
+      handled: true,
+      status: succeededCount === 0 ? 'error' : (failedCount > 0 ? 'partial' : 'success'),
+      message,
+      presented,
+      notify: presented
+    };
+  }
+
+  private validMemoryManagerAction(
+    pending: PendingMemoryForgetSelection,
+    selectionId: string,
+    revision: number
+  ): boolean {
+    return !pending.consumed && !pending.inFlight && selectionId === pending.selectionId &&
+      revision === pending.revision && pending.conversationId === this.conversationId &&
+      this.currentHostGeneration() === pending.hostGeneration &&
+      this.turnHostGenerations.get(pending.originTurnId) === pending.hostGeneration &&
+      this.validOriginTurnIds.has(pending.originTurnId) && this.currentMemorySelectionSurface(pending);
+  }
+
+  private publishPendingMemorySelection(pending: PendingMemoryForgetSelection): boolean {
+    const candidates: MemoryCandidateSelectionItem[] = pending.candidates.map(
+      (candidate: PendingMemoryForgetCandidate): MemoryCandidateSelectionItem => ({
+        candidateKey: candidate.candidateKey,
+        fact: candidate.fact,
+        personaTag: candidate.personaTag,
+        authority: candidate.authority
+      })
+    );
+    const surfaceInput: MemoryCandidateSelectionSurfaceInput = {
+      selectionId: pending.selectionId,
+      revision: pending.revision,
+      candidates
+    };
+    const surface = memoryCandidateSelectionSurface(pending.surfaceId, surfaceInput);
+    surface.runtimeOwner = 'multi_agent';
+    surface.runtimeGeneration = pending.hostGeneration;
+    return this.onHostSurface(surface, pending.hostGeneration);
+  }
+
+  private currentMemorySelectionSurface(pending: PendingMemoryForgetSelection): boolean {
+    const current = this.currentHostSurface();
+    return current !== null && current.runtimeOwner === 'multi_agent' &&
+      current.runtimeGeneration === pending.hostGeneration && current.surfaceId === pending.surfaceId;
   }
 
   runAction(action: A2uiAction, context: MultiAgentCanaryActionContext): Promise<boolean> {
@@ -1834,12 +2363,15 @@ export class MultiAgentCanaryRuntime {
   }
 
   dispose(): void {
+    this.submissionSequence++;
     this.runtime.dispose();
     this.aiphoneExecutor.dispose();
     this.mailDetailBridge.dispose();
     this.pageGeneration = 0;
     this.pageFingerprint = '';
     this.gmailDraftApplyCandidate = null;
+    this.pendingMemoryForgetSelection = null;
+    this.manualRecallItemsBySourceTaskId.clear();
     this.surfaceGeneration = 0;
     this.turnHostGenerations.clear();
     this.validOriginTurnIds.clear();

@@ -178,84 +178,32 @@ export struct WelcomeCardDeck {
 
   @Builder
   private NearbyFoodVisual() {
-    Stack({ alignContent: Alignment.Center }) {
-      Row() {}
-        .width('100%')
-        .height('100%')
-        .backgroundColor('#F4E8DF')
-      Image($r('app.media.persona_avatar_food'))
-        .width(98)
-        .height(98)
-        .objectFit(ImageFit.Contain)
-      Text('附近 · 吃点好的')
-        .fontSize(13)
-        .fontWeight(FontWeight.Medium)
-        .fontColor('#7A584B')
-        .position({ x: 18, y: 16 })
-    }
+    Image($r('app.media.home_guide_nearby_food'))
     .width('100%')
     .height(156)
-    .backgroundColor('#F4E8DF')
+    .objectFit(ImageFit.Fill)
     .borderRadius(20)
     .clip(true)
   }
 
   @Builder
   private WeekendVisual() {
-    Stack({ alignContent: Alignment.Center }) {
-      Row() {}
-        .width('100%')
-        .height('100%')
-        .backgroundColor('#DDE9E2')
-      Image($r('app.media.persona_avatar_travel'))
-        .width(98)
-        .height(98)
-        .objectFit(ImageFit.Contain)
-      Text('周末 · 轻松出发')
-        .fontSize(13)
-        .fontWeight(FontWeight.Medium)
-        .fontColor('#49665E')
-        .position({ x: 18, y: 16 })
-    }
+    Image($r('app.media.home_guide_travel_plan'))
     .width('100%')
     .height(156)
-    .backgroundColor('#DDE9E2')
+    .objectFit(ImageFit.Fill)
     .borderRadius(20)
     .clip(true)
   }
 
   @Builder
   private WaterfallVisual() {
-    Column({ space: 8 }) {
-      Row({ space: 10 }) {
-        Image($r('app.media.persona_avatar_food')).width(34).height(34)
-        Column({ space: 6 }) {
-          Row() {}.width(148).height(8).borderRadius(4).backgroundColor('#D6C8D7')
-          Row() {}.width(104).height(7).borderRadius(4).backgroundColor('#E3D9E4')
-        }.alignItems(HorizontalAlign.Start)
-      }
-      Row({ space: 10 }) {
-        Image($r('app.media.persona_avatar_travel')).width(34).height(34)
-        Column({ space: 6 }) {
-          Row() {}.width(132).height(8).borderRadius(4).backgroundColor('#C8D9D4')
-          Row() {}.width(164).height(7).borderRadius(4).backgroundColor('#DCE7E3')
-        }.alignItems(HorizontalAlign.Start)
-      }
-      Row({ space: 10 }) {
-        Image($r('app.media.persona_avatar_entertainment')).width(34).height(34)
-        Column({ space: 6 }) {
-          Row() {}.width(158).height(8).borderRadius(4).backgroundColor('#DCCFC4')
-          Row() {}.width(118).height(7).borderRadius(4).backgroundColor('#E9E0D8')
-        }.alignItems(HorizontalAlign.Start)
-      }
-    }
+    Image($r('app.media.home_guide_waterfall'))
     .width('100%')
     .height(156)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Start)
-    .padding({ left: 24, right: 18 })
-    .backgroundColor('#F3EEF4')
+    .objectFit(ImageFit.Fill)
     .borderRadius(20)
+    .clip(true)
   }
 
   @Builder

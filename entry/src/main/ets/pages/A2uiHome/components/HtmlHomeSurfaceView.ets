@@ -12,9 +12,17 @@ type HtmlHomePostedAction = Record<string, HtmlHomeActionValue>;
 const HTML_HOME_DATA_OPEN = '<script id="home-data" type="application/json">';
 const HTML_HOME_DATA_CLOSE = '</script>';
 
+function htmlHomeBodyOpenTag(html: string): string {
+  const bodyStart = html.indexOf('<body');
+  if (bodyStart < 0) return '';
+  const bodyEnd = html.indexOf('>', bodyStart);
+  return bodyEnd < 0 ? '' : html.substring(bodyStart, bodyEnd);
+}
+
 export function isHtmlHomeConversationDocument(html: string): boolean {
-  return html.indexOf('data-view="conversation"') >= 0 ||
-    html.indexOf('data-view="conversation-thinking"') >= 0;
+  const bodyTag = htmlHomeBodyOpenTag(html);
+  return bodyTag.indexOf('data-view="conversation"') >= 0 ||
+    bodyTag.indexOf('data-view="conversation-thinking"') >= 0;
 }
 
 export function htmlHomeDataPayload(html: string): string {
@@ -26,7 +34,7 @@ export function htmlHomeDataPayload(html: string): string {
 }
 
 export function htmlHomeAnimatesLatestUser(html: string): boolean {
-  return html.indexOf('data-user-motion="enter"') >= 0;
+  return htmlHomeBodyOpenTag(html).indexOf('data-user-motion="enter"') >= 0;
 }
 
 export function waterfallLayerFullscreen(rendererFullscreen: boolean, popupVisible: boolean): boolean {

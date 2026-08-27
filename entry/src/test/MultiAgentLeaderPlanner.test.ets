@@ -43,6 +43,11 @@ const TRAVEL_CLARIFY_DECISION: string = '{"personaId":"travel_companion","skillI
   '"requestedCapabilityIds":[],"roundAction":"clarify","continuationMode":"complete","dataTasks":[],' +
   '"uiIntent":{"purpose":"补充出行条件","preferredDensity":"comfortable",' +
   '"requiredSections":[]},"answer":"你从哪座城市出发？另外，下周具体哪一天出发？"}';
+const TRAVEL_PREFLIGHT_CLARIFY_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
+  '"requestedCapabilityIds":["travel.search"],"roundAction":"clarify",' +
+  '"continuationMode":"complete","dataTasks":[],' +
+  '"uiIntent":{"purpose":"补充出行条件","preferredDensity":"comfortable",' +
+  '"requiredSections":[]},"answer":"请告诉我出发地、目的地和出发日期。"}';
 const FLIGHT_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
   '"requestedCapabilityIds":["flight.search"],"roundAction":"execute","continuationMode":"complete",' +
   '"dataTasks":[{"localId":"flight","goal":"帮我查明天北京到上海的航班",' +
@@ -1243,6 +1248,26 @@ export default function multiAgentLeaderPlannerTest() {
       expect(model.systemPrompts[0].indexOf('Final execution readiness gate:')).assertLarger(-1);
       expect(model.systemPrompts[0].indexOf('inputSchema and planningHint')).assertLarger(-1);
       expect(model.systemPrompts[0].indexOf('This gate applies uniformly to every capability.')).assertLarger(-1);
+    });
+
+    it('marks a capability-backed clarification as trusted host preflight', 0, async () => {
+      const model = new QueueLocalModel([TRAVEL_PREFLIGHT_CLARIFY_DECISION]);
+      const decision = await new MultiAgentLeaderPlanner(
+        model, undefined, passthroughInputNormalizer
+      ).plan(
+        inputMessage(),
+        { text: '帮我查询出行方案并规划一次旅行' },
+        planningContext(),
+        1,
+        undefined,
+        '2026-08-27'
+      );
+
+      expect(decision.roundAction).assertEqual('clarify');
+      expect(decision.reasonCode).assertEqual('host_preflight_clarify');
+      expect(decision.requestedCapabilityIds.length).assertEqual(1);
+      expect(decision.requestedCapabilityIds[0]).assertEqual('travel.search');
+      expect(decision.dataTasks.length).assertEqual(0);
     });
 
     it('keeps complete model-selected travel execution without rewriting its task input', 0, async () => {

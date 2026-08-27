@@ -2138,6 +2138,10 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
         continuationMode === 'sequence' ? 'sequence_requires_next_round' :
           this.hostReasonCode(selectedAction)
     };
+    if (selectedAction === 'clarify' && requestedCapabilityIds.length > 0 &&
+      tasks.length === 0 && actionIntent === null) {
+      decision.reasonCode = 'host_preflight_clarify';
+    }
     if (typeof answerValue === 'string') {
       decision.answer = answerValue;
     }

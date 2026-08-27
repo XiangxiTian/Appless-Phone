@@ -2326,7 +2326,7 @@ export default function multiAgentCanaryRuntimeTest() {
       runtime.dispose();
     });
 
-    it('keeps known direct-answer planner errors inside multi-agent and hands off only unmigrated IDs', 0, async () => {
+    it('accepts capability preflight clarification while rejecting unobserved direct answers', 0, async () => {
       const model = new QueueModel([
         ANSWER_DECISION,
         MAIL_DIRECT_ANSWER,
@@ -2356,7 +2356,8 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(mail.kind).assertEqual('settled');
       expect((mail as MultiAgentSettledOutcome).status).assertEqual('error');
       expect(weather.kind).assertEqual('settled');
-      expect((weather as MultiAgentSettledOutcome).status).assertEqual('error');
+      expect((weather as MultiAgentSettledOutcome).status).assertEqual('success');
+      expect((weather as MultiAgentSettledOutcome).message).assertEqual('请确认天气地点');
       expect(misleadingHotel.kind).assertEqual('settled');
       expect((misleadingHotel as MultiAgentSettledOutcome).status).assertEqual('error');
       expect(unobservedHotel.kind).assertEqual('settled');

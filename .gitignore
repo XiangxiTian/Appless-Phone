@@ -15,6 +15,7 @@ tool-gateway/.hvigor/
 /.appanalyzer
 /.superpowers
 .worktrees/
+tool-gateway/.shares/
 docs/superpowers/
 tool-gateway/.env.local
 tool-gateway/.env

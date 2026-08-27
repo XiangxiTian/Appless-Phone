@@ -14,7 +14,7 @@ interface LocalModelRawConfig {
 }
 
 const DEEPSEEK_PROVIDER: string = 'CSI.AI';
-const DEFAULT_DEEPSEEK_BASE_URL: string = 'https://39.96.220.235/v1/chat/completions';
+const DEFAULT_DEEPSEEK_BASE_URL: string = 'https://api.jiuwenappless.com/v1/chat/completions';
 export const CLOUD_CHAT_MODEL_DSV4: string = 'Deepseek-V4-Flash-0731';
 const DEEPSEEK_MODEL: string = CLOUD_CHAT_MODEL_DSV4;
 const DASHSCOPE_PROVIDER: string = 'DashScope';

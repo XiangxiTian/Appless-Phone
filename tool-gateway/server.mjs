@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { handleWaterfallShareRequest } from './waterfall-share-server.mjs';
 
 const TOOL_GATEWAY_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -3090,6 +3091,7 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
+    if (await handleWaterfallShareRequest(req, res, url)) return;
     if (req.method === 'GET' && url.pathname === '/mcp/tools') {
       handleTools(res);
       return;

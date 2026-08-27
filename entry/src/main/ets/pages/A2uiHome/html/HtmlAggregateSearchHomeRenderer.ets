@@ -955,14 +955,15 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-card--image-text .waterfall-cinema-stage { height: min(50dvh, 440px); }
 .waterfall-card--text { background: transparent; color: var(--ink); }
 .waterfall-cinema-meta {
-  display: inline-flex; min-height: 32px; align-items: center; gap: 8px;
+  display: inline-flex; width: 100%; min-height: 32px; flex-wrap: wrap; align-items: center; gap: 6px 8px;
   margin-bottom: 18px;
   color: #303841; font-size: 12px; font-weight: 740;
 }
-.waterfall-author { display: inline-flex; min-width: 0; align-items: center; gap: 7px; color: var(--card-muted, var(--muted)); }
+.waterfall-cinema-meta > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
+.waterfall-author { display: inline-flex; min-width: 0; flex: 1 1 12ch; align-items: center; gap: 7px; color: var(--card-muted, var(--muted)); }
 .waterfall-author::before { content: ''; width: 1px; height: 14px; margin: 0 2px; background: var(--card-line, var(--line)); }
 .waterfall-author-avatar { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 999px; object-fit: cover; }
-.waterfall-author-name { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.waterfall-author-name { max-width: none; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .waterfall-cinema-copy {
   position: relative; z-index: 4; top: auto; left: auto; right: auto; bottom: auto;
   display: flex; min-height: 0; flex-direction: column; overflow: hidden; padding: 18px;
@@ -1013,7 +1014,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-signal .waterfall-icon svg { width: 15px; height: 15px; }
 .waterfall-signal b { overflow: hidden; font-variant-numeric: tabular-nums; font-weight: 720; text-overflow: ellipsis; }
 .waterfall-reader {
-  position: fixed; z-index: 8; inset: 0; display: block; overflow: hidden;
+  position: fixed; z-index: 10; inset: 0; display: block; overflow: hidden;
   background: #eef0f2; color: var(--ink); pointer-events: none; visibility: hidden;
   opacity: 0; border-radius: 0; transform: translate3d(0, 8px, 0) scale(0.985);
   transform-origin: center;
@@ -1274,6 +1275,9 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   user-select: none;
 }
 .waterfall-card-shell--interactive { cursor: pointer; }
+.waterfall-card:not(.waterfall-card--text) .waterfall-card-shell {
+  max-height: calc(100dvh - 176px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+}
 .waterfall-card--video .waterfall-card-shell { background: #fbfcfd; }
 .waterfall-card--text .waterfall-card-shell { background: var(--card-soft); }
 .waterfall-card-shell--interactive:active,
@@ -1293,7 +1297,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   border: 0; border-radius: 0; background: #171716; box-shadow: none; transform: none;
 }
 .waterfall-cinema-stage {
-  position: relative; top: auto; right: auto; left: auto; flex: 0 0 auto;
+  position: relative; top: auto; right: auto; left: auto; flex: 0 1 auto; min-height: 180px;
   height: min(46dvh, 400px); border: 0; border-radius: 20px;
   background: var(--card-stage); box-shadow: none;
 }
@@ -1357,8 +1361,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   position: absolute; z-index: 7; top: 26px; right: 26px; display: flex; align-items: center; gap: 10px;
 }
 .waterfall-source-action:active { transform: scale(0.97); }
-.waterfall-feedback-bar { display: flex; min-width: 0; align-items: center; margin-left: auto; }
-.waterfall-feedback-left { display: inline-flex; align-items: center; gap: 0; }
+.waterfall-feedback-bar { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; margin-left: auto; }
 .waterfall-card-action { width: 44px; height: 44px; display: inline-grid; flex: 0 0 44px; place-items: center;
   position: relative; overflow: visible; border: 0; border-radius: 12px; background: transparent; color: var(--muted); padding: 0; cursor: pointer;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -1372,6 +1375,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-card-action--dislike.is-selected { color: #5e6875; }
 .waterfall-card-action--dislike.is-selected .waterfall-icon { background: rgba(94, 104, 117, 0.12); }
 .waterfall-card-action--save.is-selected .waterfall-icon svg { fill: currentColor; }
+.waterfall-card-action--share { color: var(--ink-soft); }
 .waterfall-card-action:active .waterfall-icon,
 .waterfall-card-action.is-pressed .waterfall-icon { transform: scale(0.88); }
 .waterfall-card-action.is-celebrating .waterfall-icon { animation: waterfall-action-pop 240ms var(--ease-out) both; }
@@ -1391,7 +1395,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   to { opacity: 0; transform: translate3d(var(--spark-x), var(--spark-y), 0) scale(0.4); }
 }
 .waterfall-card-action:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
-.waterfall-feedback-divider { width: 1px; height: 20px; margin: 0 4px; background: var(--line); }
+.waterfall-feedback-divider { width: 1px; height: 20px; margin: 0 2px; background: var(--line); }
 .waterfall-feedback-bar .waterfall-source-action { border: 0 !important; background: transparent !important; }
 .waterfall-feedback-bar .waterfall-source-action .waterfall-icon { width: 32px; height: 32px; border-radius: 10px; }
 .waterfall-feedback-bar .waterfall-source-action .waterfall-icon svg { width: 19px; height: 19px; }
@@ -1909,6 +1913,9 @@ const WATERFALL_JS: string = `
     state.cardStates = payload.cardStates;
     if (Array.isArray(payload.savedCards)) state.savedCards = payload.savedCards;
     syncCardActionControls(pendingCardAction.candidateId);
+    var item = candidateById(pendingCardAction.candidateId);
+    var rendered = renderedCards.find(function (card) { return card.id === pendingCardAction.candidateId; });
+    if (item && rendered) rendered.html = renderCandidate(item);
     pendingCardAction = null;
     return true;
   }
@@ -2031,15 +2038,21 @@ const WATERFALL_JS: string = `
       '" data-waterfall-candidate-id="' + escapeHtml(item.id) + '" aria-label="' + label +
       '" aria-pressed="' + (selected ? 'true' : 'false') + '">' + uiIcon(icon) + '</button>';
   }
+  function shareButton(item) {
+    return '<button type="button" class="waterfall-card-action waterfall-card-action--share" ' +
+      'data-waterfall-share="' + escapeHtml(item.id) + '" aria-label="分享">' + uiIcon('share') + '</button>';
+  }
   function feedbackBarMarkup(item) {
     var source = item.url ? '<a class="waterfall-source-action" href="' +
       escapeHtml(item.url) + '" rel="noopener noreferrer" aria-label="查看来源">' +
       uiIcon('external') + '</a>' : '';
-    return '<div class="waterfall-feedback-bar"><div class="waterfall-feedback-left">' +
-      cardActionButton(item, 'like', '喜欢', 'thumbsUp') +
-      cardActionButton(item, 'dislike', '不喜欢', 'thumbsDown') +
-      cardActionButton(item, 'save', '收藏', 'bookmark') +
-      '</div><span class="waterfall-feedback-divider" aria-hidden="true"></span>' + source + '</div>';
+    var controls = [cardActionButton(item, 'like', '喜欢', 'thumbsUp'),
+      cardActionButton(item, 'dislike', '不喜欢', 'thumbsDown'),
+      cardActionButton(item, 'save', '收藏', 'bookmark'), shareButton(item)];
+    if (source) controls.push(source);
+    var divider = '<span class="waterfall-feedback-divider" aria-hidden="true"></span>';
+    return '<div class="waterfall-feedback-bar" role="group" aria-label="卡片操作">' +
+      controls.join(divider) + '</div>';
   }
   function waterfallCommentsSupported(item) {
     return ['youtube', 'bilibili', 'x', 'hackernews', 'reddit'].indexOf(text(item && item.source)) >= 0 &&
@@ -2756,6 +2769,44 @@ const WATERFALL_JS: string = `
     }
     return true;
   }
+  function showToast(message, duration) {
+    if (!toast) return;
+    toast.classList.remove('actionable');
+    toast.innerHTML = escapeHtml(message);
+    toast.classList.add('active');
+    if (toastTimer !== null) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toast.classList.remove('active');
+      toastTimer = null;
+    }, duration || 2200);
+  }
+  function handleShare(control) {
+    if (!control || typeof control.getAttribute !== 'function') return false;
+    var item = candidateById(control.getAttribute('data-waterfall-share'));
+    if (!item || !window.AIPhoneHome || typeof window.AIPhoneHome.shareWaterfallCard !== 'function') {
+      showToast('暂时无法分享');
+      return true;
+    }
+    showToast('正在准备分享…', 5000);
+    window.AIPhoneHome.shareWaterfallCard(JSON.stringify({
+      title: text(item.title).trim() || sourceLabel(item.source) + ' 内容',
+      summary: cleanSummary(item.summary),
+      source: cardSourceLabel(item),
+      author: text(item.authorName).trim(),
+      coverUrl: text(item.coverUrl).trim(),
+      mediaType: text(item.mediaType).trim(),
+      mediaUrl: text(item.mediaUrl).trim(),
+      format: candidateFormat(item),
+      originalUrl: text(item.url).trim(),
+      publishedAt: publishedLabel(item.publishedAt)
+    }));
+    return true;
+  }
+  window.__aiphoneWaterfallShareResult = function (status) {
+    if (status === 'fallback') showToast('已改为分享原文');
+    else if (status === 'failed') showToast('暂时无法分享');
+    else if (status === 'ready' && toast) toast.classList.remove('active');
+  };
   function candidateFormat(item) {
     if (item && item.mediaType === 'video') {
       return text(item.format) === 'portrait_video' ? 'portrait_video' : 'landscape_video';
@@ -3807,6 +3858,8 @@ const WATERFALL_JS: string = `
     if (!target || typeof target.closest !== 'function') return false;
     var cardAction = target.closest('[data-waterfall-card-action]');
     if (cardAction) return handleCardAction(cardAction);
+    var share = target.closest('[data-waterfall-share]');
+    if (share) return handleShare(share);
     var applePlay = target.closest('[data-waterfall-apple-play]');
     if (applePlay) {
       activateApplePodcast(applePlay);
@@ -3863,6 +3916,7 @@ const WATERFALL_JS: string = `
     if (!target || typeof target.closest !== 'function' ||
       target.closest('.waterfall-source-action') || target.closest('.waterfall-media-frame') ||
       target.closest('[data-waterfall-card-action]') ||
+      target.closest('[data-waterfall-share]') ||
       target.closest('[data-waterfall-video-fullscreen]')) return;
     var open = target.closest('[data-waterfall-open]');
     if (!open) return;
@@ -3881,6 +3935,8 @@ const WATERFALL_JS: string = `
       }
       var cardAction = target.closest('[data-waterfall-card-action]');
       if (cardAction) return handleCardAction(cardAction);
+      var share = target.closest('[data-waterfall-share]');
+      if (share) return handleShare(share);
       var comment = target.closest('[data-waterfall-comment-toggle]');
       if (comment && typeof comment.getAttribute === 'function' && typeof comment.setAttribute === 'function') {
         comment.setAttribute('aria-expanded', comment.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');

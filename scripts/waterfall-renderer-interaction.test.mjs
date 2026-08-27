@@ -357,6 +357,12 @@ assert.match(waterfallCss,
 assert.match(waterfallCss,
   /\.waterfall-card--image-text \.waterfall-cinema-stage\s*\{[^}]*height:\s*min\(40dvh, 360px\)/s);
 assert.match(waterfallCss,
+  /\.waterfall-card:not\(\.waterfall-card--text\) \.waterfall-card-shell\s*\{[^}]*max-height:\s*calc\(100dvh - 176px - env\(safe-area-inset-top\) - env\(safe-area-inset-bottom\)\)/s,
+  'media cards must keep their action rail inside the usable viewport');
+assert.match(waterfallCss,
+  /\n\.waterfall-cinema-stage\s*\{[^}]*flex:\s*0 1 auto[^}]*min-height:\s*180px/s,
+  'media should yield height before the bottom actions disappear');
+assert.match(waterfallCss,
   /\.waterfall-card--text \.waterfall-card-shell\s*\{[^}]*min-height:\s*min\(44dvh, 420px\)[^}]*padding:\s*22px/s);
 assert.doesNotMatch(waterfallCss, /padding-top:\s*22vh/,
   'a 22vh track pad is the empty band above the first card');
@@ -474,6 +480,10 @@ assert.match(exitDiscoverySearchSource,
   'Back from search results must reconcile the discovery snapshot with saved source changes');
 assert.match(renderer, /id="waterfall-collection"/,
   'the collection must stay inside the existing ArkWeb shell');
+const readerZIndex = Number(/\.waterfall-reader\s*\{[^}]*z-index:\s*(\d+)/s.exec(renderer)?.[1]);
+const collectionZIndex = Number(/\.waterfall-collection\s*\{[^}]*z-index:\s*(\d+)/s.exec(renderer)?.[1]);
+assert.ok(readerZIndex > collectionZIndex,
+  'opening a saved card must place its existing reader above the collection page');
 assert.match(waterfallJs, /function readerParagraphs/,
   'long detail copy needs conservative paragraph normalization');
 assert.doesNotMatch(toolGateway,
@@ -577,6 +587,15 @@ assert.match(waterfallCss,
 assert.match(waterfallCss,
   /\.waterfall-reader-source \.waterfall-author-name\s*\{[^}]*max-width:\s*none[^}]*overflow:\s*visible[^}]*text-overflow:\s*clip[^}]*white-space:\s*normal/s,
   'detail author data must wrap instead of inheriting card ellipsis');
+assert.match(waterfallCss,
+  /\n\.waterfall-author-name\s*\{[^}]*max-width:\s*none[^}]*overflow:\s*visible[^}]*text-overflow:\s*clip[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*anywhere/s,
+  'feed source and author data must remain readable instead of ending in an ellipsis');
+const feedbackBarSource = waterfallJs.slice(
+  waterfallJs.indexOf('function feedbackBarMarkup'),
+  waterfallJs.indexOf('function waterfallCommentsSupported')
+);
+assert.match(feedbackBarSource, /controls\.join\(divider\)/,
+  'every adjacent card action must use the same divider');
 assert.match(waterfallCss,
   /@media \(max-width:\s*480px\)[\s\S]*?\.waterfall-reader-context\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*gap:\s*6px/s,
   'phone details must place metadata on full-width rows instead of squeezing source, author, and date together');
@@ -1068,6 +1087,7 @@ preferences.querySelectorAll = (selector) => ({
 const documentListeners = {};
 const actions = [];
 const openedSources = [];
+const sharedCards = [];
 const fullscreenStates = [];
 const timers = [];
 const createdFrames = [];
@@ -1171,6 +1191,8 @@ const candidate = (id) => ({
   summary: id === 'current' ? 'B 站视频搜索结果：current summary tail' : id,
   url: id === 'current' ? 'https://www.youtube.com/watch?v=abc123' : `https://example.test/${id}`,
   coverUrl: id === 'current' ? 'https://example.test/broken-cover.jpg' : '',
+  mediaUrl: id === 'current' ? 'https://example.test/current.mp4' : '',
+  format: 'landscape_video',
   publishedAt: id === 'current' ? '2026-08-17T01:17:55.000Z' : '',
   reason: '标题命中查询'
 });
@@ -1292,7 +1314,8 @@ const window = {
   AIPhoneHome: {
     postAction: (value) => actions.push(JSON.parse(value)),
     setWaterfallFullscreen: (value) => fullscreenStates.push(value),
-    openWaterfallSource: (value) => openedSources.push(value)
+    openWaterfallSource: (value) => openedSources.push(value),
+    shareWaterfallCard: (value) => sharedCards.push(JSON.parse(value))
   }
 };
 
@@ -1362,6 +1385,36 @@ assert.match(track.innerHTML,
   'persisted product feedback must render independently from platform metrics');
 assert.match(track.innerHTML,
   /waterfall-card-action--save is-selected"[^>]*data-waterfall-candidate-id="current"[^>]*aria-pressed="true"/);
+assert.match(track.innerHTML,
+  /waterfall-card-action--share"[^>]*data-waterfall-share="current"[^>]*aria-label="分享"/,
+  'the shared feedback bar must expose one quiet share action on cards and details');
+assert.match(track.innerHTML,
+  /waterfall-card-action--share[\s\S]*class="waterfall-source-action"/,
+  'share must sit between the saved-state actions and the original-source action');
+const shareControl = {
+  getAttribute: (name) => name === 'data-waterfall-share' ? 'current' : ''
+};
+const actionsBeforeShare = actions.length;
+track.emit('click', {
+  preventDefault: () => {},
+  target: { closest: (selector) => selector === '[data-waterfall-share]' ? shareControl : null }
+});
+assert.equal(actions.length, actionsBeforeShare,
+  'sharing a card must not become a recommendation signal or advance the feed');
+assert.deepEqual(sharedCards, [{
+  title: 'current',
+  summary: 'current summary tail',
+  source: 'YouTube',
+  author: '',
+  coverUrl: 'https://example.test/broken-cover.jpg',
+  mediaType: 'video',
+  mediaUrl: 'https://example.test/current.mp4',
+  format: 'landscape_video',
+  originalUrl: 'https://www.youtube.com/watch?v=abc123',
+  publishedAt: '2026-08-17'
+}], 'the native bridge receives only the immutable public card fields');
+window.__aiphoneWaterfallShareResult('fallback');
+assert.equal(toast.innerHTML, '已改为分享原文');
 const advanceBeforeDislike = actionCount('waterfall.feed.advance');
 const dislikeControl = {
   getAttribute: (name) => ({
@@ -1421,6 +1474,13 @@ assert.doesNotMatch(track.innerHTML,
   'Bilibili players must stay unmounted until the user explicitly starts playback');
 assert.match(track.innerHTML, /current summary/);
 assert.match(track.innerHTML, /current summary tail/);
+const currentCardMarkup = track.innerHTML.match(
+  /<article[^>]*data-waterfall-id="current"[\s\S]*?<\/article>/
+)?.[0] ?? '';
+assert.equal((currentCardMarkup.match(/waterfall-feedback-divider/g) ?? []).length, 4,
+  'like, dislike, save, share, and source actions need a divider between every pair');
+assert.match(currentCardMarkup, /aria-label="分享"/);
+assert.match(currentCardMarkup, /aria-label="查看来源"/);
 assert.match(track.innerHTML, /2026-08-17/);
 assert.doesNotMatch(track.innerHTML, /2026-08-17T01:17:55/);
 assert.doesNotMatch(track.innerHTML, /B 站视频搜索结果：/);
@@ -2543,6 +2603,27 @@ const twitchPlayer = inlinePlayerFixture('twitch', 'twitch-channel-1');
 const sourceCards = [applePlayer.card, twitchPlayer.card];
 track.querySelectorAll = (selector) => selector === '[data-waterfall-id]' ? sourceCards : [];
 track.querySelector = () => null;
+const appleSaveControl = element();
+appleSaveControl.querySelectorAll = null;
+appleSaveControl.getAttribute = (name) => ({
+  'data-waterfall-card-action': 'save',
+  'data-waterfall-candidate-id': 'apple-podcast-1'
+})[name] ?? '';
+appleSaveControl.setAttribute = () => {};
+appleSaveControl.closest = (selector) => selector === '[data-waterfall-card-action]' ? appleSaveControl : null;
+const defaultDocumentQuerySelectorAll = document.querySelectorAll;
+document.querySelectorAll = (selector) => selector.includes('data-waterfall-candidate-id="apple-podcast-1"') ?
+  [appleSaveControl] : defaultDocumentQuerySelectorAll(selector);
+track.emit('click', { target: appleSaveControl });
+const appleOuterHtmlWritesBeforeSaveAck = applePlayer.card.outerHTMLWrites;
+window.__aiphoneApplyWaterfallUpdate({
+  ...sourcePayload(),
+  cardStates: [{ candidateId: 'apple-podcast-1', reaction: 'none', saved: true }],
+  savedCards: [{ ...appleCandidate, savedAt: 1000 }]
+});
+assert.equal(applePlayer.card.outerHTMLWrites, appleOuterHtmlWritesBeforeSaveAck,
+  'saving an Apple Podcasts card must not replace and flash the whole card');
+document.querySelectorAll = defaultDocumentQuerySelectorAll;
 const framesBeforeInlinePlay = createdFrames.length;
 const actionsBeforeApplePlay = actions.length;
 track.emit('click', { target: applePlayer.button });

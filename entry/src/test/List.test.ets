@@ -67,6 +67,7 @@ import waterfallRankingReplayTest from './WaterfallRankingReplay.test';
 import waterfallPreferencesStoreTest from './WaterfallPreferencesStore.test';
 import waterfallConversationTest from './WaterfallConversation.test';
 import waterfallInterestRefillTest from './WaterfallInterestRefill.test';
+import waterfallShareServiceTest from './WaterfallShareService.test';
 import aggregateSearchPolicyTest from './AggregateSearchPolicy.test';
 import paymentCoreTest from './PaymentCore.test';
 import paymentA2uiTest from './PaymentA2ui.test';
@@ -213,6 +214,7 @@ export default function testsuite() {
   waterfallPreferencesStoreTest();
   waterfallConversationTest();
   waterfallInterestRefillTest();
+  waterfallShareServiceTest();
   aggregateSearchPolicyTest();
   paymentCoreTest();
   paymentA2uiTest();

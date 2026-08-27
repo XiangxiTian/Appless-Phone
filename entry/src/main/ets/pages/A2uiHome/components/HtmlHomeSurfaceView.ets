@@ -4,6 +4,10 @@ import { A2uiAction } from '@loop/agent-core';
 import { aiLogError, aiLogInfo } from '@loop/agent-core';
 import { sha256Digest } from '@loop/agent-core';
 import { COLOR_PAGE } from '../style/A2uiHomeTheme';
+import {
+  shareWaterfallCard,
+  WaterfallShareStatus
+} from '../waterfall/WaterfallShareService';
 
 type HtmlHomeActionValue = Object | string | number | boolean | null | undefined;
 
@@ -45,6 +49,7 @@ class HtmlHomeActionBridge {
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
   onWaterfallSourceOpen: (url: string) => void = (_url: string) => {};
+  onWaterfallShare: (raw: string) => void = (_raw: string) => {};
 
   postAction(raw: string): void {
     const action = parseHtmlHomeAction(raw);
@@ -74,6 +79,10 @@ class HtmlHomeActionBridge {
   openWaterfallSource(raw: string): void {
     const url = raw.trim();
     if (url.startsWith('https://') || url.startsWith('http://')) this.onWaterfallSourceOpen(url);
+  }
+
+  shareWaterfallCard(raw: string): void {
+    this.onWaterfallShare(raw);
   }
 }
 
@@ -115,6 +124,7 @@ export struct HtmlHomeSurfaceView {
   private appliedLuckinPatchTick: number = -1;
   private conversationPatchInFlight: boolean = false;
   private rendererWaterfallFullscreen: boolean = false;
+  private waterfallShareBusy: boolean = false;
   @State private popupVisible: boolean = false;
   @State private popupTitle: string = '支付确认';
   @State private popupUrl: string = 'about:blank';
@@ -137,6 +147,35 @@ export struct HtmlHomeSurfaceView {
       this.popupVisible = true;
       this.publishWaterfallFullscreen();
     };
+    this.bridge.onWaterfallShare = (raw: string): void => {
+      this.openWaterfallShare(raw);
+    };
+  }
+
+  private async openWaterfallShare(raw: string): Promise<void> {
+    if (this.waterfallShareBusy) return;
+    this.waterfallShareBusy = true;
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const status = await shareWaterfallCard(context, raw);
+      this.notifyWaterfallShareResult(status);
+    } catch (error) {
+      aiLogError('[AIPhone][HtmlHomeWaterfallShareError] ' + JSON.stringify(error));
+      this.notifyWaterfallShareResult('failed');
+    } finally {
+      this.waterfallShareBusy = false;
+    }
+  }
+
+  private notifyWaterfallShareResult(status: WaterfallShareStatus | 'failed'): void {
+    try {
+      this.controller.runJavaScript(
+        'try{if(window.__aiphoneWaterfallShareResult){window.__aiphoneWaterfallShareResult(' +
+        JSON.stringify(status) + ');}}catch(e){}'
+      );
+    } catch (error) {
+      aiLogError('[AIPhone][HtmlHomeWaterfallShareResultError] ' + JSON.stringify(error));
+    }
   }
 
   private publishWaterfallFullscreen(): void {
@@ -527,7 +566,7 @@ export struct HtmlHomeSurfaceView {
           // Synchronous proxy calls block the page's JS thread on a cross-process round trip,
           // which stalls scrolling and taps. None of these results are read from the page.
           methodList: [],
-          asyncMethodList: ['postAction', 'setWaterfallFullscreen', 'openWaterfallSource'],
+          asyncMethodList: ['postAction', 'setWaterfallFullscreen', 'openWaterfallSource', 'shareWaterfallCard'],
           controller: this.controller
         })
         .width('100%')

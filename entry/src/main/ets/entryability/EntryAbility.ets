@@ -81,6 +81,14 @@ export interface WaterfallConversationTypedTestPayload {
   prompt: string;
 }
 
+export function waterfallShareUrlFromWant(want: Want): string {
+  const uri = want.uri === undefined ? '' : want.uri.trim();
+  const publicMatch = /^https:\/\/jiuwenappless\.com\/s\/([A-Za-z0-9_-]{12})(?:[?#].*)?$/.exec(uri);
+  const appMatch = /^com\.jiuwen\.appless:\/\/share\/([A-Za-z0-9_-]{12})(?:[?#].*)?$/.exec(uri);
+  const shareId = publicMatch === null ? (appMatch === null ? '' : appMatch[1]) : publicMatch[1];
+  return shareId.length > 0 ? 'https://jiuwenappless.com/s/' + shareId : '';
+}
+
 function hasUriHint(uri: string, hints: string[]): boolean {
   for (let index = 0; index < hints.length; index++) {
     if (uri.indexOf(hints[index]) === 0) {
@@ -360,7 +368,11 @@ export function transitionBoundTrainPresaleCheckout(
 }
 
 export default class EntryAbility extends UIAbility {
+  private mainWindowStage: window.WindowStage | null = null;
+  private pendingWaterfallShareUrl: string = '';
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    this.pendingWaterfallShareUrl = waterfallShareUrlFromWant(want);
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (err) {
@@ -424,6 +436,11 @@ export default class EntryAbility extends UIAbility {
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onNewWant');
+    const shareUrl = waterfallShareUrlFromWant(want);
+    if (shareUrl.length > 0) {
+      this.loadWaterfallShare(shareUrl);
+      return;
+    }
     const bimSentinelMock = queueBimSentinelMockFromWant(want);
     const waterfallPrompt = waterfallConversationTypedTestPromptFromWant(want);
     const uri = oauthUriFromWant(want);
@@ -501,6 +518,7 @@ export default class EntryAbility extends UIAbility {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
+    this.mainWindowStage = windowStage;
     try {
       const mainWindow = windowStage.getMainWindowSync();
       let systemTopInsetVp = A2UI_SYSTEM_TOP_INSET_FALLBACK;
@@ -534,6 +552,10 @@ export default class EntryAbility extends UIAbility {
       hilog.warn(DOMAIN, 'testTag', 'Failed to access main window. Cause: %{public}s', describeError(error));
     }
 
+    if (this.pendingWaterfallShareUrl.length > 0) {
+      this.loadWaterfallShare(this.pendingWaterfallShareUrl);
+      return;
+    }
     windowStage.loadContent('pages/A2uiHome/Index', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
@@ -543,9 +565,25 @@ export default class EntryAbility extends UIAbility {
     });
   }
 
+  private loadWaterfallShare(url: string): void {
+    if (this.mainWindowStage === null) {
+      this.pendingWaterfallShareUrl = url;
+      return;
+    }
+    this.pendingWaterfallShareUrl = '';
+    const storage = new LocalStorage();
+    storage.setOrCreate('waterfallShareUrl', url);
+    this.mainWindowStage.loadContent('pages/A2uiHome/SharedWaterfallCard', storage, (err) => {
+      if (err.code) {
+        hilog.error(DOMAIN, 'testTag', 'Failed to load shared Waterfall card. Cause: %{public}s', JSON.stringify(err));
+      }
+    });
+  }
+
   onWindowStageDestroy(): void {
     // Main window is destroyed, release UI related resources
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+    this.mainWindowStage = null;
   }
 
   onForeground(): void {

@@ -5104,6 +5104,7 @@ struct Index {
 
   private resetCurrentSession(): void {
     this.disposeHotelRuntime();
+    this.closeDeepSearch();
     this.showHistory = false;
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;

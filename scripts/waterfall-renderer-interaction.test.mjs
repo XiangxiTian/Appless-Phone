@@ -158,12 +158,44 @@ assert.match(indexPage, /plannedSources\.indexOf\(source\) < 0/,
   're-enabling a source must not start a fresh recall when continuation is already planned');
 assert.match(indexPage, /WaterfallInterestRecallBatch[\s\S]*result\.request\.query/,
   'each discovery source must log route, query, and whether it returned cards');
+assert.match(indexPage,
+  /if \(result\.candidates\.length > 0\)[\s\S]*?finalizeInterestWaterfallRecallRanking\([\s\S]*?this\.interestWaterfallDisplayCommitted\)/,
+  'every non-empty discovery source batch must flatten the complete unseen inventory');
+assert.doesNotMatch(indexPage, /flattenWhenFastSourcesSettle|fastSourceFlattenApplied/,
+  'tail flattening must not depend on a Bilibili and YouTube special case');
+assert.match(indexPage,
+  /private commitInterestWaterfallDisplay\(\)[\s\S]*?preload_display_committed/,
+  'opening discovery must commit the pre-ranked preload inventory exactly once');
+assert.match(indexPage, /this\.loadWaterfallPreferences\(\);\s*this\.ensureInterestWaterfall\(\);/,
+  'discovery recall must preload after persisted source preferences are available');
 assert.doesNotMatch(indexPage, /waitingForInitialPeers/,
   'the first source with cards must paint immediately instead of waiting for slower peers');
 assert.doesNotMatch(waterfallJs, /function interleaveBySource/,
   'feed order must follow native ranking instead of a renderer round-robin');
-assert.match(waterfallJs, /function renderedOrderCandidates\(payload\) \{\s*return candidates\(payload\)\.filter/,
-  'the renderer must paint payload order after filtering disabled sources');
+assert.match(waterfallJs, /function renderedOrderCandidates\(payload\)[\s\S]*?Array\.isArray\(payload\.stableIds\)[\s\S]*?values\.slice\(0, frozenEnd \+ 1\)/,
+  'the renderer must mount only shown, current, and the stable DOM buffer');
+const bufferedCandidateFunctions = waterfallJs.slice(
+  waterfallJs.indexOf('function candidates(payload)'),
+  waterfallJs.indexOf('function candidateById')
+);
+const renderBufferedCandidates = Function('enabledSources', `
+  function text(value) { return value === undefined || value === null ? '' : String(value); }
+  ${bufferedCandidateFunctions}
+  return renderedOrderCandidates;
+`)(['youtube']);
+const bufferedPayload = {
+  currentId: 'current',
+  stableIds: ['stable-1', 'stable-2', 'stable-3', 'stable-4'],
+  candidates: ['shown', 'current', 'stable-1', 'stable-2', 'stable-3', 'stable-4', 'tail-b', 'tail-a']
+    .map((id) => ({ id, source: 'youtube' }))
+};
+assert.deepEqual(renderBufferedCandidates(bufferedPayload).map((item) => item.id),
+  ['shown', 'current', 'stable-1', 'stable-2', 'stable-3', 'stable-4']);
+bufferedPayload.candidates.splice(6, 2,
+  { id: 'tail-a', source: 'youtube' }, { id: 'tail-b', source: 'youtube' });
+assert.deepEqual(renderBufferedCandidates(bufferedPayload).map((item) => item.id),
+  ['shown', 'current', 'stable-1', 'stable-2', 'stable-3', 'stable-4'],
+  'tail reorder must not enter or reorder the mounted DOM buffer');
 assert.match(waterfallJs, /insertAdjacentHTML\('beforebegin'/,
   'late source cards must slot in without rebuilding the visible card');
 assert.match(toolGateway, /source === 'zhihu' \|\| source === 'bilibili'/,
@@ -176,6 +208,10 @@ assert.doesNotMatch(waterfallCore, /影视文化|生活灵感|运动赛事/,
   'discovery exploration must not keep lifestyle and entertainment filler queries');
 assert.match(indexPage, /waterfallAdvanceVisibleFromAction/,
   'native advance must accept the visible card, not only the stale current pointer');
+assert.doesNotMatch(indexPage, /renderTick:\s*this\.interestWaterfallPayloadTick/,
+  'waterfall payload updates must not reload the whole WebView through the HTML render tick');
+assert.match(indexPage, /waterfallPayloadTick:\s*this\.interestWaterfallPayloadTick/,
+  'waterfall payload updates must continue through the JavaScript payload bridge');
 assert.match(indexPage,
   /action\.id === 'waterfall\.comments\.load'[\s\S]*?this\.waterfallActionCandidate\(/,
   'saved-only details must resolve comment requests through the existing saved-card candidate path');
@@ -183,20 +219,39 @@ assert.match(indexPage, /persistSavedWaterfallCandidate\(current\)/,
   'loaded comments must refresh an existing saved-card snapshot');
 assert.match(indexPage, /if \(active > 8\) return/,
   'discovery refill must start before the user can swipe through the last three cards');
-assert.match(waterfallCore, /WATERFALL_LOW_WATERMARK: number = 3/,
+assert.match(waterfallCore, /WATERFALL_LOW_WATERMARK: number = 8/,
   'native inventory must refill before the rendered tail is exhausted');
+assert.match(waterfallCore, /WATERFALL_STABLE_LIMIT: number = 2/,
+  'the frozen DOM runway must remain a two-card experiment');
 assert.match(waterfallCore, /function limitConsecutiveSources/,
   'a later source must break a same-source run after the frozen window');
+assert.match(waterfallCore, /WATERFALL_MAX_SOURCE_RUN: number = 1/,
+  'an available alternate source must break every same-source tail run');
+assert.match(waterfallCore,
+  /finalizeInterestWaterfallRecallRanking[\s\S]*?refreshDisplayWindow:\s*boolean = true[\s\S]*?limitConsecutiveSources\(rankWaterfallCandidates[\s\S]*?if \(refreshDisplayWindow\) refreshCurrentAndStable\(next\)/,
+  'fast-source discovery finalization must hard-limit source runs only after the frozen prefix');
+assert.match(indexPage, /logWaterfallTailTakes\(state, update\.state\)/,
+  'each advance must log candidates promoted out of the data-only tail');
 assert.match(waterfallCore, /targetId: string = ''/,
   'one advance may catch the feed pointer up to the visible card');
 const mergePayloadSource = waterfallJs.slice(
   waterfallJs.indexOf('function mergePayload'),
   waterfallJs.indexOf('function postSourceSelection')
 );
-assert.match(mergePayloadSource, /advancePending = false;/,
-  'a payload that does not move currentId must still unblock the next catch-up');
-assert.doesNotMatch(mergePayloadSource, /oldCurrentId !== text\(payload\.currentId\)\) advancePending = false/,
-  'holding advancePending until currentId changes deadlocks after a stale no-op');
+assert.match(mergePayloadSource, /reportedAdvanceTargets/,
+  'payload acknowledgement must retire only advances that reached the native current pointer');
+assert.doesNotMatch(waterfallJs, /var advancePending = false;/,
+  'one global pending flag must not collapse several crossed cards into one advance');
+assert.doesNotMatch(waterfallJs, /track\.insertBefore\(movable, cursor\)/,
+  'data-only tail reranking must not move nodes in the live snap container');
+assert.match(waterfallJs, /track\.innerHTML !== nextHtml && \(!incrementalRenderAllowed \|\|[\s\S]*?!Array\.isArray\(state\.stableIds\)[\s\S]*?!sharesRenderedCard/,
+  'same-session updates must fail closed instead of rebuilding the live snap container');
+assert.match(waterfallJs,
+  /function canApplyPayloadDuringScroll\(payload\) \{\s*return mode === 'discovering' && sameFeedSession\(payload\);\s*\}/,
+  'same-session stable promotion must apply while scrolling instead of waiting for settle');
+assert.match(waterfallJs,
+  /var domChanged = incrementalRenderAllowed \? false : dropRenderedCardsMissingFrom\(items, nodes\);/,
+  'same-session updates must never remove mounted shown, current, or stable cards');
 const fullscreenExpression = surfaceView.match(
   /export function waterfallLayerFullscreen\([^)]*\): boolean \{\s*return ([^;]+);\s*\}/
 );
@@ -786,9 +841,11 @@ const scrollHandlerSource = waterfallJs.slice(
   waterfallJs.indexOf("track.addEventListener('error'")
 );
 assert.doesNotMatch(scrollHandlerSource, /scheduleAdvance/,
-  'scroll frames must only paint presentation; advancing waits for the settled page');
-assert.doesNotMatch(scrollHandlerSource, /postAdvanceIfNeeded\(updateCardPresentation\(\)\)/,
-  'native bridge work must not run inside the scrolling animation frame');
+  'scroll frames must not wait for the old settled-page advance timer');
+assert.match(scrollHandlerSource, /postAdvanceIfNeeded\(updateCardPresentation\(\), true\)/,
+  'each presented card must enqueue an advance while scrolling');
+assert.doesNotMatch(scrollHandlerSource, /window\.AIPhoneHome\.postAction/,
+  'native bridge work must be dispatched outside the scrolling animation frame');
 assert.doesNotMatch(scrollHandlerSource, /track\.scrollTop\s*=/,
   'writing scrollTop during scroll fights the finger and flashes neighboring cards');
 assert.doesNotMatch(waterfallJs, /function clampPagingScroll/,
@@ -899,6 +956,7 @@ function element() {
   let html = '';
   let htmlWrites = 0;
   let appendedHtmlWrites = 0;
+  let insertedNodeWrites = 0;
   let classToggleWrites = 0;
   let outerHtmlWrites = 0;
   const removedChildren = [];
@@ -923,6 +981,7 @@ function element() {
     get innerHTMLWrites() { return htmlWrites; },
     get outerHTMLWrites() { return outerHtmlWrites; },
     get appendedHtmlWrites() { return appendedHtmlWrites; },
+    get insertedNodeWrites() { return insertedNodeWrites; },
     get classToggleWrites() { return classToggleWrites; },
     get firstChild() { return children[0] || null; },
     appendChild: (child) => {
@@ -937,6 +996,7 @@ function element() {
     },
     contains: () => false,
     insertAdjacentHTML: (_position, value) => { html += value; appendedHtmlWrites += 1; },
+    insertBefore: (child, _cursor) => { insertedNodeWrites += 1; child.moved = true; return child; },
     classList: {
       add: (name) => { classToggleWrites += 1; classes.add(name); },
       remove: (name) => { classToggleWrites += 1; classes.delete(name); },
@@ -1446,10 +1506,7 @@ assert.equal(track.innerHTMLWrites, writesBeforeGesturePayload,
 assert.equal(track.appendedHtmlWrites, appendsBeforeGesturePayload,
   'a mid-list late card must not rebuild the track by appending at the end');
 assert.equal(gestureCardNodes.some((node) => node.appendedHtmlWrites > 0), true,
-  'newly ranked cards must slot in beside existing nodes without flashing them');
-const sharedAnchorHtml = gestureCardNodes[2].innerHTML;
-assert.ok(sharedAnchorHtml.indexOf('reranked-during-swipe-a') < sharedAnchorHtml.indexOf('reranked-during-swipe-b'),
-  'multiple late cards inserted before one existing card must keep payload order');
+  'legacy payloads without stable metadata may still receive keyed incremental inserts');
 track.querySelectorAll = (selector) => selector === '[data-waterfall-id]' ? gestureCardNodes : [];
 track.innerHTML = '';
 window.__aiphoneApplyWaterfallUpdate(window.__aiphoneWaterfallInitial);
@@ -1700,8 +1757,8 @@ assert.equal(track.innerHTMLWrites, writesBeforeReaderUpdate,
 assert.equal(
   track.appendedHtmlWrites > appendsBeforeReaderUpdate ||
     readerFeedNodes.some((node) => node.appendedHtmlWrites > 0),
-  true,
-  'the deferred provider update may insert its new card without rebuilding the revealed card'
+  false,
+  'a deferred tail rerank must remain data-only when it cannot be patched without touching frozen cards'
 );
 assert.equal(track.scrollTop, 640,
   'a deferred rerank must keep the position reached by the return gesture');
@@ -1914,13 +1971,12 @@ assert.equal(actionCount('waterfall.feed.advance'), actionCountBeforeHalfScroll)
 track.scrollTop = 728;
 track.emit('scroll');
 assert.equal(actionCount('waterfall.feed.advance'), actionCountBeforeHalfScroll,
-  'the native advance bridge must wait until scrolling settles');
-runLatestTimer(96);
-runLatestTimer(72);
+  'the native bridge must stay outside the scrolling animation frame');
+runLatestTimer(0);
 assert.equal(actions.at(-1)?.id, 'waterfall.feed.advance');
 assert.equal(actions.at(-1)?.args?.currentId, 'current');
 assert.equal(actions.at(-1)?.args?.visibleId, 'image-current',
-  'a settled page must report the visible card so native can catch up in one step');
+  'each newly presented card must report asynchronously without waiting for scroll settle');
 
 const actionCountBeforeCatchUp = actionCount('waterfall.feed.advance');
 const writesBeforeCurrentAdvance = track.innerHTMLWrites;
@@ -1957,11 +2013,11 @@ assert.equal(track.scrollTop, 0, 'source filtering must align to the enabled cur
 const actionCountBeforeFilteredAdvance = actionCount('waterfall.feed.advance');
 track.scrollTop = 960;
 track.emit('scroll');
-runLatestTimer(96);
-runLatestTimer(72);
+runLatestTimer(0);
 assert.equal(actionCount('waterfall.feed.advance'), actionCountBeforeFilteredAdvance + 1,
   'advance indices must use the filtered card list');
 assert.equal(actions.at(-1)?.args?.currentId, 'x-current');
+runLatestTimer(96);
 
 window.__aiphoneApplyWaterfallUpdate({
   ...window.__aiphoneWaterfallInitial,
@@ -1974,8 +2030,7 @@ assert.doesNotMatch(track.innerHTML, /waterfall-tail-status/, 'a continuable fee
 const actionCountBeforeLastCard = actionCount('waterfall.feed.advance');
 track.scrollTop = 960;
 track.emit('scroll');
-runLatestTimer(96);
-runLatestTimer(72);
+runLatestTimer(0);
 assert.equal(actionCount('waterfall.feed.advance'), actionCountBeforeLastCard + 1);
 assert.equal(actions.at(-1)?.args?.currentId, 'last');
 
@@ -1998,10 +2053,10 @@ for (let index = 1; index <= 20; index += 1) {
 const classWritesAfterFastScroll = stressNodes.reduce((sum, node) => sum + node.classToggleWrites, 0);
 assert.ok(classWritesAfterFastScroll - classWritesBeforeFastScroll <= 160,
   'fast scrolling must update only the current card and its neighbors, not all cards per frame');
-assert.equal(
-  timers.filter((timer) => timer.delay === 72 || timer.delay === 180).length,
-  pagingTimerCountBeforeFastScroll,
-  'scroll frames must not churn advance and media-cleanup timers before the page settles'
+assert.ok(
+  timers.filter((timer) => timer.delay === 72 || timer.delay === 180).length -
+    pagingTimerCountBeforeFastScroll <= 2,
+  'fast scrolling may pause active media once but must not churn cleanup timers per crossed card'
 );
 timers.filter((timer) => !timer.canceled && (timer.delay === 72 || timer.delay === 180))
   .forEach((timer) => { timer.canceled = true; });
@@ -2090,7 +2145,7 @@ window.__aiphoneApplyWaterfallUpdate({
   enabledSources: sourceInputs.map((input) => input.getAttribute('data-waterfall-source'))
 });
 assert.match(track.innerHTML, /late-preference-payload/,
-  'a source response after close must apply immediately instead of waiting on an exit timer');
+  'a source response after an empty state must render immediately without replacing live cards');
 preferencesButton.emit('click');
 assert.equal(sourceInputs[1].checked, false,
   'a payload arriving during the exit motion must not revert the source selection');
@@ -2325,12 +2380,12 @@ window.__aiphoneApplyWaterfallUpdate({
 });
 assert.equal(track.innerHTMLWrites, writesBeforeDrop,
   'a card leaving the ranked payload must not rebuild the whole feed under the user');
-assert.equal(droppedFeedNodes[1].removed, true,
-  'only the card that left the payload may be detached');
+assert.equal(droppedFeedNodes[1].removed, undefined,
+  'same-session payloads must not detach a mounted card');
 assert.equal(droppedFeedNodes[0].removed, undefined,
   'the card the user is looking at must survive a payload that drops a neighbor');
-assert.equal(track.appendedHtmlWrites, appendsBeforeDrop + 1,
-  'newly ranked cards must still append after the surviving cards');
+assert.equal(track.appendedHtmlWrites, appendsBeforeDrop,
+  'an invalid delete-and-append payload must fail closed instead of partially mutating the DOM');
 assert.doesNotMatch(track.innerHTML, /\\u672c\\u8f6e\\u5185\\u5bb9\\u5df2\\u7ed3\\u675f/);
 
 const commentsCandidate = {

@@ -3729,6 +3729,7 @@ export default function htmlHomeRendererTest() {
 
       expect(payload === null).assertFalse();
       expect(payload?.currentId).assertEqual('video-1');
+      expect(payload?.stableIds.join(',')).assertEqual('image-2');
       expect(payload?.candidates[0].id).assertEqual('shown-0');
       expect(payload?.candidates[1].id).assertEqual('video-1');
       expect(payload?.candidates[2].id).assertEqual('image-2');
@@ -4108,6 +4109,12 @@ export default function htmlHomeRendererTest() {
       expect(update.state.stable.length).assertEqual(0);
       expect(html.indexOf('waterfall.feed.advance')).assertLarger(-1);
       expect(html.indexOf("track.addEventListener('scroll'")).assertLarger(-1);
+      expect(html.indexOf('reportedAdvanceTargets')).assertLarger(-1);
+      expect(html.indexOf('for (var index = currentIndex + 1; index <= visibleIndex; index += 1)')).assertLarger(-1);
+      expect(html.indexOf('flushPendingPayload(undefined, true)')).assertLarger(-1);
+      expect(html.indexOf('incrementalRenderAllowed')).assertLarger(-1);
+      expect(html.indexOf("track.insertBefore(movable, cursor)")).assertEqual(-1);
+      expect(html.indexOf('Array.isArray(payload.stableIds)')).assertLarger(-1);
       expect(html.indexOf('data-waterfall-id')).assertLarger(-1);
     });
 

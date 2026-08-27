@@ -1794,7 +1794,8 @@ const WATERFALL_JS: string = `
   var preferenceBaseline = '';
   var committedPreferenceSources = null;
   var aggregateHtml = state && state.aggregateHtml ? state.aggregateHtml : '';
-  var advancePending = false;
+  var reportedAdvanceTargets = {};
+  var queuedAdvanceActions = [];
   var renderedCurrentId = '';
   var renderedCards = [];
   var alignToCurrent = false;
@@ -1805,6 +1806,7 @@ const WATERFALL_JS: string = `
   var preferenceApplyTimer = null;
   var presentationFrame = null;
   var advanceTimer = null;
+  var advanceDispatchTimer = null;
   var playerCleanupTimer = null;
   var metricTimer = null;
   var payloadSettleTimer = null;
@@ -1839,7 +1841,7 @@ const WATERFALL_JS: string = `
   var emittedBehavior = {};
   var pendingPayload = null;
   var pendingCardAction = null;
-  var preserveLoadedCardOrder = false;
+  var incrementalRenderAllowed = false;
   var preferenceStatusKey = '';
   var knownUnavailableSourceStates = {};
   var searchActive = false;
@@ -1873,7 +1875,7 @@ const WATERFALL_JS: string = `
         searchTransitionTimer = null;
       }, 240);
     }
-    pendingPayload = payloadAfterCardAction(payload);
+    pendingPayload = payload;
     if (mode === 'collection') {
       mergePayload(payload);
       pendingPayload = null;
@@ -1886,7 +1888,11 @@ const WATERFALL_JS: string = `
       return;
     }
     if (mode === 'reader_closing' || mode === 'source_preferences' ||
-      mode === 'collection_closing' || preferenceApplyTimer !== null || interactionActive || scrollActive) return;
+      mode === 'collection_closing' || preferenceApplyTimer !== null) return;
+    if (interactionActive || scrollActive) {
+      if (canApplyPayloadDuringScroll(pendingPayload)) flushPendingPayload(undefined, true);
+      return;
+    }
     var restoringSearch = searchRestorePending && payload && text(payload.query) !== searchQuery;
     flushPendingPayload();
     if (restoringSearch) restoreSearchScrollAfterPaint();
@@ -1904,54 +1910,33 @@ const WATERFALL_JS: string = `
     if (Array.isArray(payload.savedCards)) state.savedCards = payload.savedCards;
     syncCardActionControls(pendingCardAction.candidateId);
     pendingCardAction = null;
-    preserveLoadedCardOrder = true;
     return true;
   }
-  function payloadAfterCardAction(payload) {
-    if (!preserveLoadedCardOrder || !payload || !Array.isArray(payload.candidates) || renderedCards.length === 0) {
-      return payload;
-    }
-    var byId = {};
-    payload.candidates.forEach(function (item) { byId['$' + text(item.id)] = item; });
-    var existing = {};
-    renderedCards.forEach(function (card) {
-      if (byId['$' + card.id]) existing['$' + card.id] = true;
-    });
-    var additions = {};
-    var anchor = '$tail';
-    for (var index = payload.candidates.length - 1; index >= 0; index -= 1) {
-      var item = payload.candidates[index];
-      var key = '$' + text(item.id);
-      if (existing[key]) anchor = key;
-      else {
-        if (!additions[anchor]) additions[anchor] = [];
-        additions[anchor].push(item);
-      }
-    }
-    var ordered = [];
-    var appendAdditions = function (key) {
-      var values = additions[key] || [];
-      for (var valueIndex = values.length - 1; valueIndex >= 0; valueIndex -= 1) ordered.push(values[valueIndex]);
-    };
-    renderedCards.forEach(function (card) {
-      appendAdditions('$' + card.id);
-      var item = byId['$' + card.id];
-      if (item) ordered.push(item);
-    });
-    appendAdditions('$tail');
-    return Object.assign({}, payload, { candidates: ordered });
+  function sameFeedSession(payload) {
+    if (!state || !payload) return false;
+    return text(state.surfaceId) === text(payload.surfaceId) && text(state.mode) === text(payload.mode) &&
+      text(state.query) === text(payload.query) &&
+      (state.enabledSources || []).join('|') === (payload.enabledSources || []).join('|');
   }
-  function flushPendingPayload(enabledOverride) {
+  function canApplyPayloadDuringScroll(payload) {
+    return mode === 'discovering' && sameFeedSession(payload);
+  }
+  function flushPendingPayload(enabledOverride, preserveScrollState) {
     if (!pendingPayload) return false;
-    if (payloadSettleTimer !== null) clearTimeout(payloadSettleTimer);
-    payloadSettleTimer = null;
-    scrollActive = false;
+    if (!preserveScrollState) {
+      if (payloadSettleTimer !== null) clearTimeout(payloadSettleTimer);
+      payloadSettleTimer = null;
+      scrollActive = false;
+    }
     var payload = pendingPayload;
     pendingPayload = null;
     var previousCurrentId = state ? text(state.currentId) : '';
+    incrementalRenderAllowed = mode === 'discovering' && sameFeedSession(payload);
     mergePayload(payload);
     if (enabledOverride) enabledSources = enabledOverride.slice();
-    if (!render()) scheduleAdvance(updateCardPresentation());
+    var changed = render();
+    incrementalRenderAllowed = false;
+    if (!changed) scheduleAdvance(updateCardPresentation());
     if (state && Array.isArray(state.cardStates)) {
       state.cardStates.forEach(function (cardState) { syncCardActionControls(cardState.candidateId); });
     }
@@ -2599,7 +2584,6 @@ const WATERFALL_JS: string = `
     searchSubmitted = true;
     searchPending = true;
     searchRestorePending = false;
-    preserveLoadedCardOrder = false;
     pendingPayload = null;
     searchSourceStates = enabledSources.map(function (source) {
       return { source: source, phase: 'loading', inFlight: true };
@@ -2660,7 +2644,16 @@ const WATERFALL_JS: string = `
     });
   }
   function renderedOrderCandidates(payload) {
-    return candidates(payload).filter(function (item) {
+    var values = candidates(payload);
+    if (payload && Array.isArray(payload.stableIds)) {
+      var frozenEnd = values.findIndex(function (item) { return text(item.id) === text(payload.currentId); });
+      payload.stableIds.forEach(function (stableId) {
+        var stableIndex = values.findIndex(function (item) { return text(item.id) === text(stableId); });
+        if (stableIndex > frozenEnd) frozenEnd = stableIndex;
+      });
+      if (frozenEnd >= 0) values = values.slice(0, frozenEnd + 1);
+    }
+    return values.filter(function (item) {
       return enabledSources.indexOf(item.source) >= 0;
     });
   }
@@ -3034,6 +3027,12 @@ const WATERFALL_JS: string = `
   }
   function mergePayload(payload) {
     if (!payload) return;
+    if (!sameFeedSession(payload)) {
+      reportedAdvanceTargets = {};
+      queuedAdvanceActions = [];
+      if (advanceDispatchTimer !== null) clearTimeout(advanceDispatchTimer);
+      advanceDispatchTimer = null;
+    }
     var oldEnabledSources = state && state.enabledSources ? state.enabledSources.join('|') : '';
     if (typeof payload.aggregateHtml === 'string' && payload.aggregateHtml !== aggregateHtml) {
       aggregateHtml = payload.aggregateHtml;
@@ -3044,6 +3043,18 @@ const WATERFALL_JS: string = `
     rememberUnavailableSourceStates(state && state.sources);
     rememberUnavailableSourceStates(payload.sources);
     state = payload;
+    var acknowledgedItems = candidates(payload);
+    var acknowledgedCurrentIndex = acknowledgedItems.findIndex(function (item) {
+      return text(item.id) === text(payload.currentId);
+    });
+    if (acknowledgedCurrentIndex >= 0) {
+      delete reportedAdvanceTargets['$terminal:' + text(payload.currentId)];
+      Object.keys(reportedAdvanceTargets).forEach(function (key) {
+        var reportedId = key.substring(1);
+        var reportedIndex = acknowledgedItems.findIndex(function (item) { return text(item.id) === reportedId; });
+        if (reportedIndex >= 0 && reportedIndex <= acknowledgedCurrentIndex) delete reportedAdvanceTargets[key];
+      });
+    }
     syncMetricSlots(payload);
     var payloadSources = payload.enabledSources ? payload.enabledSources.slice() : [];
     if (committedPreferenceSources) {
@@ -3052,7 +3063,6 @@ const WATERFALL_JS: string = `
     }
     enabledSources = payloadSources;
     if (oldEnabledSources !== enabledSources.join('|')) alignToCurrent = true;
-    advancePending = false;
   }
   function syncReaderComments() {
     if (mode !== 'reading' || !readerCandidateId || !reader || typeof reader.querySelector !== 'function') return;
@@ -3067,24 +3077,57 @@ const WATERFALL_JS: string = `
       args: { surfaceId: state.surfaceId || '', enabledSources: enabledSources }
     }));
   }
-  function postAdvanceIfNeeded(presentedIndex) {
+  function flushQueuedAdvances() {
+    advanceDispatchTimer = null;
+    var actions = queuedAdvanceActions.slice();
+    queuedAdvanceActions = [];
+    if (!window.AIPhoneHome || typeof window.AIPhoneHome.postAction !== 'function') return;
+    actions.forEach(function (action) { window.AIPhoneHome.postAction(action); });
+  }
+  function postAdvanceIfNeeded(presentedIndex, deferDispatch) {
     var items = renderedOrderCandidates(state);
     if (!track) return;
     var currentId = state ? text(state.currentId) : '';
     var currentIndex = items.findIndex(function (item) { return text(item.id) === currentId; });
     var visibleIndex = typeof presentedIndex === 'number' ? presentedIndex : visibleCardIndex();
-    var visibleItem = visibleIndex >= 0 && visibleIndex < items.length ? items[visibleIndex] : null;
-    if (mode !== 'discovering' || advancePending || currentIndex < 0 || visibleIndex <= currentIndex ||
+    var terminalAdvance = currentIndex === items.length - 1 && currentIndex >= 0 &&
+      ((items.length === 1 && track.scrollTop > 0) || (cardMetrics[currentIndex] &&
+        track.scrollTop > cardMetrics[currentIndex].snapTop + Math.max(1, track.clientHeight) * 0.5));
+    if (mode !== 'discovering' || currentIndex < 0 || (!terminalAdvance && visibleIndex <= currentIndex) ||
       !window.AIPhoneHome || typeof window.AIPhoneHome.postAction !== 'function') return;
     pauseCurrentBehavior(true);
-    advancePending = true;
-    window.AIPhoneHome.postAction(JSON.stringify({
-      id: 'waterfall.feed.advance', label: '下一条', prompt: '', variant: 'secondary', kind: 'client',
-      args: {
-        surfaceId: state.surfaceId || '', currentId: currentId,
-        visibleId: text(visibleItem && visibleItem.id)
+    var previousId = currentId;
+    for (var index = currentIndex + 1; index <= visibleIndex; index += 1) {
+      var targetId = text(items[index] && items[index].id);
+      if (!targetId) continue;
+      if (!reportedAdvanceTargets['$' + targetId]) {
+        reportedAdvanceTargets['$' + targetId] = true;
+        var serialized = JSON.stringify({
+          id: 'waterfall.feed.advance', label: '下一条', prompt: '', variant: 'secondary', kind: 'client',
+          args: {
+            surfaceId: state.surfaceId || '', currentId: previousId, visibleId: targetId
+          }
+        });
+        if (deferDispatch) queuedAdvanceActions.push(serialized);
+        else window.AIPhoneHome.postAction(serialized);
       }
-    }));
+      previousId = targetId;
+    }
+    if ((terminalAdvance || visibleIndex >= items.length) && currentIndex === items.length - 1) {
+      var terminalKey = '$terminal:' + currentId;
+      if (!reportedAdvanceTargets[terminalKey]) {
+        reportedAdvanceTargets[terminalKey] = true;
+        var terminalAction = JSON.stringify({
+          id: 'waterfall.feed.advance', label: '下一条', prompt: '', variant: 'secondary', kind: 'client',
+          args: { surfaceId: state.surfaceId || '', currentId: currentId, visibleId: '' }
+        });
+        if (deferDispatch) queuedAdvanceActions.push(terminalAction);
+        else window.AIPhoneHome.postAction(terminalAction);
+      }
+    }
+    if (deferDispatch && queuedAdvanceActions.length > 0 && advanceDispatchTimer === null) {
+      advanceDispatchTimer = setTimeout(flushQueuedAdvances, 0);
+    }
   }
   function closeReader() {
     if (!reader || reader.classList.contains('closing')) return;
@@ -3507,7 +3550,6 @@ const WATERFALL_JS: string = `
     }
     enabledSources = selectedSources;
     if (changed) committedPreferenceSources = selectedSources.slice();
-    if (changed) preserveLoadedCardOrder = false;
     interactionActive = false;
     scrollActive = false;
     pageAnchorIndex = -1;
@@ -3546,12 +3588,15 @@ const WATERFALL_JS: string = `
     var nextHtml = status + empty + cardHtml.join('') + tailStatus;
     var nodes = typeof track.querySelectorAll === 'function' ?
       track.querySelectorAll('[data-waterfall-id]') : [];
-    var domChanged = dropRenderedCardsMissingFrom(items, nodes);
+    var domChanged = incrementalRenderAllowed ? false : dropRenderedCardsMissingFrom(items, nodes);
     if (domChanged && typeof track.querySelectorAll === 'function') {
       nodes = track.querySelectorAll('[data-waterfall-id]');
     }
     var layoutChanged = domChanged;
     var cardsReplaced = false;
+    var sharesRenderedCard = items.some(function (item) {
+      return renderedCards.some(function (card) { return card.id === text(item.id); });
+    });
     var canPatch = items.length >= renderedCards.length && renderedCards.length > 0 &&
       (domChanged || nodes.length === renderedCards.length);
     var matched = 0;
@@ -3613,7 +3658,8 @@ const WATERFALL_JS: string = `
         nextRendered.push({ id: id, html: cardHtml[j] });
       }
       renderedCards = nextRendered;
-    } else if (track.innerHTML !== nextHtml) {
+    } else if (track.innerHTML !== nextHtml && (!incrementalRenderAllowed ||
+      (!Array.isArray(state.stableIds) && !sharesRenderedCard) || renderedCards.length === 0)) {
       var keepInlineCandidate = activeInlineCandidateId && items.some(function (item) {
         return text(item.id) === activeInlineCandidateId;
       });
@@ -3735,12 +3781,12 @@ const WATERFALL_JS: string = `
       presentationFrame = window.requestAnimationFrame(function () {
         presentationFrame = null;
         if (metricsDirty) refreshMetricsAfterSettle();
-        updateCardPresentation();
+        postAdvanceIfNeeded(updateCardPresentation(), true);
       });
       return;
     }
     if (metricsDirty) refreshMetricsAfterSettle();
-    updateCardPresentation();
+    postAdvanceIfNeeded(updateCardPresentation(), true);
   });
   track.addEventListener('error', function (event) {
     var image = event.target;
@@ -4296,6 +4342,7 @@ export function buildWaterfallHomePayload(
     mode: state.mode ?? 'search',
     query: state.query,
     currentId: state.current === null ? '' : state.current.id,
+    stableIds: state.stable.map((candidate: WaterfallRankedCandidate): string => candidate.id),
     aggregateHtml: renderAggregateMainContent(document, isBusy, candidates.length > 0),
     candidates: candidates,
     mediaEmbeds: waterfallMediaEmbeds(document),

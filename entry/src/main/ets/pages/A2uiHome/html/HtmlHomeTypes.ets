@@ -115,6 +115,7 @@ export interface WaterfallHomePayload {
   mode?: 'search' | 'interest';
   query: string;
   currentId: string;
+  stableIds: string[];
   aggregateHtml: string;
   candidates: WaterfallRankedCandidate[];
   mediaEmbeds: Record<string, string>;

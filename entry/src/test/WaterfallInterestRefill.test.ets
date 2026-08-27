@@ -166,6 +166,9 @@ export default function waterfallInterestRefillTest() {
       sufficient.current = candidate('full-current', 'youtube');
       sufficient.stable = [candidate('full-1', 'youtube'), candidate('full-2', 'youtube')];
       sufficient.tail = [candidate('full-3', 'youtube'), candidate('full-4', 'youtube')];
+      for (let index = 5; index <= 10; index += 1) {
+        sufficient.tail.push(candidate('full-' + index.toString(), 'youtube'));
+      }
 
       const inFlight = interestState([
         source('youtube', 'success', { kind: 'cursor', value: 'next-youtube' }, true)

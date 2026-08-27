@@ -19,6 +19,7 @@ import {
   subQueriesFromModelText,
   usableSource
 } from '../main/ets/pages/A2uiHome/deepsearch/DeepSearchEngine';
+import { deepSearchCompletionText } from '../main/ets/pages/A2uiHome/components/DeepSearchPanel';
 
 function emptyProgress(): DeepSearchProgress {
   return {
@@ -333,6 +334,7 @@ export default function deepSearchEngineTest() {
       await engine.run('历史网球冠军', (progress: DeepSearchProgress): void => { final = progress; });
       const authResult: DeepSearchProgress = final;
       expect(authResult.error.indexOf('FIRECRAWL_API_KEY') >= 0).assertTrue();
+      expect(deepSearchCompletionText(authResult)).assertEqual(authResult.error);
     });
 
     it('uses local grouped fallback when the model is unavailable', 0, async () => {

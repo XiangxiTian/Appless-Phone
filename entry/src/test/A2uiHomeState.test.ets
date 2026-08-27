@@ -16,6 +16,7 @@ import {
   runtimeCallbackIsCurrent,
   runtimeOwnerAllowsSurfaceAction,
   runtimeSurfaceIdentityMatches,
+  shouldShowDeepSearchPendingSurface,
   shouldShowFirecrawlPendingSurface,
   shouldShowWelcome,
   shouldShowQueryPendingSurface,
@@ -233,6 +234,12 @@ export default function a2uiHomeStateTest() {
       expect(shouldShowQueryPendingSurface(true, true)).assertTrue();
       expect(shouldShowQueryPendingSurface(true, false)).assertFalse();
       expect(shouldShowQueryPendingSurface(false, true)).assertFalse();
+    });
+
+    it('keeps the normal pending conversation visible while DeepSearch runs', 0, () => {
+      expect(shouldShowDeepSearchPendingSurface(true, true)).assertTrue();
+      expect(shouldShowDeepSearchPendingSurface(true, false)).assertFalse();
+      expect(shouldShowDeepSearchPendingSurface(false, true)).assertFalse();
     });
 
     it('reveals Firecrawl partial results while the tool is still busy', 0, () => {

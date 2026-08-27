@@ -209,6 +209,10 @@ export function shouldShowQueryPendingSurface(isBusy: boolean, isAwaitingFirstSu
   return isBusy && isAwaitingFirstSurface;
 }
 
+export function shouldShowDeepSearchPendingSurface(showDeepSearch: boolean, isBusy: boolean): boolean {
+  return showDeepSearch && isBusy;
+}
+
 export function shouldShowFirecrawlPendingSurface(
   isBusy: boolean,
   pendingToolId: string,

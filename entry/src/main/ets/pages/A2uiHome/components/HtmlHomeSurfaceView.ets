@@ -92,8 +92,10 @@ export struct HtmlHomeSurfaceView {
   @Prop @Watch('onHtmlOrBusyChange') renderTick: number = 0;
   @Prop luckinInlinePatchJson: string = '';
   @Prop @Watch('onLuckinPatchTickChange') luckinInlinePatchTick: number = 0;
+  @Prop @Watch('onDeepSearchProgressChange') deepSearchProgressJson: string = '';
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
+  onCurrentHtmlReady: () => void = () => {};
   private controller: webview.WebviewController = new webview.WebviewController();
   private popupController: webview.WebviewController = new webview.WebviewController();
   private bridge: HtmlHomeActionBridge = new HtmlHomeActionBridge();
@@ -107,6 +109,7 @@ export struct HtmlHomeSurfaceView {
   private lastMultiTaskPayloadTick: number = -1;
   private lastWaterfallPayloadJson: string = '';
   private lastWaterfallPayloadTick: number = -1;
+  private lastDeepSearchProgressJson: string = '';
   private appliedWaterfallBackRequestTick: number = 0;
   private waterfallPayloadPushInFlight: boolean = false;
   private appliedLuckinPatchTick: number = -1;
@@ -210,11 +213,16 @@ export struct HtmlHomeSurfaceView {
       ).then((): void => {
         this.loadedKey = targetHtml;
         this.loadedRenderTick = targetRenderTick;
+        this.lastDeepSearchProgressJson = '';
         this.conversationPatchInFlight = false;
         aiLogInfo('[AIPhone][HtmlHomeConversationPatch] chars=' + targetHtml.length.toString() +
           ' contentDigest=' + sha256Digest(targetHtml) +
           ' renderTick=' + targetRenderTick.toString() +
           ' animateUserText=' + (animateUserText ? 'true' : 'false'));
+        if (this.loadedKey === this.html) {
+          this.onCurrentHtmlReady();
+          this.pushDeepSearchProgressIfNeeded();
+        }
         this.loadHtmlIfNeeded();
       }).catch((error: Error): void => {
         this.conversationPatchInFlight = false;
@@ -246,6 +254,7 @@ export struct HtmlHomeSurfaceView {
       this.lastMultiTaskPayloadTick = -1;
       this.lastWaterfallPayloadJson = '';
       this.lastWaterfallPayloadTick = -1;
+      this.lastDeepSearchProgressJson = '';
       this.appliedLuckinPatchTick = this.luckinInlinePatchTick;
       aiLogInfo('[AIPhone][HtmlHomeSurfaceLoad] chars=' + targetHtml.length.toString() +
         ' contentDigest=' + sha256Digest(targetHtml) +
@@ -266,6 +275,29 @@ export struct HtmlHomeSurfaceView {
 
   onWaterfallPayloadChange(): void {
     this.pushWaterfallPayloadIfNeeded();
+  }
+
+  onDeepSearchProgressChange(): void {
+    this.pushDeepSearchProgressIfNeeded();
+  }
+
+  private pushDeepSearchProgressIfNeeded(): void {
+    if (!this.webReady || this.deepSearchProgressJson.length === 0 ||
+      this.deepSearchProgressJson === this.lastDeepSearchProgressJson) return;
+    const progressJson = this.deepSearchProgressJson;
+    this.lastDeepSearchProgressJson = progressJson;
+    try {
+      this.controller.runJavaScript(
+        'if(window.__aiphoneApplyDeepSearchProgress){window.__aiphoneApplyDeepSearchProgress(JSON.parse(' +
+          JSON.stringify(progressJson) + '));}'
+      ).catch((error: Error): void => {
+        if (this.lastDeepSearchProgressJson === progressJson) this.lastDeepSearchProgressJson = '';
+        aiLogError('[AIPhone][HtmlHomeDeepSearchProgressPushError] ' + JSON.stringify(error));
+      });
+    } catch (error) {
+      if (this.lastDeepSearchProgressJson === progressJson) this.lastDeepSearchProgressJson = '';
+      aiLogError('[AIPhone][HtmlHomeDeepSearchProgressPushError] ' + JSON.stringify(error));
+    }
   }
 
   onWaterfallBackRequest(): void {
@@ -505,12 +537,14 @@ export struct HtmlHomeSurfaceView {
         .onPageEnd(() => {
           this.webReady = true;
           this.loadHtmlIfNeeded();
+          if (this.webReady && this.loadedKey === this.html) this.onCurrentHtmlReady();
           this.pushMultiTaskPayloadIfNeeded();
           this.pushWaterfallPayloadIfNeeded();
           this.onWaterfallBackRequest();
           this.pushMailDetailEventIfNeeded();
           this.pushMailReplyEventIfNeeded();
           this.pushMailCalendarEventIfNeeded();
+          this.pushDeepSearchProgressIfNeeded();
           this.collectHotelSmokeEvidence();
         })
         .onWindowNew((event: OnWindowNewEvent) => {

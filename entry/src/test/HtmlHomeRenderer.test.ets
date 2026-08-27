@@ -80,6 +80,7 @@ import {
 } from '../main/ets/pages/A2uiHome/components/HomePage';
 import { renderRideDriverMapHtml } from '../main/ets/pages/A2uiHome/html/RideDriverMapHtmlRenderer';
 import { renderFoodLocationPickerHtml } from '../main/ets/pages/A2uiHome/html/FoodLocationPickerHtmlRenderer';
+import { htmlHomeHtmlForViewValue } from '../main/ets/pages/A2uiHome/Index';
 import {
   advanceWaterfallFeed,
   WaterfallFeedState,
@@ -109,6 +110,10 @@ interface MapsOpenArgsFixture {
 
 interface RenderedHomeDataFixture {
   blocks: HtmlHomeBlock[];
+}
+
+interface DeepSearchHtmlHomeDocumentFixture extends HtmlHomeDocument {
+  deepSearch?: boolean;
 }
 
 function dailyBriefItem(
@@ -2328,6 +2333,63 @@ export default function htmlHomeRendererTest() {
       expect(isHtmlHomeConversationDocument(animatedHtml)).assertTrue();
       expect(htmlHomeDataPayload(animatedHtml).indexOf('"source":"pending"')).assertLarger(-1);
       expect(htmlHomeAnimatesLatestUser(animatedHtml)).assertTrue();
+    });
+
+    it('keeps DeepSearch progress in the assistant turn across conversation patches', 0, () => {
+      const pending = createHtmlHomeDocument({
+        messages: [{ id: 'm1', role: 'user', content: '研究最新进展' }],
+        isBusy: true,
+        isAwaitingFirstSurface: true
+      }) as DeepSearchHtmlHomeDocumentFixture;
+      pending.deepSearch = true;
+
+      const html = renderHtmlHomeDocument(pending, true);
+
+      expect(htmlHomeDataPayload(html).indexOf('"deepSearch":true')).assertLarger(-1);
+      expect(html.indexOf('deepsearch-trace')).assertLarger(-1);
+      expect(html.indexOf('__aiphoneApplyDeepSearchProgress')).assertLarger(-1);
+      expect(html.indexOf("var trace = response.querySelector('.deepsearch-trace')")).assertLarger(-1);
+      expect(html.indexOf('replaceAssistantResponse(response, assistant, thinking);\n' +
+        '    syncDeepSearchTrace(assistantTurn);')).assertLarger(-1);
+      expect(html.indexOf('trace.open = false')).assertLarger(-1);
+    });
+
+    it('bypasses cached home shells while DeepSearch is active', 0, () => {
+      let currentCalls = 0;
+      const html = htmlHomeHtmlForViewValue(
+        true,
+        'multi-task',
+        'cached multi-task shell',
+        'cached waterfall shell',
+        'cached stable shell',
+        (): boolean => true,
+        (): string => {
+          currentCalls++;
+          return 'DeepSearch conversation';
+        }
+      );
+
+      expect(html).assertEqual('DeepSearch conversation');
+      expect(currentCalls).assertEqual(1);
+    });
+
+    it('aligns the DeepSearch source count and disclosure control', 0, () => {
+      const html = renderHtmlHomeDocument(documentFixture());
+
+      expect(html.indexOf('grid-template-columns: auto 18px;')).assertLarger(-1);
+      expect(html.indexOf('font-variant-numeric: tabular-nums;')).assertLarger(-1);
+      expect(html.indexOf('.deepsearch-chevron::after')).assertLarger(-1);
+    });
+
+    it('renders a reduced-motion-aware breathing browser globe', 0, () => {
+      const html = renderHtmlHomeDocument(documentFixture());
+
+      expect(html.indexOf('class="deepsearch-globe"')).assertLarger(-1);
+      expect(html.indexOf('class="deepsearch-globe-grid"')).assertLarger(-1);
+      expect(html.indexOf('@keyframes deepsearch-globe-breathe')).assertLarger(-1);
+      expect(html.indexOf('class="deepsearch-globe-scan"')).assertEqual(-1);
+      expect(html.indexOf('@keyframes deepsearch-globe-orbit')).assertEqual(-1);
+      expect(html.indexOf('@media (prefers-reduced-motion: reduce)')).assertLarger(-1);
     });
 
     it('keeps task result wording for a generic tool document', 0, () => {

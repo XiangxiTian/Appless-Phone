@@ -249,7 +249,7 @@ export struct HomePage {
   @Prop bimRememberError: string = '';
   @Prop reduceMotion: boolean = false;
   @Prop showDeepSearch: boolean = false;
-  @Prop deepSearchQuery: string = '';
+  @Prop @Watch('onDeepSearchQueryChanged') deepSearchQuery: string = '';
   @Prop deepSearchSettingsJson: string = '';
   @Prop deepSearchContextJson: string = '';
   @Prop locationServiceNotice: string = '';
@@ -259,6 +259,8 @@ export struct HomePage {
   @State heartPressed: boolean = false;
   @State homeClockEpochMs: number = Date.now();
   @State composerFocused: boolean = false;
+  @State deepSearchLoadingReady: boolean = false;
+  @State deepSearchProgressJson: string = '';
   private sendSpinnerTimerId: number = -1;
   private homeClockTimerId: number = -1;
   private voiceHoldTimerId: number = -1;
@@ -276,7 +278,7 @@ export struct HomePage {
   onCloseFoodStoreMap: () => void = () => {};
   onFoodStoreMapLocationConfirm: (longitude: number, latitude: number, name: string, address: string) => void =
     (_longitude: number, _latitude: number, _name: string, _address: string): void => {};
-  onCloseDeepSearch: () => void = () => {};
+  onDeepSearchComplete: (answer: string) => void = (_answer: string): void => {};
   onCloseCheckoutWeb: (taskId: string) => void = (_taskId: string): void => {};
   onCheckoutWebReturn: (url: string) => void = (_url: string): void => {};
   onTrainPresaleConfirm: (submission: TrainPresalePanelSubmission) => void =
@@ -302,6 +304,11 @@ export struct HomePage {
     this.stopSendSpinnerTimer();
     this.stopHomeClockTimer();
     this.cancelVoiceHoldTimer();
+  }
+
+  private onDeepSearchQueryChanged(): void {
+    this.deepSearchLoadingReady = false;
+    this.deepSearchProgressJson = '';
   }
 
   private startSendSpinnerTimer(): void {
@@ -686,16 +693,7 @@ export struct HomePage {
         .animation({ duration: A2UI_MOTION_NORMAL_MS, curve: A2UI_MOTION_MOVE_CURVE })
       }
 
-      if (this.showDeepSearch) {
-        DeepSearchPanel({
-          query: this.deepSearchQuery,
-          settingsJson: this.deepSearchSettingsJson,
-          contextJson: this.deepSearchContextJson,
-          onClose: this.onCloseDeepSearch
-        })
-          .layoutWeight(1)
-          .margin({ top: A2UI_HOME_SECTION_GAP })
-      } else if (this.showTrainPresalePanel) {
+      if (this.showTrainPresalePanel) {
         TrainPresalePanel({
           trip: this.trainPresaleTrip,
           task: this.trainPresaleTask,
@@ -722,9 +720,9 @@ export struct HomePage {
           .margin({ top: A2UI_HOME_SECTION_GAP })
           .borderRadius(A2UI_HOME_FLOATING_RADIUS)
           .clip(true)
-      } else if (this.showWelcome) {
+      } else if (this.showWelcome && !this.showDeepSearch) {
         this.WelcomeHero()
-      } else if (this.foodStoreMapOpen && this.currentSurface.intent === 'food') {
+      } else if (!this.showDeepSearch && this.foodStoreMapOpen && this.currentSurface.intent === 'food') {
         Column() {
           Row() {
             Button('‹')
@@ -761,7 +759,7 @@ export struct HomePage {
         }
         .layoutWeight(1)
         .margin({ top: this.surfaceTopGap() })
-      } else if (this.useNativeSurface()) {
+      } else if (!this.showDeepSearch && this.useNativeSurface()) {
         A2uiSurfaceView({
           surface: this.currentSurface,
           renderTick: this.surfaceRenderTick,
@@ -787,14 +785,32 @@ export struct HomePage {
             renderTick: this.surfaceRenderTick,
             luckinInlinePatchJson: this.luckinInlinePatchJson,
             luckinInlinePatchTick: this.luckinInlinePatchTick,
+            deepSearchProgressJson: this.deepSearchProgressJson,
             onAction: this.onAction,
+            onCurrentHtmlReady: (): void => {
+              if (this.showDeepSearch && this.isBusy) this.deepSearchLoadingReady = true;
+            },
             onWaterfallFullscreenChange: (active: boolean): void => {
               this.waterfallFullscreen = active;
               this.onWaterfallFullscreenChange(active);
             }
           })
           .layoutWeight(1)
+
+          if (this.showDeepSearch) {
+            DeepSearchPanel({
+              query: this.deepSearchQuery,
+              startReady: this.deepSearchLoadingReady,
+              settingsJson: this.deepSearchSettingsJson,
+              contextJson: this.deepSearchContextJson,
+              onProgress: (progressJson: string): void => {
+                this.deepSearchProgressJson = progressJson;
+              },
+              onComplete: this.onDeepSearchComplete
+            })
+          }
         }
+        .width('100%')
         .layoutWeight(1)
         .margin({ top: this.waterfallFullscreen ? 0 : this.surfaceTopGap() })
       }

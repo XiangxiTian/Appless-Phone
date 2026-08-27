@@ -1102,6 +1102,195 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.deepsearch-trace {
+  margin: 0 0 10px;
+  border-bottom: 1px solid rgba(73, 63, 56, 0.09);
+  background: transparent;
+}
+.conversation-thinking .deepsearch-trace {
+  margin: 10px 0 0;
+  border-top: 1px solid rgba(73, 63, 56, 0.09);
+  border-bottom: 0;
+}
+.deepsearch-trace > summary {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px;
+  min-height: 38px;
+  padding: 5px 0 4px;
+  cursor: pointer;
+  list-style: none;
+}
+.deepsearch-trace > summary::-webkit-details-marker { display: none; }
+.deepsearch-mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+.deepsearch-globe {
+  display: block;
+  width: 16px;
+  height: 16px;
+  overflow: visible;
+  transform-origin: 8px 8px;
+  animation: deepsearch-globe-breathe 1.25s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+}
+.deepsearch-globe-outline,
+.deepsearch-globe-grid {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.deepsearch-globe-outline,
+.deepsearch-globe-grid { stroke-width: 1.05; }
+.deepsearch-globe-grid { opacity: 0.72; }
+.deepsearch-trace[data-state="done"] .deepsearch-mark { color: #397a55; }
+.deepsearch-trace[data-state="error"] .deepsearch-mark { color: #b24a3a; }
+.deepsearch-trace[data-state="done"] .deepsearch-globe,
+.deepsearch-trace[data-state="error"] .deepsearch-globe {
+  animation: none;
+  opacity: 1;
+  transform: scale(1);
+}
+@keyframes deepsearch-globe-breathe {
+  0%, 100% { opacity: 0.45; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+.deepsearch-copy { min-width: 0; }
+.deepsearch-title,
+.deepsearch-subtitle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deepsearch-title {
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 650;
+}
+.deepsearch-subtitle {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+.deepsearch-meta {
+  display: grid;
+  grid-template-columns: auto 18px;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.deepsearch-count {
+  min-width: 40px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-align: right;
+}
+.deepsearch-chevron {
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+.deepsearch-chevron::before,
+.deepsearch-chevron::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 1.2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+.deepsearch-chevron::after {
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(90deg);
+  transition: opacity 180ms ease-out, transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.deepsearch-trace[open] .deepsearch-chevron::after {
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(0deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .deepsearch-globe { animation: none; opacity: 1; transform: none; }
+  .deepsearch-chevron::after { transition: none; }
+}
+.deepsearch-body {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 0 0 5px 23px;
+}
+.deepsearch-stage,
+.deepsearch-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  background: transparent;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.deepsearch-stage { min-height: 30px; }
+.deepsearch-stage-copy,
+.deepsearch-source-copy { min-width: 0; }
+.deepsearch-stage-title,
+.deepsearch-source-title {
+  display: block;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.35;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deepsearch-stage-detail,
+.deepsearch-source-host {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deepsearch-stage-status,
+.deepsearch-source-open,
+.deepsearch-source-head {
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.deepsearch-source-head {
+  margin-top: 3px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(73, 63, 56, 0.07);
+}
+.deepsearch-source {
+  min-height: 38px;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.deepsearch-source-open { color: var(--accent); }
+.deepsearch-source:focus-visible {
+  outline: 2px solid rgba(153, 95, 76, 0.34);
+  outline-offset: 2px;
+}
 .plain-chat-context {
   margin-top: 15px;
   border-top: 1px solid rgba(73, 63, 56, 0.1);
@@ -3163,6 +3352,7 @@ const HTML_HOME_JS: string = `
     return Array.isArray(value) ? value : [];
   }
   var isBusy = text(data.isBusy).toLowerCase() === 'true';
+  var isDeepSearch = data.deepSearch === true;
   var scene = sceneKey();
   if (document.body) {
     if (isEnhancedScene()) {
@@ -3633,6 +3823,119 @@ const HTML_HOME_JS: string = `
       timeline.length === 0 &&
       latestAssistant(history) !== null;
   }
+  function deepSearchStageLabel(value) {
+    var state = text(value).toLowerCase();
+    if (state === 'done') { return '完成'; }
+    if (state === 'running') { return '搜索中'; }
+    if (state === 'warn') { return '部分完成'; }
+    if (state === 'error') { return '未完成'; }
+    return '等待';
+  }
+  function deepSearchSourceHost(value) {
+    var host = text(value);
+    if (host.indexOf('https://') === 0) { host = host.slice(8); }
+    else if (host.indexOf('http://') === 0) { host = host.slice(7); }
+    var slash = host.indexOf('/');
+    return slash < 0 ? host : host.slice(0, slash);
+  }
+  function addDeepSearchTrace(parent) {
+    var trace = add(parent, 'details', 'deepsearch-trace');
+    trace.setAttribute('data-state', 'running');
+    var summary = add(trace, 'summary');
+    var mark = add(summary, 'span', 'deepsearch-mark');
+    mark.innerHTML = '<svg class="deepsearch-globe" viewBox="0 0 16 16" aria-hidden="true">' +
+      '<circle class="deepsearch-globe-outline" cx="8" cy="8" r="5.8"></circle>' +
+      '<path class="deepsearch-globe-grid" d="M2.2 8h11.6M8 2.2c1.5 1.6 2.3 3.5 2.3 5.8s-.8 4.2-2.3 5.8C6.5 12.2 5.7 10.3 5.7 8S6.5 3.8 8 2.2Z"></path></svg>';
+    var copy = add(summary, 'span', 'deepsearch-copy');
+    add(copy, 'strong', 'deepsearch-title', '正在搜索网页');
+    add(copy, 'span', 'deepsearch-subtitle', '正在准备检索');
+    var meta = add(summary, 'span', 'deepsearch-meta');
+    add(meta, 'span', 'deepsearch-count', '0 来源');
+    add(meta, 'span', 'deepsearch-chevron');
+    add(trace, 'div', 'deepsearch-body');
+    return trace;
+  }
+  function syncDeepSearchTrace(assistantTurn) {
+    if (!assistantTurn) { return; }
+    var response = assistantTurn.querySelector('.plain-chat-response');
+    if (!response) { return; }
+    var trace = response.querySelector('.deepsearch-trace');
+    if (!isDeepSearch) {
+      if (trace && trace.parentNode) { trace.parentNode.removeChild(trace); }
+      return;
+    }
+    if (!trace) { trace = addDeepSearchTrace(response); }
+    if (isBusy) {
+      response.appendChild(trace);
+    } else {
+      response.insertBefore(trace, response.firstChild);
+    }
+  }
+  function applyDeepSearchProgress(progress) {
+    var trace = document.querySelector('.deepsearch-trace');
+    if (!trace) { return false; }
+    var stages = list(progress && progress.stages);
+    var sources = list(progress && progress.sources);
+    var running = !!(progress && progress.running === true);
+    var error = text(progress && progress.error).trim();
+    trace.setAttribute('data-state', error.length > 0 ? 'error' : (running ? 'running' : 'done'));
+    var title = trace.querySelector('.deepsearch-title');
+    var subtitle = trace.querySelector('.deepsearch-subtitle');
+    var count = trace.querySelector('.deepsearch-count');
+    if (title) {
+      title.textContent = error.length > 0 ? '网页搜索未完成' :
+        (running ? '正在搜索网页' : '已搜索 ' + String(sources.length) + ' 个网页');
+    }
+    var activeStage = null;
+    for (var activeIndex = 0; activeIndex < stages.length; activeIndex += 1) {
+      if (text(stages[activeIndex] && stages[activeIndex].status) === 'running') {
+        activeStage = stages[activeIndex];
+        break;
+      }
+    }
+    if (subtitle) {
+      var lines = list(activeStage && activeStage.lines);
+      var detail = lines.length > 0 ? text(lines[lines.length - 1]) : text(activeStage && activeStage.detail);
+      subtitle.textContent = error.length > 0 ? '可以重新发送问题再试' :
+        (activeStage ? text(activeStage.title) + (detail.length > 0 ? ' · ' + detail : '') :
+          (text(progress && progress.modelStatus) || (running ? '正在整理检索步骤' : '来源可展开查看')));
+    }
+    if (count) { count.textContent = String(sources.length) + ' 来源'; }
+    var body = trace.querySelector('.deepsearch-body');
+    if (!body) { return false; }
+    body.textContent = '';
+    stages.forEach(function (stage) {
+      var row = add(body, 'div', 'deepsearch-stage');
+      var copy = add(row, 'div', 'deepsearch-stage-copy');
+      add(copy, 'span', 'deepsearch-stage-title', text(stage && stage.title));
+      var lines = list(stage && stage.lines);
+      var detail = lines.length > 0 ? text(lines[lines.length - 1]) : text(stage && stage.detail);
+      if (detail.length > 0) { add(copy, 'span', 'deepsearch-stage-detail', detail); }
+      add(row, 'span', 'deepsearch-stage-status', deepSearchStageLabel(stage && stage.status));
+    });
+    if (sources.length > 0) {
+      add(body, 'div', 'deepsearch-source-head', '来源 · ' + String(sources.length));
+      sources.forEach(function (source) {
+        var url = text(source && source.url).trim();
+        if (url.indexOf('https://') !== 0 && url.indexOf('http://') !== 0) { return; }
+        var button = add(body, 'button', 'deepsearch-source');
+        button.type = 'button';
+        button.setAttribute('aria-label', '打开来源：' + text(source && source.title));
+        var copy = add(button, 'span', 'deepsearch-source-copy');
+        add(copy, 'span', 'deepsearch-source-title', text(source && source.title) || url);
+        add(copy, 'span', 'deepsearch-source-host', deepSearchSourceHost(url));
+        add(button, 'span', 'deepsearch-source-open', '打开');
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          if (window.AIPhoneHome && typeof window.AIPhoneHome.openWaterfallSource === 'function') {
+            window.AIPhoneHome.openWaterfallSource(url);
+          }
+        });
+      });
+    }
+    if (!running) { trace.open = false; }
+    return true;
+  }
   function addPlainChatContext(parent, contextItems) {
     if (contextItems.length === 0) { return; }
     var disclosure = add(parent, 'details', 'plain-chat-context');
@@ -3680,6 +3983,7 @@ const HTML_HOME_JS: string = `
     addPlainChatAssistantIdentity(assistantTurn);
     var response = add(assistantTurn, 'article', 'plain-chat-response');
     add(response, 'p', 'plain-chat-response-copy', text(assistant.content));
+    syncDeepSearchTrace(assistantTurn);
     var contextItems = [];
     history.forEach(function (item) {
       if (item !== assistant) { contextItems.push(item); }
@@ -3721,6 +4025,7 @@ const HTML_HOME_JS: string = `
     add(indicator, 'span', 'conversation-thinking-dot');
     add(indicator, 'span', 'conversation-thinking-dot');
     add(indicator, 'span', 'conversation-thinking-dot');
+    syncDeepSearchTrace(assistantTurn);
     var contextItems = [];
     var latestUserIndex = -1;
     for (var index = history.length - 1; index >= 0; index -= 1) {
@@ -3820,9 +4125,11 @@ const HTML_HOME_JS: string = `
     if (!section || !nextData || typeof nextData !== 'object') { return false; }
     var previousData = data;
     var previousBusy = isBusy;
+    var previousDeepSearch = isDeepSearch;
     var previousScene = scene;
     data = nextData;
     isBusy = text(data.isBusy).toLowerCase() === 'true';
+    isDeepSearch = data.deepSearch === true;
     scene = sceneKey();
     var blocks = list(data.blocks);
     var timeline = list(data.timeline);
@@ -3833,6 +4140,7 @@ const HTML_HOME_JS: string = `
     if (!thinking && !plainChat) {
       data = previousData;
       isBusy = previousBusy;
+      isDeepSearch = previousDeepSearch;
       scene = previousScene;
       return false;
     }
@@ -3841,6 +4149,7 @@ const HTML_HOME_JS: string = `
     if (!assistantTurn || !response) {
       data = previousData;
       isBusy = previousBusy;
+      isDeepSearch = previousDeepSearch;
       scene = previousScene;
       return false;
     }
@@ -3859,6 +4168,7 @@ const HTML_HOME_JS: string = `
       }
     }
     replaceAssistantResponse(response, assistant, thinking);
+    syncDeepSearchTrace(assistantTurn);
     replacePlainChatContext(section, conversationContextItems(history, assistant, thinking));
     if (document.body) {
       document.body.setAttribute('data-view', thinking ? 'conversation-thinking' : 'conversation');
@@ -6153,6 +6463,7 @@ const HTML_HOME_JS: string = `
   window.__aiphoneApplyConversationUpdate = function (nextData, animateUserText) {
     return applyConversationUpdate(nextData, !!animateUserText);
   };
+  window.__aiphoneApplyDeepSearchProgress = applyDeepSearchProgress;
   window.AIPhoneHome.patchLuckinPaymentStatus = function (patchJson) {
     try {
       return refreshLuckinPaymentStatusHeader(JSON.parse(patchJson));
@@ -6232,6 +6543,7 @@ export function renderHtmlHomeDocument(
     personaMemory: document.personaMemory,
     personaAvatarDataUri: personaAvatarDataUri(document.persona.avatarKey),
     rawSurfaceRoot: document.rawSurfaceRoot,
+    deepSearch: document.deepSearch,
     generatedAt: '',
     isBusy: isBusy || (document as HtmlHomeDocumentWithBusy).isBusy === true
   };

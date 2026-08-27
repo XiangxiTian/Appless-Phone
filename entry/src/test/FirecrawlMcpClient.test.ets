@@ -350,6 +350,7 @@ class ScriptedGenericMcpClient extends GenericMcpClient {
   readonly callCredentials: string[] = [];
   readonly callArgs: Object[] = [];
   preflightResult: DynamicPreflightResult = successfulPreflight();
+  preflightResults: DynamicPreflightResult[] = [];
   responses: McpToolCallResult[] = [];
   thrownMessage: string = '';
   callHandler: ((
@@ -364,6 +365,9 @@ class ScriptedGenericMcpClient extends GenericMcpClient {
   ): Promise<DynamicPreflightResult> {
     this.preflightRegistrations.push(registration);
     this.preflightCredentials.push(credentialValue);
+    if (this.preflightResults.length > 0) {
+      return this.preflightResults.shift() as DynamicPreflightResult;
+    }
     return this.preflightResult;
   }
 
@@ -504,6 +508,36 @@ export default function firecrawlMcpClientTest() {
 
       expect(output.results[0].status).assertEqual('error');
       expect(scripted.callRegistrations.length).assertEqual(0);
+    });
+
+    it('retries one transient 503 preflight before a business call', 0, async () => {
+      const scripted = new ScriptedGenericMcpClient();
+      scripted.preflightResults = [
+        failedPreflight(503, 'Service unavailable'),
+        successfulPreflight()
+      ];
+      scripted.responses = [textPayload(pagePayload())];
+      const output: FirecrawlToolOutput = await new FirecrawlMcpClient(scripted)
+        .execute('web.page.read', '读取页面', '', pageArgs(), config());
+
+      expect(output.results[0].status).assertEqual('success');
+      expect(scripted.preflightRegistrations.length).assertEqual(2);
+      expect(scripted.callRegistrations.length).assertEqual(1);
+    });
+
+    it('retries one transient 529 preflight before a business call', 0, async () => {
+      const scripted = new ScriptedGenericMcpClient();
+      scripted.preflightResults = [
+        failedPreflight(529, 'Site is overloaded'),
+        successfulPreflight()
+      ];
+      scripted.responses = [textPayload(pagePayload())];
+      const output: FirecrawlToolOutput = await new FirecrawlMcpClient(scripted)
+        .execute('web.page.read', '读取页面', '', pageArgs(), config());
+
+      expect(output.results[0].status).assertEqual('success');
+      expect(scripted.preflightRegistrations.length).assertEqual(2);
+      expect(scripted.callRegistrations.length).assertEqual(1);
     });
 
     it('maps preflight authentication failures without a business call', 0, async () => {

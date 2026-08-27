@@ -2191,6 +2191,11 @@ export class FirecrawlMcpClient {
     let preflight: DynamicPreflightResult;
     try {
       preflight = await this.client.preflight(registration, config.apiKey);
+      if (!preflight.ok && (preflight.httpStatus === 503 || preflight.httpStatus === 529)) {
+        this.lifecycle(false, toolId, registration.mcpToolName, 'retry',
+          preflight.httpStatus, 'pending', 0, startedAt);
+        preflight = await this.client.preflight(registration, config.apiKey);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Firecrawl preflight failed.';
       const status = normalizedStatus(0, message);

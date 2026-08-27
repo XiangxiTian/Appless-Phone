@@ -440,6 +440,7 @@ import {
   runtimeOwnerAllowsSurfaceAction,
   runtimeSurfaceIdentityMatches,
   shouldApplySurfaceUpdate,
+  shouldShowDeepSearchPendingSurface,
   shouldShowFirecrawlPendingSurface,
   shouldShowQueryPendingSurface,
   shouldShowWelcome,
@@ -520,6 +521,24 @@ const COMPOSIO_USER_ID_KEY: string = 'composio_user_id';
 const MODEL_PRESET_STORE_NAME: string = 'aiphone_model_preset_store';
 const MODEL_PRESET_KEY: string = 'model_preset';
 const AGGREGATE_SEARCH_POLICY_STORE_NAME: string = 'aiphone_aggregate_search_policy_store';
+
+export function htmlHomeHtmlForViewValue(
+  showDeepSearch: boolean,
+  currentIntent: string,
+  multiTaskShellHtml: string,
+  waterfallShellHtml: string,
+  stableHtml: string,
+  keepStableHtml: () => boolean,
+  currentHtml: () => string
+): string {
+  if (showDeepSearch) return currentHtml();
+  if (currentIntent === 'social') return '';
+  if (multiTaskShellHtml.length > 0) return multiTaskShellHtml;
+  if (waterfallShellHtml.length > 0) return waterfallShellHtml;
+  if (keepStableHtml()) return stableHtml.length > 0 ? stableHtml : currentHtml();
+  return currentHtml();
+}
+
 const AGGREGATE_DOMESTIC_ONLY_KEY: string = 'only_domestic_sources';
 const AGGREGATE_MULTILINGUAL_KEY: string = 'include_multilingual_results';
 const ANYTHING_DEMO_ROUTE_URL: string = 'pages/A2uiHome/AnythingDemo';
@@ -2861,19 +2880,16 @@ struct Index {
   }
 
   private htmlHomeHtmlForView(): string {
-    if (this.currentSurface.intent === 'social') {
-      return '';
-    }
-    if (isMultiTaskSurface(this.currentSurface) && this.multiTaskShellHtml.length > 0) {
-      return this.multiTaskShellHtml;
-    }
-    if (this.waterfallShellHtml.length > 0) {
-      return this.waterfallShellHtml;
-    }
-    if (this.shouldKeepLuckinConfirmWebHtmlStable() || this.shouldKeepLuckinPaymentWebHtmlStable()) {
-      return this.htmlHomeStableHtml.length > 0 ? this.htmlHomeStableHtml : this.currentHtmlHomeHtml();
-    }
-    return this.currentHtmlHomeHtml();
+    return htmlHomeHtmlForViewValue(
+      this.showDeepSearch,
+      this.currentSurface.intent,
+      isMultiTaskSurface(this.currentSurface) ? this.multiTaskShellHtml : '',
+      this.waterfallShellHtml,
+      this.htmlHomeStableHtml,
+      (): boolean => this.shouldKeepLuckinConfirmWebHtmlStable() ||
+        this.shouldKeepLuckinPaymentWebHtmlStable(),
+      (): string => this.currentHtmlHomeHtml()
+    );
   }
 
   private clearLuckinInlinePatchState(): void {
@@ -4450,6 +4466,26 @@ struct Index {
   }
 
   private currentHtmlHomeDocument(): HtmlHomeDocument {
+    if (shouldShowDeepSearchPendingSurface(this.showDeepSearch, this.isBusy)) {
+      const document = createHtmlHomeDocument({
+        messages: this.messages,
+        isBusy: true,
+        isAwaitingFirstSurface: true,
+        inputText: this.inputText
+      });
+      document.deepSearch = true;
+      return document;
+    }
+    if (this.showDeepSearch) {
+      const document = createHtmlHomeDocument({
+        surface: initialSurface,
+        messages: this.messages,
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      document.deepSearch = true;
+      return document;
+    }
     if (isFirecrawlToolId(this.pendingFirecrawlToolId) &&
       shouldShowFirecrawlPendingSurface(
         this.isBusy,
@@ -4511,6 +4547,7 @@ struct Index {
       this.isBusy ? 'busy' : 'idle',
       this.isAwaitingFirstSurface ? 'awaiting' : 'ready',
       this.pendingFirecrawlToolId,
+      this.showDeepSearch ? 'deepsearch' : 'surface',
       this.messages.length.toString(),
       this.multiTaskActiveSectionId,
       this.foodLocationOwnerSurfaceId,
@@ -5572,6 +5609,17 @@ struct Index {
     this.deepSearchContextJson = '';
   }
 
+  private completeDeepSearch(answer: string): void {
+    const content = answer.trim();
+    if (content.length > 0) this.appendMessage('assistant', content);
+    this.isBusy = false;
+    this.isAwaitingFirstSurface = false;
+    if (content.length > 0) {
+      void this.sessionContextCompactor.compactAfterTurn(this.messages);
+      aiLogInfo('[AIPhone][DeepSearchConversationCompleted] answerChars=' + content.length.toString());
+    }
+  }
+
   private openAnythingDemo(): Promise<boolean> {
     return new Promise<boolean>((resolve: (value: boolean) => void): void => {
       router.pushUrl({ url: ANYTHING_DEMO_ROUTE_URL }, (error) => {
@@ -5662,13 +5710,13 @@ struct Index {
     this.isAwaitingFirstSurface = true;
     this.promptSubmitMotionGeneration++;
     this.isBusy = true;
+    if (this.showDeepSearch) this.closeDeepSearch();
     const waterfallQuery = actionId.length === 0 && sourceBimId.length === 0 ?
       waterfallSearchQueryForHomePrompt(trimmed) : '';
     if (waterfallQuery.length > 0) {
       try {
         this.inputText = inputTextAfterPromptSubmit(this.inputText);
         this.appendMessage('user', visibleText);
-        if (this.showDeepSearch) this.closeDeepSearch();
         this.ensureInterestWaterfall(false);
         this.commitInterestWaterfallDisplay();
         this.interestRecallStarted = true;
@@ -5696,20 +5744,11 @@ struct Index {
       }
     }
     if (autoDeep && trimmed.length > 0) {
-      try {
-        const contextJson = await this.buildDeepSearchContext();
-        this.openDeepSearch(trimmed, contextJson);
-        aiLogInfo('[AIPhone][DeepSearchAutoRouted] queryChars=' + trimmed.length.toString() +
-          ' context=' + contextJson.length.toString() + 'chars');
-      } finally {
-        this.isAwaitingFirstSurface = false;
-        this.isBusy = false;
-      }
+      const contextJson = await this.buildDeepSearchContext();
+      this.openDeepSearch(trimmed, contextJson);
+      aiLogInfo('[AIPhone][DeepSearchAutoRouted] queryChars=' + trimmed.length.toString() +
+        ' context=' + contextJson.length.toString() + 'chars');
       return;
-    }
-    // 非 DeepSearch 内容：若面板开着则收起，回到主内容展示 multi-agent 结果。
-    if (this.showDeepSearch) {
-      this.closeDeepSearch();
     }
     const modelPrompt = modelPromptWithActionContext(trimmed, actionId, actionArgs);
     const request: BimForegroundRequest = buildBimForegroundRequest(
@@ -10413,8 +10452,8 @@ struct Index {
             this.showTrainPresalePanel = false;
           }
         },
-        onCloseDeepSearch: () => {
-          this.closeDeepSearch();
+        onDeepSearchComplete: (answer: string): void => {
+          this.completeDeepSearch(answer);
         },
         onCancelTrainPresaleTask: () => {
           void this.cancelTrainPresaleTask();

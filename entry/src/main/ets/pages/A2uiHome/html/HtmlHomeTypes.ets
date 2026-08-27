@@ -178,5 +178,6 @@ export interface HtmlHomeDocument {
   activeSectionId?: string;
   executionMode?: 'parallel' | 'serial';
   foodSearchContext?: A2uiFoodSearchContext;
+  deepSearch?: boolean;
   generatedAt: string;
 }

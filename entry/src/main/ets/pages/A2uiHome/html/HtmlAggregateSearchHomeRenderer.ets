@@ -863,6 +863,18 @@ const WATERFALL_CSS: string = `
 body.waterfall-direct .waterfall-overlay,
 body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-track::-webkit-scrollbar { display: none; }
+.waterfall-track.is-pull-returning { transition: transform 160ms var(--ease-out); }
+.waterfall-refresh-indicator {
+  position: fixed; z-index: 9; left: 50%; top: calc(64px + env(safe-area-inset-top) + 8px);
+  min-width: 92px; padding: 8px 13px; border-radius: 999px; pointer-events: none;
+  background: rgba(28, 35, 43, 0.86); color: #fff; font-size: 12px; font-weight: 720;
+  text-align: center; opacity: 0; transform: translate(-50%, -14px) scale(0.96);
+  transition: opacity 100ms ease-out, transform 120ms var(--ease-out); backdrop-filter: blur(10px);
+}
+.waterfall-refresh-indicator.is-visible {
+  opacity: 1; transform: translate(-50%, 0) scale(1);
+}
+.waterfall-refresh-indicator.is-ready { background: rgba(47, 78, 111, 0.94); }
 .waterfall-card {
   position: relative; width: min(100%, 720px); height: auto; min-height: 0; margin: 0 auto 28px;
   scroll-snap-align: center; scroll-snap-stop: always; overflow: visible;
@@ -1470,7 +1482,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-toolbar-label { font-size: 13px; font-weight: 760; line-height: 1; white-space: nowrap; }
 .waterfall-toolbar-title {
   display: inline-flex; max-width: min(42vw, 240px); align-items: center; justify-content: center; padding: 0 12px;
-  overflow: hidden; font-size: 15px; font-weight: 780; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+  overflow: hidden; font-size: 15px; font-weight: 780; text-overflow: ellipsis; white-space: nowrap; pointer-events: auto;
 }
 .waterfall-toolbar-secondary {
   width: auto; min-width: 68px; gap: 6px; padding: 0 10px !important;
@@ -1810,6 +1822,7 @@ const WATERFALL_JS: string = `
   }
   var overlay = document.getElementById('waterfall-discovery');
   var track = document.getElementById('waterfall-track');
+  var refreshIndicator = document.getElementById('waterfall-refresh-indicator');
   var preferences = document.getElementById('waterfall-preferences');
   var reader = document.getElementById('waterfall-reader');
   var collection = document.getElementById('waterfall-collection');
@@ -1889,7 +1902,22 @@ const WATERFALL_JS: string = `
   var searchSourceStates = [];
   var searchTransitionTimer = null;
   var searchRestorePending = false;
+  var refreshPullStartY = 0;
+  var refreshPullDistance = 0;
+  var refreshPullTracking = false;
+  var refreshInFlight = false;
+  var expectedRefreshRevision = -1;
+  function clearRefreshInFlight() {
+    refreshInFlight = false;
+    expectedRefreshRevision = -1;
+    if (refreshIndicator) {
+      refreshIndicator.textContent = '刷新';
+      refreshIndicator.classList.remove('is-visible', 'is-ready');
+    }
+  }
   window.__aiphoneApplyWaterfallUpdate = function (payload) {
+    if (refreshInFlight && payload && payload.mode === 'search') clearRefreshInFlight();
+    if (refreshInFlight && payload && Number(payload.feedRevision || 0) < expectedRefreshRevision) return;
     applyCardActionAcknowledgement(payload);
     syncSearchMode(payload);
     if (searchActive && searchPending && payload && text(payload.query) === searchQuery) {
@@ -1913,6 +1941,10 @@ const WATERFALL_JS: string = `
       }, 240);
     }
     pendingPayload = payload;
+    if (refreshInFlight && payload && Array.isArray(payload.candidates) &&
+      (payload.candidates.length > 0 || payload.replenishing !== true)) {
+      clearRefreshInFlight();
+    }
     if (mode === 'collection') {
       mergePayload(payload);
       pendingPayload = null;
@@ -2687,6 +2719,7 @@ const WATERFALL_JS: string = `
     var query = text(searchInput.value).trim();
     if (!query || query.length > 160) return;
     searchQuery = query;
+    clearRefreshInFlight();
     searchSubmitted = true;
     searchPending = true;
     searchRestorePending = false;
@@ -3954,9 +3987,104 @@ const WATERFALL_JS: string = `
       scrollActive = false;
       if (!interactionActive) pageAnchorIndex = -1;
       if (!interactionActive && mode !== 'reading' && mode !== 'reader_closing' &&
-        mode !== 'source_preferences' &&
-        !flushPendingPayload() && mode === 'discovering') scheduleAdvance(settledIndex);
+        mode !== 'source_preferences') {
+        var flushed = flushPendingPayload();
+        if (mode === 'discovering') {
+          if (!flushed) scheduleAdvance(settledIndex);
+        }
+      }
     }, 96);
+  }
+  function requestFullRefresh() {
+    if (refreshInFlight || mode !== 'discovering' || searchActive ||
+      !state || state.mode !== 'interest' ||
+      !state.currentId || !track) return false;
+    refreshInFlight = true;
+    expectedRefreshRevision = Number(state.feedRevision || 0) + 1;
+    if (refreshIndicator) {
+      refreshIndicator.textContent = '正在刷新';
+      refreshIndicator.classList.add('is-visible');
+      refreshIndicator.classList.remove('is-ready');
+    }
+    reportedAdvanceTargets = {};
+    queuedAdvanceActions = [];
+    if (advanceDispatchTimer !== null) clearTimeout(advanceDispatchTimer);
+    advanceDispatchTimer = null;
+    pauseCurrentBehavior(false);
+    destroyInlinePlayer();
+    pendingPayload = null;
+    renderedCards = [];
+    renderedCurrentId = '';
+    cardMetrics = [];
+    presentedIndex = -1;
+    pageAnchorIndex = -1;
+    state.feedRevision = expectedRefreshRevision;
+    state.currentId = '';
+    state.stableIds = [];
+    state.candidates = [];
+    state.replenishing = true;
+    state.exhausted = false;
+    var refreshSources = Array.isArray(state.sources) ? state.sources.map(function (source) {
+      return { source: source.source, phase: 'loading', inFlight: true };
+    }) : [];
+    track.innerHTML = renderSourceConvergence(refreshSources, '正在获取内容');
+    track.scrollTop = 0;
+    if (window.AIPhoneHome && typeof window.AIPhoneHome.postAction === 'function') {
+      window.AIPhoneHome.postAction(JSON.stringify({
+        id: 'waterfall.feed.refresh', label: '刷新', prompt: '', variant: 'secondary', kind: 'client',
+        args: { surfaceId: state.surfaceId || '' }
+      }));
+      return true;
+    }
+    refreshInFlight = false;
+    expectedRefreshRevision = -1;
+    if (refreshIndicator) refreshIndicator.classList.remove('is-visible', 'is-ready');
+    return false;
+  }
+  function updatePullRefreshVisual() {
+    var ready = refreshPullDistance >= 72;
+    if (track && track.style) {
+      var offset = Math.min(64, refreshPullDistance * 0.42);
+      track.style.transform = offset > 0 ? 'translate3d(0,' + offset + 'px,0)' : '';
+    }
+    if (refreshIndicator) {
+      refreshIndicator.textContent = ready ? '松开刷新' : '下拉刷新';
+      refreshIndicator.classList.toggle('is-visible', refreshPullTracking && refreshPullDistance > 8);
+      refreshIndicator.classList.toggle('is-ready', ready);
+    }
+  }
+  function resetPullRefreshVisual(animated) {
+    refreshPullTracking = false;
+    refreshPullDistance = 0;
+    if (track && track.style) {
+      if (animated && track.classList) track.classList.add('is-pull-returning');
+      track.style.transform = '';
+      if (animated && track.classList) setTimeout(function () {
+        track.classList.remove('is-pull-returning');
+      }, 170);
+    }
+    if (refreshIndicator) refreshIndicator.classList.remove('is-visible', 'is-ready');
+  }
+  function beginPullRefresh(event) {
+    refreshPullTracking = false;
+    refreshPullDistance = 0;
+    if (refreshInFlight || mode !== 'discovering' || searchActive || !state || state.mode !== 'interest' ||
+      !state.currentId || !track || track.scrollTop > 1 || !event || !event.touches ||
+      event.touches.length !== 1 || !track.contains(event.target)) return;
+    refreshPullStartY = event.touches[0].clientY;
+    refreshPullTracking = true;
+  }
+  function trackPullRefresh(event) {
+    if (!refreshPullTracking || !event || !event.touches || event.touches.length !== 1) return;
+    refreshPullDistance = Math.max(0, event.touches[0].clientY - refreshPullStartY);
+    if (refreshPullDistance > 0 && typeof event.preventDefault === 'function') event.preventDefault();
+    updatePullRefreshVisual();
+  }
+  function finishPullRefresh() {
+    if (!refreshPullTracking) return false;
+    var shouldRefresh = refreshPullDistance >= 72;
+    resetPullRefreshVisual(true);
+    return shouldRefresh ? requestFullRefresh() : false;
   }
   document.addEventListener('touchstart', function (event) {
     imageCarouselGesture = !!(event && event.target && typeof event.target.closest === 'function' &&
@@ -3967,6 +4095,7 @@ const WATERFALL_JS: string = `
     payloadSettleTimer = null;
     interactionActive = true;
     beginPagingGesture();
+    beginPullRefresh(event);
   }, { passive: true });
   document.addEventListener('scroll', function (event) {
     var imageTrack = event.target;
@@ -3974,11 +4103,15 @@ const WATERFALL_JS: string = `
       syncImageDots(imageTrack);
     }
   }, true);
+  document.addEventListener('touchmove', function (event) {
+    trackPullRefresh(event);
+  }, { passive: false });
   document.addEventListener('touchend', function () {
     if (imageCarouselGesture) {
       imageCarouselGesture = false;
       return;
     }
+    finishPullRefresh();
     interactionActive = false;
     if (scrollActive || pendingPayload || pageAnchorIndex >= 0) settleInteraction();
   }, { passive: true });
@@ -3987,6 +4120,7 @@ const WATERFALL_JS: string = `
       imageCarouselGesture = false;
       return;
     }
+    resetPullRefreshVisual(true);
     interactionActive = false;
     if (scrollActive || pendingPayload || pageAnchorIndex >= 0) settleInteraction();
   }, { passive: true });
@@ -4260,6 +4394,11 @@ const WATERFALL_JS: string = `
       return true;
     });
   });
+  document.querySelectorAll('[data-waterfall-title-refresh]').forEach(function (title) {
+    bindFastTap(title, function () {
+      return searchActive || searchSubmitted ? false : requestFullRefresh();
+    });
+  });
   if (searchForm) {
     searchForm.addEventListener('submit', function (event) {
       if (typeof event.preventDefault === 'function') event.preventDefault();
@@ -4423,6 +4562,11 @@ export function waterfallSearchExitFromAction(action: A2uiAction, surfaceId: str
   return args !== null && Object.keys(args).sort().join(',') === 'surfaceId';
 }
 
+export function waterfallRefreshFromAction(action: A2uiAction, surfaceId: string): boolean {
+  const args = waterfallArgsFromAction(action, 'waterfall.feed.refresh', surfaceId);
+  return args !== null && Object.keys(args).sort().join(',') === 'surfaceId';
+}
+
 export function waterfallAdvanceCurrentFromAction(action: A2uiAction, surfaceId: string): string | null {
   const args = waterfallArgsFromAction(action, 'waterfall.feed.advance', surfaceId);
   if (args === null || typeof args['currentId'] !== 'string') {
@@ -4577,6 +4721,7 @@ export function buildWaterfallHomePayload(
     .sort((left: WaterfallCardRecord, right: WaterfallCardRecord): number => right.savedAt - left.savedAt);
   return {
     surfaceId: document.surfaceId ?? '',
+    feedRevision: state.feedRevision ?? 0,
     mode: state.mode ?? 'search',
     query: state.query,
     currentId: state.current === null ? '' : state.current.id,
@@ -4771,7 +4916,8 @@ export function renderAggregateSearchHomeDocument(
       (startInDiscovery ? '返回首页' : '返回聚合搜索') + '" data-waterfall-back>' +
       waterfallUiIconMarkup('back') +
       '<span class="waterfall-toolbar-label">返回</span></button>' +
-      '<span id="waterfall-toolbar-title" class="waterfall-toolbar-title" aria-label="发现">发现</span>' +
+      '<button type="button" id="waterfall-toolbar-title" class="waterfall-toolbar-title" ' +
+      'aria-label="发现" data-waterfall-title-refresh>发现</button>' +
       '<div class="waterfall-toolbar-tools">' +
       (startInDiscovery ? '<button type="button" class="waterfall-toolbar-secondary" ' +
         'aria-label="搜索" data-waterfall-search-open>' + waterfallUiIconMarkup('search') + '</button>' : '') +
@@ -4785,6 +4931,8 @@ export function renderAggregateSearchHomeDocument(
         'enterkeyhint="search" autocomplete="off" aria-label="搜索发现内容" placeholder="搜索内容" /></form>' : '') +
       '</div>' +
       (startInDiscovery ? '<div id="waterfall-search-status" class="waterfall-search-status"></div>' : '') +
+      (startInDiscovery ? '<div id="waterfall-refresh-indicator" class="waterfall-refresh-indicator" ' +
+        'role="status" aria-live="polite">刷新</div>' : '') +
       '<div id="waterfall-track" class="waterfall-track">' + waterfallStatus + '</div>' +
       '<div class="waterfall-edge-fade waterfall-edge-fade--top" aria-hidden="true"></div>' +
       '<div class="waterfall-edge-fade waterfall-edge-fade--bottom" aria-hidden="true"></div>' +

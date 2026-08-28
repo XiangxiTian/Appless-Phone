@@ -1109,6 +1109,28 @@ export default function aggregateSearchClientTest() {
       expect(batch.videos[1].thumbnail).assertEqual('https://example.com/fallback.jpg');
     });
 
+    it('keeps only Bilibili videos above 1000 views at the source boundary', 0, () => {
+      const batch = aggregateVideoSourceBatchFromDynamicResults('bilibili', [{
+        sourceTag: 'Bilibili', toolName: 'bilibili.video.search', title: 'Low quality',
+        status: 'success', summary: '', rawPreview: '', rows: [
+          { label: 'BVID', value: 'BV-low' },
+          { label: 'Watch URL', value: 'https://www.bilibili.com/video/BV-low' },
+          { label: 'Views', value: '1,000' }
+        ]
+      }, {
+        sourceTag: 'Bilibili', toolName: 'bilibili.video.search', title: 'Accepted',
+        status: 'success', summary: '', rawPreview: '', rows: [
+          { label: 'BVID', value: 'BV-accepted' },
+          { label: 'Watch URL', value: 'https://www.bilibili.com/video/BV-accepted' },
+          { label: 'Views', value: '1,001' }
+        ]
+      }], null, 10);
+
+      expect(batch.videos.length).assertEqual(1);
+      expect(batch.videos[0].id).assertEqual('bilibili-BV-accepted');
+      expect(batch.rawCount).assertEqual(2);
+    });
+
     it('carries provider metrics and author identity into Waterfall candidates', 0, () => {
       const videos: AggregateSearchVideo[] = [{
         id: 'bilibili-BV1', source: 'bilibili', provider: 'Bilibili', title: 'Video title',
@@ -1345,8 +1367,8 @@ export default function aggregateSearchClientTest() {
       expect(requests.map((request: WaterfallInterestRecallRequest): string => request.route).join(','))
         .assertEqual('popular,explore,explore');
       expect(requests[0].query).assertEqual('');
-      expect(requests[1].query).assertEqual('tech news');
-      expect(requests[2].query).assertEqual('artificial intelligence');
+      expect(requests[1].query).assertEqual('artificial intelligence');
+      expect(requests[2].query).assertEqual('consumer technology');
     });
 
     it('uses provider discovery for Twitch plus technology exploration for an empty profile', 0, () => {
@@ -1357,9 +1379,33 @@ export default function aggregateSearchClientTest() {
       expect(requests.map((request: WaterfallInterestRecallRequest): string => request.route).join(','))
         .assertEqual('popular,explore,explore');
       expect(requests.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
-        .assertEqual(',tech news,');
+        .assertEqual(',artificial intelligence,');
       expect(aggregateSearchSearchSourceIds().indexOf('twitch')).assertLarger(-1);
       expect(aggregateSearchInterestSourceIds().indexOf('twitch')).assertLarger(-1);
+    });
+
+    it('rotates discovery queries by four-keyword groups and wraps after the fifth group', 0, () => {
+      const secondGroup = planWaterfallInterestRecall(
+        emptyPreferenceProfile(), [], ['x', 'reddit', 'zhihu', 'bilibili'], 1);
+      const wrappedGroup = planWaterfallInterestRecall(
+        emptyPreferenceProfile(), [], ['x', 'reddit', 'zhihu', 'bilibili'], 5);
+
+      expect(secondGroup.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
+        .assertEqual('food and restaurants,home cooking,旅行攻略,城市生活');
+      expect(wrappedGroup.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
+        .assertEqual('artificial intelligence,consumer technology,编程开发,科学科普');
+    });
+
+    it('rotates automatic refills within the active four-keyword group', 0, () => {
+      const firstRound = planWaterfallInterestRecall(
+        emptyPreferenceProfile(), [], ['x', 'reddit', 'zhihu', 'bilibili'], 1, 0);
+      const secondRound = planWaterfallInterestRecall(
+        emptyPreferenceProfile(), [], ['x', 'reddit', 'zhihu', 'bilibili'], 1, 1);
+
+      expect(firstRound.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
+        .assertEqual('food and restaurants,home cooking,旅行攻略,城市生活');
+      expect(secondRound.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
+        .assertEqual('home cooking,travel guides,城市生活,美食餐饮');
     });
 
     it('gives Zhihu discovery a search query so platform metrics stay available', 0, () => {
@@ -1398,7 +1444,7 @@ export default function aggregateSearchClientTest() {
       expect(requests[0].route).assertEqual('popular');
       expect(requests[0].query).assertEqual('');
       expect(requests[1].route).assertEqual('explore');
-      expect(requests[1].query).assertEqual('tech news');
+      expect(requests[1].query).assertEqual('artificial intelligence');
       expect(requests[2].route).assertEqual('explore');
       expect(requests[2].query).assertEqual('');
       expect(requests[2].sources.join(',')).assertEqual('twitch');

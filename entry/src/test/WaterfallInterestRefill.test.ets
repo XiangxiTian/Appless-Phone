@@ -8,6 +8,7 @@ import {
   WaterfallRankedCandidate,
   WaterfallSourcePhase,
   WaterfallSourceState,
+  WATERFALL_MAX_CONSECUTIVE_EMPTY_BATCHES,
   advanceWaterfallFeed,
   applyWaterfallProfile,
   applyWaterfallSourceSelection,
@@ -80,6 +81,21 @@ function inventoryCount(state: WaterfallFeedState): number {
 
 export default function waterfallInterestRefillTest() {
   describe('waterfallInterestRefill', () => {
+    it('exhausts one source after five consecutive empty batches', 0, () => {
+      let state = interestState([
+        source('bilibili', 'success', { kind: 'page', value: '2' })
+      ]);
+      for (let index = 0; index < WATERFALL_MAX_CONSECUTIVE_EMPTY_BATCHES; index += 1) {
+        state = mergeWaterfallBatchDeferredRanking(state, [],
+          source('bilibili', 'success', { kind: 'page', value: (index + 3).toString() }), false).state;
+      }
+
+      expect(state.sources[0].consecutiveEmptyBatches)
+        .assertEqual(WATERFALL_MAX_CONSECUTIVE_EMPTY_BATCHES);
+      expect(state.sources[0].phase).assertEqual('exhausted');
+      expect(state.sources[0].continuation === null).assertTrue();
+    });
+
     it('promotes reserve before issuing an interest refill', 0, () => {
       const state = interestState([
         source('youtube', 'success', { kind: 'cursor', value: 'next-youtube' })
@@ -267,7 +283,7 @@ export default function waterfallInterestRefillTest() {
       expect(nonTwitchRequests.map((request: WaterfallInterestRecallRequest): string =>
         request.sources[0]).join(',')).assertEqual('youtube,x,reddit,zhihu,bilibili');
       expect(nonTwitchRequests.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
-        .assertEqual(',tech news,artificial intelligence,编程开发,科学科普');
+        .assertEqual(',artificial intelligence,consumer technology,编程开发,科学科普');
       expect(twitchRequests.length).assertEqual(1);
       expect(twitchRequests[0].query).assertEqual('');
       expect(twitchRequests[0].sources.join(',')).assertEqual('twitch');

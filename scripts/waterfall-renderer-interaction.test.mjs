@@ -22,6 +22,14 @@ const indexPage = readFileSync(
   new URL('../entry/src/main/ets/pages/A2uiHome/Index.ets', import.meta.url),
   'utf8'
 );
+const rankingWorker = readFileSync(
+  new URL('../entry/src/main/ets/workers/WaterfallRankingWorker.ets', import.meta.url),
+  'utf8'
+);
+const rankingWorkerClient = readFileSync(
+  new URL('../entry/src/main/ets/pages/A2uiHome/waterfall/WaterfallRankingWorkerClient.ets', import.meta.url),
+  'utf8'
+);
 const canaryRuntime = readFileSync(
   new URL('../entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets', import.meta.url),
   'utf8'
@@ -189,8 +197,8 @@ assert.match(indexPage, /plannedSources\.indexOf\(source\) < 0/,
 assert.match(indexPage, /WaterfallInterestRecallBatch[\s\S]*result\.request\.query/,
   'each discovery source must log route, query, and whether it returned cards');
 assert.match(indexPage,
-  /if \(result\.candidates\.length > 0\)[\s\S]*?finalizeInterestWaterfallRecallRanking\([\s\S]*?this\.interestWaterfallDisplayCommitted\)/,
-  'every non-empty discovery source batch must flatten the complete unseen inventory');
+  /if \(result\.candidates\.length > 0\)[\s\S]*?rankInterestWaterfallInWorker\('active'[\s\S]*?this\.interestWaterfallDisplayCommitted/,
+  'every non-empty discovery source batch must flatten the complete unseen inventory off the UI thread');
 assert.doesNotMatch(indexPage, /flattenWhenFastSourcesSettle|fastSourceFlattenApplied/,
   'tail flattening must not depend on a Bilibili and YouTube special case');
 assert.match(indexPage,
@@ -202,8 +210,12 @@ assert.doesNotMatch(indexPage, /waitingForInitialPeers/,
   'the first source with cards must paint immediately instead of waiting for slower peers');
 assert.doesNotMatch(waterfallJs, /function interleaveBySource/,
   'feed order must follow native ranking instead of a renderer round-robin');
-assert.match(waterfallJs, /function renderedOrderCandidates\(payload\)[\s\S]*?Array\.isArray\(payload\.stableIds\)[\s\S]*?values\.slice\(0, frozenEnd \+ 1\)/,
-  'the renderer must mount only shown, current, and the stable DOM buffer');
+assert.match(waterfallJs,
+  /function renderedOrderCandidates\(payload\)[\s\S]*?values\.slice\(0, frozenEnd \+ 1\)/,
+  'the renderer must retain all shown cards together with current and stable');
+assert.doesNotMatch(waterfallJs,
+  /shownDomFloorId|pruneSettledShownDom|scheduleSettledShownPrune|WaterfallShownDomPrune|is-rebasing/,
+  'shown cards must not be dynamically deleted or scroll-rebased');
 const bufferedCandidateFunctions = waterfallJs.slice(
   waterfallJs.indexOf('function candidates(payload)'),
   waterfallJs.indexOf('function candidateById')
@@ -234,8 +246,53 @@ assert.match(waterfallCore, /WATERFALL_WESTERN_EXPLORATION_QUERIES/,
   'X / HN / Reddit must not search Chinese exploration queries');
 assert.match(waterfallCore, /'人工智能', '科技数码', '编程开发', '科学科普'/,
   'Chinese discovery sources must search tech queries, not leaked profile tokens');
-assert.doesNotMatch(waterfallCore, /影视文化|生活灵感|运动赛事/,
-  'discovery exploration must not keep lifestyle and entertainment filler queries');
+assert.match(waterfallCore, /'美食餐饮', '家常菜谱', '旅行攻略', '城市生活'/,
+  'pull refresh must expose a visibly different food and lifestyle query group');
+assert.match(waterfallCore, /'动画番剧', '漫画作品', '电子游戏', '电影电视剧'/,
+  'pull refresh must expose a visibly different entertainment query group');
+assert.match(waterfallCore, /'国际政治', '军事国防', '地缘政治', '国际新闻'/,
+  'pull refresh must expose a visibly different world affairs query group');
+assert.match(waterfallJs, /id: 'waterfall\.feed\.refresh'/,
+  'discovery refresh must post one full refresh action');
+assert.doesNotMatch(renderer, /data-waterfall-refresh/,
+  'direct discovery must not expose a separate refresh icon button');
+assert.match(renderer, /waterfall-toolbar-title[\s\S]*?data-waterfall-title-refresh>发现<\/button>/,
+  'the discovery title must be the explicit refresh control');
+assert.match(waterfallJs, /data-waterfall-title-refresh[\s\S]*?requestFullRefresh\(\)/,
+  'tapping the discovery title must call the existing full-refresh action path');
+assert.match(waterfallJs,
+  /function beginPullRefresh[\s\S]*?track\.scrollTop > 1[\s\S]*?function trackPullRefresh[\s\S]*?refreshPullDistance >= 72[\s\S]*?requestFullRefresh\(\)/,
+  'elastic pull refresh must activate only at the top of retained shown history and reuse the full-refresh action');
+assert.match(waterfallJs, /refreshPullDistance \* 0\.42[\s\S]*?translate3d/,
+  'top overscroll must expose damped elastic movement before refresh');
+assert.match(waterfallJs, /track\.innerHTML = renderSourceConvergence\(refreshSources, '正在获取内容'\)/,
+  'full refresh must synchronously clear cards into the existing prepared convergence page');
+assert.match(waterfallJs, /Number\(payload\.feedRevision \|\| 0\) < expectedRefreshRevision/,
+  'stale payloads must not repopulate cards after a full refresh');
+assert.match(waterfallJs, /payload\.mode === 'search'\) clearRefreshInFlight\(\);[\s\S]*?Number\(payload\.feedRevision \|\| 0\) < expectedRefreshRevision/,
+  'search payloads must leave the full-refresh gate before stale revision filtering');
+assert.match(waterfallJs, /function submitSearch\(\)[\s\S]*?clearRefreshInFlight\(\);[\s\S]*?waterfall\.search\.submit/,
+  'submitting a search must cancel the web refresh gate immediately');
+assert.match(waterfallCore, /function copyState[\s\S]*?feedRevision: state\.feedRevision \?\? 0/,
+  'rank and merge updates must preserve the active full-refresh revision');
+assert.match(indexPage, /interestDiscoveryQueryGroup[\s\S]*?WATERFALL_INTEREST_QUERY_GROUP_COUNT/,
+  'native full refresh must advance one bounded query group');
+assert.match(indexPage, /private interestRefreshPreloadTail:\s*WaterfallRankedCandidate\[\]/,
+  'the next refresh group must have an independent tail inventory');
+assert.match(indexPage, /private interestRefreshPreloadReserve:\s*WaterfallRankedCandidate\[\]/,
+  'the next refresh group must have an independent reserve inventory');
+assert.match(indexPage,
+  /rankInterestWaterfallInWorker\('preload', staging, false/,
+  'parallel preload must rank off the UI thread without touching current or stable');
+assert.match(indexPage,
+  /tail: preloadTail[\s\S]*?reserve: preloadReserve[\s\S]*?rankInterestWaterfallInWorker\('active', this\.interestWaterfallFeedState, true/,
+  'full refresh must transfer parallel inventory before filling current and stable');
+assert.match(rankingWorker, /worker\.workerPort[\s\S]*?finalizeInterestWaterfallRecallRanking/,
+  'the dedicated Worker must own interest ranking execution');
+assert.match(rankingWorkerClient, /new worker\.ThreadWorker\([\s\S]*?WaterfallRankingWorker\.ets/,
+  'the host must use one dedicated ranking Worker');
+assert.match(rankingWorkerClient, /queuedJobs\.get\(lane\)[\s\S]*?queuedJobs\.set\(lane, job\)/,
+  'the host must coalesce queued ranking snapshots per lane');
 assert.match(indexPage, /waterfallAdvanceVisibleFromAction/,
   'native advance must accept the visible card, not only the stale current pointer');
 assert.doesNotMatch(indexPage, /renderTick:\s*this\.interestWaterfallPayloadTick/,
@@ -591,6 +648,8 @@ assert.match(waterfallCss, /\.waterfall-edge-fade--bottom\s*\{[^}]*bottom:\s*0/s
 assert.match(waterfallCss,
   /\.waterfall-track\s*\{[^}]*padding:\s*calc\(64px \+ env\(safe-area-inset-top\) \+ 12px\) 0/s,
   'the first card must sit below the discovery toolbar, not a 12dvh empty band');
+assert.doesNotMatch(waterfallCss, /overflow-anchor:\s*none|\.waterfall-track\.is-rebasing/,
+  'retained shown history must rely on normal scrolling without a deletion rebase mode');
 assert.doesNotMatch(waterfallCss, /padding-bottom:\s*18dvh/,
   'a viewport-sized bottom pad makes the feed feel empty and breaks the last snap');
 assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*scroll-snap-stop:\s*always/s,
@@ -944,7 +1003,7 @@ assert.match(openReaderSource, /requestAnimationFrame\(reveal\)/,
   'first entry must paint the mounted detail at its resting origin before starting the transition');
 const settleSource = waterfallJs.slice(
   waterfallJs.indexOf('function settleInteraction'),
-  waterfallJs.indexOf("document.addEventListener('touchstart'")
+  waterfallJs.indexOf('function requestFullRefresh')
 );
 assert.match(settleSource, /scheduleAdvance\(settledIndex\)/,
   'the settled page must still advance the native feed once scrolling stops');

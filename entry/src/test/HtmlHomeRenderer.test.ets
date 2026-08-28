@@ -21,6 +21,7 @@ import {
   waterfallCardActionFromAction,
   waterfallCommentsCandidateFromAction,
   waterfallEnabledSourcesFromAction,
+  waterfallRefreshFromAction,
   waterfallSearchExitFromAction,
   waterfallSearchQueryFromAction
 } from '../main/ets/pages/A2uiHome/html/HtmlAggregateSearchHomeRenderer';
@@ -4148,6 +4149,17 @@ export default function htmlHomeRendererTest() {
       const injected = JSON.parse(JSON.stringify(submit)) as A2uiAction;
       (injected.args as Record<string, string>).url = 'https://attacker.example';
       expect(waterfallSearchQueryFromAction(injected, 'surface-1')).assertEqual(null);
+    });
+
+    it('accepts only a current-surface refresh action', 0, () => {
+      const refresh = parseHtmlHomeAction('{"id":"waterfall.feed.refresh","label":"刷新",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1"}}') as A2uiAction;
+
+      expect(waterfallRefreshFromAction(refresh, 'surface-1')).assertTrue();
+      expect(waterfallRefreshFromAction(refresh, 'other')).assertFalse();
+      const injected = JSON.parse(JSON.stringify(refresh)) as A2uiAction;
+      (injected.args as Record<string, string>).query = 'unexpected';
+      expect(waterfallRefreshFromAction(injected, 'surface-1')).assertFalse();
     });
 
     it('turns the posted Waterfall scroll action into one current-card advance', 0, () => {

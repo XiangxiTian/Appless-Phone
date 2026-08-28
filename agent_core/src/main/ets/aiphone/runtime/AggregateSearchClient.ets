@@ -771,6 +771,12 @@ function videoFromDynamic(source: AggregateSearchSource, result: DynamicGenericT
   };
 }
 
+export function bilibiliVideoPassesQuality(video: AggregateSearchVideo): boolean {
+  if (video.source !== 'bilibili') return true;
+  const views = metricNumber(aggregateRowText(video.rows, ['Views', 'View Count', 'Play']));
+  return views !== undefined && views > 1000;
+}
+
 function urlFromText(value: string): string {
   const urlStart = value.indexOf('http');
   return urlStart >= 0 ? value.substring(urlStart).split(' ')[0].trim() : '';
@@ -1808,9 +1814,11 @@ function waterfallPhaseFor(status: AggregateSearchStatus): WaterfallSourcePhase 
 
 function sourceStateFor(batch: AggregateSearchSourceBatch): WaterfallSourceState {
   const phase = waterfallPhaseFor(batch.status.status);
+  const resumableEmpty = phase === 'empty' && batch.continuation !== null;
   return {
     source: batch.source,
-    phase: batch.continuation === null && (phase === 'success' || phase === 'empty') ? 'exhausted' : phase,
+    phase: resumableEmpty ? 'success' :
+      batch.continuation === null && (phase === 'success' || phase === 'empty') ? 'exhausted' : phase,
     continuation: batch.continuation,
     inFlight: false,
     reservedCount: 0,
@@ -1994,16 +2002,17 @@ export function aggregateVideoSourceBatchFromDynamicResults(
   continuation: WaterfallContinuation | null = null,
   limit: number = 10
 ): AggregateSearchSourceBatch {
-  const videos: AggregateSearchVideo[] = [];
+  const rawVideos: AggregateSearchVideo[] = [];
   mediaResults.forEach((result: DynamicGenericToolResult, index: number): void => {
-    if (result.status !== 'success' || dynamicSource(result) !== source || videos.length >= limit) {
+    if (result.status !== 'success' || dynamicSource(result) !== source || rawVideos.length >= limit) {
       return;
     }
     const video = videoFromDynamic(source, result, index);
     if (video.url.length > 0) {
-      videos.push(video);
+      rawVideos.push(video);
     }
   });
+  const videos = rawVideos.filter((video: AggregateSearchVideo): boolean => bilibiliVideoPassesQuality(video));
   const matching = mediaResults.filter((result: DynamicGenericToolResult): boolean => dynamicSource(result) === source);
   const rawStatus = videos.length > 0 ? 'success' : (matching.length > 0 ? matching[0].status : 'empty');
   let next: WaterfallContinuation | null = null;
@@ -2012,7 +2021,7 @@ export function aggregateVideoSourceBatchFromDynamicResults(
     if (token.length > 0 && (continuation === null || token !== continuation.value)) {
       next = { kind: 'cursor', value: token };
     }
-  } else if (source === 'bilibili' && videos.length >= limit) {
+  } else if (source === 'bilibili' && rawVideos.length >= limit) {
     const currentPage = continuation !== null && continuation.kind === 'page' ?
       Math.max(1, Number(continuation.value)) : 1;
     next = { kind: 'page', value: (currentPage + 1).toString() };
@@ -2022,7 +2031,8 @@ export function aggregateVideoSourceBatchFromDynamicResults(
     videos: videos,
     posts: [],
     status: statusFor(source, rawStatus, mediaMessage(source, videos.length, matching), videos.length),
-    continuation: next
+    continuation: next,
+    rawCount: rawVideos.length
   };
 }
 

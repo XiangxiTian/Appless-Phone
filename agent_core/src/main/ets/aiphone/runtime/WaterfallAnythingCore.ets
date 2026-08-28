@@ -52,9 +52,22 @@ export interface WaterfallPreferenceSnapshot {
   sessionFormatWeights?: WaterfallPreferenceWeight[];
 }
 
-const WATERFALL_EXPLORATION_QUERIES: string[] = ['人工智能', '科技数码', '编程开发', '科学科普'];
+export const WATERFALL_INTEREST_QUERY_GROUP_SIZE: number = 4;
+export const WATERFALL_INTEREST_QUERY_GROUP_COUNT: number = 5;
+
+const WATERFALL_EXPLORATION_QUERIES: string[] = [
+  '人工智能', '科技数码', '编程开发', '科学科普',
+  '美食餐饮', '家常菜谱', '旅行攻略', '城市生活',
+  '体育赛事', '足球篮球', '财经市场', '商业投资',
+  '动画番剧', '漫画作品', '电子游戏', '电影电视剧',
+  '国际政治', '军事国防', '地缘政治', '国际新闻'
+];
 const WATERFALL_WESTERN_EXPLORATION_QUERIES: string[] = [
-  'tech news', 'artificial intelligence', 'programming', 'computer science'
+  'artificial intelligence', 'consumer technology', 'software development', 'popular science',
+  'food and restaurants', 'home cooking', 'travel guides', 'urban lifestyle',
+  'sports news', 'football and basketball', 'financial markets', 'business and investing',
+  'anime', 'manga', 'video games', 'movies and television',
+  'world politics', 'military and defense', 'geopolitics', 'international news'
 ];
 
 function usesChineseDiscoveryQuery(source: string): boolean {
@@ -70,16 +83,17 @@ export function planWaterfallInterestRecall(
   _profile: WaterfallPreferenceSnapshot,
   _recentPositiveCandidates: WaterfallRankedCandidate[],
   enabledSources: string[],
-  round: number = 0
+  queryGroup: number = 0,
+  queryOffset: number = 0
 ): WaterfallInterestRecallRequest[] {
   const sources: string[] = [];
   enabledSources.forEach((source: string): void => {
     if (source.trim().length > 0 && sources.indexOf(source) < 0) sources.push(source);
   });
   if (sources.length === 0) return [];
-  const recallRound = Math.max(0, Math.floor(round));
-  const querySourceCount = sources.filter((source: string): boolean =>
-    source !== 'youtube' && source !== 'twitch').length;
+  const normalizedGroup = Math.max(0, Math.floor(queryGroup)) % WATERFALL_INTEREST_QUERY_GROUP_COUNT;
+  const normalizedOffset = Math.max(0, Math.floor(queryOffset)) % WATERFALL_INTEREST_QUERY_GROUP_SIZE;
+  const groupStart = normalizedGroup * WATERFALL_INTEREST_QUERY_GROUP_SIZE;
   let fallbackIndex = 0;
   return sources.map((source: string): WaterfallInterestRecallRequest => {
     if (source === 'youtube') {
@@ -87,12 +101,11 @@ export function planWaterfallInterestRecall(
     }
     if (source === 'zhihu') {
       const query = WATERFALL_EXPLORATION_QUERIES[
-        (recallRound * Math.max(1, querySourceCount) + fallbackIndex++) % WATERFALL_EXPLORATION_QUERIES.length
+        groupStart + (normalizedOffset + fallbackIndex++) % WATERFALL_INTEREST_QUERY_GROUP_SIZE
       ];
       return { route: 'popular', query, sources: [source], weight: 1, continuation: null };
     }
     if (usesPopularDiscovery(source)) {
-      fallbackIndex++;
       return { route: 'popular', query: '', sources: [source], weight: 1, continuation: null };
     }
     if (source === 'twitch') {
@@ -101,7 +114,9 @@ export function planWaterfallInterestRecall(
     // ponytail: ignore profile n-grams as search queries; they leak source names like 知乎
     const pool = usesChineseDiscoveryQuery(source) ?
       WATERFALL_EXPLORATION_QUERIES : WATERFALL_WESTERN_EXPLORATION_QUERIES;
-    const query = pool[(recallRound * Math.max(1, querySourceCount) + fallbackIndex++) % pool.length];
+    const query = pool[
+      groupStart + (normalizedOffset + fallbackIndex++) % WATERFALL_INTEREST_QUERY_GROUP_SIZE
+    ];
     return { route: 'explore', query, sources: [source], weight: 1, continuation: null };
   });
 }
@@ -194,9 +209,11 @@ export interface WaterfallSourceState {
   query?: string;
   recallRoute?: WaterfallInterestRecallRoute;
   loadMode?: 'native' | 'search';
+  consecutiveEmptyBatches?: number;
 }
 
 export interface WaterfallFeedState {
+  feedRevision?: number;
   mode?: WaterfallMode;
   interestFallbackStarted?: boolean;
   query: string;
@@ -896,6 +913,7 @@ const WATERFALL_MAX_SOURCE_RUN: number = 1;
 const WATERFALL_LOW_WATERMARK: number = 8;
 const WATERFALL_TARGET_INVENTORY: number = 20;
 const WATERFALL_MAX_REQUEST: number = 10;
+export const WATERFALL_MAX_CONSECUTIVE_EMPTY_BATCHES: number = 5;
 
 function copySourceState(source: WaterfallSourceState): WaterfallSourceState {
   return {
@@ -907,8 +925,28 @@ function copySourceState(source: WaterfallSourceState): WaterfallSourceState {
     message: source.message,
     query: source.query,
     recallRoute: source.recallRoute,
-    loadMode: source.loadMode
+    loadMode: source.loadMode,
+    consecutiveEmptyBatches: source.consecutiveEmptyBatches ?? 0
   };
+}
+
+function applySourceEmptyStreak(
+  sources: WaterfallSourceState[],
+  received: WaterfallSourceState,
+  incomingCount: number
+): void {
+  const previous = sourceFor(sources, received.source);
+  const previousCount = previous === null ? 0 : previous.consecutiveEmptyBatches ?? 0;
+  const countableEmpty = incomingCount === 0 && received.phase !== 'loading' &&
+    received.phase !== 'error' && received.phase !== 'needs_auth';
+  received.consecutiveEmptyBatches = incomingCount > 0 ? 0 :
+    countableEmpty ? previousCount + 1 : previousCount;
+  if ((received.consecutiveEmptyBatches ?? 0) >= WATERFALL_MAX_CONSECUTIVE_EMPTY_BATCHES) {
+    received.phase = 'exhausted';
+    received.continuation = null;
+    received.inFlight = false;
+    received.reservedCount = 0;
+  }
 }
 
 function copySources(sources: WaterfallSourceState[]): WaterfallSourceState[] {
@@ -917,6 +955,7 @@ function copySources(sources: WaterfallSourceState[]): WaterfallSourceState[] {
 
 function copyState(state: WaterfallFeedState): WaterfallFeedState {
   return {
+    feedRevision: state.feedRevision ?? 0,
     mode: state.mode ?? 'search',
     interestFallbackStarted: state.interestFallbackStarted ?? false,
     query: state.query,
@@ -1501,6 +1540,7 @@ export function mergeWaterfallBatchDeferredRanking(
   const next = copyState(state);
   const previousCount = totalCandidateCount(next);
   const received = copySourceState(sourceState);
+  applySourceEmptyStreak(next.sources, received, incoming.length);
   replaceSource(next.sources, received);
   if ((next.reserve ?? []).length > 0) {
     next.tail = next.tail.concat(next.reserve ?? []);
@@ -1684,6 +1724,7 @@ function mergeWaterfallBatchState(
   const next = copyState(state);
   const previousCount = totalCandidateCount(next);
   const received = copySourceState(sourceState);
+  applySourceEmptyStreak(next.sources, received, incoming.length);
   received.inFlight = false;
   received.reservedCount = 0;
   replaceSource(next.sources, received);

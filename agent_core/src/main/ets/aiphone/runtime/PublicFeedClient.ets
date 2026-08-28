@@ -10,6 +10,7 @@ import {
 const MAX_FEED_BODY_BYTES: number = 2 * 1024 * 1024;
 const MAX_FEED_ITEMS: number = 80;
 const MAX_SOURCE_POSTS: number = 4;
+const CNNEWS_MIN_TEXT_LENGTH: number = 100;
 
 interface PublicFeedDefinition {
   provider: string;
@@ -176,6 +177,10 @@ function postsFromCollectedItems(
   return posts;
 }
 
+export function cnNewsPostPassesQuality(post: AggregateSearchPost): boolean {
+  return cleanText(post.text).length >= CNNEWS_MIN_TEXT_LENGTH;
+}
+
 export function publicFeedPostsFromEvents(
   source: AggregateSearchSource,
   provider: string,
@@ -314,8 +319,10 @@ export async function loadCnNewsSource(
       return collected;
     }
   ));
+  let rawCount = 0;
   loadedProviders.forEach((collected: AggregateSearchPost[]): void => {
-    providerPosts.push(collected);
+    rawCount += collected.length;
+    providerPosts.push(collected.filter((post: AggregateSearchPost): boolean => cnNewsPostPassesQuality(post)));
   });
   for (let itemIndex = 0; posts.length < postLimit(limit); itemIndex += 1) {
     let appended = false;
@@ -331,10 +338,10 @@ export async function loadCnNewsSource(
     }
     if (!appended) break;
   }
-  const status = posts.length > 0 ? 'success' : errorMessage.length > 0 ? 'error' : 'empty';
+  const status = posts.length > 0 ? 'success' : rawCount > 0 ? 'empty' : errorMessage.length > 0 ? 'error' : 'empty';
   const detail = query.trim().length > 0 ? ' 关键词匹配 ' : ' 返回 ';
   const message = status === 'success' ? 'CNNews' + detail + posts.length.toString() + ' 条内容。' :
     status === 'empty' ? 'CNNews 未返回可用内容。' : 'CNNews 加载失败：' + errorMessage.slice(0, 160);
   return { source: source, videos: [], posts: posts,
-    status: sourceStatus(source, 'CNNews', status, message, posts.length), continuation: null, rawCount: posts.length };
+    status: sourceStatus(source, 'CNNews', status, message, posts.length), continuation: null, rawCount: rawCount };
 }

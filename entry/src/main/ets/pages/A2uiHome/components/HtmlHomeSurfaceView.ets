@@ -93,6 +93,7 @@ export struct HtmlHomeSurfaceView {
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadTick: number = 0;
   @Prop @Watch('onWaterfallPayloadChange') waterfallPayloadJson: string = '';
   @Prop @Watch('onWaterfallPayloadChange') waterfallPayloadTick: number = 0;
+  @Prop @Watch('onWaterfallActiveChange') waterfallActive: boolean = true;
   @Prop @Watch('onWaterfallBackRequest') waterfallBackRequestTick: number = 0;
   @Prop @Watch('onMailDetailEventChange') mailDetailEventJson: string = '';
   @Prop @Watch('onMailReplyEventChange') mailReplyEventJson: string = '';
@@ -314,6 +315,24 @@ export struct HtmlHomeSurfaceView {
 
   onWaterfallPayloadChange(): void {
     this.pushWaterfallPayloadIfNeeded();
+  }
+
+  onWaterfallActiveChange(): void {
+    this.pushWaterfallActive();
+  }
+
+  private pushWaterfallActive(): void {
+    if (!this.webReady) return;
+    try {
+      this.controller.runJavaScript(
+        'try{if(window.__aiphoneSetWaterfallActive){window.__aiphoneSetWaterfallActive(' +
+        (this.waterfallActive ? 'true' : 'false') + ');}}catch(e){}'
+      ).catch((error: Error): void => {
+        aiLogError('[AIPhone][HtmlHomeWaterfallActiveError] ' + JSON.stringify(error));
+      });
+    } catch (error) {
+      aiLogError('[AIPhone][HtmlHomeWaterfallActiveError] ' + JSON.stringify(error));
+    }
   }
 
   onDeepSearchProgressChange(): void {
@@ -579,6 +598,7 @@ export struct HtmlHomeSurfaceView {
           if (this.webReady && this.loadedKey === this.html) this.onCurrentHtmlReady();
           this.pushMultiTaskPayloadIfNeeded();
           this.pushWaterfallPayloadIfNeeded();
+          this.pushWaterfallActive();
           this.onWaterfallBackRequest();
           this.pushMailDetailEventIfNeeded();
           this.pushMailReplyEventIfNeeded();

@@ -108,6 +108,18 @@ const waterfallTemplateWithRegistry = waterfallJs
   .split('${WATERFALL_INTEREST_SOURCE_IDS_JSON}').join(interestSourcesJson);
 const emittedWaterfallJs = Function('return `' + waterfallTemplateWithRegistry + '`;')();
 assert.doesNotThrow(() => new vm.Script(emittedWaterfallJs));
+const imageSlideCss = waterfallCss.slice(
+  waterfallCss.indexOf('.waterfall-image-slide'),
+  waterfallCss.indexOf('.waterfall-image-dots')
+);
+assert.match(imageSlideCss, /\.waterfall-image-media[\s\S]*object-fit:\s*contain/,
+  'mixed-ratio discovery images must stay fully visible instead of being severely cropped');
+assert.match(imageSlideCss, /background:\s*var\(--card-stage,\s*#e7eaed\)/,
+  'unused card space must use the neutral card stage instead of white or black bars');
+assert.doesNotMatch(imageSlideCss, /waterfall-image-backdrop|filter:\s*blur/,
+  'each gallery slide must decode and paint only one image');
+assert.doesNotMatch(imageSlideCss, /background:\s*(?:#000|black)/,
+  'image cards must not introduce black letterboxing');
 const aggregatePostMediaSource = renderer.slice(
   renderer.indexOf('function renderPostMedia'),
   renderer.indexOf('function renderPostLink')
@@ -144,6 +156,24 @@ assert.match(indexPage,
   'fullscreen tucks the already-mounted dock behind the WebView instead of covering it');
 assert.match(indexPage, /startVoiceInput\('waterfall'\)/,
   'the discovery dock must reuse ASR through its independent target');
+const aboutToAppearSource = indexPage.slice(
+  indexPage.indexOf('  aboutToAppear(): void {'),
+  indexPage.indexOf('  onPageShow(): void {'));
+assert.match(aboutToAppearSource,
+  /this\.ensureInterestWaterfall\(\);/,
+  'app startup must preserve discovery recall preloading');
+assert.doesNotMatch(aboutToAppearSource, /this\.ensureInterestWaterfall\(false\);/,
+  'the loading-shell fix must not defer the existing discovery recall');
+assert.match(indexPage, /\.cachedCount\(1, true\)/,
+  'the adjacent discovery WebView must render the existing source-convergence shell before the first swipe');
+assert.match(indexPage, /waterfallActive:\s*this\.bimRootIndex === 1/,
+  'the cached discovery WebView must receive the native Swiper activation state');
+assert.match(indexPage, /HomePage\([\s\S]*?waterfallActive:\s*this\.bimRootIndex === 0/,
+  'the cached main WebView must be inactive while discovery is visible');
+assert.match(homePage, /HtmlHomeSurfaceView\([\s\S]*?waterfallActive:\s*this\.waterfallActive/,
+  'the main page must forward the native Swiper activation state to its WebView');
+assert.match(surfaceView, /@Prop @Watch\('onWaterfallActiveChange'\) waterfallActive:\s*boolean/,
+  'the WebView wrapper must push native page activation without reloading its document');
 assert.match(entryAbility, /waterfallConversationPrompt/,
   'typed device probes must enter through a bounded debug-only ability parameter');
 assert.match(indexPage, /!this\.isDebugBuild[\s\S]*reason=invalid_debug_prompt/,
@@ -348,6 +378,12 @@ assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*height:\s*auto[^}]*min-hei
 assert.match(waterfallCss,
   /\.waterfall-card-shell\s*\{[^}]*height:\s*auto[^}]*min-height:\s*0[^}]*margin:\s*0 14px/s,
   'the white card surface must hug content instead of filling a page slot');
+assert.match(waterfallCss,
+  /\.waterfall-card--image-text \.waterfall-card-shell\s*\{[^}]*padding:\s*0/s,
+  'image cards must meet the card edge instead of showing a white frame');
+assert.match(waterfallCss,
+  /\.waterfall-card--image-text \.waterfall-cinema-copy\s*\{[^}]*padding:\s*16px/s,
+  'only the image-card copy keeps readable inner padding');
 assert.match(waterfallCss,
   /\.waterfall-card--video\.waterfall-card--landscape \.waterfall-cinema-stage\s*\{[^}]*max-height:\s*min\(38dvh, 330px\)/s,
   'landscape video cards keep the 16:9 stage');
@@ -710,6 +746,8 @@ assert.match(waterfallJs, /function realignDiscoveryAfterReveal[\s\S]*cardMetric
   'revealing a previously hidden track must discard zero-sized card geometry and align the current card');
 assert.doesNotMatch(waterfallCss, /\.waterfall-cinema-stage img\s*\{/);
 assert.match(surfaceView, /\.mediaPlayGestureAccess\(false\)/);
+assert.doesNotMatch(surfaceView, /setCustomUserAgent/,
+  'Waterfall playback must not change the user agent of every shared HTML surface');
 assert.match(surfaceView, /popupController\.backward\(\)/);
 assert.match(surfaceView, /openWaterfallSource/);
 assert.match(surfaceView, /shouldOpenWaterfallSourceExternally/);
@@ -828,9 +866,17 @@ const renderPreferencesSource = waterfallJs.slice(
   waterfallJs.indexOf('function renderPreferences'),
   waterfallJs.indexOf('function closePreferences')
 );
+assert.match(renderPreferencesSource, /destroyInlinePlayer\(\);\s*stopStageMedia\(track\);/,
+  'opening source settings must stop an autoplaying Bilibili card behind the sheet');
 assert.match(renderPreferencesSource,
   /if \(!preferences\.innerHTML \|\| preferenceStatusKey !== nextStatusKey\)/,
   'reopening source settings rebuilds only when hard availability changes');
+const openCollectionSource = waterfallJs.slice(
+  waterfallJs.indexOf('function openCollection'),
+  waterfallJs.indexOf('function closeCollection')
+);
+assert.match(openCollectionSource, /destroyInlinePlayer\(\);\s*stopStageMedia\(track\);/,
+  'opening the collection must stop an autoplaying Bilibili card behind the sheet');
 assert.doesNotMatch(waterfallJs, /CARD_MOUNT_RADIUS/,
   'virtualizing offscreen cards as empty placeholders blanks the feed and breaks snap');
 assert.doesNotMatch(waterfallJs, /waterfall-card--placeholder/,
@@ -965,7 +1011,22 @@ assert.match(waterfallCss,
   /\.waterfall-comment-text\s*\{[^}]*-webkit-line-clamp:\s*2/s,
   'comment previews must stay compact until the row is expanded');
 assert.match(waterfallJs, /youtube\.com\/embed\/.*\?playsinline=1/);
-assert.match(waterfallJs, /player\.bilibili\.com\/player\.html\?bvid=.*&autoplay=0&poster=true&danmaku=0&isOutside=true/);
+assert.match(waterfallJs, /player\.bilibili\.com\/player\.html\?bvid=.*&autoplay=0&poster=1&danmaku=0&isOutside=true/);
+assert.match(waterfallJs, /new window\.IntersectionObserver/,
+  'visible video cards must use the browser visibility signal instead of waiting for a tap');
+assert.doesNotMatch(waterfallJs, /autoplayBilibiliIn\(reader\)/,
+  'Bilibili autoplay is limited to cards entering the discovery viewport');
+assert.doesNotMatch(waterfallJs, /urls\.length < 12/,
+  'the gallery renderer must not silently truncate real image arrays');
+assert.match(waterfallJs,
+  /querySelector\('\.waterfall-reader-video-stage'\)[\s\S]*?!frame \|\| !frame\.firstChild[\s\S]*?frame\.innerHTML = ''/,
+  'the delayed cleanup must also tear down an offscreen player that is still loading');
+assert.match(waterfallJs,
+  /function stopStageMedia[\s\S]*?querySelectorAll\('\.waterfall-reader-video-stage'\)/,
+  'leaving or hiding the page must also tear down a player that is still loading');
+assert.match(waterfallJs,
+  /function autoplayBilibiliIn\(root\)[\s\S]*?cleanupInactivePlayers\(root\)[\s\S]*?playVideo\(play, true\)/,
+  'a newly visible Bilibili card must tear down prior players before mounting its iframe');
 assert.doesNotMatch(waterfallJs, /TWITCH_CLIENT_(?:ID|SECRET)|access_token/i);
 
 function element() {
@@ -1051,7 +1112,20 @@ const preferences = element();
 const reader = element();
 const collection = element();
 const readerHead = element();
-reader.querySelector = (selector) => selector === '.waterfall-reader-head' ? readerHead : null;
+const readerAutoplayFrame = element();
+const readerAutoplayStage = element();
+readerAutoplayStage.getAttribute = (name) => name === 'data-waterfall-video-url' ?
+  'https://www.youtube.com/embed/abc123?playsinline=1' :
+  (name === 'data-waterfall-video-kind' ? 'iframe' : '');
+readerAutoplayStage.querySelector = (selector) => selector === '.waterfall-reader-video-frame' ?
+  readerAutoplayFrame : null;
+const readerAutoplayControl = {
+  closest: (selector) => selector === '.waterfall-reader-video-stage' ? readerAutoplayStage : null
+};
+reader.querySelector = (selector) => selector === '.waterfall-reader-head' ? readerHead :
+  (selector === '[data-waterfall-video-play]' && reader.innerHTML.indexOf('waterfall-reader--video') >= 0 ?
+    readerAutoplayControl : null);
+reader.contains = (node) => node === readerAutoplayStage;
 const toolbar = element();
 const toast = element();
 const backButton = element();
@@ -1061,10 +1135,12 @@ const preferenceBackButton = element();
 const preferenceDoneButton = element();
 const preferenceAllButton = element();
 const preferenceNoneButton = element();
+const preferenceVideoSourcesButton = element();
 preferenceBackButton.closest = (selector) => selector.includes('[data-waterfall-close-preferences]') ? preferenceBackButton : null;
 preferenceDoneButton.closest = (selector) => selector.includes('[data-waterfall-apply-preferences]') ? preferenceDoneButton : null;
 preferenceAllButton.closest = (selector) => selector.includes('[data-waterfall-sources-all]') ? preferenceAllButton : null;
 preferenceNoneButton.closest = (selector) => selector.includes('[data-waterfall-sources-none]') ? preferenceNoneButton : null;
+preferenceVideoSourcesButton.closest = (selector) => selector.includes('[data-waterfall-sources-video]') ? preferenceVideoSourcesButton : null;
 const sourceInput = (name, checked) => {
   const input = element();
   input.checked = checked;
@@ -1077,7 +1153,8 @@ const sourceInputs = [
   sourceInput('x', true),
   sourceInput('hackernews', true),
   sourceInput('reddit', true),
-  sourceInput('zhihu', true)
+  sourceInput('zhihu', true),
+  sourceInput('twitch', false)
 ];
 sourceInputs.at(-1).disabled = true;
 preferences.querySelectorAll = (selector) => ({
@@ -1091,6 +1168,14 @@ const sharedCards = [];
 const fullscreenStates = [];
 const timers = [];
 const createdFrames = [];
+let videoVisibilityCallback = null;
+let observedVideoCards = [];
+let videoObserverResets = 0;
+class FakeIntersectionObserver {
+  constructor(callback) { videoVisibilityCallback = callback; }
+  disconnect() { observedVideoCards = []; videoObserverResets += 1; }
+  observe(node) { observedVideoCards.push(node); }
+}
 let now = 1000;
 const FakeDate = { now: () => now };
 const actionCount = (id) => actions.filter((action) => action.id === id).length;
@@ -1201,6 +1286,7 @@ const imageCandidate = {
   source: 'zhihu',
   mediaType: 'image_text',
   coverUrl: 'https://example.test/image.jpg',
+  imageUrls: ['https://example.test/image.jpg', 'https://example.test/image-second.jpg'],
   reason: '摘要命中查询'
 };
 const textCandidate = {
@@ -1267,6 +1353,7 @@ const testUiIcon = '<span class="waterfall-icon" aria-hidden="true"><svg viewBox
 const window = {
   innerWidth: 400,
   innerHeight: 1000,
+  IntersectionObserver: FakeIntersectionObserver,
   matchMedia: () => ({ matches: false }),
   location: { hostname: 'aiphone.local' },
   __aiphoneWaterfallInitial: {
@@ -1337,6 +1424,44 @@ assert.equal(overlay.classList.contains('active'), true);
 assert.equal(overlay.classList.contains('closing'), false);
 assert.match(track.innerHTML, /waterfall-card--video waterfall-card--landscape/);
 assert.match(track.innerHTML, /waterfall-card--image-text/);
+assert.equal(track.innerHTML.match(/data-waterfall-image-slide/g)?.length, 2,
+  'a two-image candidate must render both discovery slides');
+assert.equal(track.innerHTML.match(/data-waterfall-image-dot/g)?.length, 2,
+  'a two-image candidate must render one pagination dot per slide');
+assert.match(track.innerHTML, /https:\/\/example\.test\/image-second\.jpg/,
+  'the discovery card must not collapse multiple images to the cover');
+const firstImageDot = element();
+const secondImageDot = element();
+firstImageDot.classList.add('is-active');
+const imageCarouselRoot = {
+  querySelectorAll: (selector) => selector === '[data-waterfall-image-dot]' ?
+    [firstImageDot, secondImageDot] : []
+};
+const imageCarouselTrack = {
+  scrollLeft: 400,
+  clientWidth: 400,
+  classList: { contains: (name) => name === 'waterfall-image-track' },
+  closest: (selector) => selector === '[data-waterfall-image-carousel]' ? imageCarouselRoot : null
+};
+assert.equal(typeof documentListeners.scroll, 'function',
+  'image pagination must listen for horizontal carousel scrolls');
+documentListeners.scroll({ target: imageCarouselTrack });
+assert.equal(firstImageDot.classList.contains('is-active'), false,
+  'leaving the first slide must clear its active dot');
+assert.equal(secondImageDot.classList.contains('is-active'), true,
+  'the dot for the visible slide must become active');
+const imageTouchTarget = {
+  closest: (selector) => selector === '.waterfall-image-track' ? imageCarouselTrack : null
+};
+const imageTouchSettleCount = timers.filter((timer) => timer.delay === 96 && !timer.canceled).length;
+documentListeners.touchstart({
+  target: imageTouchTarget, touches: [{ clientX: 320, clientY: 280 }]
+});
+documentListeners.touchend({
+  target: imageTouchTarget, changedTouches: [{ clientX: 120, clientY: 280 }]
+});
+assert.equal(timers.filter((timer) => timer.delay === 96 && !timer.canceled).length, imageTouchSettleCount,
+  'horizontal gallery swipes must not enter the vertical feed settle path');
 assert.match(track.innerHTML, /waterfall-card--text/);
 assert.match(track.innerHTML, /waterfall-card--video waterfall-card--portrait/);
 assert.match(track.innerHTML, /waterfall-card--text waterfall-tone--reddit" data-waterfall-id="no-cover-image"/);
@@ -1507,9 +1632,36 @@ const compactCardNodes = [
 const gestureCardNodes = window.__aiphoneWaterfallInitial.candidates.map((_, index) =>
   Object.assign(element(), { offsetTop: 18 + index * 728, offsetHeight: 700 }));
 const currentMetricSlot = element();
+const youtubeVideoFrame = element();
+const youtubeVideoStage = element();
+youtubeVideoStage.getAttribute = (name) => name === 'data-waterfall-video-url' ?
+  'https://www.youtube.com/embed/abc123?playsinline=1' :
+  (name === 'data-waterfall-video-kind' ? 'iframe' : '');
+youtubeVideoStage.querySelector = (selector) => selector === '.waterfall-reader-video-frame' ?
+  youtubeVideoFrame : null;
+youtubeVideoStage.closest = (selector) => selector === '.waterfall-card' ? gestureCardNodes[0] : null;
+const youtubeVideoControl = {
+  closest: (selector) => selector === '.waterfall-reader-video-stage' ? youtubeVideoStage : null
+};
+const visibleVideoFrame = element();
+const visibleVideoStage = element();
+visibleVideoStage.getAttribute = (name) => name === 'data-waterfall-video-url' ?
+  'https://player.bilibili.com/player.html?bvid=BV1xx411c7mD&autoplay=0&poster=true' :
+  (name === 'data-waterfall-video-kind' ? 'iframe' : '');
+visibleVideoStage.querySelector = (selector) => selector === '.waterfall-reader-video-frame' ?
+  visibleVideoFrame : null;
+visibleVideoStage.closest = (selector) => selector === '.waterfall-card' ? gestureCardNodes[3] : null;
+const visibleVideoControl = {
+  closest: (selector) => selector === '.waterfall-reader-video-stage' ? visibleVideoStage : null
+};
 gestureCardNodes[0].getAttribute = (name) => name === 'data-waterfall-id' ? 'current' : '';
 gestureCardNodes[0].querySelector = (selector) =>
-  selector === '[data-waterfall-card-metrics]' ? currentMetricSlot : null;
+  selector === '[data-waterfall-card-metrics]' ? currentMetricSlot :
+    (selector === '[data-waterfall-video-play]' ? youtubeVideoControl : null);
+gestureCardNodes[3].getAttribute = (name) => name === 'data-waterfall-id' ? 'portrait-current' : '';
+gestureCardNodes[3].querySelector = (selector) =>
+  selector === '[data-waterfall-video-play]' || selector === '[data-waterfall-video-autoplay]' ?
+    visibleVideoControl : null;
 track.querySelectorAll = (selector) => selector === '[data-waterfall-id]' ? gestureCardNodes : [];
 const likeControl = {
   getAttribute: (name) => ({
@@ -1526,6 +1678,7 @@ assert.deepEqual(actions.at(-1)?.args, {
 });
 const writesBeforeCardActionAck = track.innerHTMLWrites;
 const initialCandidates = window.__aiphoneWaterfallInitial.candidates;
+window.__aiphoneSetWaterfallActive(false);
 window.__aiphoneApplyWaterfallUpdate({
   ...window.__aiphoneWaterfallInitial,
   candidates: [{ ...initialCandidates[0], metrics: [{ kind: 'like', value: 4321 }] },
@@ -1533,6 +1686,80 @@ window.__aiphoneApplyWaterfallUpdate({
     ...initialCandidates.slice(4)],
   cardStates: [{ candidateId: 'current', reaction: 'like', saved: true }]
 });
+const framesBeforeVisibleAutoplay = createdFrames.length;
+runLatestTimer(72);
+assert.equal(createdFrames.length, framesBeforeVisibleAutoplay,
+  'the 72ms feed advance timer must not mount or tear down media');
+assert.equal(observedVideoCards.includes(gestureCardNodes[0]), false,
+  'YouTube cards must not be observed for automatic playback');
+assert.equal(observedVideoCards.includes(gestureCardNodes[3]), false,
+  'a cached but inactive discovery page must not observe Bilibili cards');
+assert.equal(typeof window.__aiphoneSetWaterfallActive, 'function');
+window.__aiphoneSetWaterfallActive(true);
+assert.equal(observedVideoCards.includes(gestureCardNodes[3]), true,
+  'Bilibili cards must be observed for automatic playback');
+videoVisibilityCallback?.([{
+  target: gestureCardNodes[0], isIntersecting: true, intersectionRatio: 0.9
+}]);
+assert.equal(createdFrames.length, framesBeforeVisibleAutoplay,
+  'a visible YouTube card must keep its remote player unloaded until the user taps');
+videoVisibilityCallback?.([{
+  target: gestureCardNodes[3], isIntersecting: true, intersectionRatio: 0.9
+}]);
+assert.equal(createdFrames.length, framesBeforeVisibleAutoplay + 1,
+  'a mostly visible Bilibili card must mount its player without a scroll timer or tap');
+assert.equal(visibleVideoStage.classList.contains('is-playing'), false,
+  'the poster must remain visible while the external player is loading');
+assert.match(visibleVideoFrame.innerHTML, /autoplay=true/,
+  'Bilibili mobile player treats only the literal true as an enabled boolean');
+assert.match(visibleVideoFrame.innerHTML, /muted=true/,
+  'Bilibili mobile autoplay must stay muted without relying on numeric booleans');
+assert.match(visibleVideoFrame.innerHTML, /poster=false/);
+createdFrames.at(-1)?.emit('load');
+assert.equal(visibleVideoStage.classList.contains('is-playing'), true,
+  'the poster may hide only after the external player has loaded');
+track.querySelectorAll = (selector) => ({
+  '[data-waterfall-id]': gestureCardNodes,
+  '.waterfall-reader-video-stage': [visibleVideoStage],
+  '.is-playing': [visibleVideoStage, gestureCardNodes[3]].filter((node) =>
+    node.classList.contains('is-playing'))
+})[selector] ?? [];
+const framesBeforeSurfaceResume = createdFrames.length;
+window.__aiphoneSetWaterfallActive(false);
+assert.equal(visibleVideoFrame.firstChild, null,
+  'leaving the discovery Swiper page must remove its Bilibili iframe');
+assert.equal(observedVideoCards.length, 0,
+  'the inactive cached page must disconnect its visibility observer');
+window.__aiphoneSetWaterfallActive(true);
+assert.equal(observedVideoCards.includes(gestureCardNodes[3]), true,
+  'returning to discovery must re-observe Bilibili cards');
+videoVisibilityCallback?.([{
+  target: gestureCardNodes[3], isIntersecting: true, intersectionRatio: 0.9
+}]);
+assert.equal(createdFrames.length, framesBeforeSurfaceResume + 1,
+  'returning to discovery must remount the visible Bilibili player exactly once');
+createdFrames.at(-1)?.emit('load');
+const observerResetsBeforeCollection = videoObserverResets;
+collectionButton.emit('click', { preventDefault: () => {}, target: collectionButton });
+assert.equal(visibleVideoFrame.firstChild, null,
+  'opening the collection must remove the playing Bilibili iframe');
+collection.emit('click', {
+  preventDefault: () => {},
+  target: { closest: (selector) => selector === '[data-waterfall-collection-close]' ? {} : null }
+});
+runLatestTimer(160);
+assert.equal(videoObserverResets, observerResetsBeforeCollection + 1,
+  'closing the collection must re-observe the visible Bilibili card');
+assert.equal(observedVideoCards.includes(gestureCardNodes[3]), true,
+  'collection recovery must observe the Bilibili card again');
+assert.equal(observedVideoCards.includes(gestureCardNodes[0]), false,
+  'collection recovery must not opt YouTube into autoplay');
+const framesBeforeCollectionResume = createdFrames.length;
+videoVisibilityCallback?.([{
+  target: gestureCardNodes[3], isIntersecting: true, intersectionRatio: 0.9
+}]);
+assert.equal(createdFrames.length, framesBeforeCollectionResume + 1,
+  'closing the collection must remount the visible Bilibili player exactly once');
 assert.equal(track.innerHTMLWrites, writesBeforeCardActionAck,
   'a card-action acknowledgement must not rebuild and flash the loaded card tree');
 assert.match(currentMetricSlot.innerHTML, /data-waterfall-metric="like"[^>]*aria-label="\u70b9\u8d5e 4,321"/,
@@ -1663,6 +1890,9 @@ assert.equal(reader.classList.contains('active'), false,
   'tapping the video stage must play in place instead of opening details');
 assert.match(feedPlayFrame.innerHTML, /<iframe class="waterfall-media-frame"/,
   'the first tap on a video cover must start playback');
+assert.equal(feedPlayStage.classList.contains('is-playing'), false,
+  'manual playback must also keep the poster until the iframe loads');
+createdFrames.at(-1)?.emit('load');
 assert.equal(feedPlayStage.classList.contains('is-playing'), true);
 documentListeners.touchstart({ touches: [{ clientX: 200, clientY: 700 }] });
 documentListeners.touchmove?.({ touches: [{ clientX: 202, clientY: 560 }] });
@@ -1678,6 +1908,7 @@ documentListeners.touchend?.();
 assert.equal(swipeReleasePrevented, false,
   'delegated fast taps must not cancel the native end of a scrolling gesture');
 now += 1000;
+const framesBeforeYoutubeReaderOpen = createdFrames.length;
 track.emit('click', {
   target: { closest: (selector) => selector === '[data-waterfall-open]' ? videoOpen : null }
 });
@@ -1703,8 +1934,10 @@ assert.match(reader.innerHTML, /class="waterfall-reader-copy"/);
 assert.doesNotMatch(reader.innerHTML, /waterfall-reader-video-card|waterfall-reader-video-copy/);
 assert.match(reader.innerHTML, /waterfall-reader-head-label">返回</);
 assert.match(reader.innerHTML, /waterfall-reader-head-title">详情</);
-assert.doesNotMatch(reader.innerHTML, /<iframe class="waterfall-media-frame"/,
-  'opening video details must not load the remote player before a deliberate play press');
+assert.equal(readerAutoplayStage.classList.contains('is-playing'), false,
+  'opening YouTube details must keep the poster until the user taps');
+assert.equal(createdFrames.length, framesBeforeYoutubeReaderOpen,
+  'opening YouTube details must not load the remote player automatically');
 assert.match(reader.innerHTML, /waterfall-reader-video-frame/);
 assert.match(reader.innerHTML, /data-waterfall-video-play/);
 assert.match(reader.innerHTML, /waterfall-reader-video-fallback/);
@@ -1725,6 +1958,8 @@ const playControl = {
 reader.emit('click', {
   target: { closest: (selector) => selector === '[data-waterfall-video-play]' ? playControl : null }
 });
+assert.equal(videoStage.classList.contains('is-playing'), false);
+createdFrames.at(-1)?.emit('load');
 assert.equal(videoStage.classList.contains('is-playing'), true,
   'video details must reveal the player only after the play control is pressed');
 assert.match(videoFrame.innerHTML, /<iframe class="waterfall-media-frame"/);
@@ -1971,9 +2206,13 @@ track.emit('keydown', {
 assert.equal(prevented, true);
 assert.equal(reader.classList.contains('active'), true);
 assert.match(reader.innerHTML, /waterfall-reader--image-text/);
-assert.match(reader.innerHTML, /class="waterfall-reader-media"/);
+assert.match(reader.innerHTML, /class="waterfall-reader-media(?:\s|\")/);
 assert.match(reader.innerHTML, /class="waterfall-reader-copy"/);
 assert.match(reader.innerHTML, /https:\/\/example\.test\/image\.jpg/);
+assert.match(reader.innerHTML, /https:\/\/example\.test\/image-second\.jpg/,
+  'the reader must retain every image from the discovery card');
+assert.equal(reader.innerHTML.match(/data-waterfall-image-dot/g)?.length, 2,
+  'the reader must render the same pagination dots as the card');
 assert.match(reader.innerHTML, /onerror="this\.hidden=true"/);
 documentListeners.keydown({ key: 'Escape' });
 finishReaderClose();
@@ -2130,9 +2369,11 @@ const preferenceWritesAfterFirstOpen = preferences.innerHTMLWrites;
 const sourceSelectionCountBeforeToggle = actionCount('waterfall.sources.select');
 assert.match(preferences.innerHTML, /data-waterfall-sources-all/);
 assert.match(preferences.innerHTML, /data-waterfall-sources-none/);
+assert.match(preferences.innerHTML, /data-waterfall-sources-video[^>]*>仅视频<\/button>/);
+assert.match(preferences.innerHTML, /data-waterfall-apply-preferences/);
 assert.match(preferences.innerHTML,
-  /<div class="waterfall-toolbar">[\s\S]*?<div class="waterfall-source-bulk"[\s\S]*?data-waterfall-sources-none[\s\S]*?data-waterfall-apply-preferences[\s\S]*?<div class="waterfall-source-grid">/,
-  'bulk source actions must stay inside the source sheet toolbar');
+  /<div class="waterfall-toolbar">[\s\S]*?<div class="waterfall-source-bulk"[\s\S]*?data-waterfall-sources-video[\s\S]*?data-waterfall-apply-preferences[\s\S]*?<div class="waterfall-source-grid">/,
+  'the video preset must stay inside the existing source toolbar');
 preferences.emit('click', { preventDefault: () => {}, target: preferenceNoneButton });
 assert.equal(sourceInputs.every((input) => !input.checked), true,
   'select none must clear every available source locally');
@@ -2141,6 +2382,18 @@ assert.equal(sourceInputs.filter((input) => !input.disabled).every((input) => in
   'select all must enable every available source');
 assert.equal(sourceInputs.filter((input) => input.disabled).every((input) => !input.checked), true,
   'select all must leave unavailable sources disabled');
+preferences.emit('click', { preventDefault: () => {}, target: preferenceVideoSourcesButton });
+assert.deepEqual(sourceInputs.filter((input) => input.checked).map((input) =>
+  input.getAttribute('data-waterfall-source')).sort(), ['bilibili', 'youtube'],
+  'the video preset must select only available video sources');
+sourceInputs.at(-1).disabled = false;
+preferences.emit('click', { preventDefault: () => {}, target: preferenceVideoSourcesButton });
+assert.deepEqual(sourceInputs.filter((input) => input.checked).map((input) =>
+  input.getAttribute('data-waterfall-source')).sort(), ['bilibili', 'twitch', 'youtube'],
+  'the video preset must include Twitch when that video source is available');
+sourceInputs.at(-1).disabled = true;
+sourceInputs.at(-1).checked = false;
+preferences.emit('click', { preventDefault: () => {}, target: preferenceAllButton });
 assert.equal(actionCount('waterfall.sources.select'), sourceSelectionCountBeforeToggle,
   'bulk selection must wait for Done before crossing the native bridge');
 sourceInputs[0].checked = false;
@@ -2299,7 +2552,7 @@ assert.match(track.innerHTML, /至少开启一个来源/,
 sourceInputs.forEach((input) => { input.checked = false; });
 sourceInputs[0].checked = true;
 sourceInputs[0].emit('change');
-preferences.emit('click', { preventDefault: () => {}, target: preferenceBackButton });
+preferences.emit('click', { preventDefault: () => {}, target: preferenceDoneButton });
 assert.match(track.innerHTML, /本轮内容已结束/);
 assert.doesNotMatch(track.innerHTML, /至少开启一个来源/);
 assert.match(track.innerHTML, /data-waterfall-empty-sources[^>]*>调整内容来源<\/button>/);
@@ -2316,14 +2569,21 @@ preferences.emit('click', { preventDefault: () => {}, target: preferenceDoneButt
 
 window.__aiphoneApplyWaterfallUpdate({
   surfaceId: 'surface-1',
-  enabledSources: ['youtube'],
+  enabledSources: JSON.parse(interestSourcesJson),
   aggregateHtml: '',
   candidates: [],
-  sources: [],
+  sources: JSON.parse(interestSourcesJson).map((source) => ({
+    source,
+    phase: 'loading',
+    inFlight: true
+  })),
   replenishing: true,
   exhausted: false
 });
 assert.match(track.innerHTML, /正在补充内容/);
+assert.equal((track.innerHTML.match(/waterfall-convergence-source is-loading/g) ?? []).length, 12,
+  'the preloaded discovery shell must show all 12 source indicators instead of a naked background');
+assert.match(track.innerHTML, /0 \/ 12 个来源已响应/);
 assert.doesNotMatch(track.innerHTML, /至少开启一个来源/);
 assert.doesNotMatch(track.innerHTML, /本轮内容已结束/);
 

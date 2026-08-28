@@ -836,11 +836,15 @@ export default function aggregateSearchClientTest() {
       const posts = xPostsFromComposioResult({
         sourceTag: 'Composio', toolName: 'TWITTER_RECENT_SEARCH', title: 'Composio X 结果',
         status: 'success', summary: '返回 2 条', rows: [],
-        rawPreview: '{"data":[{"id":"x-video","text":"Video post","attachments":{"media_keys":["m1"]}},' +
-          '{"id":"x-image","text":"Image post","attachments":{"media_keys":["m2"]}}],"includes":{"media":[' +
-          '{"media_key":"m1","type":"video","preview_image_url":"https://img.test/video.jpg","variants":[' +
-          '{"content_type":"video/mp4","bit_rate":832000,"url":"https://video.test/demo.mp4"}]},' +
-          '{"media_key":"m2","type":"photo","url":"https://img.test/photo.jpg"}]}}'
+        rawPreview: '{"data":[{"id":"x-video","messageText":"Video post"},' +
+          '{"id":"x-image","messageText":"Image post"}]}',
+        providerData: JSON.parse('{"data":[{"id":"x-video","text":"Video post","attachments":' +
+          '{"media_keys":["m1"]}},{"id":"x-image","text":"Image post","attachments":' +
+          '{"media_keys":["m2","m3"]}}],"includes":{"media":[{"media_key":"m1","type":"video",' +
+          '"preview_image_url":"https://img.test/video.jpg","variants":[{"content_type":"video/mp4",' +
+          '"bit_rate":832000,"url":"https://video.test/demo.mp4"}]},{"media_key":"m2","type":"photo",' +
+          '"url":"https://pbs.twimg.com/media/photo.jpg"},{"media_key":"m3","type":"photo",' +
+          '"url":"https://pbs.twimg.com/media/photo-2.jpg"}]}}') as Object
       });
       const candidates = aggregateMediaCandidates([], posts, 0);
 
@@ -848,7 +852,24 @@ export default function aggregateSearchClientTest() {
       expect(candidates[0].mediaUrl).assertEqual('https://video.test/demo.mp4');
       expect(candidates[0].coverUrl).assertEqual('https://img.test/video.jpg');
       expect(candidates[1].mediaType).assertEqual('image_text');
-      expect(candidates[1].coverUrl).assertEqual('https://img.test/photo.jpg');
+      expect(candidates[1].coverUrl).assertEqual('https://pbs.twimg.com/media/photo.jpg');
+      expect(candidates[1].imageUrls?.join(',')).assertEqual(
+        'https://pbs.twimg.com/media/photo.jpg,https://pbs.twimg.com/media/photo-2.jpg');
+    });
+
+    it('keeps ordinary galleries while bounding an abnormal image payload', 0, () => {
+      const imageUrls: string[] = Array.from({ length: 21 }, (_value: undefined, index: number): string =>
+        'https://img.example.com/' + index.toString() + '.jpg');
+      const post: AggregateSearchPost = {
+        id: 'gallery-13', source: 'x', provider: 'X', title: 'Gallery', text: 'All images',
+        url: 'https://x.com/user/status/gallery-13', publishedAt: '', score: '', commentCount: '',
+        author: '', handle: '', status: 'success', rows: [{ label: 'images', value: imageUrls.join(' ') }]
+      };
+
+      const candidate = aggregateMediaCandidates([], [post], 0)[0];
+
+      expect(candidate.imageUrls?.length).assertEqual(20);
+      expect(candidate.imageUrls?.[19]).assertEqual(imageUrls[19]);
     });
 
     it('maps compact X Composio messageText into the card body', 0, () => {
@@ -881,6 +902,14 @@ export default function aggregateSearchClientTest() {
 
       expect(candidate.mediaType).assertEqual('image_text');
       expect(candidate.coverUrl).assertEqual('https://img.example.com/one.jpg');
+      expect(candidate.imageUrls?.join(',')).assertEqual(
+        'https://img.example.com/one.jpg,https://img.example.com/two.jpg');
+      const ranked = rankWaterfallCandidates({
+        query: '', candidates: [candidate], enabledSources: ['x'], shownIds: [], stableIds: [],
+        preferenceDescription: ''
+      }, WATERFALL_NOW_MS);
+      expect(ranked[0].imageUrls?.join(',')).assertEqual(
+        'https://img.example.com/one.jpg,https://img.example.com/two.jpg');
     });
 
     it('skips non-success Hacker News rows', 0, () => {

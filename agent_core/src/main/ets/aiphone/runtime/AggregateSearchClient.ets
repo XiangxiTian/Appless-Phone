@@ -157,18 +157,20 @@ function appendImageUrl(urls: string[], value: string): void {
   urls.push(deliveredUrl);
 }
 
-function waterfallPostCoverUrl(post: AggregateSearchPost): string {
+const MAX_WATERFALL_POST_IMAGES: number = 20;
+
+function waterfallPostImageUrls(post: AggregateSearchPost): string[] {
   const labels: string[] = ['mediaurl', 'image', 'images', 'thumbnail', 'cover', 'pic', 'picture'];
+  const urls: string[] = [];
   for (let index = 0; index < post.rows.length; index++) {
     const label = post.rows[index].label.trim().toLowerCase();
     if (labels.indexOf(label) < 0) continue;
     const parts = post.rows[index].value.trim().split(/\s+/);
-    for (let part = 0; part < parts.length; part++) {
-      const url = decodeHttpUrl(parts[part]);
-      if (isDisplayableImageUrl(url)) return url;
+    for (let part = 0; part < parts.length && urls.length < MAX_WATERFALL_POST_IMAGES; part++) {
+      appendImageUrl(urls, parts[part]);
     }
   }
-  return '';
+  return urls;
 }
 
 function playableVideoPageUrl(value: string): boolean {
@@ -319,7 +321,8 @@ export function aggregateMediaCandidates(
     });
   });
   posts.forEach((post: AggregateSearchPost, index: number) => {
-    const coverUrl = waterfallPostCoverUrl(post);
+    const imageUrls = waterfallPostImageUrls(post);
+    const coverUrl = imageUrls.length > 0 ? imageUrls[0] : '';
     const mediaUrl = waterfallPostVideoUrl(post);
     const isVideo = mediaUrl.length > 0 || playableVideoPageUrl(post.url);
     const mediaType = isVideo ? 'video' : (coverUrl.length > 0 ? 'image_text' : 'post');
@@ -337,6 +340,7 @@ export function aggregateMediaCandidates(
       summary: post.text,
       url: post.url,
       coverUrl: coverUrl,
+      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       mediaUrl: mediaUrl,
       feedUrl: post.feedUrl,
       providerItemId: postProviderId(post) || undefined,
@@ -1235,9 +1239,15 @@ export function redditPostsFromComposioResult(result: DynamicGenericToolResult):
 }
 
 export function xPostsFromComposioResult(result: DynamicGenericToolResult): AggregateSearchPost[] {
-  const posts = postsFromDynamicResult('x', 'X', result);
-  appendXMediaRows(posts, xMediaRecords(result.rawPreview));
-  appendXAuthorRows(posts, xIncludedRecords(result.rawPreview, 'users'));
+  const payload = result.providerData === undefined ? result.rawPreview : result.providerData;
+  const postResult: DynamicGenericToolResult = result.providerData === undefined ? result : {
+    sourceTag: result.sourceTag, toolName: result.toolName, title: result.title,
+    status: result.status, summary: result.summary, rows: result.rows,
+    rawPreview: JSON.stringify(result.providerData)
+  };
+  const posts = postsFromDynamicResult('x', 'X', postResult);
+  appendXMediaRows(posts, xMediaRecords(payload));
+  appendXAuthorRows(posts, xIncludedRecords(payload, 'users'));
   return posts;
 }
 
@@ -1310,7 +1320,6 @@ function appendXMediaRows(posts: AggregateSearchPost[], media: Object[]): void {
       if (video.length > 0) {
         post.rows.push({ label: 'video', value: video });
       }
-      break;
     }
   });
 }
@@ -1367,7 +1376,8 @@ async function appendComposioPosts(
       statuses.push(statusFor(source, 'error', 'Composio ' + provider + ' did not run.', 0));
       return null;
     }
-    const nextPosts = postsFromDynamicResult(source, provider, result);
+    const nextPosts = source === 'x' ? xPostsFromComposioResult(result) :
+      postsFromDynamicResult(source, provider, result);
     nextPosts.forEach((post: AggregateSearchPost) => posts.push(post));
     statuses.push(statusFor(source, result.status, result.summary, nextPosts.length));
     return result;

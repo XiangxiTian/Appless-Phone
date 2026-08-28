@@ -883,6 +883,29 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   position: absolute; z-index: 1; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover;
 }
 .waterfall-media-cover[hidden] { display: none; }
+.waterfall-image-carousel { position: relative; }
+.waterfall-image-track {
+  display: flex; width: 100%; height: 100%; overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain; touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+.waterfall-image-track::-webkit-scrollbar { display: none; }
+.waterfall-image-slide {
+  position: relative; flex: 0 0 100%; width: 100%; height: 100%; overflow: hidden;
+  scroll-snap-align: start; scroll-snap-stop: always; background: var(--card-stage, #e7eaed);
+}
+.waterfall-image-media {
+  display: block; width: 100%; height: 100%; object-fit: contain;
+}
+.waterfall-image-dots {
+  position: absolute; z-index: 5; left: 50%; bottom: 12px; display: flex; align-items: center; gap: 6px;
+  transform: translateX(-50%); pointer-events: none;
+}
+.waterfall-image-dot {
+  width: 6px; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.56);
+  box-shadow: 0 1px 4px rgba(20, 24, 28, 0.2); transition: transform 140ms var(--ease-out), background-color 140ms ease;
+}
+.waterfall-image-dot.is-active { background: #fff; transform: scale(1.34); }
 .waterfall-media-frame {
   position: absolute; z-index: 2; inset: 0; display: block; width: 100%; height: 100%;
   border: 0; background: #e8edf2; pointer-events: auto;
@@ -953,6 +976,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   top: calc(12px + env(safe-area-inset-top)); right: 16px;
 }
 .waterfall-card--image-text .waterfall-cinema-stage { height: min(50dvh, 440px); }
+.waterfall-card--image-text .waterfall-card-shell { touch-action: pan-x pan-y; }
 .waterfall-card--text { background: transparent; color: var(--ink); }
 .waterfall-cinema-meta {
   display: inline-flex; width: 100%; min-height: 32px; flex-wrap: wrap; align-items: center; gap: 6px 8px;
@@ -1309,7 +1333,10 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   aspect-ratio: 9 / 16; align-self: center;
 }
 .waterfall-card--video.waterfall-card--portrait .waterfall-media-cover { object-fit: contain; }
-.waterfall-card--image-text .waterfall-cinema-stage { height: min(40dvh, 360px); }
+.waterfall-card--image-text .waterfall-cinema-stage {
+  height: min(40dvh, 360px); border-radius: 23px 23px 0 0;
+}
+.waterfall-card--image-text .waterfall-card-shell { padding: 0; }
 .waterfall-cinema-stage::after { display: none; }
 .waterfall-cinema-copy {
   position: relative; z-index: 4; top: auto; right: auto; bottom: auto; left: auto;
@@ -1322,6 +1349,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-card--text .waterfall-cinema-copy {
   top: auto; bottom: auto; max-height: none; backdrop-filter: none;
 }
+.waterfall-card--image-text .waterfall-cinema-copy { padding: 16px; }
 .waterfall-card--text { background: transparent; }
 .waterfall-card--text .waterfall-card-shell { min-height: min(44dvh, 420px); padding: 22px; }
 .waterfall-card--text .waterfall-cinema-copy { flex: 1 1 auto; padding: 0; }
@@ -1547,6 +1575,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-reader-media img,
 .waterfall-reader-media iframe,
 .waterfall-reader-media video { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
+.waterfall-reader-media .waterfall-image-media { object-fit: contain; }
 .waterfall-reader-media--video { height: auto; aspect-ratio: 16 / 9; }
 .waterfall-reader--video.waterfall-reader--portrait .waterfall-reader-media--video {
   width: min(72%, 360px); margin-right: auto; margin-left: auto; aspect-ratio: 9 / 16;
@@ -1812,12 +1841,16 @@ const WATERFALL_JS: string = `
   var advanceTimer = null;
   var advanceDispatchTimer = null;
   var playerCleanupTimer = null;
+  var videoVisibilityObserver = null;
+  var videoVisibilityNodes = [];
+  var waterfallSurfaceActive = !directDiscovery;
   var metricTimer = null;
   var payloadSettleTimer = null;
   var metricsDirty = false;
   var cardMetrics = [];
   var presentedIndex = -1;
   var interactionActive = false;
+  var imageCarouselGesture = false;
   var scrollActive = false;
   var afterPaintPending = false;
   var afterPaintTimer = null;
@@ -2199,10 +2232,49 @@ const WATERFALL_JS: string = `
       if (host.indexOf('bilibili.com') >= 0) {
         var parts = parsed.pathname.split('/').filter(Boolean);
         var bvid = parts.find(function (part) { return part.indexOf('BV') === 0; }) || '';
-        return bvid ? 'https://player.bilibili.com/player.html?bvid=' + encodeURIComponent(bvid) + '&p=1&autoplay=0&poster=true&danmaku=0&isOutside=true' : '';
+        return bvid ? 'https://player.bilibili.com/player.html?bvid=' + encodeURIComponent(bvid) + '&p=1&autoplay=0&poster=1&danmaku=0&isOutside=true' : '';
       }
     } catch (_error) {}
     return '';
+  }
+  function waterfallImageUrls(item) {
+    var values = item && Array.isArray(item.imageUrls) ? item.imageUrls : [];
+    var urls = [];
+    if (item && text(item.coverUrl).trim()) urls.push(text(item.coverUrl).trim());
+    values.forEach(function (value) {
+      var url = text(value).trim();
+      if (url && urls.indexOf(url) < 0) urls.push(url);
+    });
+    return urls;
+  }
+  function imageCarouselMarkup(item, title, classes) {
+    var urls = waterfallImageUrls(item);
+    if (urls.length === 0) return '';
+    var slides = urls.map(function (url, index) {
+      var alt = title + (urls.length > 1 ? ' 第 ' + (index + 1) + ' 张' : '');
+      return '<div class="waterfall-image-slide" data-waterfall-image-slide role="group" aria-label="' +
+        escapeHtml((index + 1) + ' / ' + urls.length) + '">' +
+        '<img class="waterfall-image-media waterfall-media-cover" src="' + escapeHtml(url) + '" alt="' +
+        escapeHtml(alt) + '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.hidden=true" />' +
+        '</div>';
+    }).join('');
+    var dots = urls.length > 1 ? '<div class="waterfall-image-dots" aria-hidden="true">' +
+      urls.map(function (_url, index) {
+        return '<span class="waterfall-image-dot' + (index === 0 ? ' is-active' : '') +
+          '" data-waterfall-image-dot></span>';
+      }).join('') + '</div>' : '';
+    return '<div class="' + classes + ' waterfall-image-carousel" data-waterfall-image-carousel>' +
+      '<div class="waterfall-image-track" aria-label="图片，可左右滑动">' + slides + '</div>' + dots + '</div>';
+  }
+  function syncImageDots(imageTrack) {
+    if (!imageTrack || typeof imageTrack.closest !== 'function') return;
+    var carousel = imageTrack.closest('[data-waterfall-image-carousel]');
+    if (!carousel || typeof carousel.querySelectorAll !== 'function') return;
+    var dots = carousel.querySelectorAll('[data-waterfall-image-dot]');
+    var page = Math.round(Number(imageTrack.scrollLeft || 0) / Math.max(1, Number(imageTrack.clientWidth || 0)));
+    for (var index = 0; index < dots.length; index += 1) {
+      dots[index].classList.toggle('is-active', index === page);
+    }
   }
   function videoPlaybackData(item) {
     var embeds = state && state.mediaEmbeds ? state.mediaEmbeds : {};
@@ -2217,18 +2289,29 @@ const WATERFALL_JS: string = `
       escapeHtml(item.coverUrl) + '" alt="' + escapeHtml(title) +
       '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.hidden=true" />' : '');
     if (!playback) return item.coverUrl ? '<div class="' + classes + '">' + poster + '</div>' : '';
+    var autoplay = item.source === 'bilibili' ? ' data-waterfall-video-autoplay' : '';
     var play = '<button type="button" class="waterfall-reader-video-play" ' +
-      'data-waterfall-video-play aria-label="播放视频">' + uiIcon('play') + '<span>播放视频</span></button>';
+      'data-waterfall-video-play' + autoplay + ' aria-label="播放视频">' +
+      uiIcon('play') + '<span>播放视频</span></button>';
     return '<div class="' + classes + ' waterfall-reader-video-stage" data-waterfall-video-kind="' +
       playback.kind + '" data-waterfall-video-url="' + escapeHtml(playback.url) + '">' + poster +
       '<div class="waterfall-reader-video-frame"></div>' + play + '</div>';
   }
-  function autoplayVideoUrl(value) {
+  function autoplayVideoUrl(value, muted) {
     var url = text(value);
-    return url.indexOf('autoplay=0') >= 0 ? url.replace('autoplay=0', 'autoplay=1') :
+    if (muted === true && url.indexOf('player.bilibili.com/') >= 0) {
+      var bilibiliUrl = url.replace(/autoplay=(?:true|false|0|1)/, 'autoplay=true');
+      if (bilibiliUrl.indexOf('autoplay=') < 0) bilibiliUrl += '&autoplay=true';
+      bilibiliUrl = bilibiliUrl.replace(/poster=(?:true|false|0|1)/, 'poster=false');
+      if (bilibiliUrl.indexOf('poster=') < 0) bilibiliUrl += '&poster=false';
+      return bilibiliUrl.replace(/muted=(?:true|false|0|1)/, 'muted=true') +
+        (bilibiliUrl.indexOf('muted=') < 0 ? '&muted=true' : '');
+    }
+    var autoplayUrl = url.indexOf('autoplay=0') >= 0 ? url.replace('autoplay=0', 'autoplay=1') :
       url + (url.indexOf('?') >= 0 ? '&' : '?') + 'autoplay=1';
+    return autoplayUrl;
   }
-  function mountPlayback(frame, kind, url) {
+  function mountPlayback(frame, kind, url, muted) {
     if (kind === 'iframe') {
       var iframe = document.createElement('iframe');
       iframe.className = 'waterfall-media-frame';
@@ -2237,9 +2320,9 @@ const WATERFALL_JS: string = `
       iframe.setAttribute('allow',
         'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
       iframe.setAttribute('referrerpolicy', 'origin-when-cross-origin');
-      iframe.src = autoplayVideoUrl(url);
+      iframe.src = autoplayVideoUrl(url, muted);
       frame.appendChild(iframe);
-      return;
+      return iframe;
     }
     var video = document.createElement('video');
     video.className = 'waterfall-media-frame';
@@ -2248,8 +2331,9 @@ const WATERFALL_JS: string = `
     video.setAttribute('playsinline', '');
     video.src = url;
     frame.appendChild(video);
+    return video;
   }
-  function playVideo(control) {
+  function playVideo(control, muted) {
     var stage = control && typeof control.closest === 'function' ?
       control.closest('.waterfall-reader-video-stage') : null;
     if (!stage || typeof stage.getAttribute !== 'function' ||
@@ -2258,13 +2342,22 @@ const WATERFALL_JS: string = `
     var kind = text(stage.getAttribute('data-waterfall-video-kind'));
     var url = text(stage.getAttribute('data-waterfall-video-url'));
     if (!frame || !url) return;
-    if (!frame.firstChild) mountPlayback(frame, kind, url);
-    stage.classList.add('is-playing');
     var hostCard = typeof stage.closest === 'function' ? stage.closest('.waterfall-card') : null;
-    if (hostCard) hostCard.classList.add('is-playing');
-    if (reader && reader.contains(stage)) reader.classList.add('is-playing');
-    var player = frame.querySelector('video');
-    if (player && typeof player.play === 'function') player.play();
+    var player = frame.firstChild || mountPlayback(frame, kind, url, muted);
+    var revealPlayback = function () {
+      if (frame.firstChild !== player) return;
+      player.__waterfallReady = true;
+      stage.classList.add('is-playing');
+      if (hostCard) hostCard.classList.add('is-playing');
+      if (reader && reader.contains(stage)) reader.classList.add('is-playing');
+    };
+    if (player && player.__waterfallReady) revealPlayback();
+    else if (player && !player.__waterfallReadyBound && typeof player.addEventListener === 'function') {
+      player.__waterfallReadyBound = true;
+      player.addEventListener(kind === 'iframe' ? 'load' : 'loadeddata', revealPlayback);
+    } else if (player) revealPlayback();
+    var video = frame.querySelector('video');
+    if (video && typeof video.play === 'function') video.play();
   }
   function openSource(link, event) {
     var url = link ? text(link.href || (typeof link.getAttribute === 'function' ? link.getAttribute('href') : '')) : '';
@@ -2837,7 +2930,7 @@ const WATERFALL_JS: string = `
   }
   function stopStageMedia(root) {
     if (!root || typeof root.querySelectorAll !== 'function') return;
-    var stages = root.querySelectorAll('.waterfall-reader-video-stage.is-playing');
+    var stages = root.querySelectorAll('.waterfall-reader-video-stage');
     for (var index = 0; index < stages.length; index += 1) {
       var frame = stages[index].querySelector('.waterfall-reader-video-frame');
       if (frame) frame.innerHTML = '';
@@ -2960,20 +3053,75 @@ const WATERFALL_JS: string = `
       if (metricsDirty) refreshCardMetrics();
     }, 96);
   }
-  function cleanupInactivePlayers() {
+  function cleanupInactivePlayers(keepCard) {
     if (!track || mode !== 'discovering' || typeof track.querySelectorAll !== 'function') return;
     var nodes = track.querySelectorAll('[data-waterfall-id]');
+    var currentCard = keepCard || nodes[presentedIndex];
     var inlineCard = activeInlineCard || cardById(activeInlineCandidateId);
-    if (activeInlineCandidateId && nodes[presentedIndex] !== inlineCard) destroyInlinePlayer();
+    if (activeInlineCandidateId && currentCard !== inlineCard) destroyInlinePlayer();
     for (var index = 0; index < nodes.length; index += 1) {
-      if (index === presentedIndex || typeof nodes[index].querySelector !== 'function') continue;
-      var stage = nodes[index].querySelector('.waterfall-reader-video-stage.is-playing');
+      if (nodes[index] === currentCard || typeof nodes[index].querySelector !== 'function') continue;
+      var stage = nodes[index].querySelector('.waterfall-reader-video-stage');
       if (!stage) continue;
       var frame = stage.querySelector('.waterfall-reader-video-frame');
-      if (frame) frame.innerHTML = '';
+      if (!frame || !frame.firstChild) continue;
+      frame.innerHTML = '';
       stage.classList.remove('is-playing');
+      nodes[index].classList.remove('is-playing');
     }
   }
+  function autoplayBilibiliIn(root) {
+    if (!root || typeof root.querySelector !== 'function') return;
+    cleanupInactivePlayers(root);
+    var play = root.querySelector('[data-waterfall-video-autoplay]');
+    if (play) playVideo(play, true);
+  }
+  function syncVideoVisibilityObserver(force) {
+    if (!track || typeof track.querySelectorAll !== 'function' ||
+      typeof window.IntersectionObserver !== 'function' || !waterfallSurfaceActive) return;
+    if (!videoVisibilityObserver) {
+      videoVisibilityObserver = new window.IntersectionObserver(function (entries) {
+        if (mode !== 'discovering' || !waterfallSurfaceActive) return;
+        var visible = null;
+        for (var index = 0; index < entries.length; index += 1) {
+          var entry = entries[index];
+          if (!entry.isIntersecting || entry.intersectionRatio < 0.65 ||
+            visible && visible.intersectionRatio >= entry.intersectionRatio) continue;
+          visible = entry;
+        }
+        if (!visible) return;
+        autoplayBilibiliIn(visible.target);
+      }, { root: track, threshold: [0.65] });
+    }
+    var nodes = track.querySelectorAll('[data-waterfall-id]');
+    var nextNodes = [];
+    for (var index = 0; index < nodes.length; index += 1) {
+      if (typeof nodes[index].querySelector === 'function' &&
+        nodes[index].querySelector('[data-waterfall-video-autoplay]')) {
+        nextNodes.push(nodes[index]);
+      }
+    }
+    if (force !== true && nextNodes.length === videoVisibilityNodes.length && nextNodes.every(function (node, nodeIndex) {
+      return node === videoVisibilityNodes[nodeIndex];
+    })) return;
+    if (typeof videoVisibilityObserver.disconnect === 'function') videoVisibilityObserver.disconnect();
+    videoVisibilityNodes = nextNodes;
+    for (index = 0; index < nextNodes.length; index += 1) {
+      videoVisibilityObserver.observe(nextNodes[index]);
+    }
+  }
+  window.__aiphoneSetWaterfallActive = function (active) {
+    waterfallSurfaceActive = active === true;
+    if (!waterfallSurfaceActive) {
+      stopStageMedia(track);
+      if (videoVisibilityObserver && typeof videoVisibilityObserver.disconnect === 'function') {
+        videoVisibilityObserver.disconnect();
+      }
+      videoVisibilityNodes = [];
+      return;
+    }
+    syncVideoVisibilityObserver(true);
+  };
   function scheduleAdvance(index) {
     if (advanceTimer !== null) clearTimeout(advanceTimer);
     advanceTimer = setTimeout(function () {
@@ -3233,7 +3381,10 @@ const WATERFALL_JS: string = `
           }, 0);
         }
       }
-      if (completedReturnMode === 'discovering') resumeCurrentBehavior();
+      if (completedReturnMode === 'discovering') {
+        syncVideoVisibilityObserver(true);
+        resumeCurrentBehavior();
+      }
       if (completedCandidateId && completedDurationMs >= 8000) {
         postBehavior(completedCandidateId, 'read_complete', completedDurationMs);
       }
@@ -3270,8 +3421,7 @@ const WATERFALL_JS: string = `
     var videoStage = item.mediaType === 'video' ? videoStageMarkup(item, title,
       'waterfall-reader-media waterfall-reader-media--video', 'waterfall-reader-video-poster') : '';
     var media = format === 'image_text' ?
-      '<div class="waterfall-reader-media"><img src="' + escapeHtml(item.coverUrl) + '" alt="' +
-      escapeHtml(title) + '" referrerpolicy="no-referrer" onerror="this.hidden=true" /></div>' :
+      imageCarouselMarkup(item, title, 'waterfall-reader-media') :
       (item.mediaType === 'video' ? videoStage : '');
     var context = '<div class="waterfall-reader-context"><div class="waterfall-reader-source">' +
       sourceLogoMarkup(item.source) + '<span>' + escapeHtml(cardSourceLabel(item)) + '</span>' +
@@ -3360,9 +3510,11 @@ const WATERFALL_JS: string = `
     var appleError = applePlayable && item.audioLoadState === 'error' && text(item.audioError).trim() ?
       '<span class="waterfall-inline-error">' + escapeHtml(item.audioError) + '</span>' : '';
     var inlineControls = inlinePlay + applePlay + appleError;
+    var imageCarousel = !sourceOnly && format === 'image_text' ?
+      imageCarouselMarkup(item, title, 'waterfall-cinema-stage') : '';
     var stage = item.mediaType === 'video' ? videoStageMarkup(item, title,
       'waterfall-cinema-stage', 'waterfall-media-cover') :
-      ((cover || inlineControls) ? '<div class="waterfall-cinema-stage">' + cover + inlineControls + '</div>' : '');
+      (imageCarousel || ((cover || inlineControls) ? '<div class="waterfall-cinema-stage">' + cover + inlineControls + '</div>' : ''));
     var reason = reasonText ? '<span class="waterfall-recommendation" aria-label="推荐理由" data-waterfall-reason>' +
       escapeHtml(reasonText) + '</span>' : '<span></span>';
     var openAttr = ' data-waterfall-open="' + escapeHtml(item.id) + '"';
@@ -3441,6 +3593,7 @@ const WATERFALL_JS: string = `
     if (!collection || mode !== 'discovering') return;
     pauseCurrentBehavior(false);
     destroyInlinePlayer();
+    stopStageMedia(track);
     collectionFeedScrollTop = track ? track.scrollTop : 0;
     freezeFeedMotion();
     renderCollection();
@@ -3463,6 +3616,7 @@ const WATERFALL_JS: string = `
       mode = 'discovering';
       if (track && track.scrollTop !== collectionFeedScrollTop) track.scrollTop = collectionFeedScrollTop;
       realignPresentedCard();
+      syncVideoVisibilityObserver(true);
       if (!flushPendingPayload()) resumeCurrentBehavior();
     }, 160);
   }
@@ -3540,6 +3694,7 @@ const WATERFALL_JS: string = `
   function renderPreferences() {
     if (!preferences || !state) return;
     destroyInlinePlayer();
+    stopStageMedia(track);
     var sourceNames = directDiscovery ? ${WATERFALL_INTEREST_SOURCE_IDS_JSON} : ${WATERFALL_SEARCH_SOURCE_IDS_JSON};
     if (preferenceApplyTimer !== null) clearTimeout(preferenceApplyTimer);
     preferenceApplyTimer = null;
@@ -3555,9 +3710,9 @@ const WATERFALL_JS: string = `
         'aria-label="返回发现流">' + uiIcon('back') + '</button><b>内容来源</b>' +
         '<div class="waterfall-source-bulk" role="group" aria-label="批量选择来源">' +
         '<button type="button" data-waterfall-sources-all>全选</button>' +
-        '<button type="button" data-waterfall-sources-none>全不选</button></div>' +
-        '<button type="button" data-waterfall-apply-preferences>' +
-        '完成</button></div>' +
+        '<button type="button" data-waterfall-sources-none>全不选</button>' +
+        '<button type="button" data-waterfall-sources-video>仅视频</button></div>' +
+        '<button type="button" data-waterfall-apply-preferences>完成</button></div>' +
         '<div class="waterfall-source-grid">' + sourceNames.map(function (sourceName) {
           var unavailable = sourceIsUnavailable(sourceName);
           var checked = enabledSources.indexOf(sourceName) >= 0 ? ' checked' : '';
@@ -3613,6 +3768,7 @@ const WATERFALL_JS: string = `
     realignPresentedCard(changed);
     if (changed) postSourceSelection();
     if (pendingPayload) scheduleIdleFlush(selectedSources, false);
+    syncVideoVisibilityObserver(true);
     if (directDiscovery) setFullscreen(false);
   }
   function render() {
@@ -3755,6 +3911,7 @@ const WATERFALL_JS: string = `
     } else if (domChanged) syncCardsAfterPaint();
     else updateCardPresentation(false);
     syncActiveInlinePlayer();
+    syncVideoVisibilityObserver();
     return domChanged;
   }
   function dropRenderedCardsMissingFrom(items, nodes) {
@@ -3801,18 +3958,35 @@ const WATERFALL_JS: string = `
         !flushPendingPayload() && mode === 'discovering') scheduleAdvance(settledIndex);
     }, 96);
   }
-  document.addEventListener('touchstart', function () {
+  document.addEventListener('touchstart', function (event) {
+    imageCarouselGesture = !!(event && event.target && typeof event.target.closest === 'function' &&
+      event.target.closest('.waterfall-image-track'));
+    if (imageCarouselGesture) return;
     ignoreNextFeedOpen = false;
     if (payloadSettleTimer !== null) clearTimeout(payloadSettleTimer);
     payloadSettleTimer = null;
     interactionActive = true;
     beginPagingGesture();
   }, { passive: true });
+  document.addEventListener('scroll', function (event) {
+    var imageTrack = event.target;
+    if (imageTrack && imageTrack.classList && imageTrack.classList.contains('waterfall-image-track')) {
+      syncImageDots(imageTrack);
+    }
+  }, true);
   document.addEventListener('touchend', function () {
+    if (imageCarouselGesture) {
+      imageCarouselGesture = false;
+      return;
+    }
     interactionActive = false;
     if (scrollActive || pendingPayload || pageAnchorIndex >= 0) settleInteraction();
   }, { passive: true });
   document.addEventListener('touchcancel', function () {
+    if (imageCarouselGesture) {
+      imageCarouselGesture = false;
+      return;
+    }
     interactionActive = false;
     if (scrollActive || pendingPayload || pageAnchorIndex >= 0) settleInteraction();
   }, { passive: true });
@@ -3967,9 +4141,12 @@ const WATERFALL_JS: string = `
       if (!target || typeof target.closest !== 'function') return false;
       var selectAll = target.closest('[data-waterfall-sources-all]');
       var selectNone = target.closest('[data-waterfall-sources-none]');
-      if (selectAll || selectNone) {
+      var selectVideo = target.closest('[data-waterfall-sources-video]');
+      if (selectAll || selectNone || selectVideo) {
         preferences.querySelectorAll('[data-waterfall-source]').forEach(function (input) {
-          input.checked = !!selectAll && !input.disabled;
+          var sourceName = input.getAttribute('data-waterfall-source');
+          input.checked = !input.disabled && (!!selectAll || (!!selectVideo &&
+            ['youtube', 'bilibili', 'twitch'].indexOf(sourceName) >= 0));
         });
         enabledSources = Array.prototype.slice.call(
           preferences.querySelectorAll('[data-waterfall-source]:checked')
@@ -4097,6 +4274,7 @@ const WATERFALL_JS: string = `
   });
   function closeDiscovery() {
     destroyInlinePlayer();
+    stopStageMedia(track);
     if (directDiscovery && state && window.AIPhoneHome &&
       typeof window.AIPhoneHome.postAction === 'function') {
       pauseCurrentBehavior(false);
@@ -4160,6 +4338,7 @@ const WATERFALL_JS: string = `
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
       destroyInlinePlayer();
+      stopStageMedia(track);
       pauseCurrentBehavior(false);
       if (readerCandidateId && readerStartedAt > 0) {
         readerDurationMs += Math.max(0, Date.now() - readerStartedAt);
@@ -4168,7 +4347,10 @@ const WATERFALL_JS: string = `
       return;
     }
     if (mode === 'reading' && readerCandidateId) readerStartedAt = Date.now();
-    else resumeCurrentBehavior();
+    else {
+      syncVideoVisibilityObserver(true);
+      resumeCurrentBehavior();
+    }
   });
   if (state) {
     mergePayload(state);

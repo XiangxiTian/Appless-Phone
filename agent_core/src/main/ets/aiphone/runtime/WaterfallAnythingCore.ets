@@ -115,6 +115,7 @@ export interface WaterfallCandidate {
   summary: string;
   url: string;
   coverUrl: string;
+  imageUrls?: string[];
   mediaUrl?: string;
   feedUrl?: string;
   audioTitle?: string;
@@ -470,6 +471,7 @@ function toRankedCandidate(item: RankedCandidateInternal): WaterfallRankedCandid
     summary: item.candidate.summary,
     url: item.candidate.url,
     coverUrl: item.candidate.coverUrl,
+    imageUrls: item.candidate.imageUrls,
     mediaUrl: item.candidate.mediaUrl,
     feedUrl: item.candidate.feedUrl,
     providerItemId: item.candidate.providerItemId,
@@ -1335,6 +1337,7 @@ function rankedToCandidates(items: WaterfallRankedCandidate[]): WaterfallCandida
     summary: item.summary,
     url: item.url,
     coverUrl: item.coverUrl,
+    imageUrls: item.imageUrls,
     mediaUrl: item.mediaUrl,
     feedUrl: item.feedUrl,
     providerItemId: item.providerItemId,
@@ -1397,6 +1400,7 @@ function deferredRankedCandidate(candidate: WaterfallCandidate): WaterfallRanked
     summary: candidate.summary,
     url: candidate.url,
     coverUrl: candidate.coverUrl,
+    imageUrls: candidate.imageUrls,
     mediaUrl: candidate.mediaUrl,
     feedUrl: candidate.feedUrl,
     providerItemId: candidate.providerItemId,

@@ -10317,6 +10317,7 @@ struct Index {
         multiTaskPayloadTick: this.multiTaskPayloadTick,
         waterfallPayloadJson: this.waterfallPayloadJson,
         waterfallPayloadTick: this.waterfallPayloadTick,
+        waterfallActive: this.bimRootIndex === 0,
         waterfallBackRequestTick: this.waterfallBackRequestTick,
         mailDetailEventJson: this.mailDetailEventJson,
         mailReplyEventJson: this.mailReplyEventJson,
@@ -10480,6 +10481,7 @@ struct Index {
           html: this.interestWaterfallHtml,
           waterfallPayloadJson: this.interestWaterfallPayloadJson,
           waterfallPayloadTick: this.interestWaterfallPayloadTick,
+          waterfallActive: this.bimRootIndex === 1,
           waterfallBackRequestTick: this.interestWaterfallBackRequestTick,
           isBusy: false,
           onAction: (action: A2uiAction): void => {
@@ -10522,6 +10524,7 @@ struct Index {
       .index(this.bimRootIndex)
       .loop(false)
       .indicator(false)
+      .cachedCount(1, true)
       .disableSwipe(this.bimRootIndex === 1 || this.waterfallFullscreen)
       .duration(this.bimReduceMotion ? 0 : A2UI_MOTION_NORMAL_MS)
       .curve(A2UI_MOTION_MOVE_CURVE)

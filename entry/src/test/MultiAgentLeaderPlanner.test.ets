@@ -16,6 +16,10 @@ import {
   toolPlanningDescriptionForToolId
 } from '@loop/agent-core';
 import { MultiAgentLeaderPlanner } from '../main/ets/pages/A2uiHome/agent/MultiAgentLeaderPlanner';
+import {
+  LeaderAnswerStreamScanner,
+  leaderAnswerPrefix
+} from '../main/ets/pages/A2uiHome/agent/LeaderAnswerStreamScanner';
 
 const PARALLEL_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
   '"requestedCapabilityIds":["flight.search","train.search"],"roundAction":"execute","continuationMode":"complete",' +
@@ -495,7 +499,8 @@ class QueueLocalModel implements LocalModel {
   async complete(
     prompt: string,
     conversation?: ConversationContext,
-    systemPrompt?: string
+    systemPrompt?: string,
+    onTextDelta?: (delta: string) => void
   ): Promise<string> {
     this.prompts.push(prompt);
     this.systemPrompts.push(systemPrompt ?? '');
@@ -509,7 +514,9 @@ class QueueLocalModel implements LocalModel {
     if (this.outputs.length === 0) {
       throw new Error('No scripted Leader output');
     }
-    return this.outputs.shift() as string;
+    const output = this.outputs.shift() as string;
+    if (onTextDelta !== undefined) onTextDelta(output);
+    return output;
   }
 }
 
@@ -1206,6 +1213,30 @@ async function failsAtRound(output: string, round: number): Promise<boolean> {
 
 export default function multiAgentLeaderPlannerTest() {
   describe('multiAgentLeaderPlanner', () => {
+    it('extracts a partial escaped answer from streamed Leader JSON', 0, () => {
+      const scanner = new LeaderAnswerStreamScanner();
+      expect(scanner.feed('{"answer":"你好\\n')).assertEqual('你好\n');
+      expect(scanner.feed('世界","dataTasks":[]')).assertEqual('你好\n世界');
+      expect(leaderAnswerPrefix('{"answer":"欢迎\\u4f7f\\u7528"}')).assertEqual('欢迎使用');
+    });
+
+    it('publishes a basic answer while the first Leader round is streaming', 0, async () => {
+      const streamed: string[] = [];
+      const model = new QueueLocalModel([LIVE_ANSWER_WITHOUT_REASON_CODE]);
+      const decision = await new MultiAgentLeaderPlanner(
+        model,
+        undefined,
+        passthroughInputNormalizer,
+        (_message: AgentMessage, answer: string, round: number): void => {
+          if (round === 1) streamed.push(answer);
+        }
+      ).plan(inputMessage(), { text: '你好' }, planningContext(), 1);
+
+      expect(decision.roundAction).assertEqual('answer');
+      expect(streamed.length).assertEqual(1);
+      expect(streamed[0]).assertEqual('LIVE_PRIVATE_MARKER');
+    });
+
     it('uses standard recent messages to preflight a travel follow-up', 0, async () => {
       const model = new QueueLocalModel([CONTEXTUAL_TRAVEL_DECISION]);
       const input: InputUserPayload = {

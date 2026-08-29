@@ -3,7 +3,8 @@ import util from '@ohos.util';
 import { ChatMessage, ConversationContext } from '../agent/ConversationContext';
 import { aiLogInfo } from '../aiphone/runtime/AiphoneLogger';
 import { buildReActFormatRules, buildSkillsSection, SkillSnapshot } from '../skill/SkillSnapshot';
-import { LocalModel } from './LocalModel';
+import { ChatCompletionSseParser } from './ChatCompletionSseParser';
+import { LocalModel, LocalModelTextDeltaListener } from './LocalModel';
 import { LlmProvider } from './LlmProvider';
 import { mergeOpenAiRequestJson } from './OpenAiRequestJson';
 
@@ -47,18 +48,32 @@ export class OpenAiCompatibleModel implements LocalModel {
     this.skillSnapshot = skillSnapshot ?? null;
   }
 
-  async complete(prompt: string, conversation?: ConversationContext, systemPrompt?: string): Promise<string> {
+  async complete(
+    prompt: string,
+    conversation?: ConversationContext,
+    systemPrompt?: string,
+    onTextDelta?: LocalModelTextDeltaListener
+  ): Promise<string> {
     if (!this.provider.isConfigured()) {
       throw new Error('LLM provider is not configured.');
     }
 
     let lastMessage = '';
     for (let attempt = 0; attempt < MODEL_MAX_ATTEMPTS; attempt++) {
+      let emittedText = false;
       try {
-        return await this.completeOnce(prompt, conversation, systemPrompt);
+        return await this.completeOnce(
+          prompt,
+          conversation,
+          systemPrompt,
+          onTextDelta === undefined ? undefined : (delta: string): void => {
+            emittedText = true;
+            onTextDelta(delta);
+          }
+        );
       } catch (error) {
         lastMessage = this.describeThrown(error);
-        if (attempt + 1 >= MODEL_MAX_ATTEMPTS || !this.isRetryableTransportError(lastMessage)) {
+        if (emittedText || attempt + 1 >= MODEL_MAX_ATTEMPTS || !this.isRetryableTransportError(lastMessage)) {
           throw new Error(`LLM request failed: ${lastMessage}`);
         }
       }
@@ -69,12 +84,16 @@ export class OpenAiCompatibleModel implements LocalModel {
   private async completeOnce(
     prompt: string,
     conversation?: ConversationContext,
-    systemPrompt?: string
+    systemPrompt?: string,
+    onTextDelta?: LocalModelTextDeltaListener
   ): Promise<string> {
     const httpRequest = http.createHttp();
     const decoder = util.TextDecoder.create('utf-8');
+    const sseParser = new ChatCompletionSseParser();
     const requestStartMs = Date.now();
     let rawResponse = '';
+    const contentParts: string[] = [];
+    let streamParseError: Error | null = null;
     let chunkSequence = 0;
     let streamEndResolve: () => void = () => {};
     const streamEnd = new Promise<void>((resolve: () => void) => {
@@ -84,6 +103,13 @@ export class OpenAiCompatibleModel implements LocalModel {
       chunkSequence++;
       const chunk = decoder.decodeToString(new Uint8Array(data), { stream: true });
       rawResponse += chunk;
+      if (streamParseError === null) {
+        try {
+          this.consumeSsePayloads(sseParser.feed(chunk), contentParts, onTextDelta);
+        } catch (error) {
+          streamParseError = new Error(this.describeThrown(error));
+        }
+      }
       aiLogInfo(
         '[AIPhone][ModelResponseChunk] seq=' + chunkSequence.toString() +
         ' bytes=' + data.byteLength.toString() +
@@ -114,17 +140,60 @@ export class OpenAiCompatibleModel implements LocalModel {
       });
       streamEndResolve();
       await streamEnd;
-      rawResponse += decoder.decodeToString(new Uint8Array(0), { stream: false });
+      const decoderTail = decoder.decodeToString(new Uint8Array(0), { stream: false });
+      rawResponse += decoderTail;
+      if (streamParseError === null) {
+        try {
+          this.consumeSsePayloads(sseParser.feed(decoderTail), contentParts, onTextDelta);
+          this.consumeSsePayloads(sseParser.finish(), contentParts, onTextDelta);
+        } catch (error) {
+          streamParseError = new Error(this.describeThrown(error));
+        }
+      }
 
       if (statusCode < 200 || statusCode >= 300) {
         throw new Error(`LLM request failed with HTTP ${statusCode}: ${rawResponse}`);
       }
-
-      return this.parseContent(rawResponse);
+      if (streamParseError !== null) {
+        throw streamParseError;
+      }
+      if (contentParts.length > 0) {
+        return contentParts.join('').trim();
+      }
+      const content = this.parseContent(rawResponse);
+      if (content.length > 0 && onTextDelta !== undefined) {
+        onTextDelta(content);
+      }
+      return content;
     } catch (error) {
       throw new Error(this.describeThrown(error));
     } finally {
       httpRequest.destroy();
+    }
+  }
+
+  private consumeSsePayloads(
+    payloads: string[],
+    contentParts: string[],
+    onTextDelta?: LocalModelTextDeltaListener
+  ): void {
+    for (let index = 0; index < payloads.length; index++) {
+      const payload = payloads[index];
+      if (payload.length === 0 || payload === '[DONE]') {
+        continue;
+      }
+      const event = JSON.parse(payload) as ChatStreamResponse;
+      const choices = event.choices;
+      if (choices === undefined || choices.length === 0 || choices[0].delta === undefined) {
+        continue;
+      }
+      const deltaContent = choices[0].delta?.content;
+      if (typeof deltaContent === 'string' && deltaContent.length > 0) {
+        contentParts.push(deltaContent);
+        if (onTextDelta !== undefined) {
+          onTextDelta(deltaContent);
+        }
+      }
     }
   }
 

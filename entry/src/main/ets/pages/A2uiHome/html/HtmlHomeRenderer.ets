@@ -3345,6 +3345,9 @@ const HTML_HOME_JS: string = `
   var mailReplyDrafts = {};
   var activeMailReply = null;
   var toastTimer = null;
+  var conversationRevealTimer = 0;
+  var conversationRevealTarget = '';
+  var CONVERSATION_REVEAL_INTERVAL_MS = 42;
   function text(value) {
     return value === undefined || value === null ? '' : String(value);
   }
@@ -3982,7 +3985,8 @@ const HTML_HOME_JS: string = `
     var assistantTurn = add(section, 'div', 'plain-chat-assistant-turn');
     addPlainChatAssistantIdentity(assistantTurn);
     var response = add(assistantTurn, 'article', 'plain-chat-response');
-    add(response, 'p', 'plain-chat-response-copy', text(assistant.content));
+    var responseCopy = add(response, 'p', 'plain-chat-response-copy');
+    queueConversationAssistantReveal(responseCopy, text(assistant.content));
     syncDeepSearchTrace(assistantTurn);
     var contextItems = [];
     history.forEach(function (item) {
@@ -4098,12 +4102,68 @@ const HTML_HOME_JS: string = `
     }
     return userText;
   }
+  function stopConversationReveal() {
+    if (!conversationRevealTimer) { return; }
+    clearTimeout(conversationRevealTimer);
+    conversationRevealTimer = 0;
+  }
+  function conversationRevealEnd(source, start, count) {
+    var end = Math.min(source.length, start + count);
+    if (end < source.length && end > start) {
+      var previousCode = source.charCodeAt(end - 1);
+      var nextCode = source.charCodeAt(end);
+      if (previousCode >= 0xD800 && previousCode <= 0xDBFF &&
+        nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
+        end += 1;
+      }
+    }
+    return end;
+  }
+  function conversationRevealStep(remaining) {
+    if (remaining > 480) { return 6; }
+    if (remaining > 240) { return 4; }
+    if (remaining > 80) { return 2; }
+    return 1;
+  }
+  function revealConversationAssistant() {
+    conversationRevealTimer = 0;
+    var copy = document.querySelector('.plain-chat-response-copy');
+    if (!copy) { return; }
+    var current = text(copy.textContent);
+    if (current === conversationRevealTarget) { return; }
+    if (current.length > conversationRevealTarget.length ||
+      conversationRevealTarget.indexOf(current) !== 0) {
+      current = '';
+      copy.textContent = '';
+    }
+    var remaining = conversationRevealTarget.length - current.length;
+    var end = conversationRevealEnd(
+      conversationRevealTarget,
+      current.length,
+      conversationRevealStep(remaining)
+    );
+    copy.textContent = conversationRevealTarget.substring(0, end);
+    if (end < conversationRevealTarget.length) {
+      conversationRevealTimer = setTimeout(revealConversationAssistant, CONVERSATION_REVEAL_INTERVAL_MS);
+    }
+  }
+  function queueConversationAssistantReveal(copy, target) {
+    conversationRevealTarget = text(target);
+    if (!copy || text(copy.textContent) === conversationRevealTarget) { return; }
+    if (conversationRevealTimer) { return; }
+    revealConversationAssistant();
+  }
   function replaceAssistantResponse(response, assistant, thinking) {
     var currentThinking = response.classList.contains('conversation-thinking');
     var expectedText = text(assistant && assistant.content);
     var currentCopy = response.querySelector('.plain-chat-response-copy');
     if (thinking && currentThinking && response.querySelector('.conversation-thinking-indicator')) { return; }
-    if (!thinking && !currentThinking && currentCopy && text(currentCopy.textContent) === expectedText) { return; }
+    if (!thinking && !currentThinking && currentCopy) {
+      queueConversationAssistantReveal(currentCopy, expectedText);
+      return;
+    }
+    stopConversationReveal();
+    conversationRevealTarget = '';
     while (response.firstChild) { response.removeChild(response.firstChild); }
     if (thinking) {
       response.className = 'plain-chat-response conversation-thinking';
@@ -4118,7 +4178,8 @@ const HTML_HOME_JS: string = `
     response.className = 'plain-chat-response';
     response.removeAttribute('role');
     response.removeAttribute('aria-live');
-    add(response, 'p', 'plain-chat-response-copy', expectedText);
+    currentCopy = add(response, 'p', 'plain-chat-response-copy');
+    queueConversationAssistantReveal(currentCopy, expectedText);
   }
   function applyConversationUpdate(nextData, animateUserText) {
     var section = document.querySelector('.plain-chat');
@@ -4177,6 +4238,18 @@ const HTML_HOME_JS: string = `
     }
     var currentDataNode = document.getElementById('home-data');
     if (currentDataNode) { currentDataNode.textContent = JSON.stringify(data); }
+    return true;
+  }
+  function applyConversationAssistantTarget(target) {
+    var section = document.querySelector('.plain-chat');
+    var assistantTurn = section ? section.querySelector('.plain-chat-assistant-turn') : null;
+    var response = assistantTurn ? assistantTurn.querySelector('.plain-chat-response') : null;
+    if (!response) { return false; }
+    replaceAssistantResponse(response, { content: text(target) }, false);
+    if (document.body) {
+      document.body.setAttribute('data-view', 'conversation');
+      document.body.removeAttribute('data-scene');
+    }
     return true;
   }
   function addLegacyHero(parent) {
@@ -6460,6 +6533,7 @@ const HTML_HOME_JS: string = `
     return true;
   }
   window.AIPhoneHome = window.AIPhoneHome || {};
+  window.__aiphoneSetConversationAssistantTarget = applyConversationAssistantTarget;
   window.__aiphoneApplyConversationUpdate = function (nextData, animateUserText) {
     return applyConversationUpdate(nextData, !!animateUserText);
   };

@@ -2297,7 +2297,12 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('plain-chat-role-user')).assertLarger(-1);
       expect(html.indexOf('plain-chat-role-assistant')).assertLarger(-1);
       expect(html.indexOf('__aiphoneApplyConversationUpdate')).assertLarger(-1);
+      expect(html.indexOf('__aiphoneSetConversationAssistantTarget')).assertLarger(-1);
       expect(html.indexOf("text(userText.textContent) !== requestText")).assertLarger(-1);
+      expect(html.indexOf('queueConversationAssistantReveal')).assertLarger(-1);
+      expect(html.indexOf('CONVERSATION_REVEAL_INTERVAL_MS = 42')).assertLarger(-1);
+      expect(html.indexOf('setTimeout(revealConversationAssistant')).assertLarger(-1);
+      expect(html.indexOf("add(response, 'p', 'plain-chat-response-copy', expectedText)")).assertEqual(-1);
       expect(isHtmlHomeConversationDocument(html)).assertTrue();
       expect(htmlHomeDataPayload(html).indexOf('"source":"model"')).assertLarger(-1);
       expect(htmlHomeAnimatesLatestUser(html)).assertFalse();

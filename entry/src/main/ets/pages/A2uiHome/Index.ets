@@ -1121,6 +1121,8 @@ struct Index {
   @State paymentCheckoutNote: string = '';
   @State inputPlaceholder: string = DEFAULT_INPUT_PLACEHOLDER;
   @State messages: A2uiMessage[] = [];
+  @State streamingAssistantDomText: string = '';
+  @State streamingAssistantDomTick: number = 0;
   @State personaPacks: PersonaPack[] = allPersonaPacks();
   @State selectedPersonaId: string = 'food_companion';
   @State personaSoulDraft: string = personaPackForId('food_companion').soul;
@@ -1149,6 +1151,8 @@ struct Index {
   private htmlHomeCacheHtml: string = '';
   private promptSubmitMotionGeneration: number = 0;
   private renderedPromptSubmitMotionGeneration: number = 0;
+  private streamingAssistantMessageId: string = '';
+  private streamingAssistantGeneration: number = 0;
   private readonly registeredPageSnapshotStore: RegisteredPageSnapshotStore =
     new RegisteredPageSnapshotStore();
   private registeredPageRenderGeneration: number = 0;
@@ -4483,6 +4487,9 @@ struct Index {
         }
         return accepted;
       },
+      onAnswerStream: (answer: string, generation: number): void => {
+        this.updateStreamingAssistantAnswer(answer, generation);
+      },
       onMailDetail: async (
         result: MailDetailInPlaceEvent,
         generation: number,
@@ -5391,6 +5398,7 @@ struct Index {
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;
     this.messages = [];
+    this.clearStreamingAssistantMessage();
     this.sessionContextCompactor.reset();
     this.waterfallSessionTopicWeights = [];
     this.waterfallSessionSourceWeights = [];
@@ -5473,6 +5481,89 @@ struct Index {
     });
     this.messages = next;
     return messageId;
+  }
+
+  private updateMessageContent(messageId: string, content: string): boolean {
+    if (messageId.length === 0 || content.length === 0) return false;
+    const next = this.messages.slice();
+    for (let index = 0; index < next.length; index++) {
+      if (next[index].id !== messageId) continue;
+      if (next[index].content === content) return false;
+      next[index] = {
+        id: next[index].id,
+        role: next[index].role,
+        content: content
+      };
+      this.messages = next;
+      return true;
+    }
+    return false;
+  }
+
+  private publishStreamingAssistantDomText(answer: string): void {
+    if (answer === this.streamingAssistantDomText) return;
+    this.streamingAssistantDomText = answer;
+    this.streamingAssistantDomTick = this.streamingAssistantDomTick + 1;
+  }
+
+  private finishStreamingAssistantRevealState(): void {
+    this.streamingAssistantMessageId = '';
+    this.streamingAssistantGeneration = 0;
+  }
+
+  private startStreamingAssistantReveal(
+    answer: string,
+    generation: number,
+    finalReceived: boolean
+  ): void {
+    this.finishStreamingAssistantRevealState();
+    this.streamingAssistantGeneration = generation;
+    this.streamingAssistantMessageId = this.appendMessage(
+      'assistant', answer
+    );
+    this.publishStreamingAssistantDomText(answer);
+    this.isAwaitingFirstSurface = false;
+    if (finalReceived) this.finishStreamingAssistantRevealState();
+  }
+
+  private queueStreamingAssistantAnswer(
+    answer: string,
+    generation: number,
+    finalReceived: boolean
+  ): void {
+    if (this.streamingAssistantGeneration !== generation ||
+      this.streamingAssistantMessageId.length === 0) {
+      this.startStreamingAssistantReveal(answer, generation, finalReceived);
+      return;
+    }
+    this.updateMessageContent(this.streamingAssistantMessageId, answer);
+    this.publishStreamingAssistantDomText(answer);
+    if (finalReceived) this.finishStreamingAssistantRevealState();
+  }
+
+  private updateStreamingAssistantAnswer(answer: string, generation: number): void {
+    if (answer.length === 0 || !this.isBusy || !runtimeCallbackIsCurrent(
+      this.activeRuntimeOwner,
+      this.runtimeGeneration,
+      'multi_agent',
+      generation
+    )) {
+      return;
+    }
+    this.queueStreamingAssistantAnswer(answer, generation, false);
+  }
+
+  private completeStreamingAssistantMessage(answer: string, generation: number): void {
+    if (this.streamingAssistantGeneration === generation &&
+      this.streamingAssistantMessageId.length > 0) {
+      this.queueStreamingAssistantAnswer(answer, generation, true);
+      return;
+    }
+    this.startStreamingAssistantReveal(answer, generation, true);
+  }
+
+  private clearStreamingAssistantMessage(): void {
+    this.finishStreamingAssistantRevealState();
   }
 
   private showMemoryResultToast(message: string): void {
@@ -5990,6 +6081,7 @@ struct Index {
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
+    this.clearStreamingAssistantMessage();
     const currentUserMessageId: string = this.appendMessage('user', visibleText);
     this.inputText = inputTextAfterPromptSubmit(this.inputText);
     this.isAwaitingFirstSurface = true;
@@ -6106,7 +6198,7 @@ struct Index {
       const readyMessage: string = result.message.length > 0 ?
         result.message : this.currentSurface.title;
       this.showMemoryResultToast(readyMessage);
-      this.appendMessage('assistant', readyMessage);
+      this.completeStreamingAssistantMessage(readyMessage, turnGeneration);
       const hasCurrentTurnSurface = this.currentSurface.runtimeOwner === 'multi_agent' &&
         this.currentSurface.runtimeGeneration === turnGeneration;
       if (!hasCurrentTurnSurface) {
@@ -6132,7 +6224,7 @@ struct Index {
       const message = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][A2uiHomeModelException] ' + logSnippet(message));
       const visibleError = visibleTurnFailureMessage(message);
-      this.appendMessage('assistant', visibleError);
+      this.completeStreamingAssistantMessage(visibleError, turnGeneration);
       this.applyRuntimeSurface(
         createTurnFailureSurface(visibleError, turnGeneration),
         'multi_agent',
@@ -10592,6 +10684,8 @@ struct Index {
         showHistory: this.showHistory,
         messages: this.messages,
         currentSurface: this.currentSurface,
+        streamingAssistantDomText: this.streamingAssistantDomText,
+        streamingAssistantDomTick: this.streamingAssistantDomTick,
         htmlHomeHtml: this.htmlHomeHtmlForView(),
         foodStoreMapOpen: this.foodStoreMapOpen,
         foodStoreMapAmapKey: rideAmapWebKeyForUi(),

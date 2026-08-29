@@ -88,6 +88,8 @@ class HtmlHomeActionBridge {
 
 @Component
 export struct HtmlHomeSurfaceView {
+  @Prop @Watch('onConversationStreamChange') conversationStreamText: string = '';
+  @Prop @Watch('onConversationStreamChange') conversationStreamTick: number = 0;
   @Prop @Watch('onHtmlOrBusyChange') html: string = '';
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadJson: string = '';
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadTick: number = 0;
@@ -124,6 +126,8 @@ export struct HtmlHomeSurfaceView {
   private waterfallPayloadPushInFlight: boolean = false;
   private appliedLuckinPatchTick: number = -1;
   private conversationPatchInFlight: boolean = false;
+  private conversationStreamPushInFlight: boolean = false;
+  private appliedConversationStreamTick: number = -1;
   private rendererWaterfallFullscreen: boolean = false;
   private waterfallShareBusy: boolean = false;
   @State private popupVisible: boolean = false;
@@ -263,6 +267,7 @@ export struct HtmlHomeSurfaceView {
           this.onCurrentHtmlReady();
           this.pushDeepSearchProgressIfNeeded();
         }
+        this.pushConversationStreamIfNeeded();
         this.loadHtmlIfNeeded();
       }).catch((error: Error): void => {
         this.conversationPatchInFlight = false;
@@ -295,6 +300,7 @@ export struct HtmlHomeSurfaceView {
       this.lastWaterfallPayloadJson = '';
       this.lastWaterfallPayloadTick = -1;
       this.lastDeepSearchProgressJson = '';
+      this.appliedConversationStreamTick = -1;
       this.appliedLuckinPatchTick = this.luckinInlinePatchTick;
       aiLogInfo('[AIPhone][HtmlHomeSurfaceLoad] chars=' + targetHtml.length.toString() +
         ' contentDigest=' + sha256Digest(targetHtml) +
@@ -307,6 +313,47 @@ export struct HtmlHomeSurfaceView {
 
   onHtmlOrBusyChange(): void {
     this.loadHtmlIfNeeded();
+  }
+
+  onConversationStreamChange(): void {
+    this.pushConversationStreamIfNeeded();
+  }
+
+  private pushConversationStreamIfNeeded(): void {
+    if (!this.webReady || this.conversationStreamPushInFlight ||
+      this.conversationStreamText.length === 0 ||
+      this.conversationStreamTick <= this.appliedConversationStreamTick) {
+      return;
+    }
+    const targetText = this.conversationStreamText;
+    const targetTick = this.conversationStreamTick;
+    try {
+      this.conversationStreamPushInFlight = true;
+      this.controller.runJavaScript(
+        '(function(){' +
+        'if(!window.__aiphoneSetConversationAssistantTarget){return "missing";}' +
+        'return window.__aiphoneSetConversationAssistantTarget(' + JSON.stringify(targetText) + ')' +
+        '?"ok":"rejected";' +
+        '})()'
+      ).then((result: string): void => {
+        this.conversationStreamPushInFlight = false;
+        this.appliedConversationStreamTick = targetTick;
+        if (result === 'ok') {
+          aiLogInfo('[AIPhone][HtmlHomeConversationStreamPush] chars=' + targetText.length.toString() +
+            ' tick=' + targetTick.toString());
+        } else {
+          aiLogError('[AIPhone][HtmlHomeConversationStreamPushRejected] result=' + result +
+            ' tick=' + targetTick.toString());
+        }
+        this.pushConversationStreamIfNeeded();
+      }).catch((error: Error): void => {
+        this.conversationStreamPushInFlight = false;
+        aiLogError('[AIPhone][HtmlHomeConversationStreamPushError] ' + JSON.stringify(error));
+      });
+    } catch (error) {
+      this.conversationStreamPushInFlight = false;
+      aiLogError('[AIPhone][HtmlHomeConversationStreamPushError] ' + JSON.stringify(error));
+    }
   }
 
   onMultiTaskPayloadChange(): void {
@@ -604,6 +651,7 @@ export struct HtmlHomeSurfaceView {
           this.pushMailReplyEventIfNeeded();
           this.pushMailCalendarEventIfNeeded();
           this.pushDeepSearchProgressIfNeeded();
+          this.pushConversationStreamIfNeeded();
           this.collectHotelSmokeEvidence();
         })
         .onWindowNew((event: OnWindowNewEvent) => {

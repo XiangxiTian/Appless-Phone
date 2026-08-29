@@ -50,6 +50,7 @@ import {
   originalQueryFromBimPrompt
 } from '../bim/BimRuntime';
 import { HotelLocalDateProvider, hotelSearchPlanningContract } from './HotelLeaderPlanner';
+import { LeaderAnswerStreamScanner } from './LeaderAnswerStreamScanner';
 
 const DECISION_KEYS: string[] = [
   'dataTasks,personaId,requestedCapabilityIds,roundAction,skillId,uiIntent',
@@ -422,15 +423,23 @@ interface LeaderPromptParts {
   dynamicPrompt: string;
 }
 
+export type LeaderAnswerStreamObserver = (
+  message: AgentMessage,
+  answer: string,
+  round: number
+) => void;
+
 export class MultiAgentLeaderPlanner implements LeaderPlanner {
   private readonly model: LocalModel;
   private readonly currentLocalDate: HotelLocalDateProvider;
   private readonly dataTaskInputNormalizer: LeaderDataTaskInputNormalizer | null;
+  private readonly answerStreamObserver: LeaderAnswerStreamObserver | null;
 
   constructor(
     model: LocalModel,
     currentLocalDate?: HotelLocalDateProvider,
-    dataTaskInputNormalizer?: LeaderDataTaskInputNormalizer
+    dataTaskInputNormalizer?: LeaderDataTaskInputNormalizer,
+    answerStreamObserver?: LeaderAnswerStreamObserver
   ) {
     this.model = model;
     this.currentLocalDate = currentLocalDate === undefined ? (): string => {
@@ -441,6 +450,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
     } : currentLocalDate;
     this.dataTaskInputNormalizer = dataTaskInputNormalizer === undefined ?
       null : dataTaskInputNormalizer;
+    this.answerStreamObserver = answerStreamObserver === undefined ? null : answerStreamObserver;
   }
 
   async plan(
@@ -458,10 +468,21 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       this.currentLocalDate() : trustedCurrentLocalDate;
     const promptParts: LeaderPromptParts = this.prompt(message, input, context, round, currentLocalDate);
     const prompt: string = promptParts.dynamicPrompt;
+    let onTextDelta: ((delta: string) => void) | undefined = undefined;
+    if (round === 1 && this.answerStreamObserver !== null) {
+      const scanner = new LeaderAnswerStreamScanner();
+      const observer = this.answerStreamObserver;
+      onTextDelta = (delta: string): void => {
+        if (signal !== undefined && !signal()) return;
+        const answer = scanner.feed(delta);
+        if (answer !== null) observer(message, answer, round);
+      };
+    }
     const output: string = await this.completeBounded(
       prompt,
       input,
-      promptParts.stableSystemPrompt
+      promptParts.stableSystemPrompt,
+      onTextDelta
     );
     let sameRoundProducerTaskToolIds: string[] = [];
     let sameRoundConsumerTaskToolIds: string[] = [];
@@ -1247,7 +1268,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
   private completeBounded(
     prompt: string,
     input: InputUserPayload,
-    stableSystemPrompt: string
+    stableSystemPrompt: string,
+    onTextDelta?: (delta: string) => void
   ): Promise<string> {
     if (stableSystemPrompt.length + prompt.length > MAX_LEADER_PROMPT_CHARS) {
       throw new Error('LEADER_PROMPT_LIMIT');
@@ -1258,7 +1280,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       messages.pop();
     }
     const conversation = messages.length === 0 ? undefined : ConversationContext.fromMessages(messages);
-    return this.model.complete(prompt, conversation, stableSystemPrompt);
+    return this.model.complete(prompt, conversation, stableSystemPrompt, onTextDelta);
   }
 
   private rejectOverlappingVideoTools(decision: LeaderDecision): void {

@@ -85,6 +85,7 @@ const A2UI_HOME_HEADER_BUTTON_SHADOW: string = '#188C6A53';
 const A2UI_HOME_AI_DISCLOSURE_TEXT: string = '#B8B8B8';
 const A2UI_WELCOME_TOOLBAR_BUTTON_SIZE: number = 50;
 const A2UI_WELCOME_TOOLBAR_ICON_SIZE: number = 24;
+const A2UI_FIRST_PENDING_DOTS: number[] = [0, 1, 2];
 
 function padHomeClockPart(value: number): string {
   return value < 10 ? '0' + value.toString() : value.toString();
@@ -150,6 +151,17 @@ export function homePromptTitle(
   return '今晚还有什么安排？';
 }
 
+export function homeWelcomeDeckTopSpacing(viewportWidth: number, viewportHeight: number): number {
+  if (viewportWidth <= 0 || viewportHeight <= 0) {
+    return 0;
+  }
+  const aspectRatio = viewportHeight / viewportWidth;
+  if (aspectRatio < 1.75) {
+    return 0;
+  }
+  return Math.min(72, Math.max(48, 48 + (aspectRatio - 1.75) * 64));
+}
+
 export function canStartHomeComposerVoice(isBusy: boolean, inputText: string): boolean {
   return !isBusy && inputText.length === 0;
 }
@@ -209,6 +221,8 @@ export struct HomePage {
   @Prop showHistory: boolean = false;
   @Prop messages: A2uiMessage[] = [];
   @Prop currentSurface: A2uiSurfaceState = emptyA2uiSurface();
+  @Prop streamingAssistantDomText: string = '';
+  @Prop streamingAssistantDomTick: number = 0;
   @Prop htmlHomeHtml: string = '';
   @Prop foodStoreMapOpen: boolean = false;
   @Prop foodStoreMapAmapKey: string = '';
@@ -262,6 +276,8 @@ export struct HomePage {
   @State composerFocused: boolean = false;
   @State deepSearchLoadingReady: boolean = false;
   @State deepSearchProgressJson: string = '';
+  @State homeViewportWidth: number = 360;
+  @State homeViewportHeight: number = 780;
   private sendSpinnerTimerId: number = -1;
   private homeClockTimerId: number = -1;
   private voiceHoldTimerId: number = -1;
@@ -557,6 +573,7 @@ export struct HomePage {
             this.onOpenWaterfall();
           }
         })
+          .margin({ top: homeWelcomeDeckTopSpacing(this.homeViewportWidth, this.homeViewportHeight) })
       }
     }
     .width('100%')
@@ -610,6 +627,108 @@ export struct HomePage {
     }
     .width('100%')
     .height(A2UI_VOICE_DOCK_HEIGHT - 8)
+  }
+
+  private latestUserMessage(): string {
+    for (let index = this.messages.length - 1; index >= 0; index--) {
+      if (this.messages[index].role === 'user' && this.messages[index].content.trim().length > 0) {
+        return this.messages[index].content;
+      }
+    }
+    return '';
+  }
+
+  private pendingDotOpacity(index: number): number {
+    const active = Math.floor(this.sendSpinnerRotation / 48) % A2UI_FIRST_PENDING_DOTS.length;
+    return active === index ? 1 : 0.28;
+  }
+
+  @Builder
+  private FirstConversationPendingView() {
+    Column() {
+      Column() {
+        Text('和 Appless 聊聊')
+          .width('100%')
+          .fontSize(27)
+          .lineHeight(31)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(COLOR_INK)
+
+        Text('回答优先，历史内容按需展开')
+          .width('100%')
+          .fontSize(15)
+          .lineHeight(22)
+          .fontColor(COLOR_MUTED)
+          .margin({ top: 6 })
+      }
+      .width('100%')
+      .padding({ left: 4, right: 4, bottom: 12 })
+
+      Row() {
+        Text('你')
+          .width(24)
+          .height(24)
+          .fontSize(12)
+          .fontColor(COLOR_ACCENT_DEEP)
+          .textAlign(TextAlign.Center)
+          .backgroundColor('#1A995F4C')
+          .borderRadius(8)
+          .margin({ right: 7 })
+
+        Text(this.latestUserMessage())
+          .layoutWeight(1)
+          .fontSize(15)
+          .lineHeight(23)
+          .fontColor(COLOR_TEXT)
+          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .backgroundColor('#F1E6E1')
+          .borderRadius(16)
+      }
+      .width('84%')
+      .alignSelf(ItemAlign.End)
+      .alignItems(VerticalAlign.Center)
+      .margin({ top: 16 })
+
+      Row() {
+        Text('A')
+          .width(24)
+          .height(24)
+          .fontSize(13)
+          .fontColor(COLOR_ACCENT_DEEP)
+          .textAlign(TextAlign.Center)
+          .backgroundColor('#1A995F4C')
+          .borderRadius(8)
+          .margin({ right: 7 })
+
+        Row() {
+          ForEach(A2UI_FIRST_PENDING_DOTS, (index: number) => {
+            Circle()
+              .width(7)
+              .height(7)
+              .fill(COLOR_ACCENT_DEEP)
+              .opacity(this.pendingDotOpacity(index))
+              .margin({ right: index < A2UI_FIRST_PENDING_DOTS.length - 1 ? 7 : 0 })
+              .animation({ duration: 160, curve: Curve.EaseInOut })
+          }, (index: number) => index.toString())
+        }
+        .layoutWeight(1)
+        .constraintSize({ minHeight: 82 })
+        .padding({ left: 16, right: 16 })
+        .backgroundColor('#FFFAF7')
+        .border({ width: 1, color: '#EADFD8' })
+        .borderRadius(20)
+        .alignItems(VerticalAlign.Center)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Top)
+      .margin({ top: 12 })
+
+      Blank()
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 14, right: 14 })
   }
 
   build() {
@@ -772,31 +891,42 @@ export struct HomePage {
         .margin({ top: this.surfaceTopGap() })
       } else {
         Column() {
-          HtmlHomeSurfaceView({
-            html: this.htmlHomeHtml,
-            multiTaskPayloadJson: this.multiTaskPayloadJson,
-            multiTaskPayloadTick: this.multiTaskPayloadTick,
-            waterfallPayloadJson: this.waterfallPayloadJson,
-            waterfallPayloadTick: this.waterfallPayloadTick,
-            waterfallActive: this.waterfallActive,
-            waterfallBackRequestTick: this.waterfallBackRequestTick,
-            mailDetailEventJson: this.mailDetailEventJson,
-            mailReplyEventJson: this.mailReplyEventJson,
-            mailCalendarEventJson: this.mailCalendarEventJson,
-            isBusy: this.isBusy,
-            renderTick: this.surfaceRenderTick,
-            luckinInlinePatchJson: this.luckinInlinePatchJson,
-            luckinInlinePatchTick: this.luckinInlinePatchTick,
-            deepSearchProgressJson: this.deepSearchProgressJson,
-            onAction: this.onAction,
-            onCurrentHtmlReady: (): void => {
-              if (this.showDeepSearch && this.isBusy) this.deepSearchLoadingReady = true;
-            },
-            onWaterfallFullscreenChange: (active: boolean): void => {
-              this.waterfallFullscreen = active;
-              this.onWaterfallFullscreenChange(active);
+          Stack({ alignContent: Alignment.TopStart }) {
+            HtmlHomeSurfaceView({
+              conversationStreamText: this.streamingAssistantDomText,
+              conversationStreamTick: this.streamingAssistantDomTick,
+              html: this.htmlHomeHtml,
+              multiTaskPayloadJson: this.multiTaskPayloadJson,
+              multiTaskPayloadTick: this.multiTaskPayloadTick,
+              waterfallPayloadJson: this.waterfallPayloadJson,
+              waterfallPayloadTick: this.waterfallPayloadTick,
+              waterfallActive: this.waterfallActive,
+              waterfallBackRequestTick: this.waterfallBackRequestTick,
+              mailDetailEventJson: this.mailDetailEventJson,
+              mailReplyEventJson: this.mailReplyEventJson,
+              mailCalendarEventJson: this.mailCalendarEventJson,
+              isBusy: this.isBusy,
+              renderTick: this.surfaceRenderTick,
+              luckinInlinePatchJson: this.luckinInlinePatchJson,
+              luckinInlinePatchTick: this.luckinInlinePatchTick,
+              deepSearchProgressJson: this.deepSearchProgressJson,
+              onAction: this.onAction,
+              onCurrentHtmlReady: (): void => {
+                if (this.showDeepSearch && this.isBusy) this.deepSearchLoadingReady = true;
+              },
+              onWaterfallFullscreenChange: (active: boolean): void => {
+                this.waterfallFullscreen = active;
+                this.onWaterfallFullscreenChange(active);
+              }
+            })
+            .width('100%')
+            .height('100%')
+            .opacity(this.isAwaitingFirstSurface ? 0 : 1)
+
+            if (this.isAwaitingFirstSurface) {
+              this.FirstConversationPendingView()
             }
-          })
+          }
           .layoutWeight(1)
 
           if (this.showDeepSearch) {
@@ -991,6 +1121,16 @@ export struct HomePage {
     .height('100%')
     .backgroundColor(A2UI_HOME_SHELL_BACKGROUND)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .onAreaChange((_oldValue: Area, newValue: Area) => {
+      const nextWidth = parseFloat(newValue.width.toString());
+      const nextHeight = parseFloat(newValue.height.toString());
+      if (nextWidth > 0 && Math.abs(nextWidth - this.homeViewportWidth) > 0.5) {
+        this.homeViewportWidth = nextWidth;
+      }
+      if (nextHeight > 0 && Math.abs(nextHeight - this.homeViewportHeight) > 0.5) {
+        this.homeViewportHeight = nextHeight;
+      }
+    })
   }
 }
 

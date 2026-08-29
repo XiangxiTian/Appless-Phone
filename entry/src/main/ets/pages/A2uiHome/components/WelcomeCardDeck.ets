@@ -1,6 +1,7 @@
 import { A2UI_MOTION_CURVE } from '../style/A2uiHomeMotion';
 
 const CARD_HEIGHT: number = 264;
+const GUIDE_IMAGE_HEIGHT: number = 156;
 const GESTURE_DISTANCE: number = 120;
 const SWITCH_THRESHOLD: number = 54;
 const SIDE_OFFSET: number = 56;
@@ -180,8 +181,9 @@ export struct WelcomeCardDeck {
   private NearbyFoodVisual() {
     Image($r('app.media.home_guide_nearby_food'))
     .width('100%')
-    .height(156)
-    .objectFit(ImageFit.Fill)
+    .height(GUIDE_IMAGE_HEIGHT)
+    .objectFit(ImageFit.Contain)
+    .backgroundColor('#F5EAE3')
     .borderRadius(20)
     .clip(true)
   }
@@ -190,8 +192,9 @@ export struct WelcomeCardDeck {
   private WeekendVisual() {
     Image($r('app.media.home_guide_travel_plan'))
     .width('100%')
-    .height(156)
-    .objectFit(ImageFit.Fill)
+    .height(GUIDE_IMAGE_HEIGHT)
+    .objectFit(ImageFit.Contain)
+    .backgroundColor('#E3EFE9')
     .borderRadius(20)
     .clip(true)
   }
@@ -200,8 +203,9 @@ export struct WelcomeCardDeck {
   private WaterfallVisual() {
     Image($r('app.media.home_guide_waterfall'))
     .width('100%')
-    .height(156)
-    .objectFit(ImageFit.Fill)
+    .height(GUIDE_IMAGE_HEIGHT)
+    .objectFit(ImageFit.Contain)
+    .backgroundColor('#F0EAF3')
     .borderRadius(20)
     .clip(true)
   }

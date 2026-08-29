@@ -6,6 +6,7 @@ import {
   ActionOffer,
   ActionPlanRequestPayload,
   ActionValidationResult,
+  AgentMessage,
   A2uiAction,
   A2uiParserProfile,
   A2uiRuntimeDataModel,
@@ -226,6 +227,7 @@ export interface MultiAgentCanaryOptions {
   currentHostSurface?: () => A2uiSurfaceState | null;
   currentHostGeneration?: () => number;
   onSurface: (surface: A2uiSurfaceState, runtimeGeneration: number) => boolean;
+  onAnswerStream?: (answer: string, runtimeGeneration: number) => void;
   memoryRuntime?: PhoneLocalMemoryRuntimePort;
   /** Process-lifetime feature gate; omitted preserves existing injected-test behavior. */
   memoryAvailability?: PhoneLocalMemoryAvailabilityPort;
@@ -1806,10 +1808,23 @@ export class MultiAgentCanaryRuntime {
       task: LeaderDecisionDataTask,
       currentLocalDate: string
     ): Object => normalizeCanaryTaskInput(input, task, currentLocalDate);
+    const onAnswerStream = options.onAnswerStream;
     const leaderPlanner = new MultiAgentLeaderPlanner(
       options.model,
       undefined,
-      dataTaskInputNormalizer
+      dataTaskInputNormalizer,
+      onAnswerStream === undefined ? undefined : (
+        message: AgentMessage,
+        answer: string,
+        _round: number
+      ): void => {
+        const hostGeneration = this.turnHostGenerations.get(message.turnId);
+        if (hostGeneration === undefined || hostGeneration <= 0 ||
+          hostGeneration !== this.currentHostGeneration()) {
+          return;
+        }
+        onAnswerStream(answer, hostGeneration);
+      }
     );
     const leaderMemoryTools = new PhoneLocalLeaderMemoryToolExecutor(
       this.memoryRuntime,

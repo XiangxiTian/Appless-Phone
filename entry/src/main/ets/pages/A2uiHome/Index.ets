@@ -4466,20 +4466,15 @@ struct Index {
     const options: MultiAgentCanaryOptions = {
       model: model,
       opener: opener,
-      structuredToolCall: (
+      structuredToolCall: async (
         toolId: string,
         prompt: string,
         args: Object,
         onPartial?: (result: DataResult) => void
-      ): Promise<DataResult> => callStructuredTool(
-        toolId,
-        prompt,
-        aggregateSearchArgsWithPolicy(toolId, args, {
-          onlyDomesticSources: this.aggregateDomesticOnly,
-          includeMultilingualResults: this.aggregateMultilingual
-        }),
-        onPartial
-      ),
+      ): Promise<DataResult> => {
+        const callArgs = await this.argsWithCurrentLocationForTool(toolId, prompt, args);
+        return callStructuredTool(toolId, prompt, callArgs, onPartial);
+      },
       onSurface: (surface: A2uiSurfaceState, generation: number): boolean => {
         const accepted = this.applyRuntimeSurface(surface, 'multi_agent', generation);
         if (accepted) {
@@ -7424,11 +7419,82 @@ struct Index {
     return merged;
   }
 
-  private async argsWithCurrentLocationForTool(toolId: string, args: Object | null): Promise<Object | null> {
+  private foodSearchCanUseDeviceLocation(prompt: string, args: Object | null): boolean {
+    const rawArgs = args === null ? null :
+      args as Record<string, Object | string | number | boolean | null | undefined>;
+    const rawQuery = rawArgs === null ? '' : this.actionText(rawArgs.query).trim();
+    const place = rawArgs === null ? '' : this.actionText(rawArgs.place).trim();
+    const locationMode = rawArgs === null ? '' : this.actionText(rawArgs.locationMode).trim();
+    if (locationMode === 'explicit' || place.length > 0) {
+      return false;
+    }
+    if (locationMode === 'device_nearby') {
+      return true;
+    }
+    let effectiveQuery = rawQuery.length > 0 ? rawQuery : prompt.trim();
+    effectiveQuery = effectiveQuery.replace(
+      /^(?:帮我|请|麻烦)(?:搜索|查找|查一下|查询|找|搜|推荐|看看|看一下)?/u, ''
+    ).trim();
+    effectiveQuery = effectiveQuery.replace(
+      /^(?:搜索|查找|查一下|查询|找|搜|推荐|看看|看一下)(?:一下)?/u, ''
+    ).trim();
+    if (/(-?\d{2,3}\.\d+)\s*,\s*(-?\d{1,2}\.\d+)/u.test(effectiveQuery)) {
+      return false;
+    }
+    const nearbyPlace = /^(.+?)(?:附近|周边|周围)(?:的)?/u.exec(effectiveQuery);
+    return nearbyPlace === null || nearbyPlace[1].trim().length === 0;
+  }
+
+  private async argsWithCurrentLocationForTool(
+    toolId: string,
+    prompt: string,
+    args: Object | null
+  ): Promise<Object | null> {
     const requestArgs = aggregateSearchArgsWithPolicy(toolId, args, {
       onlyDomesticSources: this.aggregateDomesticOnly,
       includeMultilingualResults: this.aggregateMultilingual
     });
+    if (toolId === 'food.search' && requestArgs !== null) {
+      const raw = requestArgs as Record<string, Object | string | number | boolean | null | undefined>;
+      const rawSearchArea = raw.searchArea as Record<string, Object | string | number | boolean | null | undefined> | undefined;
+      if (rawSearchArea !== undefined && rawSearchArea !== null) {
+        const longitude = Number(this.actionText(rawSearchArea.longitude).trim());
+        const latitude = Number(this.actionText(rawSearchArea.latitude).trim());
+        if (Number.isFinite(longitude) && Number.isFinite(latitude) &&
+          longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90) {
+          aiLogInfo('[AIPhone][FoodSearchLocationPreserved] source=explicit_search_area longitude=' +
+            longitude.toString() + ' latitude=' + latitude.toString());
+          return requestArgs;
+        }
+      }
+    }
+    if (toolId === 'food.search' && this.foodSearchCanUseDeviceLocation(prompt, requestArgs)) {
+      try {
+        const current = await this.currentFoodDeviceLocation();
+        const merged: Record<string, Object | string | number | boolean | null | undefined> = {};
+        if (requestArgs !== null) {
+          const raw = requestArgs as Record<string, Object | string | number | boolean | null | undefined>;
+          Object.keys(raw).forEach((key: string) => {
+            merged[key] = raw[key];
+          });
+        }
+        const searchArea: A2uiFoodSearchArea = {
+          longitude: current.longitude,
+          latitude: current.latitude,
+          radiusMeters: this.foodLocationRadiusMeters,
+          name: current.name,
+          address: current.address
+        };
+        merged.searchArea = searchArea;
+        merged.locationSource = 'device_current';
+        aiLogInfo('[AIPhone][FoodSearchCurrentLocation] source=device_current longitude=' +
+          current.longitude.toString() + ' latitude=' + current.latitude.toString());
+        return merged;
+      } catch (error) {
+        aiLogError('[AIPhone][FoodSearchCurrentLocation] ok=false reason=' +
+          (error instanceof Error ? error.message : JSON.stringify(error)));
+      }
+    }
     if (toolId !== 'luckin.order.preview') {
       return requestArgs;
     }
@@ -10134,7 +10200,7 @@ struct Index {
     if (!directDetailBimAction && !inlineLuckinSwitch && !inlineLuckinPaymentStatus) {
       this.markChecking('正在调用工具：' + toolId);
     }
-    const callArgs = await this.argsWithCurrentLocationForTool(toolId, args);
+    const callArgs = await this.argsWithCurrentLocationForTool(toolId, prompt, args);
     if (!runtimeCallbackIsCurrent(
       this.activeRuntimeOwner, this.runtimeGeneration, runtimeOwner, toolGeneration
     )) {

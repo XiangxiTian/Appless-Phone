@@ -30,7 +30,7 @@
     },
     {
       "name": "location_permission_reason",
-      "value": "用于在点击系统地图导航时获取一次当前位置作为起点"
+      "value": "用于附近美食搜索、重新定位和系统地图导航时获取当前位置"
     },
     {
       "name": "microphone_permission_reason",

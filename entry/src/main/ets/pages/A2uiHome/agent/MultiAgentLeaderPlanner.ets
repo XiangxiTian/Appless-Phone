@@ -358,6 +358,12 @@ const MAPS_SELECTION_CONTRACT: string =
   'for the requested place search and never substitute food.search. Use maps.place.details only in a later round ' +
   'with a real placeId returned by maps.place.search. In round 1 requestedCapabilityIds is exactly ' +
   '["maps.place.search"]; do not list maps.place.details until that later round.';
+const FOOD_SEARCH_INTENT_CONTRACT: string =
+  'Food search intent contract: every food.search dataTasks[].input must preserve query and include keyword, place, and locationMode. ' +
+  'For an explicit place such as 苏州餐厅 or 青岛海鲜, set place to the geographic constraint and locationMode=explicit; ' +
+  'for a generic nearby request such as 附近的咖啡, set place to empty and locationMode=device_nearby. ' +
+  'Treat a brand or restaurant name such as 南京大牌档 as keyword, not as place. Do not use a city allowlist; preserve arbitrary explicit places. ' +
+  'A valid user-selected searchArea always has precedence over both place and device location.';
 const C10_C11_SELECTION_CONTRACT: string =
   'C10/C11 selection contract: Explicit X/Twitter public post searches use x.post.search. X or Slack inbox/message ' +
   'requests use social.feed.search. A generic request to 点一杯咖啡 uses food.search. Stable preference text such as ' +
@@ -1877,6 +1883,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       'When an Action requires a real provider ID, plan the necessary Data-owned read task first and the ' +
         'Action-owned capability in actionIntent. Use only a real observed ID in a later round; never invent one.',
       'Maximum Data tasks in one round: ' + MAX_LEADER_DATA_TASKS_PER_ROUND.toString() + '.',
+      FOOD_SEARCH_INTENT_CONTRACT,
       TRAVEL_SELECTION_CONTRACT,
       VIDEO_SELECTION_CONTRACT,
       this.registeredCapability(context, 'maps.place.search') ? MAPS_SELECTION_CONTRACT : '',

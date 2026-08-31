@@ -11318,6 +11318,8 @@ interface FoodSearchAreaArgs {
 interface FoodSearchArgsRecord {
   query?: Object | string | number | boolean | null;
   keyword?: Object | string | number | boolean | null;
+  place?: Object | string | number | boolean | null;
+  locationMode?: Object | string | number | boolean | null;
   brandPreference?: Object | string | number | boolean | null;
   brandStrict?: Object | string | number | boolean | null;
   sweetness?: Object | string | number | boolean | null;
@@ -12269,8 +12271,23 @@ async function callStructuredFoodTool(
     ' addressChars=' + rawAddress.length.toString());
   const effectivePrompt = textOf(structuredArgs.query).trim().length > 0 ?
     textOf(structuredArgs.query).trim() : prompt;
-
+  const structuredPlace = textOf(structuredArgs.place).trim();
+  const structuredLocationMode = textOf(structuredArgs.locationMode).trim();
+  if (structuredLocationMode.length > 0 && structuredLocationMode !== 'explicit' &&
+    structuredLocationMode !== 'device_nearby' && structuredLocationMode !== 'unspecified') {
+    return errorDataResult('food.search', 'foodChoices', 'INVALID_LOCATION_MODE',
+      'food.search locationMode 必须是 explicit、device_nearby 或 unspecified。');
+  }
+  if (structuredLocationMode === 'explicit' && structuredPlace.length === 0) {
+    return errorDataResult('food.search', 'foodChoices', 'MISSING_EXPLICIT_PLACE',
+      'locationMode=explicit 时必须提供 place。');
+  }
+  if (structuredLocationMode === 'device_nearby' && structuredPlace.length > 0) {
+    return errorDataResult('food.search', 'foodChoices', 'CONFLICTING_LOCATION_INTENT',
+      'locationMode=device_nearby 时 place 必须为空。');
+  }
   const query = extractFoodQuery(effectivePrompt);
+  const resolvedPlace = structuredPlace.length > 0 ? structuredPlace : query.place;
   const preflightResults: FoodProviderResult[] = [];
   const provenanceResults: FoodProviderResult[] = [];
   let locationSource = 'none';
@@ -12282,9 +12299,9 @@ async function callStructuredFoodTool(
     location = parseCoordinatePair(effectivePrompt);
     if (location.length > 0) {
       locationSource = 'prompt_coords';
-    } else if (query.place.length > 0 && key.length > 0) {
+    } else if (resolvedPlace.length > 0 && key.length > 0) {
       try {
-        const resolved = await resolveFoodSearchLocation(query.place, key);
+        const resolved = await resolveFoodSearchLocation(resolvedPlace, key);
         location = resolved.location;
         locationSource = resolved.locationSource;
         provenanceResults.push({
@@ -12306,8 +12323,8 @@ async function callStructuredFoodTool(
   const keyword = structuredKeyword.length > 0 ? structuredKeyword : extractFoodKeyword(effectivePrompt);
   const selectedPlace = requestedArea === null ? '' : firstText([requestedArea.name, requestedArea.address]);
   const providerQuery: FoodQuery = {
-    place: selectedPlace.length > 0 ? selectedPlace : query.place,
-    keyword: query.keyword
+    place: selectedPlace.length > 0 ? selectedPlace : resolvedPlace,
+    keyword: keyword
   };
   const radiusMeters = (requestedArea === null ? normalizedFoodRadius(undefined) : requestedArea.radiusMeters).toString();
   aiLogInfo('[AIPhone][FoodSearchResolvedArea] locationSource=' + locationSource +

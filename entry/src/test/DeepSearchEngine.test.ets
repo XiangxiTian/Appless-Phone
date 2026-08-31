@@ -87,6 +87,7 @@ export default function deepSearchEngineTest() {
     it('infers recency only for explicitly current questions', 0, () => {
       expect(queryRecency('我想知道谁拿过网球大满贯')).assertEqual('');
       expect(queryRecency('历史上谁获得过网球大满贯')).assertEqual('');
+      expect(queryRecency('今天深圳天气怎么样')).assertEqual('');
       expect(queryRecency('最近的网球大满贯冠军是谁')).assertEqual('qdr:d');
       expect(queryRecency('截至今天的赛事进展')).assertEqual('qdr:d');
     });
@@ -289,14 +290,19 @@ export default function deepSearchEngineTest() {
 
     it('answers simple questions with an overview and capped reports', 0, async () => {
       const synthesisPrompts: string[] = [];
+      let readCalls = 0;
+      let llmCalls = 0;
       const ports: DeepSearchPorts = {
         search: async (query: string, _recency: string, _maxResults: number): Promise<FirecrawlToolOutput> =>
           searchOutput([
             sourceResult('天气来源', 'https://weather.example.com/' + query, '深圳多云 26-31 度。', 'success')
           ]),
-        readPage: async (url: string, _question: string): Promise<FirecrawlToolOutput> =>
-          searchOutput([sourceResult('精读', url, '今天深圳多云，偶有阵雨，气温 26-31 度。', 'success')]),
+        readPage: async (url: string, _question: string): Promise<FirecrawlToolOutput> => {
+          readCalls++;
+          return searchOutput([sourceResult('精读', url, '今天深圳多云，偶有阵雨，气温 26-31 度。', 'success')]);
+        },
         llm: async (systemPrompt: string, prompt: string): Promise<string> => {
+          llmCalls++;
           if (systemPrompt.indexOf('规划') >= 0) {
             return '{"complexity":"simple","subQueries":["深圳今天天气"]}';
           }
@@ -317,9 +323,11 @@ export default function deepSearchEngineTest() {
       expect(result.running).assertFalse();
       expect(result.error.length).assertEqual(0);
       expect(result.complexity).assertEqual('simple');
-      expect(result.answer.indexOf('26 到 31 度') >= 0).assertTrue();
-      expect(result.reports.length).assertEqual(2);
-      expect(synthesisPrompts[0].indexOf('简单问题') >= 0).assertTrue();
+      expect(result.answer.indexOf('26-31 度') >= 0).assertTrue();
+      expect(result.reports.length).assertEqual(1);
+      expect(readCalls).assertEqual(0);
+      expect(llmCalls).assertEqual(1);
+      expect(synthesisPrompts.length).assertEqual(0);
     });
 
     it('reports authentication failure clearly', 0, async () => {

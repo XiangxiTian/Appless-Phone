@@ -147,7 +147,7 @@ export function deepSearchRouteDecisionPrompt(query: string): string {
   return '判断用户请求应由普通 Agent 处理还是进入 DeepSearch。只输出 JSON：' +
     '{"route":"agent"} 或 {"route":"deepsearch"}。' +
     '普通问答、闲聊、出行、餐饮、地图、打车、酒店、媒体聚合搜索走 agent；' +
-    '只有需要开放网页多来源检索、深读与事实查证的研究问题走 deepsearch。' +
+    '需要最新或实时外部信息（如天气），或需要开放网页多来源检索、深读与事实查证的问题走 deepsearch。' +
     '用户明确要求或拒绝深度搜索时优先服从。用户请求：' + JSON.stringify(query.trim());
 }
 

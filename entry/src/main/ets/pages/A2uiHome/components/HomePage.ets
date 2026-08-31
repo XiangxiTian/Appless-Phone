@@ -29,7 +29,8 @@ import {
 import { TrainPresaleTask } from '../train/TrainPresaleTaskStore';
 import {
   isPromptInputEnabled,
-  nextSendSpinnerRotation
+  nextSendSpinnerRotation,
+  shouldShowDeepSearchPendingSurface
 } from '../state/A2uiHomeState';
 import {
   A2UI_HOME_FLOATING_RADIUS,
@@ -921,9 +922,11 @@ export struct HomePage {
             })
             .width('100%')
             .height('100%')
-            .opacity(this.isAwaitingFirstSurface ? 0 : 1)
+            .opacity(this.isAwaitingFirstSurface &&
+              !shouldShowDeepSearchPendingSurface(this.showDeepSearch, this.isBusy) ? 0 : 1)
 
-            if (this.isAwaitingFirstSurface) {
+            if (this.isAwaitingFirstSurface &&
+              !shouldShowDeepSearchPendingSurface(this.showDeepSearch, this.isBusy)) {
               this.FirstConversationPendingView()
             }
           }

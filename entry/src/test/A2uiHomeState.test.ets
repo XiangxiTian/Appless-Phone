@@ -169,6 +169,7 @@ export default function a2uiHomeStateTest() {
       expect(deepSearchRouteDecisionFromModelText('not json')).assertEqual('agent');
       expect(deepSearchRouteDecisionPrompt('比较两款芯片的最新进展').indexOf('比较两款芯片的最新进展'))
         .assertLarger(-1);
+      expect(deepSearchRouteDecisionPrompt('今天深圳天气怎么样').indexOf('天气')).assertLarger(-1);
     });
 
     it('lets explicit DeepSearch requests and refusals override model routing', 0, () => {
@@ -192,6 +193,8 @@ export default function a2uiHomeStateTest() {
       expect(explicitDeepSearchRouteDecision('Not only DeepSearch, compare sources')).assertEqual('deepsearch');
       expect(explicitDeepSearchRouteDecision('请勿深度搜索')).assertEqual('agent');
       expect(explicitDeepSearchRouteDecision('不要普通搜索，请深度搜索')).assertEqual('deepsearch');
+      expect(explicitDeepSearchRouteDecision('今天深圳天气怎么样')).assertEqual(null);
+      expect(explicitDeepSearchRouteDecision('查深圳到上海的出行方案，也告诉我深圳天气')).assertEqual(null);
       expect(explicitDeepSearchRouteDecision('比较两款芯片的最新进展')).assertEqual(null);
     });
 

@@ -213,6 +213,9 @@ export function contextQualifiedSubQueries(
 
 export function queryRecency(query: string): string {
   const normalized = query.trim();
+  if (/(天气|气温|下雨|降雨)/.test(normalized)) {
+    return '';
+  }
   const currentMarkers: string[] = [
     '最新', '最近', '今日', '今天', '本周', '本月', '今年', '当前', '目前',
     '实时', '进展', '动态', '新闻', '发生了什么', '截至'
@@ -583,6 +586,7 @@ export class DeepSearchEngine {
   private reports: DeepSearchReportView[] = [];
   private answer: string = '';
   private complexity: DeepSearchComplexity = 'complex';
+  private simpleFastPath: boolean = false;
   private modelStatus: string = '';
   private modelUnavailable: boolean = false;
   private errorText: string = '';
@@ -728,6 +732,7 @@ export class DeepSearchEngine {
     if (plan !== null) {
       subQueries = plan.subQueries;
       this.complexity = plan.complexity;
+      this.simpleFastPath = plan.complexity === 'simple';
     } else {
       subQueries = genericFallbackSubQueries(query);
       this.complexity = fallbackComplexityOf(query, subQueries.length);
@@ -1036,6 +1041,7 @@ export class DeepSearchEngine {
     this.reports = [];
     this.answer = '';
     this.complexity = 'complex';
+    this.simpleFastPath = false;
     this.modelStatus = '';
     this.modelUnavailable = false;
     this.errorText = '';
@@ -1068,6 +1074,22 @@ export class DeepSearchEngine {
     }
     this.endStage(STAGE_SEARCH, 'done',
       '共获得 ' + this.sources.length.toString() + ' 个去重来源', searchStartedAt);
+
+    if (this.simpleFastPath) {
+      const skippedAt = Date.now();
+      this.endStage(STAGE_READ, 'done', '简单问题无需精读网页', skippedAt);
+      this.endStage(STAGE_EVALUATE, 'done', '简单问题无需覆盖评估', skippedAt);
+      this.endStage(STAGE_REFINE, 'done', '简单问题无需补充检索', skippedAt);
+      const synthesizeStartedAt = this.beginStage(STAGE_SYNTHESIZE, '正在整理搜索摘要');
+      this.reports = fallbackReports(this.sources, this.complexity);
+      this.answer = fallbackAnswer(query, this.sources, this.complexity);
+      this.endStage(STAGE_SYNTHESIZE, 'done', '已生成概况回答', synthesizeStartedAt);
+      this.running = false;
+      this.emit();
+      aiLogInfo('[AIPhone][DeepSearchDone] sources=' + this.sources.length.toString() +
+        ' answerChars=' + this.answer.length.toString());
+      return;
+    }
 
     await this.readTopSources(query);
     if (this.cancelled) {

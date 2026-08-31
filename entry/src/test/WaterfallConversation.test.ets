@@ -41,6 +41,8 @@ export default function waterfallConversationTest() {
       expect(mixed?.rules[1].effect).assertEqual('downweight');
       expect(directWaterfallConversationCommand('多看科技但少看体育') === null).assertTrue();
       expect(directWaterfallConversationCommand('多看科技，帮我平衡新鲜度') === null).assertTrue();
+      expect(directWaterfallConversationCommand('附近有什么好吃的') === null).assertTrue();
+      expect(directWaterfallConversationCommand('帮我规划明天去杭州的行程') === null).assertTrue();
     });
 
     it('accepts only a bounded typed device probe', 0, () => {

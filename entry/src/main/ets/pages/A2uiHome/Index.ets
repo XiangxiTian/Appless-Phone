@@ -238,8 +238,6 @@ import { WaterfallVoiceDock } from './components/WaterfallVoiceDock';
 import {
   applyWaterfallConversationCommand,
   directWaterfallConversationCommand,
-  parseWaterfallConversationCommand,
-  waterfallConversationPrompt,
   WaterfallConversationCommand,
   WaterfallConversationState
 } from './waterfall/WaterfallConversation';
@@ -2815,7 +2813,7 @@ struct Index {
   private submitWaterfallConversationTypedTest(rawPrompt: string): void {
     const prompt = rawPrompt.trim();
     if (!this.isDebugBuild || this.interestWaterfallFeedState === null || this.bimRootIndex !== 1 ||
-      this.interestWaterfallFullscreen || this.waterfallConversationBusy || this.isVoiceListening ||
+      this.interestWaterfallFullscreen || this.waterfallConversationBusy || this.isBusy || this.isVoiceListening ||
       prompt.length === 0 || prompt.length > 240) {
       aiLogInfo('[AIPhone][WaterfallConversationRejected] reason=invalid_debug_prompt');
       return;
@@ -6323,27 +6321,21 @@ struct Index {
       this.applyInterestConversation(direct);
       return;
     }
-    const generation = this.interestWaterfallGeneration;
+    if (this.isBusy) {
+      aiLogInfo('[AIPhone][WaterfallConversationRejected] reason=multi_agent_busy');
+      this.waterfallConversationMessage = 'Appless 正在处理其他请求';
+      return;
+    }
     this.waterfallConversationBusy = true;
     this.waterfallConversationMessage = utterance;
+    aiLogInfo('[AIPhone][WaterfallConversationRoute] target=multi_agent promptChars=' +
+      utterance.length.toString());
+    this.bimRootController.changeIndex(0, !this.bimReduceMotion);
     try {
-      const raw = await this.canaryModel().complete(waterfallConversationPrompt(utterance));
-      if (generation !== this.interestWaterfallGeneration || this.interestWaterfallFeedState === null) return;
-      const command = parseWaterfallConversationCommand(raw);
-      if (command === null) {
-        aiLogInfo('[AIPhone][WaterfallConversationRejected] reason=invalid_command generation=' +
-          generation.toString());
-        this.waterfallConversationBusy = false;
-        this.waterfallConversationMessage = '没理解这次调整，原来的内容不变';
-        return;
-      }
-      this.applyInterestConversation(command);
-    } catch (_error) {
-      if (generation !== this.interestWaterfallGeneration) return;
-      aiLogError('[AIPhone][WaterfallConversationRejected] reason=model_error generation=' +
-        generation.toString());
+      await this.submitPrompt(utterance, utterance);
+    } finally {
       this.waterfallConversationBusy = false;
-      this.waterfallConversationMessage = '暂时没调好，原来的内容不变';
+      this.waterfallConversationMessage = '';
     }
   }
 
@@ -10877,7 +10869,7 @@ struct Index {
         Column() {
           WaterfallVoiceDock({
             isListening: this.isVoiceListening && this.voiceTarget === 'waterfall',
-            isBusy: this.waterfallConversationBusy ||
+            isBusy: this.waterfallConversationBusy || this.isBusy ||
               (this.isVoiceListening && this.voiceTarget !== 'waterfall'),
             reduceMotion: this.bimReduceMotion,
             message: this.waterfallConversationMessage,

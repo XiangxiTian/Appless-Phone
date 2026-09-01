@@ -127,7 +127,7 @@ export default function publicFeedClientTest(): void {
       expect(posts[0].text).assertEqual('这是一段可读的新闻摘要。');
     });
 
-    it('keeps complete summaries and caps only emitted posts', 0, () => {
+    it('keeps complete summaries and honors limits above the old four-post cap', 0, () => {
       const events: PublicFeedEvent[] = [];
       const summary = '摘要'.repeat(4000) + '正文结尾';
       for (let index = 0; index < 5; index += 1) {
@@ -139,11 +139,11 @@ export default function publicFeedClientTest(): void {
           event('end', 'item')
         );
       }
-      const posts = publicFeedPostsFromEvents('cnnews', '中国新闻网', events, 4);
+      const posts = publicFeedPostsFromEvents('cnnews', '中国新闻网', events, 5);
 
-      expect(posts.length).assertEqual(4);
+      expect(posts.length).assertEqual(5);
       expect(posts[0].text).assertEqual(summary);
-      expect(posts[3].title).assertEqual('新闻 3');
+      expect(posts[4].title).assertEqual('新闻 4');
     });
 
     it('stops feed event collection after the eightieth completed item', 0, () => {

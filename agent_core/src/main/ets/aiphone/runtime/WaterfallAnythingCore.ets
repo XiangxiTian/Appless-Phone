@@ -279,10 +279,14 @@ interface TraditionalRankedCandidateInternal extends RankedCandidateInternal {
   epsilon: number;
 }
 
-interface WaterfallPreferenceScores {
+export type WaterfallExplicitPreferenceMatch = 'none' | 'boost' | 'downweight' | 'block';
+
+export interface WaterfallCandidatePreferenceScore {
   blocked: boolean;
-  profile: number;
+  priority: number;
+  historical: number;
   session: number;
+  explicit: WaterfallExplicitPreferenceMatch;
 }
 
 interface CandidateText {
@@ -542,7 +546,7 @@ function traditionalCandidateGroups(
       return;
     }
     const normalizedUrl = normalizedHttpUrl(candidate.url);
-    const preference = preferenceScores(candidate, input.profile);
+    const preference = scoreWaterfallCandidatePreference(candidate, input.profile);
     if (normalizedUrl.length === 0 || preference.blocked) {
       return;
     }
@@ -565,7 +569,7 @@ function traditionalCandidateGroups(
         groups[duplicateIndex].candidate = candidate;
         groups[duplicateIndex].signals = signals;
         groups[duplicateIndex].tokens = waterfallTextTokens(candidate.title + ' ' + candidate.summary);
-        groups[duplicateIndex].profile = preference.profile;
+        groups[duplicateIndex].profile = preference.priority;
         groups[duplicateIndex].session = preference.session;
       }
       return;
@@ -577,7 +581,7 @@ function traditionalCandidateGroups(
       tokens: waterfallTextTokens(candidate.title + ' ' + candidate.summary),
       rrf: contribution,
       bm25: 0,
-      profile: preference.profile,
+      profile: preference.priority,
       session: preference.session,
       freshnessPopularity: signals.freshnessTier,
       balance: 0,
@@ -644,14 +648,20 @@ function matchingWeight(
   return score;
 }
 
-function preferenceScores(
-  candidate: WaterfallCandidate,
+export function scoreWaterfallPreferenceText(
+  source: string,
+  format: string,
+  topicText: string,
   profile: WaterfallPreferenceSnapshot | undefined
-): WaterfallPreferenceScores {
+): WaterfallCandidatePreferenceScore {
   if (profile === undefined) {
-    return { blocked: false, profile: 0, session: 0 };
+    return { blocked: false, priority: 0, historical: 0, session: 0, explicit: 'none' };
   }
-  const candidateText = preferenceText(candidate);
+  const candidateText: CandidatePreferenceText = {
+    source: normalizedText(source),
+    format: normalizedText(format),
+    topic: normalizedText(topicText)
+  };
   let explicit = 0;
   profile.explicitRules.forEach((rule: WaterfallExplicitPreference): void => {
     if (!candidateMatches(candidateText, rule.dimension, rule.key)) {
@@ -666,7 +676,7 @@ function preferenceScores(
     }
   });
   if (explicit === -2) {
-    return { blocked: true, profile: 0, session: 0 };
+    return { blocked: true, priority: 0, historical: 0, session: 0, explicit: 'block' };
   }
   const historical = matchingWeight(candidateText, 'topic', profile.topicWeights) +
     matchingWeight(candidateText, 'source', profile.sourceWeights) +
@@ -685,7 +695,27 @@ function preferenceScores(
   } else if (explicit === -1) {
     priorityScore = -1000;
   }
-  return { blocked: false, profile: priorityScore, session: boundedSession };
+  return {
+    blocked: false,
+    priority: priorityScore,
+    historical: boundedHistory,
+    session: boundedSession,
+    explicit: explicit === 1 ? 'boost' : explicit === -1 ? 'downweight' : 'none'
+  };
+}
+
+/** Shared preference semantics for the legacy waterfall and the parallel source pool. */
+export function scoreWaterfallCandidatePreference(
+  candidate: WaterfallCandidate,
+  profile: WaterfallPreferenceSnapshot | undefined
+): WaterfallCandidatePreferenceScore {
+  const candidateText = preferenceText(candidate);
+  return scoreWaterfallPreferenceText(
+    candidateText.source,
+    candidateText.format,
+    candidateText.topic,
+    profile
+  );
 }
 
 function tokenFrequency(tokens: string[], term: string): number {
@@ -910,8 +940,8 @@ function stableEpsilon(value: string): number {
 
 const WATERFALL_STABLE_LIMIT: number = 2;
 const WATERFALL_MAX_SOURCE_RUN: number = 1;
-const WATERFALL_LOW_WATERMARK: number = 8;
-const WATERFALL_TARGET_INVENTORY: number = 20;
+export const WATERFALL_LOW_WATERMARK: number = 8;
+export const WATERFALL_TARGET_INVENTORY: number = 20;
 const WATERFALL_MAX_REQUEST: number = 10;
 export const WATERFALL_MAX_CONSECUTIVE_EMPTY_BATCHES: number = 5;
 
@@ -1712,6 +1742,30 @@ export function mergeWaterfallBatch(
   planLoads: boolean = true
 ): WaterfallFeedUpdate {
   const next = mergeWaterfallBatchState(state, incoming, sourceState, nowMs);
+  return planLoads ? finalizeUpdate(next) : { state: next, loadRequests: [] };
+}
+
+/**
+ * Inserts already-fetched pool candidates into the existing
+ * current <- stable <- tail <- reserve pipeline without mutating source fetch state.
+ */
+export function mergeWaterfallPoolCandidates(
+  state: WaterfallFeedState,
+  incoming: WaterfallCandidate[],
+  nowMs: number,
+  planLoads: boolean = true
+): WaterfallFeedUpdate {
+  const next = copyState(state);
+  const previousCount = totalCandidateCount(next);
+  if (next.current === null) {
+    placeInitialBatch(next, incoming, nowMs);
+  } else {
+    next.tail = sortTail(next, incoming, nowMs);
+    refreshStableWindow(next);
+    trimWaterfallInventory(next);
+  }
+  next.roundNewItemCount = (next.roundNewItemCount ?? 0) +
+    Math.max(0, totalCandidateCount(next) - previousCount);
   return planLoads ? finalizeUpdate(next) : { state: next, loadRequests: [] };
 }
 

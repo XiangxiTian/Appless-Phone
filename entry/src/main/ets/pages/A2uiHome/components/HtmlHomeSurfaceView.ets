@@ -58,6 +58,10 @@ class HtmlHomeActionBridge {
         aiLogInfo('[AIPhone][RideMapRoute] ' + JSON.stringify(action.args));
         return;
       }
+      if (action.id === 'waterfall.feed.trace') {
+        aiLogInfo('[AIPhone][WaterfallSlideToDomWeb] ' + JSON.stringify(action.args));
+        return;
+      }
       if (action.id === 'luckin.pay.open' ||
         action.id === 'luckin.demo.alipay.open' ||
         action.id === 'luckin.demo.googlepay.open' ||
@@ -93,7 +97,7 @@ export struct HtmlHomeSurfaceView {
   @Prop @Watch('onHtmlOrBusyChange') html: string = '';
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadJson: string = '';
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadTick: number = 0;
-  @Prop @Watch('onWaterfallPayloadChange') waterfallPayloadJson: string = '';
+  @Prop waterfallPayloadJson: string = '';
   @Prop @Watch('onWaterfallPayloadChange') waterfallPayloadTick: number = 0;
   @Prop @Watch('onWaterfallActiveChange') waterfallActive: boolean = true;
   @Prop @Watch('onWaterfallBackRequest') waterfallBackRequestTick: number = 0;
@@ -124,6 +128,9 @@ export struct HtmlHomeSurfaceView {
   private lastDeepSearchProgressJson: string = '';
   private appliedWaterfallBackRequestTick: number = 0;
   private waterfallPayloadPushInFlight: boolean = false;
+  private waterfallPayloadQueue: string[] = [];
+  private waterfallPayloadTickQueue: number[] = [];
+  private lastQueuedWaterfallPayloadTick: number = -1;
   private appliedLuckinPatchTick: number = -1;
   private conversationPatchInFlight: boolean = false;
   private conversationStreamPushInFlight: boolean = false;
@@ -299,6 +306,9 @@ export struct HtmlHomeSurfaceView {
       this.lastMultiTaskPayloadTick = -1;
       this.lastWaterfallPayloadJson = '';
       this.lastWaterfallPayloadTick = -1;
+      this.waterfallPayloadQueue = [];
+      this.waterfallPayloadTickQueue = [];
+      this.lastQueuedWaterfallPayloadTick = -1;
       this.lastDeepSearchProgressJson = '';
       this.appliedConversationStreamTick = -1;
       this.appliedLuckinPatchTick = this.luckinInlinePatchTick;
@@ -361,7 +371,16 @@ export struct HtmlHomeSurfaceView {
   }
 
   onWaterfallPayloadChange(): void {
+    this.enqueueWaterfallPayloadIfNeeded();
     this.pushWaterfallPayloadIfNeeded();
+  }
+
+  private enqueueWaterfallPayloadIfNeeded(): void {
+    if (this.waterfallPayloadJson.length === 0 ||
+      this.waterfallPayloadTick <= this.lastQueuedWaterfallPayloadTick) return;
+    this.waterfallPayloadQueue.push(this.waterfallPayloadJson);
+    this.waterfallPayloadTickQueue.push(this.waterfallPayloadTick);
+    this.lastQueuedWaterfallPayloadTick = this.waterfallPayloadTick;
   }
 
   onWaterfallActiveChange(): void {
@@ -429,36 +448,42 @@ export struct HtmlHomeSurfaceView {
   }
 
   private pushWaterfallPayloadIfNeeded(): void {
-    if (this.waterfallPayloadJson.length === 0 ||
-      (this.waterfallPayloadJson === this.lastWaterfallPayloadJson &&
-        this.waterfallPayloadTick === this.lastWaterfallPayloadTick) || this.waterfallPayloadPushInFlight) {
-      return;
-    }
+    this.enqueueWaterfallPayloadIfNeeded();
+    if (this.waterfallPayloadQueue.length === 0 || this.waterfallPayloadPushInFlight) return;
     if (!this.webReady) {
-      aiLogInfo('[AIPhone][HtmlHomeWaterfallPushDeferred] tick=' + this.waterfallPayloadTick.toString() +
-        ' payloadChars=' + this.waterfallPayloadJson.length.toString());
+      aiLogInfo('[AIPhone][HtmlHomeWaterfallPushDeferred] tick=' +
+        this.waterfallPayloadTickQueue[0].toString() +
+        ' payloadChars=' + this.waterfallPayloadQueue[0].length.toString());
       return;
     }
-    const payloadJson = this.waterfallPayloadJson;
-    const payloadTick = this.waterfallPayloadTick;
+    const payloadJson = this.waterfallPayloadQueue[0];
+    const payloadTick = this.waterfallPayloadTickQueue[0];
     try {
       this.waterfallPayloadPushInFlight = true;
       this.controller.runJavaScript(
+        '(function(){' +
         'if (!window.__aiphoneApplyWaterfallUpdate) { throw new Error("WATERFALL_UPDATE_BRIDGE_MISSING"); }' +
-        'window.__aiphoneApplyWaterfallUpdate(' + payloadJson + ');'
-      ).then((): void => {
+        'return window.__aiphoneApplyWaterfallUpdate(' + payloadJson + ')===false?' +
+        '"snapshot_required":"ok";' +
+        '})()'
+      ).then((result: string): void => {
         this.lastWaterfallPayloadJson = payloadJson;
         this.lastWaterfallPayloadTick = payloadTick;
         this.waterfallPayloadPushInFlight = false;
+        this.waterfallPayloadQueue.shift();
+        this.waterfallPayloadTickQueue.shift();
+        if (result === 'snapshot_required') {
+          this.waterfallPayloadQueue = [];
+          this.waterfallPayloadTickQueue = [];
+          this.lastQueuedWaterfallPayloadTick = this.waterfallPayloadTick;
+          aiLogInfo('[AIPhone][HtmlHomeWaterfallSnapshotRequired] tick=' + payloadTick.toString());
+        }
         aiLogInfo('[AIPhone][HtmlHomeWaterfallPush] tick=' + payloadTick.toString() +
-          ' payloadChars=' + payloadJson.length.toString());
+          ' payloadChars=' + payloadJson.length.toString() + ' result=' + result);
         this.pushWaterfallPayloadIfNeeded();
       }).catch((error: Error): void => {
         this.waterfallPayloadPushInFlight = false;
         aiLogError('[AIPhone][HtmlHomeWaterfallPushError] ' + JSON.stringify(error));
-        if (payloadJson !== this.waterfallPayloadJson || payloadTick !== this.waterfallPayloadTick) {
-          this.pushWaterfallPayloadIfNeeded();
-        }
       });
     } catch (error) {
       this.waterfallPayloadPushInFlight = false;

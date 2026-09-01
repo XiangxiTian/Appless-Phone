@@ -12,6 +12,7 @@ import {
 import { renderHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeRenderer';
 import {
   buildWaterfallHomePayload,
+  buildWaterfallHomeUpdate,
   renderAggregateSearchHomeDocument,
   shouldShowWaterfallReaderAction,
   waterfallAdvanceCurrentFromAction,
@@ -23,7 +24,8 @@ import {
   waterfallEnabledSourcesFromAction,
   waterfallRefreshFromAction,
   waterfallSearchExitFromAction,
-  waterfallSearchQueryFromAction
+  waterfallSearchQueryFromAction,
+  waterfallSnapshotRequestFromAction
 } from '../main/ets/pages/A2uiHome/html/HtmlAggregateSearchHomeRenderer';
 import { buildMultiTaskHomePayload } from '../main/ets/pages/A2uiHome/html/HtmlMultiTaskHomeRenderer';
 import { createFirecrawlPendingDocument } from '../main/ets/pages/A2uiHome/html/HtmlFirecrawlHomeRenderer';
@@ -4330,6 +4332,36 @@ export default function htmlHomeRendererTest() {
       expect(late?.aggregateHtml.indexOf('OpenAI Codex discussion')).assertLarger(-1);
       expect(late?.aggregateHtml.indexOf('状态摘要')).assertLarger(-1);
       expect(late?.aggregateHtml.indexOf('未配置 ZHIHU_API_KEY')).assertLarger(-1);
+    });
+
+    it('publishes a Waterfall snapshot first and compact patches afterwards', 0, () => {
+      const payload = buildWaterfallHomePayload(waterfallRendererFixture(), false);
+      expect(payload === null).assertFalse();
+      if (payload === null) return;
+
+      const snapshot = buildWaterfallHomeUpdate(null, payload, 1);
+      expect(snapshot.kind).assertEqual('snapshot');
+      const patch = buildWaterfallHomeUpdate(payload, payload, 2);
+      expect(patch.kind).assertEqual('patch');
+      if (patch.kind !== 'patch') return;
+      expect(patch.baseRevision).assertEqual(1);
+      expect(patch.candidateIds === undefined).assertTrue();
+      expect(patch.upsertCandidates.length).assertEqual(0);
+      expect(JSON.stringify(patch).length < JSON.stringify(payload).length).assertTrue();
+    });
+
+    it('accepts a scoped Waterfall snapshot recovery request', 0, () => {
+      const action: A2uiAction = {
+        id: 'waterfall.feed.snapshot.request',
+        label: '同步信息流',
+        prompt: '',
+        variant: 'secondary',
+        kind: 'client',
+        args: JSON.parse('{"surfaceId":"waterfall-interest-home"}') as Object
+      };
+
+      expect(waterfallSnapshotRequestFromAction(action, 'waterfall-interest-home')).assertTrue();
+      expect(waterfallSnapshotRequestFromAction(action, 'other-surface')).assertFalse();
     });
 
     it('normalizes generic dynamic media titles in the H5 document', 0, () => {

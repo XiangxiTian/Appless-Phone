@@ -489,19 +489,13 @@ function appendRowIfMissing(rows: A2uiLabelValueData[], label: string, value: st
   rows.push({ label: label, value: trimmed });
 }
 
-async function hydrateBilibiliViewRows(results: DynamicGenericToolResult[]): Promise<DynamicGenericToolResult[]> {
-  for (let index = 0; index < results.length; index++) {
-    const result = results[index];
-    if (result.status !== 'success') {
-      continue;
-    }
-    const bvid = rowValue(result, 'BVID');
-    if (!bvid.startsWith('BV')) {
-      continue;
-    }
-    const request = http.createHttp();
-    try {
-      const response = await request.request(bilibiliViewUrl(bvid), {
+async function hydrateBilibiliViewRow(result: DynamicGenericToolResult): Promise<void> {
+  if (result.status !== 'success') return;
+  const bvid = rowValue(result, 'BVID');
+  if (!bvid.startsWith('BV')) return;
+  const request = http.createHttp();
+  try {
+    const response = await request.request(bilibiliViewUrl(bvid), {
         method: http.RequestMethod.GET,
         header: {
           'Accept': 'application/json, text/plain, */*',
@@ -512,13 +506,9 @@ async function hydrateBilibiliViewRows(results: DynamicGenericToolResult[]): Pro
         connectTimeout: 8000,
         readTimeout: 10000
       });
-      if (response.responseCode < 200 || response.responseCode >= 300) {
-        continue;
-      }
-      const payload = JSON.parse(responseText(response.result)) as BilibiliViewResponse;
-      if (payload.code !== undefined && payload.code !== 0 || payload.data === undefined) {
-        continue;
-      }
+    if (response.responseCode < 200 || response.responseCode >= 300) return;
+    const payload = JSON.parse(responseText(response.result)) as BilibiliViewResponse;
+    if (payload.code !== undefined && payload.code !== 0 || payload.data === undefined) return;
       appendRowIfMissing(result.rows, 'AID', textOf(payload.data.aid));
       appendRowIfMissing(result.rows, 'CID', textOf(payload.data.cid));
       if (payload.data.owner !== undefined) {
@@ -539,11 +529,18 @@ async function hydrateBilibiliViewRows(results: DynamicGenericToolResult[]): Pro
         appendRowIfMissing(result.rows, 'Description', description);
         result.summary = description;
       }
-    } catch (_) {
-    } finally {
-      request.destroy();
-    }
+  } catch (_) {
+  } finally {
+    request.destroy();
   }
+}
+
+async function hydrateBilibiliViewRows(results: DynamicGenericToolResult[]): Promise<DynamicGenericToolResult[]> {
+  const tasks: Promise<void>[] = [];
+  results.forEach((result: DynamicGenericToolResult): void => {
+    tasks.push(hydrateBilibiliViewRow(result));
+  });
+  await Promise.all(tasks);
   return results;
 }
 

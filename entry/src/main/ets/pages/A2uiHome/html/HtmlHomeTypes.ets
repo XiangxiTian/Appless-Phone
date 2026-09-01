@@ -128,6 +128,36 @@ export interface WaterfallHomePayload {
   exhausted: boolean;
 }
 
+export interface WaterfallHomeSnapshotUpdate {
+  kind: 'snapshot';
+  revision: number;
+  payload: WaterfallHomePayload;
+}
+
+export interface WaterfallHomePatchUpdate {
+  kind: 'patch';
+  revision: number;
+  baseRevision: number;
+  surfaceId: string;
+  feedRevision: number;
+  currentId: string;
+  stableIds: string[];
+  appendRenderedCandidateIds: string[];
+  updateRenderedCandidateIds: string[];
+  candidateIds?: string[];
+  upsertCandidates: WaterfallRankedCandidate[];
+  removedCandidateIds: string[];
+  aggregateHtml?: string;
+  mediaEmbeds: Record<string, string>;
+  sources: WaterfallSourceState[];
+  cardStates: WaterfallCardViewState[];
+  savedCards: WaterfallSavedCardView[];
+  replenishing: boolean;
+  exhausted: boolean;
+}
+
+export type WaterfallHomeUpdate = WaterfallHomeSnapshotUpdate | WaterfallHomePatchUpdate;
+
 export interface WaterfallCardViewState {
   candidateId: string;
   reaction: WaterfallCardReaction;

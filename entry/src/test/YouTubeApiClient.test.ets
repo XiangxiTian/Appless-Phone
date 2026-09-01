@@ -1,7 +1,12 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { aggregateVideoSourceBatchFromDynamicResults, DynamicGenericToolResult } from '@loop/agent-core';
+import {
+  aggregateMediaCandidates,
+  aggregateVideoSourceBatchFromDynamicResults,
+  DynamicGenericToolResult
+} from '@loop/agent-core';
 import {
   remainingReadStructuredDataResult,
+  enrichYouTubeSearchResultsFromStatisticsPayload,
   youtubeCommentThreadsUrl,
   youtubeCommentsFromThreadsPayload,
   youtubeVideoResultsFromComposioPopular,
@@ -114,6 +119,26 @@ export default function youtubeApiClientTest() {
       expect(results[0].title).assertEqual('Qwen Max official intro');
       expect(results[0].rows[0].label).assertEqual('Channel');
       expect(results[0].rows[3].value).assertEqual('https://www.youtube.com/watch?v=abc123');
+    });
+
+    it('batch-enriches YouTube search results with public video statistics', 0, () => {
+      const results = youtubeVideoResultsFromSearchPayload(
+        '{"items":[{"id":{"videoId":"video-1"},"snippet":{"title":"First"}},' +
+        '{"id":{"videoId":"video-2"},"snippet":{"title":"Second"}}]}', 'topic');
+      enrichYouTubeSearchResultsFromStatisticsPayload(results,
+        '{"items":[{"id":"video-1","statistics":{"viewCount":"12000","likeCount":"340",' +
+        '"commentCount":"56"}},{"id":"video-2","statistics":{"viewCount":"8000"}}]}');
+
+      expect(JSON.stringify(results[0].rows).indexOf('"label":"Views","value":"12000"')).assertLarger(-1);
+      expect(JSON.stringify(results[0].rows).indexOf('"label":"Likes","value":"340"')).assertLarger(-1);
+      expect(JSON.stringify(results[0].rows).indexOf('"label":"Comments","value":"56"')).assertLarger(-1);
+      expect(JSON.stringify(results[1].rows).indexOf('"label":"Views","value":"8000"')).assertLarger(-1);
+      expect(JSON.stringify(results[1].rows).indexOf('"label":"Likes"')).assertEqual(-1);
+      const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', results, null, 10);
+      const candidates = aggregateMediaCandidates(batch.videos, [], 0);
+      expect(JSON.stringify(candidates[0].metrics).indexOf('"kind":"view","value":12000')).assertLarger(-1);
+      expect(JSON.stringify(candidates[0].metrics).indexOf('"kind":"like","value":340')).assertLarger(-1);
+      expect(JSON.stringify(candidates[0].metrics).indexOf('"kind":"comment","value":56')).assertLarger(-1);
     });
 
     it('maps Composio YouTube search data and pagination into discovery videos', 0, () => {

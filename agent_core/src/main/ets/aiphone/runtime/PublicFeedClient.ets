@@ -9,7 +9,7 @@ import {
 
 const MAX_FEED_BODY_BYTES: number = 2 * 1024 * 1024;
 const MAX_FEED_ITEMS: number = 80;
-const MAX_SOURCE_POSTS: number = 4;
+const DEFAULT_SOURCE_POSTS: number = 10;
 const CNNEWS_MIN_TEXT_LENGTH: number = 100;
 
 interface PublicFeedDefinition {
@@ -147,7 +147,7 @@ function publicFeedPost(source: AggregateSearchSource, provider: string, item: P
 
 function postLimit(limit: number): number {
   if (!Number.isFinite(limit) || limit <= 0) return 0;
-  return Math.min(MAX_SOURCE_POSTS, Math.floor(limit));
+  return Math.floor(limit);
 }
 
 function postMatchesQuery(post: AggregateSearchPost, query: string): boolean {
@@ -294,7 +294,7 @@ function sourceStatus(source: AggregateSearchSource, provider: string, status: '
 }
 
 export async function loadCnNewsSource(
-  limit: number = MAX_SOURCE_POSTS,
+  limit: number = DEFAULT_SOURCE_POSTS,
   query: string = ''
 ): Promise<AggregateSearchSourceBatch> {
   const source: AggregateSearchSource = 'cnnews';

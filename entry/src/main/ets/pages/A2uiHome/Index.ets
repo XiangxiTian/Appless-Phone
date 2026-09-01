@@ -42,8 +42,10 @@ import {
   configureWaterfallEnabledSourcesForRuntime,
   configureWaterfallPreferenceProfileForRuntime,
   configureWaterfallSearchPolicyForRuntime,
+  composioConfigSnapshotJsonForWorker,
   failWaterfallExpansion,
   finalizeInterestWaterfallRecallRanking,
+  localProviderConfigSnapshotJsonForWorker,
   mergeAggregateSearchContinuationBatch,
   mergeWaterfallBatchDeferredRanking,
   mergeWaterfallFeedSnapshot,
@@ -58,17 +60,28 @@ import {
   WaterfallInterestRecallRequest,
   WaterfallInterestRecallBatch,
   WaterfallLoadRequest,
+  WaterfallPreferenceSnapshot,
   WaterfallPreferenceWeight,
   WaterfallQueryExpansionRequest,
   WaterfallRankedCandidate,
+  WaterfallSourcePoolEntry,
   WaterfallSourcePhase,
   WaterfallSourceState,
   WATERFALL_INTEREST_QUERY_GROUP_COUNT,
+  WATERFALL_LOW_WATERMARK,
   WATERFALL_MAX_CONSECUTIVE_EMPTY_BATCHES,
+  WATERFALL_TARGET_INVENTORY,
   waterfallCommentSourceSupported,
+  waterfallAdapterIdsForPlatforms,
   waterfallExpansionPrompt,
+  waterfallInterestSourceAllowedForRuntime,
   waterfallSearchPolicyForRuntime
 } from '@loop/agent-core';
+
+import {
+  WaterfallPoolWorkerClient,
+  WaterfallPoolWorkerTake
+} from './waterfall/WaterfallPoolWorkerClient';
 import {
   WaterfallRankingWorkerClient,
   WaterfallRankingWorkerResult
@@ -382,9 +395,11 @@ import { createHtmlHomeDocument } from './html/HtmlHomeSnapshot';
 import { buildMultiTaskHomePayload, renderHtmlHomeDocument } from './html/HtmlHomeRenderer';
 import {
   buildWaterfallHomePayload,
+  buildWaterfallHomeUpdate,
   renderAggregateSearchHomeDocument,
   waterfallApplePodcastCandidateFromAction,
   waterfallAdvanceCurrentFromAction,
+  waterfallAdvanceTraceFromAction,
   waterfallAdvanceVisibleFromAction,
   waterfallBehaviorFromAction,
   waterfallCardActionFromAction,
@@ -392,7 +407,8 @@ import {
   waterfallEnabledSourcesFromAction,
   waterfallRefreshFromAction,
   waterfallSearchExitFromAction,
-  waterfallSearchQueryFromAction
+  waterfallSearchQueryFromAction,
+  waterfallSnapshotRequestFromAction
 } from './html/HtmlAggregateSearchHomeRenderer';
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
 import { FoodAddressBookStore, FoodSavedAddressViewModel } from './FoodAddressBookStore';
@@ -404,7 +420,8 @@ import {
   HtmlHomeBlock,
   HtmlHomeDocument,
   WaterfallBehaviorActionArgs,
-  WaterfallCardActionArgs
+  WaterfallCardActionArgs,
+  WaterfallHomePayload
 } from './html/HtmlHomeTypes';
 import {
   ensureReminderNotificationEnabled,
@@ -555,6 +572,22 @@ const AGGREGATE_MULTILINGUAL_KEY: string = 'include_multilingual_results';
 const ANYTHING_DEMO_ROUTE_URL: string = 'pages/A2uiHome/AnythingDemo';
 const MOVIE_DEMO_ROUTE_URL: string = 'pages/A2uiHome/MovieDemo';
 const UI_AGENT_LAB_ROUTE_URL: string = 'pages/A2uiHome/UiAgentLab';
+const WATERFALL_POOL_COLD_START_INTERVAL_MS: number = 10000;
+const WATERFALL_POOL_INITIAL_TOPIC_COUNT: number = 5;
+const WATERFALL_POOL_REPLACES_LEGACY_PRELOAD: boolean = true;
+const WATERFALL_POOL_SESSION_TOPIC_LIMIT: number = 128;
+
+function boundedWaterfallSessionTopicWeights(weights: WaterfallPreferenceWeight[]): WaterfallPreferenceWeight[] {
+  if (weights.length <= WATERFALL_POOL_SESSION_TOPIC_LIMIT) return weights.slice();
+  const ranked = weights.slice();
+  ranked.sort((left: WaterfallPreferenceWeight, right: WaterfallPreferenceWeight): number => {
+    const strength = Math.abs(right.weight) - Math.abs(left.weight);
+    if (strength !== 0) return strength;
+    if (right.updatedAt !== left.updatedAt) return right.updatedAt - left.updatedAt;
+    return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
+  });
+  return ranked.slice(0, WATERFALL_POOL_SESSION_TOPIC_LIMIT);
+}
 const READ_CALENDAR_PERMISSION: Permissions = 'ohos.permission.READ_CALENDAR';
 const WRITE_CALENDAR_PERMISSION: Permissions = 'ohos.permission.WRITE_CALENDAR';
 const APPROX_LOCATION_PERMISSION: Permissions = 'ohos.permission.APPROXIMATELY_LOCATION';
@@ -1193,11 +1226,15 @@ struct Index {
   private waterfallShellSurfaceId: string = '';
   private waterfallFeedState: WaterfallFeedState | null = null;
   private waterfallFeedSurfaceId: string = '';
+  private waterfallPublishedPayload: WaterfallHomePayload | null = null;
+  private waterfallTransportRevision: number = 0;
   private dailyBriefSnapshot: DailyBriefSnapshot | null = null;
   private dailyBriefGeneration: number = 0;
   private dailyBriefCatchUpPending: boolean = false;
   private waterfallContinuationBatchIndex: number = 100;
   private interestWaterfallFeedState: WaterfallFeedState | null = null;
+  private interestWaterfallPublishedPayload: WaterfallHomePayload | null = null;
+  private interestWaterfallTransportRevision: number = 0;
   private interestWaterfallSearchSnapshot: WaterfallFeedState | null = null;
   private interestWaterfallDisplayCommitted: boolean = false;
   private interestRecallStarted: boolean = false;
@@ -1205,6 +1242,11 @@ struct Index {
   private interestDiscoveryQueryGroup: number = 0;
   private interestExplorationSources: string[] = [];
   private interestWaterfallGeneration: number = 0;
+  private waterfallPoolWorkerClient: WaterfallPoolWorkerClient | null = null;
+  private waterfallPoolStarted: boolean = false;
+  private waterfallPoolActivated: boolean = false;
+  private interestPoolAvailabilityWait: WaterfallPoolWorkerTake | null = null;
+  private interestPoolRequestedSources: string[] = [];
   private interestRefreshPreloadTail: WaterfallRankedCandidate[] = [];
   private interestRefreshPreloadReserve: WaterfallRankedCandidate[] = [];
   private interestRefreshPreloadSources: WaterfallSourceState[] = [];
@@ -1809,10 +1851,23 @@ struct Index {
     this.waterfallShellSurfaceId = surfaceId;
   }
 
-  private publishWaterfallPayload(document: HtmlHomeDocument): void {
+  private publishWaterfallPayload(
+    document: HtmlHomeDocument,
+    forceSnapshot: boolean = false,
+    forceCandidateIds: string[] = []
+  ): void {
     const payload = buildWaterfallHomePayload(
       document, this.isBusy, this.waterfallFeedState, this.waterfallCardRecords);
-    this.waterfallPayloadJson = payload === null ? '' : JSON.stringify(payload);
+    if (payload === null) {
+      this.waterfallPayloadJson = '';
+      this.waterfallPublishedPayload = null;
+      return;
+    }
+    this.waterfallTransportRevision += 1;
+    this.waterfallPayloadJson = JSON.stringify(buildWaterfallHomeUpdate(
+      this.waterfallPublishedPayload, payload, this.waterfallTransportRevision,
+      forceSnapshot, forceCandidateIds));
+    this.waterfallPublishedPayload = payload;
     this.waterfallPayloadTick = this.waterfallPayloadTick + 1;
   }
 
@@ -1839,10 +1894,22 @@ struct Index {
     };
   }
 
-  private publishInterestWaterfallPayload(): void {
+  private publishInterestWaterfallPayload(
+    forceSnapshot: boolean = false,
+    forceCandidateIds: string[] = []
+  ): void {
     const payload = buildWaterfallHomePayload(
       this.interestWaterfallDocument(), false, this.interestWaterfallFeedState, this.waterfallCardRecords);
-    this.interestWaterfallPayloadJson = payload === null ? '' : JSON.stringify(payload);
+    if (payload === null) {
+      this.interestWaterfallPayloadJson = '';
+      this.interestWaterfallPublishedPayload = null;
+      return;
+    }
+    this.interestWaterfallTransportRevision += 1;
+    this.interestWaterfallPayloadJson = JSON.stringify(buildWaterfallHomeUpdate(
+      this.interestWaterfallPublishedPayload, payload, this.interestWaterfallTransportRevision,
+      forceSnapshot, forceCandidateIds));
+    this.interestWaterfallPublishedPayload = payload;
     this.interestWaterfallPayloadTick = this.interestWaterfallPayloadTick + 1;
   }
 
@@ -1964,6 +2031,186 @@ struct Index {
       });
   }
 
+  private activeInterestPoolInventory(state: WaterfallFeedState): number {
+    let active = state.current !== null && state.enabledSources.indexOf(state.current.source) >= 0 ? 1 : 0;
+    active += state.stable.filter((candidate: WaterfallRankedCandidate): boolean =>
+      state.enabledSources.indexOf(candidate.source) >= 0).length;
+    active += state.tail.filter((candidate: WaterfallRankedCandidate): boolean =>
+      state.enabledSources.indexOf(candidate.source) >= 0).length;
+    return active;
+  }
+
+  private ensureWaterfallPoolRuntime(): WaterfallPoolWorkerClient {
+    if (this.waterfallPoolWorkerClient === null) {
+      this.waterfallPoolWorkerClient = new WaterfallPoolWorkerClient(
+        localProviderConfigSnapshotJsonForWorker(), composioConfigSnapshotJsonForWorker(),
+        waterfallSearchPolicyForRuntime());
+      this.waterfallPoolWorkerClient.setEnabledAdapters(this.currentWaterfallPoolAdapterIds());
+    }
+    return this.waterfallPoolWorkerClient;
+  }
+
+  private currentWaterfallPoolAdapterIds(platforms?: string[]): string[] {
+    const selectedPlatforms = platforms ?? this.waterfallPreferenceProfile.discoveryEnabledSources;
+    const enabledPlatforms = selectedPlatforms.filter((platformId: string): boolean =>
+      waterfallInterestSourceAllowedForRuntime(platformId));
+    return waterfallAdapterIdsForPlatforms(enabledPlatforms);
+  }
+
+  private syncWaterfallPoolAdapterSelection(platforms?: string[]): void {
+    if (this.waterfallPoolWorkerClient === null) return;
+    this.waterfallPoolWorkerClient.setEnabledAdapters(this.currentWaterfallPoolAdapterIds(platforms));
+  }
+
+  private startWaterfallPoolRuntime(): void {
+    if (this.waterfallPoolStarted) return;
+    this.waterfallPoolStarted = true;
+    const pool = this.ensureWaterfallPoolRuntime();
+    pool.start(WATERFALL_POOL_INITIAL_TOPIC_COUNT, WATERFALL_POOL_COLD_START_INTERVAL_MS);
+  }
+
+  private requestWaterfallPoolSupply(): void {
+    this.startWaterfallPoolRuntime();
+    this.ensureWaterfallPoolRuntime().supply();
+  }
+
+  private activateWaterfallPoolRuntime(): void {
+    if (this.waterfallPoolActivated) return;
+    this.waterfallPoolActivated = true;
+    this.startWaterfallPoolRuntime();
+    this.ensureWaterfallPoolRuntime().activate();
+  }
+
+  private cancelInterestPoolRefill(): void {
+    const wait = this.interestPoolAvailabilityWait;
+    const requestedSources = this.interestPoolRequestedSources.slice();
+    this.interestPoolAvailabilityWait = null;
+    this.interestPoolRequestedSources = [];
+    const state = this.interestWaterfallFeedState;
+    if (state !== null && requestedSources.length > 0) {
+      state.sources.forEach((source: WaterfallSourceState): void => {
+        if (requestedSources.indexOf(source.source) < 0) return;
+        source.phase = 'success';
+        source.inFlight = false;
+        source.reservedCount = 0;
+        source.message = '';
+      });
+    }
+    if (wait !== null) wait.cancel();
+  }
+
+  private interestPoolSourceState(
+    state: WaterfallFeedState,
+    sourceId: string,
+    phase: WaterfallSourcePhase,
+    message: string
+  ): WaterfallSourceState {
+    const existing = state.sources.find((source: WaterfallSourceState): boolean => source.source === sourceId);
+    return {
+      source: sourceId,
+      phase,
+      continuation: null,
+      inFlight: false,
+      reservedCount: 0,
+      message,
+      query: existing?.query,
+      recallRoute: existing?.recallRoute,
+      loadMode: existing?.loadMode,
+      consecutiveEmptyBatches: existing?.consecutiveEmptyBatches ?? 0
+    };
+  }
+
+  private runInterestPoolRecallRequests(requests: WaterfallInterestRecallRequest[]): void {
+    const state = this.interestWaterfallFeedState;
+    if (requests.length === 0 || state === null || state.mode === 'search' ||
+      this.interestPoolAvailabilityWait !== null) return;
+    const active = this.activeInterestPoolInventory(state);
+    const generation = this.interestWaterfallGeneration;
+    const profile = this.currentWaterfallPoolPreferenceProfile();
+    const requestedSources: string[] = [];
+    requests.forEach((request: WaterfallInterestRecallRequest): void => {
+      request.sources.forEach((source: string): void => {
+        if (requestedSources.indexOf(source) < 0) requestedSources.push(source);
+      });
+    });
+    if (requestedSources.length === 0) return;
+    const pool = this.ensureWaterfallPoolRuntime();
+    const refillStartedAtMs = Date.now();
+    const availabilityWait = pool.takeOrWait(
+      profile, requestedSources, Math.max(1, WATERFALL_TARGET_INVENTORY - active));
+    this.interestPoolAvailabilityWait = availabilityWait;
+    this.interestPoolRequestedSources = requestedSources.slice();
+    this.logWaterfallInventory('pool_refill_started', state,
+      'requests=' + requests.length.toString() + ' sources=' + requestedSources.length.toString());
+    this.requestWaterfallPoolSupply();
+    void availabilityWait.promise.then((entries: WaterfallSourcePoolEntry[]): void => {
+      const waitResolvedAtMs = Date.now();
+      if (this.interestPoolAvailabilityWait !== availabilityWait) return;
+      this.interestPoolAvailabilityWait = null;
+      this.interestPoolRequestedSources = [];
+      if (entries.length === 0 || generation !== this.interestWaterfallGeneration) return;
+      const latest = this.interestWaterfallFeedState;
+      if (latest === null || latest.mode === 'search') return;
+      const mergeStartedAtMs = Date.now();
+      let merged = latest;
+      requestedSources.forEach((sourceId: string): void => {
+        const candidates = entries.filter((entry: WaterfallSourcePoolEntry): boolean =>
+          entry.candidate.source === sourceId).map(
+          (entry: WaterfallSourcePoolEntry): WaterfallCandidate => entry.candidate);
+        merged = mergeWaterfallBatchDeferredRanking(
+          merged,
+          candidates,
+          this.interestPoolSourceState(merged, sourceId, 'success', ''),
+          false
+        ).state;
+      });
+      const mergeFinishedAtMs = Date.now();
+      this.interestWaterfallFeedState = merged;
+      this.interestWaterfallRankingRevision += 1;
+      const rankingRevision = this.interestWaterfallRankingRevision;
+      this.logWaterfallInventory('pool_batch_received', merged,
+        'count=' + entries.length.toString());
+      this.rankInterestWaterfallInWorker(
+        'active', merged, this.interestWaterfallDisplayCommitted,
+        generation, rankingRevision, 'pool_batch', (ranked: WaterfallFeedState): void => {
+          const rankingFinishedAtMs = Date.now();
+          this.applyInterestWaterfallUpdate(planWaterfallContinuation(ranked));
+          const appliedAtMs = Date.now();
+          aiLogInfo('[AIPhone][WaterfallPoolTimingMain] requestId=' + availabilityWait.requestId.toString() +
+            ' waitForWorkerMs=' + Math.max(0, waitResolvedAtMs - refillStartedAtMs).toString() +
+            ' mergeMs=' + Math.max(0, mergeFinishedAtMs - mergeStartedAtMs).toString() +
+            ' rankingMs=' + Math.max(0, rankingFinishedAtMs - mergeFinishedAtMs).toString() +
+            ' applyMs=' + Math.max(0, appliedAtMs - rankingFinishedAtMs).toString() +
+            ' endToEndMs=' + Math.max(0, appliedAtMs - refillStartedAtMs).toString() +
+            ' count=' + entries.length.toString());
+        });
+    }).catch((error: Error): void => {
+      if (this.interestPoolAvailabilityWait !== availabilityWait) return;
+      this.interestPoolAvailabilityWait = null;
+      this.interestPoolRequestedSources = [];
+      aiLogError('[AIPhone][WaterfallPoolWorkerFailed] error=' + error.message.substring(0, 240));
+      const latest = this.interestWaterfallFeedState;
+      if (latest === null || latest.mode === 'search' || generation !== this.interestWaterfallGeneration) return;
+      let failed = latest;
+      requestedSources.forEach((sourceId: string): void => {
+        failed = mergeWaterfallBatchDeferredRanking(
+          failed,
+          [],
+          this.interestPoolSourceState(failed, sourceId, 'error', '内容补充失败'),
+          false
+        ).state;
+      });
+      this.interestWaterfallFeedState = failed;
+      this.interestWaterfallRankingRevision += 1;
+      const rankingRevision = this.interestWaterfallRankingRevision;
+      this.rankInterestWaterfallInWorker(
+        'active', failed, this.interestWaterfallDisplayCommitted,
+        generation, rankingRevision, 'pool_failed', (ranked: WaterfallFeedState): void => {
+          this.applyInterestWaterfallUpdate(planWaterfallContinuation(ranked));
+        });
+    });
+  }
+
   private applyInterestWaterfallUpdate(update: WaterfallFeedUpdate): void {
     this.interestWaterfallRankingRevision += 1;
     this.interestWaterfallFeedState = update.state;
@@ -2018,18 +2265,18 @@ struct Index {
     const state = this.interestWaterfallFeedState;
     if (state === null || state.mode === 'search' || this.interestRecallRound >= 3 || state.sources.some(
       (source: WaterfallSourceState): boolean => source.inFlight || source.phase === 'loading')) return;
-    let active = state.current !== null && state.enabledSources.indexOf(state.current.source) >= 0 ? 1 : 0;
-    active += state.stable.filter((candidate: WaterfallRankedCandidate): boolean =>
-      state.enabledSources.indexOf(candidate.source) >= 0).length;
-    active += state.tail.filter((candidate: WaterfallRankedCandidate): boolean =>
-      state.enabledSources.indexOf(candidate.source) >= 0).length;
-    if (active > 8) return;
+    const active = this.activeInterestPoolInventory(state);
+    if (active > WATERFALL_LOW_WATERMARK) return;
     const sources = this.interestExplorationSources.filter((source: string): boolean =>
       state.enabledSources.indexOf(source) >= 0);
     if (sources.length > 0) this.runInterestRecall(sources);
   }
 
   private runInterestRecallRequests(requests: WaterfallInterestRecallRequest[]): void {
+    if (this.interestWaterfallFeedState?.mode !== 'search') {
+      this.runInterestPoolRecallRequests(requests);
+      return;
+    }
     if (requests.length === 0 || this.interestWaterfallFeedState === null) return;
     const generation = this.interestWaterfallGeneration;
     const requestedSources: string[] = [];
@@ -2203,6 +2450,9 @@ struct Index {
   }
 
   private startInterestRefreshPreloadIfNeeded(): void {
+    // The large pool is the preload layer. Keep release feed advancement intact,
+    // but do not start the legacy second network recall pipeline.
+    if (WATERFALL_POOL_REPLACES_LEGACY_PRELOAD) return;
     const active = this.interestWaterfallFeedState;
     if (active === null || active.mode === 'search' || !this.interestWaterfallDisplayCommitted ||
       this.interestRefreshPreloadInFlight || this.interestRefreshPreloadReady) return;
@@ -2313,6 +2563,7 @@ struct Index {
     const preloadTail = usePreload ? this.interestRefreshPreloadTail.slice() : [];
     const preloadReserve = usePreload ? this.interestRefreshPreloadReserve.slice() : [];
     const preloadSources = usePreload ? this.interestRefreshPreloadSources : [];
+    this.cancelInterestPoolRefill();
     this.interestWaterfallGeneration += 1;
     this.interestDiscoveryQueryGroup = nextQueryGroup;
     this.interestRecallRound = usePreload ? 1 : 0;
@@ -2398,6 +2649,7 @@ struct Index {
     const current = this.interestWaterfallFeedState;
     if (current === null) return;
     if (this.interestWaterfallSearchSnapshot === null) this.interestWaterfallSearchSnapshot = current;
+    this.cancelInterestPoolRefill();
     this.interestWaterfallGeneration += 1;
     const allSources = aggregateSearchSearchSourceIds();
     const enabledSources = waterfallSourcesForContext(current.enabledSources, allSources);
@@ -2441,6 +2693,7 @@ struct Index {
 
   private exitInterestWaterfallSearch(): void {
     if (this.interestWaterfallSearchSnapshot === null) return;
+    this.cancelInterestPoolRefill();
     this.interestWaterfallGeneration += 1;
     const snapshot = this.interestWaterfallSearchSnapshot;
     this.interestWaterfallSearchSnapshot = null;
@@ -2462,6 +2715,7 @@ struct Index {
 
   private ensureInterestWaterfall(startRecall: boolean = true): void {
     if (this.interestWaterfallFeedState === null) {
+      this.cancelInterestPoolRefill();
       this.interestWaterfallGeneration += 1;
       this.interestRecallRound = 0;
       this.interestExplorationSources = [];
@@ -2500,6 +2754,7 @@ struct Index {
     }
     if (startRecall && !this.interestRecallStarted) {
       this.interestRecallStarted = true;
+      this.activateWaterfallPoolRuntime();
       this.runInterestRecall();
     }
   }
@@ -2507,6 +2762,7 @@ struct Index {
   private commitInterestWaterfallDisplay(): void {
     if (this.interestWaterfallDisplayCommitted) return;
     this.interestWaterfallDisplayCommitted = true;
+    this.activateWaterfallPoolRuntime();
     const state = this.interestWaterfallFeedState;
     if (state === null || state.mode === 'search') return;
     const generation = this.interestWaterfallGeneration;
@@ -2599,6 +2855,7 @@ struct Index {
       this.waterfallPayloadJson = '';
       this.waterfallFeedState = null;
       this.waterfallFeedSurfaceId = '';
+      this.waterfallPublishedPayload = null;
       return;
     }
     const surfaceId = document.surfaceId ?? '';
@@ -2619,6 +2876,7 @@ struct Index {
 
   private handleWaterfallClientAction(action: A2uiAction): boolean {
     if (action.id !== 'waterfall.sources.select' && action.id !== 'waterfall.feed.advance' &&
+      action.id !== 'waterfall.feed.snapshot.request' &&
       action.id !== 'waterfall.behavior.record' && action.id !== 'waterfall.card.action' &&
       action.id !== 'waterfall.applepodcasts.resolve' && action.id !== 'waterfall.comments.load') {
       return false;
@@ -2632,6 +2890,11 @@ struct Index {
     if (this.waterfallFeedState === null || this.waterfallFeedSurfaceId !== surfaceId) {
       this.waterfallFeedState = document.waterfall;
       this.waterfallFeedSurfaceId = surfaceId;
+    }
+    if (action.id === 'waterfall.feed.snapshot.request') {
+      if (waterfallSnapshotRequestFromAction(action, surfaceId)) this.publishWaterfallPayload(document, true);
+      else this.logHtmlHomeActionError(action, 'invalid_waterfall_snapshot_request');
+      return true;
     }
     if (action.id === 'waterfall.card.action') {
       const cardAction = waterfallCardActionFromAction(action, surfaceId);
@@ -2709,6 +2972,14 @@ struct Index {
   private handleInterestWaterfallClientAction(action: A2uiAction): void {
     const state = this.interestWaterfallFeedState;
     const surfaceId = 'waterfall-interest-home';
+    if (action.id === 'waterfall.feed.snapshot.request') {
+      if (state !== null && waterfallSnapshotRequestFromAction(action, surfaceId)) {
+        this.publishInterestWaterfallPayload(true);
+      } else {
+        this.logHtmlHomeActionError(action, 'invalid_waterfall_snapshot_request');
+      }
+      return;
+    }
     if (action.id === 'waterfall.home.back') {
       this.bimRootController.changeIndex(0, !this.bimReduceMotion);
       return;
@@ -2781,10 +3052,12 @@ struct Index {
       this.waterfallPreferenceProfile = this.waterfallPreferencesStore().saveDiscoveryEnabledSources(
         interestEnabledSources);
       configureWaterfallEnabledSourcesForRuntime(interestEnabledSources as AggregateSearchSource[]);
+      this.syncWaterfallPoolAdapterSelection(interestEnabledSources);
       const update = applyWaterfallSourceSelection(state, interestEnabledSources, Date.now());
       const plannedSources = update.loadRequests.map((request: WaterfallLoadRequest): string => request.source);
       const recallSources = addedSources.filter((source: string): boolean => plannedSources.indexOf(source) < 0);
       this.clearInterestRefreshPreload();
+      this.cancelInterestPoolRefill();
       this.applyInterestWaterfallUpdate(update);
       if (recallSources.length > 0) this.runInterestRecall(recallSources);
       return;
@@ -2796,6 +3069,8 @@ struct Index {
       return;
     }
     if (action.id === 'waterfall.feed.advance') {
+      const trace = waterfallAdvanceTraceFromAction(action, surfaceId);
+      const nativeReceivedAtMs = Date.now();
       const currentId = waterfallAdvanceCurrentFromAction(action, surfaceId);
       const visibleId = waterfallAdvanceVisibleFromAction(action, surfaceId);
       this.logWaterfallInventory('advance_received', state,
@@ -2810,10 +3085,21 @@ struct Index {
         return;
       }
       const update = advanceWaterfallFeed(state, Date.now(), targetId);
+      const stateAppliedAtMs = Date.now();
       this.logWaterfallTailTakes(state, update.state);
       this.logWaterfallInventory('advance_applied', update.state,
         'loadRequests=' + update.loadRequests.length.toString());
       this.applyInterestWaterfallUpdate(update);
+      const payloadPublishedAtMs = Date.now();
+      if (trace !== null) {
+        aiLogInfo('[AIPhone][WaterfallSlideToDomNative] traceId=' + trace.traceId +
+          ' webToNativeMs=' + Math.max(0, nativeReceivedAtMs - trace.webDispatchedAtMs).toString() +
+          ' stateApplyMs=' + Math.max(0, stateAppliedAtMs - nativeReceivedAtMs).toString() +
+          ' payloadPublishMs=' + Math.max(0, payloadPublishedAtMs - stateAppliedAtMs).toString() +
+          ' webDetectedToPayloadMs=' + Math.max(0, payloadPublishedAtMs - trace.webDetectedAtMs).toString() +
+          ' tailBefore=' + state.tail.length.toString() + ' tailAfter=' + update.state.tail.length.toString() +
+          ' targetId=' + targetId);
+      }
     }
   }
 
@@ -2871,6 +3157,7 @@ struct Index {
         this.waterfallFeedState, this.currentWaterfallPreferenceProfile(false), Date.now()));
     }
     if (this.interestWaterfallFeedState !== null) {
+      this.cancelInterestPoolRefill();
       this.applyInterestWaterfallUpdate(applyWaterfallProfile(
         this.interestWaterfallFeedState, this.currentWaterfallPreferenceProfile(), Date.now()));
     }
@@ -2913,14 +3200,18 @@ struct Index {
       (candidate.feedUrl ?? '').trim() === feedUrl ? candidate : null;
   }
 
-  private publishWaterfallCandidate(target: 'search' | 'interest', surfaceId: string): void {
+  private publishWaterfallCandidate(
+    target: 'search' | 'interest',
+    surfaceId: string,
+    candidateId: string
+  ): void {
     if (target === 'interest') {
-      if (surfaceId === 'waterfall-interest-home') this.publishInterestWaterfallPayload();
+      if (surfaceId === 'waterfall-interest-home') this.publishInterestWaterfallPayload(false, [candidateId]);
       return;
     }
     const document = this.currentHtmlHomeDocument();
     if (this.waterfallFeedSurfaceId === surfaceId && document.kind === 'aggregate-search' &&
-      (document.surfaceId ?? '') === surfaceId) this.publishWaterfallPayload(document);
+      (document.surfaceId ?? '') === surfaceId) this.publishWaterfallPayload(document, false, [candidateId]);
   }
 
   private resolveApplePodcastCandidate(
@@ -2937,7 +3228,7 @@ struct Index {
     candidate.audioLoadState = 'loading';
     candidate.audioError = '';
     candidate.audioRetryable = true;
-    this.publishWaterfallCandidate(target, surfaceId);
+    this.publishWaterfallCandidate(target, surfaceId, candidateId);
     aiLogInfo('[AIPhone][ApplePodcastResolve] phase=loading surface=' + surfaceId + ' candidate=' + candidateId);
     resolveApplePodcastEpisode(feedUrl).then((episode: ApplePodcastEpisodeAudio): void => {
       const current = this.activeApplePodcastCandidate(
@@ -2954,7 +3245,7 @@ struct Index {
       current.audioLoadState = 'ready';
       current.audioError = '';
       current.audioRetryable = false;
-      this.publishWaterfallCandidate(target, surfaceId);
+      this.publishWaterfallCandidate(target, surfaceId, candidateId);
       aiLogInfo('[AIPhone][ApplePodcastResolve] phase=ready surface=' + surfaceId + ' candidate=' + candidateId);
     }).catch((error: Error): void => {
       const current = this.activeApplePodcastCandidate(
@@ -2964,7 +3255,7 @@ struct Index {
       current.audioLoadState = 'error';
       current.audioError = failure.message;
       current.audioRetryable = failure.retryable;
-      this.publishWaterfallCandidate(target, surfaceId);
+      this.publishWaterfallCandidate(target, surfaceId, candidateId);
       aiLogError('[AIPhone][ApplePodcastResolve] phase=error surface=' + surfaceId + ' candidate=' + candidateId +
         ' code=' + failure.code);
     });
@@ -2984,7 +3275,7 @@ struct Index {
     const interestGeneration = this.interestWaterfallGeneration;
     candidate.commentLoadState = 'loading';
     this.persistSavedWaterfallCandidate(candidate);
-    this.publishWaterfallCandidate(target, surfaceId);
+    this.publishWaterfallCandidate(target, surfaceId, candidateId);
     callConfiguredWaterfallComments(source, providerItemId).then((result: WaterfallCommentsResult): void => {
       const current = this.activeWaterfallCandidate(
         target, surfaceId, candidateId, runtimeOwner, runtimeGeneration, interestGeneration);
@@ -2994,7 +3285,7 @@ struct Index {
       current.commentLoadState = current.comments.length > 0 ? 'ready' :
         (result.state === 'error' ? 'error' : 'empty');
       this.persistSavedWaterfallCandidate(current);
-      this.publishWaterfallCandidate(target, surfaceId);
+      this.publishWaterfallCandidate(target, surfaceId, candidateId);
     }).catch((_error: Error): void => {
       const current = this.activeWaterfallCandidate(
         target, surfaceId, candidateId, runtimeOwner, runtimeGeneration, interestGeneration);
@@ -3003,7 +3294,7 @@ struct Index {
       current.comments = [];
       current.commentLoadState = 'error';
       this.persistSavedWaterfallCandidate(current);
-      this.publishWaterfallCandidate(target, surfaceId);
+      this.publishWaterfallCandidate(target, surfaceId, candidateId);
     });
   }
 
@@ -3101,6 +3392,7 @@ struct Index {
     this.waterfallPayloadJson = '';
     this.waterfallFeedState = null;
     this.waterfallFeedSurfaceId = '';
+    this.waterfallPublishedPayload = null;
     this.htmlHomeStableHtml = this.currentHtmlHomeHtml();
   }
 
@@ -3218,7 +3510,8 @@ struct Index {
     this.readDebugBuildState();
     this.configureComposioRuntimeForCurrentUser();
     this.loadWaterfallPreferences();
-    this.ensureInterestWaterfall();
+    this.startWaterfallPoolRuntime();
+    this.ensureInterestWaterfall(false);
     this.loadFoodAddressBook();
     this.loadFoodFavorites();
     this.loadPublicPersona();
@@ -3242,6 +3535,11 @@ struct Index {
     this.unsubscribeTrainPresaleHandoff();
     this.unsubscribeWaterfallConversationTypedTest();
     this.disposeHotelRuntime();
+    this.cancelInterestPoolRefill();
+    if (this.waterfallPoolWorkerClient !== null) this.waterfallPoolWorkerClient.dispose();
+    this.waterfallPoolWorkerClient = null;
+    this.waterfallPoolStarted = false;
+    this.waterfallPoolActivated = false;
     this.interestWaterfallRankingRevision += 1;
     this.interestRefreshPreloadRankingRevision += 1;
     this.waterfallRankingWorkerClient.dispose();
@@ -4148,6 +4446,7 @@ struct Index {
 
   private saveAggregateSearchPolicy(): void {
     this.syncAggregateSearchRuntimePolicy();
+    this.syncWaterfallPoolAdapterSelection();
     const store = this.aggregateSearchPolicyPreferences();
     if (store === null) {
       return;
@@ -4202,6 +4501,19 @@ struct Index {
       enabledSources: this.waterfallPreferenceProfile.discoveryEnabledSources.slice(),
       updatedAt: this.waterfallPreferenceProfile.updatedAt,
       sessionTopicWeights: this.waterfallSessionTopicWeights.slice(),
+      sessionSourceWeights: this.waterfallSessionSourceWeights.slice(),
+      sessionFormatWeights: this.waterfallSessionFormatWeights.slice()
+    };
+  }
+
+  private currentWaterfallPoolPreferenceProfile(): WaterfallPreferenceSnapshot {
+    return {
+      topicWeights: [],
+      sourceWeights: [],
+      formatWeights: [],
+      explicitRules: this.waterfallPreferenceProfile.explicitRules.concat(
+        this.waterfallConversationState.rules),
+      sessionTopicWeights: boundedWaterfallSessionTopicWeights(this.waterfallSessionTopicWeights),
       sessionSourceWeights: this.waterfallSessionSourceWeights.slice(),
       sessionFormatWeights: this.waterfallSessionFormatWeights.slice()
     };
@@ -5439,6 +5751,7 @@ struct Index {
     this.waterfallConversationState = { history: [], rules: [], summary: '' };
     this.waterfallConversationMessage = '';
     this.waterfallConversationBusy = false;
+    this.cancelInterestPoolRefill();
     this.interestWaterfallGeneration += 1;
     this.interestWaterfallDisplayCommitted = false;
     this.interestRecallStarted = false;
@@ -5448,6 +5761,7 @@ struct Index {
     this.interestSourceRequestSeq.clear();
     this.clearInterestRefreshPreload();
     this.interestWaterfallFeedState = null;
+    this.interestWaterfallPublishedPayload = null;
     this.interestWaterfallSearchSnapshot = null;
     this.interestWaterfallHtml = '';
     this.interestWaterfallPayloadJson = '';
@@ -6341,6 +6655,7 @@ struct Index {
     this.waterfallConversationMessage = this.waterfallConversationState.summary;
     this.waterfallConversationBusy = false;
     if (this.interestWaterfallFeedState === null) return;
+    this.cancelInterestPoolRefill();
     this.applyInterestWaterfallUpdate(applyWaterfallProfile(
       this.interestWaterfallFeedState,
       this.currentWaterfallPreferenceProfile(),

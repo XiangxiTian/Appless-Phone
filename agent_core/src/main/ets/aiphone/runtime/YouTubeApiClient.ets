@@ -1,13 +1,18 @@
 import { http } from '@kit.NetworkKit';
 import util from '@ohos.util';
 import { A2uiLabelValueData } from './A2uiTypes';
-import { callComposioYouTubeSearchWithProviderData } from './ComposioDynamicBackend';
+import { aiLogInfo } from './AiphoneLogger';
+import {
+  callComposioYouTubeSearchWithProviderData,
+  callComposioYouTubeVideoDetailsBatchWithProviderData
+} from './ComposioDynamicBackend';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 import { WaterfallComment } from './WaterfallAnythingCore';
 
 const YOUTUBE_SEARCH_URL: string = 'https://www.googleapis.com/youtube/v3/search';
 const YOUTUBE_VIDEOS_URL: string = 'https://www.googleapis.com/youtube/v3/videos';
 const YOUTUBE_COMMENT_THREADS_URL: string = 'https://www.googleapis.com/youtube/v3/commentThreads';
+let youtubeSearchDiagnosticSequence: number = 0;
 
 interface YouTubeSearchResponse {
   nextPageToken?: string;
@@ -384,6 +389,90 @@ export function youtubeVideoResultsFromComposioSearch(
   }
 }
 
+function resultRowValue(result: DynamicGenericToolResult, label: string): string {
+  for (let index = 0; index < result.rows.length; index++) {
+    if (result.rows[index].label === label) return result.rows[index].value.trim();
+  }
+  return '';
+}
+
+function appendYouTubeStatisticsRows(
+  result: DynamicGenericToolResult,
+  statistics: YouTubeStatistics
+): void {
+  result.rows = result.rows.filter((row: A2uiLabelValueData): boolean =>
+    row.label !== 'Views' && row.label !== 'Likes' && row.label !== 'Comments');
+  if (textOf(statistics.viewCount).length > 0) {
+    result.rows.push({ label: 'Views', value: textOf(statistics.viewCount) });
+  }
+  if (textOf(statistics.likeCount).length > 0) {
+    result.rows.push({ label: 'Likes', value: textOf(statistics.likeCount) });
+  }
+  if (textOf(statistics.commentCount).length > 0) {
+    result.rows.push({ label: 'Comments', value: textOf(statistics.commentCount) });
+  }
+}
+
+export function enrichYouTubeSearchResultsFromStatisticsPayload(
+  results: DynamicGenericToolResult[],
+  rawJson: string
+): DynamicGenericToolResult[] {
+  const payload = JSON.parse(rawJson) as YouTubePopularResponse;
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const statisticsByVideoId: Map<string, YouTubeStatistics> = new Map<string, YouTubeStatistics>();
+  items.forEach((item: YouTubePopularItem): void => {
+    const videoId = textOf(item.id).trim();
+    const statistics = item.statistics;
+    if (videoId.length > 0 && statistics !== undefined) {
+      statisticsByVideoId.set(videoId, statistics);
+    }
+  });
+  results.forEach((result: DynamicGenericToolResult): void => {
+    const statistics = statisticsByVideoId.get(resultRowValue(result, 'Video ID'));
+    if (statistics !== undefined) appendYouTubeStatisticsRows(result, statistics);
+  });
+  return results;
+}
+
+async function enrichYouTubeSearchResults(
+  results: DynamicGenericToolResult[],
+  requestId: number
+): Promise<DynamicGenericToolResult[]> {
+  const videoIds: string[] = [];
+  results.forEach((result: DynamicGenericToolResult): void => {
+    const videoId = resultRowValue(result, 'Video ID');
+    if (videoId.length > 0 && videoIds.indexOf(videoId) < 0) videoIds.push(videoId);
+  });
+  if (videoIds.length === 0) {
+    aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+      ' stage=statistics-skip videoIds=0');
+    return results;
+  }
+  const startedAtMs = Date.now();
+  aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+    ' stage=statistics-composio-start videoIds=' + videoIds.length.toString());
+  try {
+    const response = await callComposioYouTubeVideoDetailsBatchWithProviderData(videoIds);
+    const elapsedMs = Date.now() - startedAtMs;
+    if (response.status !== 'success' || response.providerData === undefined) {
+      aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+        ' stage=statistics-composio-error elapsedMs=' + elapsedMs.toString() +
+        ' status=' + response.status);
+      return results;
+    }
+    const enriched = enrichYouTubeSearchResultsFromStatisticsPayload(
+      results, JSON.stringify(response.providerData));
+    aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+      ' stage=statistics-composio-end elapsedMs=' + elapsedMs.toString() +
+      ' results=' + enriched.length.toString());
+    return enriched;
+  } catch (_error) {
+    aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+      ' stage=statistics-composio-exception elapsedMs=' + (Date.now() - startedAtMs).toString());
+    return results;
+  }
+}
+
 function responseText(result: Object | string | number | boolean | ArrayBuffer): string {
   if (typeof result === 'string') {
     return result;
@@ -399,14 +488,34 @@ export async function callYouTubeVideoSearch(
   _apiKey: string,
   options: YouTubeSearchOptions = defaultYouTubeSearchOptions()
 ): Promise<DynamicGenericToolResult[]> {
-  const result = await callComposioYouTubeSearchWithProviderData(
-    query,
-    normalizedYouTubeOrder(options.order),
-    normalizedYouTubeMaxResults(options.maxResults),
-    normalizeYouTubeRelevanceLanguage(options.relevanceLanguage ?? ''),
-    options.pageToken ?? ''
-  );
-  return youtubeVideoResultsFromComposioSearch(result, query);
+  const requestId = ++youtubeSearchDiagnosticSequence;
+  const adapterStartedAtMs = Date.now();
+  aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+    ' stage=adapter-start queryChars=' + query.trim().length.toString() +
+    ' continuation=' + ((options.pageToken ?? '').trim().length > 0 ? 'present' : 'none'));
+  try {
+    const composioStartedAtMs = Date.now();
+    const result = await callComposioYouTubeSearchWithProviderData(
+      query,
+      normalizedYouTubeOrder(options.order),
+      normalizedYouTubeMaxResults(options.maxResults),
+      normalizeYouTubeRelevanceLanguage(options.relevanceLanguage ?? ''),
+      options.pageToken ?? ''
+    );
+    const mapped = youtubeVideoResultsFromComposioSearch(result, query);
+    aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+      ' stage=composio-end elapsedMs=' + (Date.now() - composioStartedAtMs).toString() +
+      ' status=' + result.status + ' results=' + mapped.length.toString());
+    const enriched = await enrichYouTubeSearchResults(mapped, requestId);
+    aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+      ' stage=adapter-end elapsedMs=' + (Date.now() - adapterStartedAtMs).toString() +
+      ' results=' + enriched.length.toString());
+    return enriched;
+  } catch (_error) {
+    aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
+      ' stage=adapter-exception elapsedMs=' + (Date.now() - adapterStartedAtMs).toString());
+    throw _error instanceof Error ? _error : new Error('YouTube adapter request failed.');
+  }
 }
 
 export async function callYouTubeMostPopularVideos(

@@ -194,20 +194,36 @@ import {
   callAggregateSearchContinuation,
   callAggregateSearchContinuationForContext,
   configureAggregateExternalProvidersForRuntime,
+  aggregateZhihuHotListBatch,
+  loadAggregateSourceBatch,
   loadWaterfallComments,
   waterfallInterestSourceAllowedForRuntime,
   waterfallSearchPolicyForRuntime
 } from './AggregateSearchClient';
 import {
+  AggregateSearchPolicy,
   AggregateSearchResult,
   AggregateSearchSource,
   AggregateSearchSourceBatch,
   AggregateSearchSourceStatus
 } from './AggregateSearchTypes';
+import {
+  AggregateWaterfallDiscoveryAdapter,
+  AggregateWaterfallSearchAdapter,
+  ScheduledAggregateWaterfallDiscoveryAdapter,
+  WaterfallAggregateSourceLoader
+} from './WaterfallAggregateSourceAdapter';
+import {
+  WaterfallDiscoveryAdapter,
+  WaterfallScheduledDiscoveryAdapter,
+  WaterfallSearchAdapter,
+  WaterfallSourceAdapterRegistry
+} from './WaterfallSourceAdapter';
 import { normalizeFoodPhoneNumber } from './FoodNavigation';
 import {
   WaterfallCandidate,
   WaterfallCommentsResult,
+  WaterfallContinuation,
   WaterfallInterestRecallRequest,
   WaterfallLoadRequest
 } from './WaterfallAnythingCore';
@@ -15578,6 +15594,194 @@ export async function callConfiguredAggregateSearchContinuation(
     { apiKey: localProviderConfig.zhihuApiKey },
     onBatch
   );
+}
+
+/**
+ * Serializes the in-memory provider configuration for a same-application
+ * ThreadWorker. The value is transferred directly to the worker and must
+ * never be written to diagnostics because it can contain credentials.
+ */
+export function localProviderConfigSnapshotJsonForWorker(): string {
+  return JSON.stringify(localProviderConfig);
+}
+
+export type ConfiguredWaterfallSourceAdapters = WaterfallSourceAdapterRegistry;
+
+export interface WaterfallPlatformAdapterBinding {
+  platformId: AggregateSearchSource;
+  adapterIds: string[];
+}
+
+const WATERFALL_PLATFORM_ADAPTER_BINDINGS: WaterfallPlatformAdapterBinding[] = [
+  { platformId: 'youtube', adapterIds: ['youtube.search', 'youtube.most_popular'] },
+  { platformId: 'bilibili', adapterIds: ['bilibili.search'] },
+  { platformId: 'x', adapterIds: ['x.search'] },
+  { platformId: 'hackernews', adapterIds: ['hackernews.search'] },
+  { platformId: 'reddit', adapterIds: ['reddit.search'] },
+  { platformId: 'zhihu', adapterIds: ['zhihu.search', 'zhihu.hot_list'] },
+  { platformId: 'applepodcasts', adapterIds: ['applepodcasts.search'] },
+  { platformId: 'twitch', adapterIds: ['twitch.search', 'twitch.live_discovery'] },
+  { platformId: 'github', adapterIds: ['github.search', 'github.public_discovery'] },
+  { platformId: 'globalnews', adapterIds: ['globalnews.search', 'globalnews.latest'] },
+  { platformId: 'steam', adapterIds: ['steam.news'] },
+  { platformId: 'cnnews', adapterIds: ['cnnews.latest'] }
+];
+
+export function waterfallPlatformAdapterBindings(): WaterfallPlatformAdapterBinding[] {
+  return WATERFALL_PLATFORM_ADAPTER_BINDINGS.map(
+    (binding: WaterfallPlatformAdapterBinding): WaterfallPlatformAdapterBinding => ({
+      platformId: binding.platformId,
+      adapterIds: binding.adapterIds.slice()
+    }));
+}
+
+export function waterfallAdapterIdsForPlatforms(platformIds: string[]): string[] {
+  const adapterIds: string[] = [];
+  WATERFALL_PLATFORM_ADAPTER_BINDINGS.forEach((binding: WaterfallPlatformAdapterBinding): void => {
+    if (platformIds.indexOf(binding.platformId) < 0) return;
+    binding.adapterIds.forEach((adapterId: string): void => {
+      if (adapterIds.indexOf(adapterId) < 0) adapterIds.push(adapterId);
+    });
+  });
+  return adapterIds;
+}
+
+const WATERFALL_SCHEDULED_LIMIT: number = 10;
+const WATERFALL_FAST_REFRESH_MS: number = 5 * 60 * 1000;
+const WATERFALL_STANDARD_REFRESH_MS: number = 15 * 60 * 1000;
+let youtubePopularDiagnosticSequence: number = 0;
+
+function configuredAggregateAdapterLoader(
+  source: AggregateSearchSource,
+  context: 'search' | 'interest'
+): WaterfallAggregateSourceLoader {
+  const youtubeApiKey = localProviderConfig.youtubeApiKey;
+  const zhihuApiKey = localProviderConfig.zhihuApiKey;
+  const policy: AggregateSearchPolicy = waterfallSearchPolicyForRuntime();
+  return (
+    query: string,
+    continuation: WaterfallContinuation | null,
+    limit: number
+  ): Promise<AggregateSearchSourceBatch> => loadAggregateSourceBatch(
+    source,
+    query,
+    youtubeApiKey,
+    { apiKey: zhihuApiKey },
+    continuation,
+    limit,
+    policy,
+    context
+  );
+}
+
+function configuredYouTubePopularLoader(): WaterfallAggregateSourceLoader {
+  return async (
+    _query: string,
+    continuation: WaterfallContinuation | null,
+    limit: number
+  ): Promise<AggregateSearchSourceBatch> => {
+    const requestId = ++youtubePopularDiagnosticSequence;
+    const startedAtMs = Date.now();
+    const token = continuation !== null && continuation.kind === 'cursor' ? continuation.value : '';
+    aiLogInfo('[AIPhone][YouTubePopularStage] requestId=' + requestId.toString() +
+      ' stage=start continuation=' + (token.length > 0 ? 'present' : 'none'));
+    try {
+      const raw = await callComposioYouTubeMostPopularWithProviderData(limit, token);
+      aiLogInfo('[AIPhone][YouTubePopularStage] requestId=' + requestId.toString() +
+        ' stage=composio-end elapsedMs=' + (Date.now() - startedAtMs).toString() +
+        ' status=' + raw.status);
+      const dynamic = youtubeVideoResultsFromComposioPopular(raw);
+      const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic, continuation, limit);
+      aiLogInfo('[AIPhone][YouTubePopularStage] requestId=' + requestId.toString() +
+        ' stage=end elapsedMs=' + (Date.now() - startedAtMs).toString() +
+        ' videos=' + batch.videos.length.toString() +
+        ' status=' + batch.status.status);
+      return batch;
+    } catch (_error) {
+      aiLogInfo('[AIPhone][YouTubePopularStage] requestId=' + requestId.toString() +
+        ' stage=exception elapsedMs=' + (Date.now() - startedAtMs).toString());
+      throw _error instanceof Error ? _error : new Error('YouTube popular request failed.');
+    }
+  };
+}
+
+function configuredZhihuHotListLoader(): WaterfallAggregateSourceLoader {
+  const zhihuApiKey = localProviderConfig.zhihuApiKey;
+  return (
+    _query: string,
+    _continuation: WaterfallContinuation | null,
+    limit: number
+  ): Promise<AggregateSearchSourceBatch> => aggregateZhihuHotListBatch({ apiKey: zhihuApiKey }, limit);
+}
+
+/**
+ * Builds sessionless adapters for the new pool without changing the existing
+ * waterfall registry. Credentials and policy are snapshotted here; mutable
+ * query/cursor/page state remains in each request owned by the pool.
+ */
+export function configuredWaterfallSourceAdapters(): ConfiguredWaterfallSourceAdapters {
+  const searchSources: AggregateSearchSource[] = [
+    'youtube', 'bilibili', 'x', 'hackernews', 'reddit', 'zhihu',
+    'applepodcasts', 'twitch', 'github', 'globalnews'
+  ];
+  const paginationFor = (source: AggregateSearchSource): 'none' | 'page' | 'cursor' => {
+    if (source === 'bilibili' || source === 'hackernews') {
+      return 'page';
+    }
+    if (source === 'youtube' || source === 'x' || source === 'reddit' || source === 'twitch') {
+      return 'cursor';
+    }
+    return 'none';
+  };
+  const queryLanguageFor = (source: AggregateSearchSource): 'domestic' | 'global' | 'pool_default' => {
+    if (source === 'bilibili' || source === 'zhihu') {
+      return 'domestic';
+    }
+    if (source === 'hackernews' || source === 'reddit' || source === 'twitch' ||
+      source === 'github' || source === 'globalnews') {
+      return 'global';
+    }
+    return 'pool_default';
+  };
+  const search = searchSources.map((source: AggregateSearchSource): WaterfallSearchAdapter =>
+    new AggregateWaterfallSearchAdapter(
+      source + '.search', source, paginationFor(source), configuredAggregateAdapterLoader(source, 'search'),
+      queryLanguageFor(source)
+    ));
+
+  const discovery: WaterfallDiscoveryAdapter[] = [
+    new AggregateWaterfallDiscoveryAdapter(
+      'youtube.most_popular', 'youtube', 'cursor', configuredYouTubePopularLoader()
+    )
+  ];
+
+  const scheduledDiscovery: WaterfallScheduledDiscoveryAdapter[] = [
+    new ScheduledAggregateWaterfallDiscoveryAdapter(
+      'zhihu.hot_list', 'zhihu', 'none', WATERFALL_STANDARD_REFRESH_MS,
+      WATERFALL_SCHEDULED_LIMIT, configuredZhihuHotListLoader()
+    ),
+    new ScheduledAggregateWaterfallDiscoveryAdapter(
+      'twitch.live_discovery', 'twitch', 'none', WATERFALL_FAST_REFRESH_MS,
+      WATERFALL_SCHEDULED_LIMIT, configuredAggregateAdapterLoader('twitch', 'interest')
+    ),
+    new ScheduledAggregateWaterfallDiscoveryAdapter(
+      'github.public_discovery', 'github', 'none', WATERFALL_STANDARD_REFRESH_MS,
+      WATERFALL_SCHEDULED_LIMIT, configuredAggregateAdapterLoader('github', 'interest')
+    ),
+    new ScheduledAggregateWaterfallDiscoveryAdapter(
+      'steam.news', 'steam', 'none', WATERFALL_STANDARD_REFRESH_MS,
+      WATERFALL_SCHEDULED_LIMIT, configuredAggregateAdapterLoader('steam', 'interest')
+    ),
+    new ScheduledAggregateWaterfallDiscoveryAdapter(
+      'cnnews.latest', 'cnnews', 'none', WATERFALL_STANDARD_REFRESH_MS,
+      WATERFALL_SCHEDULED_LIMIT, configuredAggregateAdapterLoader('cnnews', 'interest')
+    ),
+    new ScheduledAggregateWaterfallDiscoveryAdapter(
+      'globalnews.latest', 'globalnews', 'none', WATERFALL_STANDARD_REFRESH_MS,
+      WATERFALL_SCHEDULED_LIMIT, configuredAggregateAdapterLoader('globalnews', 'interest')
+    )
+  ];
+  return { search, discovery, scheduledDiscovery };
 }
 
 export async function callConfiguredWaterfallComments(

@@ -7,7 +7,6 @@ import {
 
 const STEAM_APP_IDS: number[] = [730, 570, 440];
 const MAX_BODY_BYTES: number = 2 * 1024 * 1024;
-const MAX_POSTS: number = 4;
 const CACHE_MS: number = 15 * 60 * 1000;
 
 type SteamValue = Object | string | number | boolean | null | undefined;
@@ -35,7 +34,7 @@ function number(value: SteamValue): number {
 }
 
 function limit(value: number): number {
-  return Number.isFinite(value) && value > 0 ? Math.min(MAX_POSTS, Math.floor(value)) : 0;
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
 function httpsUrl(value: SteamValue): string {
@@ -81,11 +80,11 @@ function options(): http.HttpRequestOptions {
   };
 }
 
-async function requestAppNews(appId: number): Promise<string> {
+async function requestAppNews(appId: number, requestedLimit: number): Promise<string> {
   const request = http.createHttp();
   try {
     const url = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=' + appId.toString() +
-      '&count=4&format=json';
+      '&count=' + limit(requestedLimit).toString() + '&format=json';
     const response = await request.request(url, options());
     if (response.responseCode < 200 || response.responseCode >= 300) {
       throw new Error('steam_http_' + response.responseCode.toString());
@@ -114,13 +113,13 @@ export async function discoverSteamNews(query: string, requestedLimit: number): 
     const next: AggregateSearchPost[] = [];
     const seen = new Set<string>();
     const replies = await Promise.all(STEAM_APP_IDS.map((appId: number): Promise<string> =>
-      requestAppNews(appId).catch((error: Error): string => {
+      requestAppNews(appId, requestedLimit).catch((error: Error): string => {
         errorMessage = error.message;
         return '';
       })));
     replies.forEach((reply: string): void => {
       if (reply.length === 0) return;
-      steamNewsPostsFromPayload(reply, MAX_POSTS).forEach((post: AggregateSearchPost): void => {
+      steamNewsPostsFromPayload(reply, requestedLimit).forEach((post: AggregateSearchPost): void => {
         if (!seen.has(post.url)) {
           seen.add(post.url);
           next.push(post);

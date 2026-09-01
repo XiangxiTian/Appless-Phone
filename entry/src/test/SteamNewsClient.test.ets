@@ -42,5 +42,17 @@ export default function steamNewsClientTest(): void {
 
       expect(steamNewsPostsFromPayload(payload, 1)[0].text).assertEqual(body);
     });
+
+    it('honors requested limits above the old four-post cap', 0, () => {
+      const items: string[] = [];
+      for (let index = 0; index < 6; index++) {
+        items.push('{"gid":"' + index.toString() + '","title":"News ' + index.toString() +
+          '","url":"https://store.steampowered.com/news/app/730/view/' + index.toString() +
+          '","author":"","contents":"","date":' + index.toString() + '}');
+      }
+      const payload = '{"appnews":{"newsitems":[' + items.join(',') + ']}}';
+
+      expect(steamNewsPostsFromPayload(payload, 6).length).assertEqual(6);
+    });
   });
 }

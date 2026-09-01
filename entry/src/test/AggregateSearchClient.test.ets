@@ -1109,7 +1109,7 @@ export default function aggregateSearchClientTest() {
       expect(batch.videos[1].thumbnail).assertEqual('https://example.com/fallback.jpg');
     });
 
-    it('keeps only Bilibili videos above 1000 views at the source boundary', 0, () => {
+    it('keeps Bilibili videos regardless of their current view count', 0, () => {
       const batch = aggregateVideoSourceBatchFromDynamicResults('bilibili', [{
         sourceTag: 'Bilibili', toolName: 'bilibili.video.search', title: 'Low quality',
         status: 'success', summary: '', rawPreview: '', rows: [
@@ -1126,8 +1126,8 @@ export default function aggregateSearchClientTest() {
         ]
       }], null, 10);
 
-      expect(batch.videos.length).assertEqual(1);
-      expect(batch.videos[0].id).assertEqual('bilibili-BV-accepted');
+      expect(batch.videos.length).assertEqual(2);
+      expect(batch.videos[0].id).assertEqual('bilibili-BV-low');
       expect(batch.rawCount).assertEqual(2);
     });
 

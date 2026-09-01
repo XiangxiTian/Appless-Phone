@@ -2,9 +2,12 @@ import {
   AGENT_CORE_DEBUG,
   A2uiAgentRunner,
   ActionExecutionResult,
+  clearStoredConversation,
+  ConversationContext,
   CurrentSurfaceSummary,
   DataResult,
   LlmProvider,
+  loadConversation,
   LocalModel,
   LocalModelSettings,
   OpenAiA2uiModel,
@@ -17,6 +20,7 @@ import {
   deepSeekModelSettings,
   resolvedCloudChatModel,
   rideAmapWebKeyForUi,
+  saveConversation,
   summarizeAppliedA2uiSurface
 } from '@loop/agent-core';
 import { isRollingGoHotelBookingUrl, validHotelBookingOpenArgs } from '@loop/agent-core';
@@ -1121,6 +1125,7 @@ struct Index {
   @State paymentCheckoutNote: string = '';
   @State inputPlaceholder: string = DEFAULT_INPUT_PLACEHOLDER;
   @State messages: A2uiMessage[] = [];
+  @State showRestoredConversationOnLanding: boolean = false;
   @State streamingAssistantDomText: string = '';
   @State streamingAssistantDomTick: number = 0;
   @State personaPacks: PersonaPack[] = allPersonaPacks();
@@ -3182,7 +3187,31 @@ struct Index {
     this.clearLuckinOptionSwitchQueue();
   }
 
+  private restoreConversationMessages(): void {
+    if (this.messages.length > 0) return;
+    const context = this.getUIContext().getHostContext() as common.Context;
+    if (context === null) return;
+    const stored = loadConversation(context).toChatMessages();
+    const restored: A2uiMessage[] = [];
+    for (let index = 0; index < stored.length; index++) {
+      restored.push({
+        id: 'restored-' + index.toString(),
+        role: stored[index].role,
+        content: stored[index].content
+      });
+    }
+    this.showRestoredConversationOnLanding = restored.length > 0;
+    this.messages = restored;
+  }
+
+  private persistConversationMessages(): void {
+    const context = this.getUIContext().getHostContext() as common.Context;
+    if (context === null) return;
+    saveConversation(context, ConversationContext.fromMessages(this.messages));
+  }
+
   aboutToAppear(): void {
+    this.restoreConversationMessages();
     this.loadModelPreset();
     this.loadAggregateSearchPolicy();
     this.loadBimMotionPreference();
@@ -4778,7 +4807,12 @@ struct Index {
       )) {
       return createFirecrawlPendingDocument(this.pendingFirecrawlToolId);
     }
-    if (shouldShowWelcome(this.isBusy, this.messages.length, this.currentSurface) ||
+    if (shouldShowWelcome(
+      this.isBusy,
+      this.messages.length,
+      this.currentSurface,
+      this.showRestoredConversationOnLanding
+    ) ||
       shouldShowQueryPendingSurface(this.isBusy, this.isAwaitingFirstSurface)) {
       return createHtmlHomeDocument({
         messages: this.messages,
@@ -5390,9 +5424,12 @@ struct Index {
     this.disposeHotelRuntime();
     this.closeDeepSearch();
     this.showHistory = false;
+    this.showRestoredConversationOnLanding = false;
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;
     this.messages = [];
+    const context = this.getUIContext().getHostContext() as common.Context;
+    if (context !== null) clearStoredConversation(context);
     this.clearStreamingAssistantMessage();
     this.sessionContextCompactor.reset();
     this.waterfallSessionTopicWeights = [];
@@ -5466,7 +5503,7 @@ struct Index {
     };
   }
 
-  private appendMessage(role: string, content: string): string {
+  private appendMessage(role: string, content: string, persist: boolean = true): string {
     const next = this.messages.slice();
     const messageId: string = Date.now().toString() + '-' + next.length.toString();
     next.push({
@@ -5475,6 +5512,7 @@ struct Index {
       content: content
     });
     this.messages = next;
+    if (persist) this.persistConversationMessages();
     return messageId;
   }
 
@@ -5514,7 +5552,7 @@ struct Index {
     this.finishStreamingAssistantRevealState();
     this.streamingAssistantGeneration = generation;
     this.streamingAssistantMessageId = this.appendMessage(
-      'assistant', answer
+      'assistant', answer, finalReceived
     );
     this.publishStreamingAssistantDomText(answer);
     this.isAwaitingFirstSurface = false;
@@ -5533,7 +5571,10 @@ struct Index {
     }
     this.updateMessageContent(this.streamingAssistantMessageId, answer);
     this.publishStreamingAssistantDomText(answer);
-    if (finalReceived) this.finishStreamingAssistantRevealState();
+    if (finalReceived) {
+      this.persistConversationMessages();
+      this.finishStreamingAssistantRevealState();
+    }
   }
 
   private updateStreamingAssistantAnswer(answer: string, generation: number): void {
@@ -6077,6 +6118,7 @@ struct Index {
       return;
     }
     this.clearStreamingAssistantMessage();
+    this.showRestoredConversationOnLanding = false;
     const currentUserMessageId: string = this.appendMessage('user', visibleText);
     this.inputText = inputTextAfterPromptSubmit(this.inputText);
     this.isAwaitingFirstSurface = true;
@@ -10773,7 +10815,12 @@ struct Index {
         inputPlaceholder: this.inputPlaceholder,
         isVoiceListening: this.isVoiceListening,
         voiceInputMessage: this.voiceInputMessage,
-        showWelcome: shouldShowWelcome(this.isBusy, this.messages.length, this.currentSurface),
+        showWelcome: shouldShowWelcome(
+          this.isBusy,
+          this.messages.length,
+          this.currentSurface,
+          this.showRestoredConversationOnLanding
+        ),
         showCheckoutWeb: this.showCheckoutWeb,
         checkoutWebKind: this.checkoutWebKind,
         checkoutWebUrl: this.checkoutWebUrl,

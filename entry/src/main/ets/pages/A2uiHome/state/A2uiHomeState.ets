@@ -236,8 +236,13 @@ export function isWelcomeSurface(surface: A2uiSurfaceState): boolean {
     surface.components.length === 0;
 }
 
-export function shouldShowWelcome(isBusy: boolean, messageCount: number, surface: A2uiSurfaceState): boolean {
-  return !isBusy && messageCount === 0 && isWelcomeSurface(surface);
+export function shouldShowWelcome(
+  isBusy: boolean,
+  messageCount: number,
+  surface: A2uiSurfaceState,
+  showRestoredConversationOnLanding: boolean
+): boolean {
+  return !isBusy && (messageCount === 0 || showRestoredConversationOnLanding) && isWelcomeSurface(surface);
 }
 
 export function inputTextAfterPromptSubmit(current: string): string {

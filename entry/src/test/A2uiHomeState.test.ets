@@ -278,13 +278,14 @@ export default function a2uiHomeStateTest() {
       expect(nextPendingToolRenderTick(8, 'shopping.research', '')).assertEqual(9);
     });
 
-    it('shows welcome only for an idle seed surface with no messages', 0, () => {
+    it('keeps the welcome landing visible with restored context', 0, () => {
       const welcome = surface(1, 'idle', 'surface_seed');
       expect(isWelcomeSurface(welcome)).assertTrue();
-      expect(shouldShowWelcome(false, 0, welcome)).assertTrue();
-      expect(shouldShowWelcome(true, 0, welcome)).assertFalse();
-      expect(shouldShowWelcome(false, 1, welcome)).assertFalse();
-      expect(shouldShowWelcome(false, 0, surface(2, 'ready', 'surface_food'))).assertFalse();
+      expect(shouldShowWelcome(false, 0, welcome, false)).assertTrue();
+      expect(shouldShowWelcome(true, 0, welcome, false)).assertFalse();
+      expect(shouldShowWelcome(false, 1, welcome, false)).assertFalse();
+      expect(shouldShowWelcome(false, 1, welcome, true)).assertTrue();
+      expect(shouldShowWelcome(false, 0, surface(2, 'ready', 'surface_food'), true)).assertFalse();
     });
 
     it('matches each ride estimate to its exact vehicle confirmation action', 0, () => {

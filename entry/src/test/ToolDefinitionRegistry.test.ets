@@ -713,10 +713,10 @@ export default function toolDefinitionRegistryTest() {
       const action: ToolDefinition[] = actionAgentToolDefinitions();
       const ids: string[] = data.concat(action).map((item: ToolDefinition): string => item.toolId);
 
-      expect(all.length).assertEqual(55);
-      expect(data.length).assertEqual(31);
+      expect(all.length).assertEqual(56);
+      expect(data.length).assertEqual(32);
       expect(action.length).assertEqual(24);
-      expect(new Set<string>(ids).size).assertEqual(55);
+      expect(new Set<string>(ids).size).assertEqual(56);
       expect(all.filter((item: ToolDefinition): boolean => item.riskLevel === 'blocked').length)
         .assertEqual(0);
       expect(ids.indexOf('hotel.navigate') >= 0).assertTrue();

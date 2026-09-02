@@ -19,6 +19,7 @@ import {
   emptyWaterfallPreferenceProfile,
   WATERFALL_CARDS_KEY,
   WATERFALL_PREFERENCES_KEY,
+  WATERFALL_TAGS_KEY,
   WaterfallBehaviorEvidence,
   WaterfallCardRecord,
   WaterfallPreferenceProfile,
@@ -265,6 +266,19 @@ export default function waterfallPreferencesStoreTest() {
       ]).enabledSources.join(',')).assertEqual(defaults);
     });
 
+    it('keeps the content title with persisted browsing evidence', 0, () => {
+      const native = new MemoryPreferences();
+      const stored = legacyProfile(['youtube']);
+      const evidence = event('read_complete', 1000) as Object as Record<string, Object>;
+      evidence['title'] = '欧冠决赛战术复盘';
+      stored.recentEvidence = [evidence as Object as WaterfallBehaviorEvidence];
+      native.putSync(WATERFALL_PREFERENCES_KEY, JSON.stringify(stored));
+
+      const reopened = new WaterfallPreferencesStore(native as Object as preferences.Preferences).load();
+      const restored = reopened.recentEvidence[0] as Object as Record<string, Object>;
+      expect(restored['title']).assertEqual('欧冠决赛战术复盘');
+    });
+
     it('applies behavior weights, half-life, repeated quick-skip and clamps dimensions', 0, () => {
       const native = new MemoryPreferences();
       const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
@@ -434,6 +448,20 @@ export default function waterfallPreferencesStoreTest() {
       const malformed = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
       expect(malformed.loadCardRecords().length).assertEqual(0);
       expect(native.raw(WATERFALL_PREFERENCES_KEY).indexOf('saved-only')).assertEqual(-1);
+    });
+
+    it('persists bounded generated tags independently from the preference profile', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      expect(store.loadTagState().dirty).assertTrue();
+      store.saveTagState({ version: 1, suggestions: ['足球', 'Kpop'], lastEvidenceAt: 42, dirty: false });
+
+      const reopened = new WaterfallPreferencesStore(native as Object as preferences.Preferences);
+      expect(reopened.loadTagState().suggestions.join(',')).assertEqual('足球,Kpop');
+      expect(reopened.loadTagState().lastEvidenceAt).assertEqual(42);
+      native.putSync(WATERFALL_TAGS_KEY, '{');
+      expect(new WaterfallPreferencesStore(native as Object as preferences.Preferences).loadTagState().dirty)
+        .assertTrue();
     });
   });
 }

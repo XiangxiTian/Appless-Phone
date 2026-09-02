@@ -5,6 +5,8 @@ import {
   WaterfallCandidate,
   WaterfallFeedState,
   WaterfallFeedUpdate,
+  WaterfallInterestRecallRequest,
+  WaterfallInterestRecallRoute,
   WaterfallPreferenceSnapshot,
   WaterfallContinuation
 } from './WaterfallAnythingCore';
@@ -100,6 +102,7 @@ interface WaterfallPoolAvailabilityWaiter {
   id: number;
   profile: WaterfallPreferenceSnapshot;
   enabledSources: string[];
+  preferredQuery: string;
   resolve: (available: boolean) => void;
 }
 
@@ -112,6 +115,10 @@ export interface WaterfallPoolDiscoveryRefillResult {
 
 function normalizedPositive(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value > 0 ? Math.max(1, Math.floor(value)) : fallback;
+}
+
+function normalizedProfileQuery(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function emptyInsertResult(rejected: number = 0): WaterfallSourcePoolInsertResult {
@@ -170,13 +177,25 @@ function boundedAdapterPage(
 
 type WaterfallQueuedSearchRunner = (
   query: string,
-  continuation: WaterfallContinuation | null
+  continuation: WaterfallContinuation | null,
+  route: WaterfallInterestRecallRoute | null,
+  weight: number
 ) => Promise<WaterfallPoolAcceptedPage>;
+
+interface WaterfallQueuedSearchOptions {
+  route?: WaterfallInterestRecallRoute;
+  weight?: number;
+  priority?: boolean;
+  autoContinue?: boolean;
+}
 
 interface WaterfallQueuedSearchTask {
   key: string;
   query: string;
   continuation: WaterfallContinuation | null;
+  route: WaterfallInterestRecallRoute | null;
+  weight: number;
+  autoContinue: boolean;
   resolve: (value: WaterfallPoolAcceptedPage) => void;
   reject: (reason: Error) => void;
 }
@@ -200,11 +219,13 @@ class WaterfallAdapterSearchQueue {
 
   enqueue(
     query: string,
-    continuation: WaterfallContinuation | null = null
+    continuation: WaterfallContinuation | null = null,
+    options: WaterfallQueuedSearchOptions = {}
   ): Promise<WaterfallPoolAcceptedPage> {
     const normalizedQuery = query.trim();
     const continuationKey = continuation === null ? 'first' : continuation.kind + ':' + continuation.value;
-    const key = normalizedQuery.toLowerCase() + '|' + continuationKey;
+    const route = options.route ?? null;
+    const key = normalizedQuery.toLowerCase() + '|' + continuationKey + '|' + (route ?? '');
     const existing = this.promisesByKey.get(key);
     if (existing !== undefined) {
       return existing;
@@ -217,13 +238,18 @@ class WaterfallAdapterSearchQueue {
       rejectTask = reject;
     });
     this.promisesByKey.set(key, promise);
-    this.pending.push({
+    const task: WaterfallQueuedSearchTask = {
       key,
       query: normalizedQuery,
       continuation,
+      route,
+      weight: options.weight ?? 1,
+      autoContinue: options.autoContinue ?? true,
       resolve: resolveTask,
       reject: rejectTask
-    });
+    };
+    if (options.priority ?? false) this.pending.unshift(task);
+    else this.pending.push(task);
     if (this.adapterId === 'youtube.search') {
       aiLogInfo('[AIPhone][WaterfallSearchQueue] adapter=' + this.adapterId +
         ' event=enqueue pending=' + this.pending.length.toString() +
@@ -262,11 +288,15 @@ class WaterfallAdapterSearchQueue {
         ' continuation=' + (task.continuation === null ? 'none' : 'present'));
     }
     try {
-      const accepted = await this.runner(task.query, task.continuation);
+      const accepted = await this.runner(task.query, task.continuation, task.route, task.weight);
       task.resolve(accepted);
       const next = accepted.page.continuation;
-      if (next !== null && this.shouldContinue()) {
-        void this.enqueue(task.query, next).catch((_error: Error): void => {});
+      if (next !== null && task.autoContinue && this.shouldContinue()) {
+        void this.enqueue(task.query, next, {
+          route: task.route ?? undefined,
+          weight: task.weight,
+          autoContinue: true
+        }).catch((_error: Error): void => {});
       }
     } catch (error) {
       task.reject(error instanceof Error ? error : new Error('Waterfall search queue task failed.'));
@@ -333,6 +363,7 @@ export class WaterfallPool {
   private readonly discoveryFailureCountByAdapterId: Map<string, number> = new Map<string, number>();
   private readonly availabilityWaiters: Map<number, WaterfallPoolAvailabilityWaiter> =
     new Map<number, WaterfallPoolAvailabilityWaiter>();
+  private readonly suppressedProfileQueries: string[] = [];
   private nextAvailabilityWaiterId: number = 1;
   private automaticDiscoveryTimerId: number = -1;
   private automaticDiscoveryRunning: boolean = false;
@@ -364,8 +395,13 @@ export class WaterfallPool {
         adapter.adapterId,
         new WaterfallAdapterSearchQueue(
           adapter.adapterId,
-          (query: string, continuation: WaterfallContinuation | null): Promise<WaterfallPoolAcceptedPage> =>
-            this.loadSearchAdapter(adapter, query, continuation),
+          (
+            query: string,
+            continuation: WaterfallContinuation | null,
+            route: WaterfallInterestRecallRoute | null,
+            weight: number
+          ): Promise<WaterfallPoolAcceptedPage> =>
+            this.loadSearchAdapter(adapter, query, continuation, route, weight),
           (): boolean => this.isAdapterEnabled(adapter.adapterId) &&
             (this.containersBySource.get(adapter.sourceId)?.size ?? 0) < this.discoveryWatermark
         )
@@ -492,12 +528,64 @@ export class WaterfallPool {
     return { keyword: query, results: await Promise.all(tasks) };
   }
 
+  async supplementRecallRequests(
+    requests: WaterfallInterestRecallRequest[],
+    priority: boolean = false
+  ): Promise<WaterfallPoolAcceptedPage[]> {
+    const tasks: Promise<WaterfallPoolAcceptedPage>[] = [];
+    requests.forEach((request: WaterfallInterestRecallRequest): void => {
+      const query = request.query.trim();
+      if (query.length === 0) return;
+      if (request.route === 'profile') {
+        const normalized = normalizedProfileQuery(query);
+        const suppressedIndex = this.suppressedProfileQueries.indexOf(normalized);
+        if (suppressedIndex >= 0) this.suppressedProfileQueries.splice(suppressedIndex, 1);
+      }
+      this.searchAdaptersById.forEach((adapter: WaterfallSearchAdapter): void => {
+        if (!this.isAdapterEnabled(adapter.adapterId) || request.sources.indexOf(adapter.sourceId) < 0) return;
+        const queue = this.searchQueuesByAdapterId.get(adapter.adapterId);
+        if (queue === undefined) return;
+        tasks.push(queue.enqueue(query, request.continuation, {
+          route: request.route,
+          weight: request.weight,
+          priority,
+          autoContinue: false
+        }));
+      });
+    });
+    return Promise.all(tasks);
+  }
+
+  removeProfileRecallQueries(queries: string[]): number {
+    const normalized: string[] = [];
+    queries.forEach((query: string): void => {
+      const value = normalizedProfileQuery(query);
+      if (value.length > 0 && normalized.indexOf(value) < 0) normalized.push(value);
+    });
+    let removed = 0;
+    normalized.forEach((query: string): void => {
+      if (this.suppressedProfileQueries.indexOf(query) < 0) this.suppressedProfileQueries.push(query);
+    });
+    this.containersBySource.forEach((container: WaterfallSourcePoolContainer): void => {
+      removed += container.removeProfileRecallQueries(normalized);
+    });
+    return removed;
+  }
+
   /** Enqueues one source-appropriate language variant for every search adapter. */
-  async supplementTopic(topic: WaterfallColdStartTopic): Promise<WaterfallPoolTopicSupplementResult> {
+  async supplementTopic(
+    topic: WaterfallColdStartTopic,
+    skipBusyAdapters: boolean = false
+  ): Promise<WaterfallPoolTopicSupplementResult> {
     const tasks: Promise<WaterfallPoolTopicAcceptedPage>[] = [];
     this.searchAdaptersById.forEach((adapter: WaterfallSearchAdapter): void => {
       if (!this.isAdapterEnabled(adapter.adapterId)) return;
       if ((this.containersBySource.get(adapter.sourceId)?.size ?? 0) >= this.discoveryWatermark) return;
+      const queue = this.searchQueuesByAdapterId.get(adapter.adapterId);
+      if (skipBusyAdapters && queue !== undefined) {
+        const snapshot = queue.snapshot();
+        if (snapshot.running || snapshot.pendingCount > 0) return;
+      }
       const query = this.queryForTopic(adapter, topic);
       tasks.push(this.enqueueTopicAdapter(adapter, query));
     });
@@ -589,7 +677,8 @@ export class WaterfallPool {
     profile: WaterfallPreferenceSnapshot,
     enabledSources?: string[],
     limit: number = 2147483647,
-    round: number = 0
+    round: number = 0,
+    preferredQuery: string = ''
   ): WaterfallSourcePoolEntry[] {
     const results: WaterfallSourcePoolEntry[] = [];
     const normalizedLimit = Math.max(0, Math.floor(limit));
@@ -600,7 +689,8 @@ export class WaterfallPool {
       const container = this.containersBySource.get(sourceId);
       if (container === undefined) return;
       const sourceStartedAtMs = Date.now();
-      const measured: WaterfallSourcePoolTakeProfileResult = container.takeForProfileMeasured(profile);
+      const measured: WaterfallSourcePoolTakeProfileResult =
+        container.takeForProfileMeasured(profile, preferredQuery);
       const sourceTotalMs = Date.now() - sourceStartedAtMs;
       aiLogInfo('[AIPhone][WaterfallPoolTakeSourceTiming] round=' + round.toString() +
         ' source=' + sourceId +
@@ -623,7 +713,8 @@ export class WaterfallPool {
   takeUpToForProfile(
     profile: WaterfallPreferenceSnapshot,
     enabledSources: string[],
-    limit: number
+    limit: number,
+    preferredQuery: string = ''
   ): WaterfallSourcePoolEntry[] {
     const results: WaterfallSourcePoolEntry[] = [];
     const normalizedLimit = Math.max(0, Math.floor(limit));
@@ -648,7 +739,8 @@ export class WaterfallPool {
     while (results.length < normalizedLimit) {
       round += 1;
       const roundStartedAtMs = Date.now();
-      const batch = this.takeForProfile(profile, enabledSources, normalizedLimit - results.length, round);
+      const batch = this.takeForProfile(
+        profile, enabledSources, normalizedLimit - results.length, round, preferredQuery);
       aiLogInfo('[AIPhone][WaterfallPoolTakeRoundTiming] round=' + round.toString() +
         ' requested=' + (normalizedLimit - results.length).toString() +
         ' selected=' + batch.length.toString() +
@@ -669,12 +761,16 @@ export class WaterfallPool {
     return results;
   }
 
-  hasAvailableForProfile(profile: WaterfallPreferenceSnapshot, enabledSources: string[]): boolean {
+  hasAvailableForProfile(
+    profile: WaterfallPreferenceSnapshot,
+    enabledSources: string[],
+    preferredQuery: string = ''
+  ): boolean {
     for (let index = 0; index < this.sourceOrder.length; index += 1) {
       const sourceId = this.sourceOrder[index];
       if (enabledSources.indexOf(sourceId) < 0) continue;
       if (!this.isSourceEnabled(sourceId)) continue;
-      if (this.containersBySource.get(sourceId)?.hasForProfile(profile) ?? false) return true;
+      if (this.containersBySource.get(sourceId)?.hasForProfile(profile, preferredQuery) ?? false) return true;
     }
     return false;
   }
@@ -682,9 +778,10 @@ export class WaterfallPool {
   /** Waits without consuming. The caller rechecks its generation before taking items. */
   waitForAvailable(
     profile: WaterfallPreferenceSnapshot,
-    enabledSources: string[]
+    enabledSources: string[],
+    preferredQuery: string = ''
   ): WaterfallPoolAvailabilityWait {
-    if (this.hasAvailableForProfile(profile, enabledSources)) {
+    if (this.hasAvailableForProfile(profile, enabledSources, preferredQuery)) {
       return new DefaultWaterfallPoolAvailabilityWait(Promise.resolve(true), (): void => {});
     }
     const waiterId = this.nextAvailabilityWaiterId++;
@@ -696,6 +793,7 @@ export class WaterfallPool {
       id: waiterId,
       profile,
       enabledSources: enabledSources.slice(),
+      preferredQuery,
       resolve: resolveWait
     });
     return new DefaultWaterfallPoolAvailabilityWait(promise, (): void => {
@@ -714,7 +812,8 @@ export class WaterfallPool {
     });
     this.availabilityWaiters.clear();
     waiters.forEach((waiter: WaterfallPoolAvailabilityWaiter): void => {
-      waiter.resolve(this.hasAvailableForProfile(waiter.profile, waiter.enabledSources));
+      waiter.resolve(this.hasAvailableForProfile(
+        waiter.profile, waiter.enabledSources, waiter.preferredQuery));
     });
   }
 
@@ -741,7 +840,8 @@ export class WaterfallPool {
   private notifyAvailabilityWaiters(): void {
     const ready: WaterfallPoolAvailabilityWaiter[] = [];
     this.availabilityWaiters.forEach((waiter: WaterfallPoolAvailabilityWaiter): void => {
-      if (this.hasAvailableForProfile(waiter.profile, waiter.enabledSources)) ready.push(waiter);
+      if (this.hasAvailableForProfile(
+        waiter.profile, waiter.enabledSources, waiter.preferredQuery)) ready.push(waiter);
     });
     ready.forEach((waiter: WaterfallPoolAvailabilityWaiter): void => {
       if (!this.availabilityWaiters.has(waiter.id)) return;
@@ -857,7 +957,9 @@ export class WaterfallPool {
   private async loadSearchAdapter(
     adapter: WaterfallSearchAdapter,
     query: string,
-    continuation: WaterfallContinuation | null
+    continuation: WaterfallContinuation | null,
+    route: WaterfallInterestRecallRoute | null,
+    weight: number
   ): Promise<WaterfallPoolAcceptedPage> {
     if (!this.isAdapterEnabled(adapter.adapterId)) {
       return {
@@ -877,6 +979,17 @@ export class WaterfallPool {
     try {
       const page = await boundedAdapterPage(
         adapter.search({ query, limit: this.requestLimit, continuation }), adapter.adapterId, this.adapterTimeoutMs);
+      if (route !== null) {
+        page.items.forEach((candidate: WaterfallCandidate): void => {
+          candidate.searchQuery = query;
+          candidate.recallRoute = route;
+          candidate.recallWeight = weight;
+        });
+      }
+      if (route === 'profile' &&
+        this.suppressedProfileQueries.indexOf(normalizedProfileQuery(query)) >= 0) {
+        page.items = [];
+      }
       return this.accept(page, query, 'search');
     } catch (error) {
       return this.accept(failedAdapterPage(adapter.adapterId, adapter.sourceId, error), query, 'search');

@@ -1442,7 +1442,7 @@ export function publicPersonaImportFacts(
   return projectPublicPersonaMemoryCandidates(candidates, importedAt, 240);
 }
 
-function validPublicPersonaInference(value: PublicPersonaInference, itemLimit: number = 32): boolean {
+export function validPublicPersonaInference(value: PublicPersonaInference, itemLimit: number = 32): boolean {
   const fields: string[] = [value.titleName, value.oneLineSummary];
   const arrays: string[][] = [
     value.identityAndExperience, value.expertise, value.interestsAndPreferences,

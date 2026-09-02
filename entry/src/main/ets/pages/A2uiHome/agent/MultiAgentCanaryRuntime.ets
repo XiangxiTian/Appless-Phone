@@ -66,6 +66,7 @@ import {
   UiTaskRenderer,
   UserInputPayload,
   VIRTUAL_ACTION_INTENT_SOURCE_TOOL_ID,
+  WATERFALL_PREFERENCE_TOOL_ID,
   VirtualActionIntent,
   VirtualActionIntentResolver,
   allAiphoneToolDefinitions,
@@ -231,6 +232,7 @@ export interface MultiAgentCanaryOptions {
   currentHostGeneration?: () => number;
   onSurface: (surface: A2uiSurfaceState, runtimeGeneration: number) => boolean;
   onAnswerStream?: (answer: string, runtimeGeneration: number) => void;
+  onToolSelected?: (requestedCapabilityIds: string[], runtimeGeneration: number) => void;
   memoryRuntime?: PhoneLocalMemoryRuntimePort;
   onMemorySideEffectResult?: (result: LeaderMemoryToolResult) => void;
   onMemoryForgetOverlay?: (request: MemoryForgetOverlayRequest | null) => void;
@@ -265,6 +267,8 @@ export interface MultiAgentCanaryOptions {
   bus?: LinkedMessageBus;
   conversationId?: string;
 }
+
+export type MultiAgentSubmitOrigin = 'home' | 'waterfall';
 
 export interface MailDetailInPlaceEvent {
   requestKey: string;
@@ -1685,12 +1689,14 @@ function canaryPlanningContext(
   _prompt: string = '',
   allowTrustedOperationTargets: boolean = false,
   focusedRelease: boolean = false,
+  includeWaterfallPreference: boolean = false,
   memoryAvailable: boolean = true
 ): LeaderPlanningContext {
   const definitions: ToolDefinition[] = focusedRelease ? allAiphoneToolDefinitions() : allToolDefinitions();
   const tools: LeaderToolMetadata[] = definitions
     .filter((definition: ToolDefinition): boolean =>
-      definition.toolId !== 'gmail.message.send' &&
+      definition.toolId !== WATERFALL_PREFERENCE_TOOL_ID &&
+        definition.toolId !== 'gmail.message.send' &&
         definition.toolId !== 'social.reply.draft' &&
         definition.toolId !== 'hotel.navigate' &&
         definition.toolId !== 'hotel.booking.open' &&
@@ -1717,6 +1723,22 @@ function canaryPlanningContext(
       };
     }
   );
+  if (includeWaterfallPreference) {
+    const definition = toolDefinitionForToolId(WATERFALL_PREFERENCE_TOOL_ID);
+    if (definition !== null) {
+      tools.push({
+        toolId: definition.toolId,
+        domain: definition.domain,
+        intent: definition.intent,
+        riskLevel: definition.riskLevel,
+        registeredBackends: definition.backendPriority.slice(),
+        inputSchema: definition.inputSchema,
+        outputSchema: definition.outputSchema,
+        actions: [],
+        planningHint: toolPlanningDescriptionForToolId(definition.toolId, allowTrustedOperationTargets)
+      });
+    }
+  }
   if (!focusedRelease) {
     tools.push({
       toolId: 'dynamic.search',
@@ -1856,6 +1878,7 @@ export class MultiAgentCanaryRuntime {
   private submissionSequence: number = 0;
   private hotelDetailAdmissionSequence: number = 0;
   private lastHotelDetailAdmissionRunId: string = '';
+  private planningOrigin: MultiAgentSubmitOrigin = 'home';
 
   constructor(options: MultiAgentCanaryOptions) {
     const conversationId: string = options.conversationId === undefined ?
@@ -1973,7 +1996,7 @@ export class MultiAgentCanaryRuntime {
     const allowTrustedOperationTargets = options.allowTrustedOperationTargets === true;
     const initialContext = canaryPlanningContext(
       this.lastLeaderPersonaId, '', allowTrustedOperationTargets, options.focusedRelease === true,
-      this.memoryAvailable
+      false, this.memoryAvailable
     );
     const dataTaskInputNormalizer: LeaderDataTaskInputNormalizer = (
       input: InputUserPayload,
@@ -2015,7 +2038,7 @@ export class MultiAgentCanaryRuntime {
       planningContextProvider: (prompt: string): LeaderPlanningContext =>
         canaryPlanningContext(
           this.lastLeaderPersonaId, prompt, allowTrustedOperationTargets, options.focusedRelease === true,
-          this.memoryAvailable
+          this.planningOrigin === 'waterfall', this.memoryAvailable
         ),
       currentLocalDateProvider: options.currentLocalDate,
       dataTaskInputNormalizer,
@@ -2086,14 +2109,20 @@ export class MultiAgentCanaryRuntime {
         this.admitHotelDetailFollowUp(action, context),
       turnGenerationObserver: (turnId: string, hostGeneration: number): void => {
         this.rememberTurnHostGeneration(turnId, hostGeneration);
-      }
+      },
+      firstDecisionObserver: options.onToolSelected === undefined ? undefined :
+        (requestedCapabilityIds: string[], hostGeneration: number): void => {
+          const observer = options.onToolSelected;
+          if (observer !== undefined) observer(requestedCapabilityIds, hostGeneration);
+        }
     });
   }
 
   submit(
     text: string,
     context: UserInputPayload,
-    hostGeneration: number = 0
+    hostGeneration: number = 0,
+    origin: MultiAgentSubmitOrigin = 'home'
   ): Promise<MultiAgentTurnOutcome> {
     const capturedGeneration = Number.isSafeInteger(hostGeneration) && hostGeneration > 0 ?
       hostGeneration : 0;
@@ -2114,7 +2143,7 @@ export class MultiAgentCanaryRuntime {
         currentSurfaceSummary: context.currentSurfaceSummary,
         recentObservations: context.recentObservations
       };
-      return this.runtime.submit(text, input, capturedGeneration)
+      return this.submitRuntime(text, input, capturedGeneration, origin)
         .then((outcome: MultiAgentTurnOutcome): MultiAgentTurnOutcome => {
           this.lastLeaderPersonaId = rememberedPersonaAfterOutcome(
             this.lastLeaderPersonaId,
@@ -2182,7 +2211,7 @@ export class MultiAgentCanaryRuntime {
         currentSurfaceSummary: context.currentSurfaceSummary,
         recentObservations: context.recentObservations
       };
-      return this.runtime.submit(text, input, capturedGeneration);
+      return this.submitRuntime(text, input, capturedGeneration, origin);
     })
       .then((outcome: MultiAgentTurnOutcome): MultiAgentTurnOutcome => {
         this.lastLeaderPersonaId = rememberedPersonaAfterOutcome(
@@ -2192,6 +2221,25 @@ export class MultiAgentCanaryRuntime {
         );
         return outcome;
       });
+  }
+
+  private submitRuntime(
+    text: string,
+    input: UserInputPayload,
+    hostGeneration: number,
+    origin: MultiAgentSubmitOrigin
+  ): Promise<MultiAgentTurnOutcome> {
+    const previous = this.planningOrigin;
+    this.planningOrigin = origin;
+    try {
+      return this.runtime.submit(text, input, hostGeneration).finally((): void => {
+        this.planningOrigin = previous;
+      });
+    } catch (error) {
+      this.planningOrigin = previous;
+      if (error instanceof Error) throw error;
+      throw new Error('Multi-agent submission failed before returning a Promise.');
+    }
   }
 
   private recordManualRecallObservation(

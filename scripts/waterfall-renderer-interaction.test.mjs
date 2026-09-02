@@ -26,12 +26,12 @@ const rankingWorker = readFileSync(
   new URL('../entry/src/main/ets/workers/WaterfallRankingWorker.ets', import.meta.url),
   'utf8'
 );
-const rankingWorkerClient = readFileSync(
-  new URL('../entry/src/main/ets/pages/A2uiHome/waterfall/WaterfallRankingWorkerClient.ets', import.meta.url),
-  'utf8'
-);
 const poolWorker = readFileSync(
   new URL('../entry/src/main/ets/workers/WaterfallPoolWorker.ets', import.meta.url),
+  'utf8'
+);
+const rankingWorkerClient = readFileSync(
+  new URL('../entry/src/main/ets/pages/A2uiHome/waterfall/WaterfallRankingWorkerClient.ets', import.meta.url),
   'utf8'
 );
 const poolWorkerClient = readFileSync(
@@ -159,35 +159,37 @@ const aggregatePostMediaSource = renderer.slice(
 assert.match(aggregatePostMediaSource, /class="aggregate-post-media"[^>]*onerror="this\.hidden=true"/,
   'failed remote post media such as Reddit CDN images must not expose a broken image');
 const reducedMotionCss = waterfallCss.slice(waterfallCss.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
-assert.match(indexPage, /@State interestWaterfallFullscreen:\s*boolean\s*=\s*false/,
-  'search and interest Waterfall surfaces must not overwrite one shared fullscreen flag');
+assert.match(indexPage, /@State interestWaterfallComposerHidden:\s*boolean\s*=\s*false/,
+  'the discovery composer must track covering layers separately from the feed shell');
 assert.match(indexPage, /\.disableSwipe\(this\.bimRootIndex === 1\s*\|\|\s*this\.waterfallFullscreen\)/,
   'the discovery page must keep the root Swiper locked so reader close does not relayout both pages');
 assert.doesNotMatch(indexPage, /\.disableSwipe\(false\)/,
   'the native root Swiper must not stay swipeable while Waterfall is fullscreen');
 assert.doesNotMatch(indexPage,
-  /\.disableSwipe\(this\.waterfallFullscreen\s*\|\|\s*this\.interestWaterfallFullscreen\)/,
+  /\.disableSwipe\(this\.waterfallFullscreen\s*\|\|\s*this\.interestWaterfallComposerHidden\)/,
   'reader fullscreen must not toggle the native Swiper on every open and close');
 assert.doesNotMatch(indexPage, /onWaterfallFullscreenChange:\s*\(_active:\s*boolean\):\s*void\s*=>\s*\{\}/,
   'both Waterfall surfaces must report fullscreen state so the native root Swiper cannot steal gestures');
 assert.match(indexPage, /WaterfallVoiceDock\(\{/,
   'the one voice entry must exist only on the main independent discovery layer');
-assert.doesNotMatch(indexPage, /if \(!this\.interestWaterfallFullscreen\)\s*\{\s*WaterfallVoiceDock/s,
+assert.doesNotMatch(indexPage, /if \(!this\.interestWaterfallComposerHidden\)\s*\{\s*WaterfallVoiceDock/s,
   'returning to the feed must not remount the voice dock over the WebView');
 assert.doesNotMatch(indexPage,
   /WaterfallVoiceDock\([\s\S]*?Visibility\.Hidden/,
   'Visibility.Hidden still relayouts the WebView stack when the dock returns');
 assert.doesNotMatch(indexPage,
-  /WaterfallVoiceDock\([\s\S]*?\.opacity\(this\.interestWaterfallFullscreen/,
+  /WaterfallVoiceDock\([\s\S]*?\.opacity\(this\.interestWaterfallComposerHidden/,
   'opacity 0 still leaves a native layer on top of the reader WebView');
 assert.match(indexPage,
   /HtmlHomeSurfaceView\([\s\S]*?\.zIndex\(1\)/,
   'the WebView must stay above a lowered dock so reading is not composited under a native overlay');
 assert.match(indexPage,
-  /interestWaterfallFullscreen \? 0 : 2/,
+  /interestWaterfallComposerHidden \? 0 : 2/,
   'fullscreen tucks the already-mounted dock behind the WebView instead of covering it');
 assert.match(indexPage, /startVoiceInput\('waterfall'\)/,
   'the discovery dock must reuse ASR through its independent target');
+assert.match(poolWorker, /waitForAvailable\(profile, enabledSources, preferredQuery\)/,
+  'explicit tag recall must not spin on unrelated cached pool entries');
 const aboutToAppearSource = indexPage.slice(
   indexPage.indexOf('  aboutToAppear(): void {'),
   indexPage.indexOf('  onPageShow(): void {'));
@@ -387,8 +389,8 @@ assert.match(waterfallCore, /function limitConsecutiveSources/,
 assert.match(waterfallCore, /WATERFALL_MAX_SOURCE_RUN: number = 1/,
   'an available alternate source must break every same-source tail run');
 assert.match(waterfallCore,
-  /finalizeInterestWaterfallRecallRanking[\s\S]*?refreshDisplayWindow:\s*boolean = true[\s\S]*?limitConsecutiveSources\(rankWaterfallCandidates[\s\S]*?if \(refreshDisplayWindow\) refreshCurrentAndStable\(next\)/,
-  'fast-source discovery finalization must hard-limit source runs only after the frozen prefix');
+  /finalizeInterestWaterfallRecallRanking[\s\S]*?refreshDisplayWindow:\s*boolean = true[\s\S]*?limitConsecutiveSources\(mixInterestRecallRanking\(rankWaterfallCandidates[\s\S]*?if \(refreshDisplayWindow\) refreshCurrentAndStable\(next\)/,
+  'discovery finalization must mix recall routes before limiting source runs after the frozen prefix');
 assert.match(indexPage, /logWaterfallTailTakes\(state, update\.state\)/,
   'each advance must log candidates promoted out of the data-only tail');
 assert.match(waterfallCore, /targetId: string = ''/,
@@ -407,7 +409,10 @@ assert.match(waterfallJs, /track\.innerHTML !== nextHtml && \(!incrementalRender
   'same-session updates must fail closed instead of rebuilding the live snap container');
 assert.match(waterfallJs,
   /function canApplyPayloadDuringScroll\(payload\) \{\s*return mode === 'discovering' && sameFeedSession\(payload\);\s*\}/,
-  'same-session stable promotion must apply while scrolling instead of waiting for settle');
+  'same-session discovery updates must keep payload state and mounted cards in sync during scrolling');
+assert.match(waterfallJs,
+  /if \(interactionActive \|\| scrollActive\) \{\s*if \(canApplyPayloadDuringScroll\(pendingPayload\)\) flushPendingPayload\(undefined, true\);\s*return;\s*\}/,
+  'scrolling must apply same-session payloads without ending the active gesture');
 assert.match(waterfallJs,
   /var domChanged = incrementalRenderAllowed \? false : dropRenderedCardsMissingFrom\(items, nodes\);/,
   'same-session updates must never remove mounted shown, current, or stable cards');
@@ -427,41 +432,141 @@ assert.equal(waterfallLayerFullscreen(true, true), true);
 assert.match(surfaceView,
   /this\.onWaterfallFullscreenChange\(waterfallLayerFullscreen\(\s*this\.rendererWaterfallFullscreen,\s*this\.popupVisible\s*\)\)/s,
   'SurfaceView must report the combined layer state instead of the last callback');
-assert.match(voiceDock, /按住聊聊/);
-assert.doesNotMatch(voiceDock, /按住说想看的内容/,
-  'the discovery voice entry must read like a light tool, not a full chat composer');
-assert.doesNotMatch(voiceDock, /\.width\('100%'\)/,
-  'the single voice entry must not occupy the full feed width');
-assert.doesNotMatch(voiceDock, /\.width\(216\)|\.height\(46\)/,
-  'the voice control must be a round button, not a composer-like bar');
-assert.match(voiceDock, /\.width\(48\)[\s\S]*\.height\(48\)/,
-  'the voice control needs a quiet 48px touch target, not a dominant floating action button');
-assert.match(voiceDock, /\.borderRadius\(24\)/,
-  'the voice control must be a circle, not a pill input');
-assert.match(voiceDock, /private fillColor\(\): string \{[\s\S]*?return COLOR_CARD;\s*\}/,
-  'idle fill must recede into the card surface instead of painting a solid accent disc');
-assert.doesNotMatch(voiceDock, /private fillColor\(\): string \{[^}]*return COLOR_ACCENT;/,
-  'the idle mic must not compete with the active discovery card');
+assert.match(surfaceView,
+  /this\.onWaterfallComposerChange\(this\.rendererWaterfallComposerHidden \|\| this\.popupVisible\)/,
+  'SurfaceView must keep the composer visible on the feed and hide it for covering layers');
+assert.match(waterfallJs,
+  /function setFullscreen\(active, feed\)[\s\S]*?active \? \(feed \? 'feed' : 'true'\) : 'false'/,
+  'the renderer must distinguish the normal feed from detail and search layers');
+assert.match(waterfallJs,
+  /mode = 'discovering';[\s\S]*?setFullscreen\(true, true\);/,
+  'opening the normal discovery feed must not hide the native composer');
+const closeReaderLayerSource = waterfallJs.slice(
+  waterfallJs.indexOf('function closeReader()'),
+  waterfallJs.indexOf('function openReader(id)')
+);
+const closeReaderTimerIndex = closeReaderLayerSource.indexOf('readerCloseTimer = setTimeout');
+assert.doesNotMatch(closeReaderLayerSource.slice(0, closeReaderTimerIndex), /setFullscreen\(false\)/,
+  'reader close must not raise the native composer during the first return frame');
+assert.match(closeReaderLayerSource.slice(closeReaderTimerIndex),
+  /mode = completedReturnMode;[\s\S]*?setTimeout\(function \(\) \{[\s\S]*?setFullscreen\(false\);[\s\S]*?\}, 0\);/,
+  'the native composer must return one task after the reader layer has finished closing');
+assert.match(closeReaderLayerSource,
+  /completedReturnMode === 'discovering'[\s\S]*?syncVideoVisibilityObserver\(\);/,
+  'returning from details must not force the visible Bilibili player to reload');
+assert.match(waterfallJs,
+  /window\.__aiphoneSetWaterfallActive = function \(active\)[\s\S]*?setWaterfallFullscreen\(waterfallLayerState\)/,
+  'returning to discovery must republish the current covering-layer state without rebuilding the page');
+assert.match(voiceDock, /waterfallPreferencePromptExample\(this\.selectedTags, this\.tags\)/,
+  'the discovery composer must coach from current positive preferences without another model call');
+assert.match(voiceDock, /@Link inputText:\s*string/,
+  'the discovery composer must bind typed input without a second state store');
+assert.match(voiceDock, /TextArea\(\{ placeholder: this\.placeholder\(\), text: this\.inputText \}\)/,
+  'the discovery composer must accept text directly');
+assert.match(voiceDock, /ScrollDirection\.Horizontal/,
+  'preference tags must stay in one bounded horizontal rail');
+assert.match(voiceDock, /onTag\(tag\)/);
+assert.match(voiceDock, /onAddTag\(text\)/);
+assert.doesNotMatch(voiceDock, /setInterval|setTimeout/,
+  'the floating composer must not add a timer-driven render loop');
+const preferenceApplySource = indexPage.slice(
+  indexPage.indexOf('  private applyInterestConversation('),
+  indexPage.indexOf('  private async submitWaterfallConversation(')
+);
+assert.doesNotMatch(preferenceApplySource, /clearInterestRefreshPreload\(\)/,
+  'a preference change must preserve the existing refresh preload lifecycle');
+assert.match(preferenceApplySource, /this\.runInterestRecall\(/,
+  'a real preference change must reuse the existing async recall path');
+assert.match(preferenceApplySource,
+  /const immediatePreferenceQuery[\s\S]*?this\.interestWaterfallFeedState = profileUpdate\.state;[\s\S]*?this\.runInterestRecall\(null, immediatePreferenceQuery\);[\s\S]*?return;/,
+  'an immediate tag recall must defer the feed publish until recalled content is merged');
+assert.doesNotMatch(preferenceApplySource, /profileUpdate\.loadRequests = \[\]/,
+  'preference changes must not discard the existing PR174 continuation plan');
+const interestRecallSource = indexPage.slice(
+  indexPage.indexOf('  private runInterestRecall('),
+  indexPage.indexOf('  private clearInterestRefreshPreload(')
+);
+assert.match(interestRecallSource,
+  /interestWaterfallDisplayCommitted && immediatePreferenceQuery\.length === 0/,
+  'immediate tag recall must not publish a loading-only intermediate snapshot');
+const poolProfileSource = indexPage.slice(
+  indexPage.indexOf('  private currentWaterfallPoolPreferenceProfile('),
+  indexPage.indexOf('  private resetWaterfallConversationStateFromProfile(')
+);
+assert.doesNotMatch(poolProfileSource, /waterfallConversationState\.rules/,
+  'the pool profile must not duplicate rules that were already persisted');
+const preferenceProfileSource = indexPage.slice(
+  indexPage.indexOf('  private currentWaterfallPreferenceProfile('),
+  indexPage.indexOf('  private currentWaterfallPoolPreferenceProfile(')
+);
+assert.match(preferenceProfileSource,
+  /explicitRules: includeRecommendation \? this\.waterfallPreferenceProfile\.explicitRules\.slice\(\) : \[\]/,
+  'explicit keyword search must exclude recommendation tag rules');
+assert.doesNotMatch(indexPage,
+  /configureWaterfallPreferenceProfileForRuntime\(this\.currentWaterfallPreferenceProfile\(\)\)/,
+  'the shared explicit-search runtime must not receive implicit recommendation rules');
+assert.doesNotMatch(indexPage,
+  /this\.waterfallFeedState\.profile = this\.currentWaterfallPreferenceProfile\(\);/,
+  'explicit search state must remain separate from implicit recommendation tuning');
+const interestSearchSource = indexPage.slice(
+  indexPage.indexOf('  private startInterestWaterfallSearch('),
+  indexPage.indexOf('  private exitInterestWaterfallSearch(')
+);
+assert.match(interestSearchSource, /profile: this\.currentWaterfallPreferenceProfile\(false\)/,
+  'the in-page keyword search must start without implicit recommendation rules');
+const composerChangeStart = indexPage.indexOf('          onWaterfallComposerChange: (hidden: boolean): void => {');
+const composerChangeSource = indexPage.slice(
+  composerChangeStart,
+  indexPage.indexOf('        })', composerChangeStart)
+);
+assert.doesNotMatch(composerChangeSource, /else if \(hidden\) this\.scheduleWaterfallTagGenerationIfSafe\(\)/,
+  'opening search or source settings must not start tag generation');
+const behaviorRecordSource = indexPage.slice(
+  indexPage.indexOf('  private recordWaterfallBehavior('),
+  indexPage.indexOf('  private scheduleMultiTaskPayloadRefresh(')
+);
+assert.match(behaviorRecordSource,
+  /event\.behavior === 'play_complete'[\s\S]*?event\.behavior === 'read_complete'[\s\S]*?event\.behavior === 'dwell'[\s\S]*?scheduleWaterfallTagGenerationIfSafe\(true\)/,
+  'only strong browsing evidence may schedule background tag generation on the scroll path');
+assert.doesNotMatch(behaviorRecordSource, /commitWaterfallTagBoundary\(/,
+  'background tag generation must not replace visible tags during scrolling');
+const cardActionSource = indexPage.slice(
+  indexPage.indexOf('  private applyWaterfallCardAction('),
+  indexPage.indexOf('  private activeWaterfallCandidate(')
+);
+assert.match(cardActionSource,
+  /if \(args\.action === 'save'\)[\s\S]*?return;[\s\S]*?markWaterfallTagsDirty\(true\)/,
+  'like and dislike must refresh tag evidence in the background while save remains neutral');
+const tagGenerationSource = indexPage.slice(
+  indexPage.indexOf('  private waterfallTagGenerationSafe('),
+  indexPage.indexOf('  private waterfallPreferenceTags(')
+);
+assert.doesNotMatch(tagGenerationSource, /this\.canaryModel\(\)/,
+  'background tag generation must not construct the multi-agent runtime');
+assert.match(tagGenerationSource,
+  /if \(shouldRerun\)[\s\S]*?scheduleWaterfallTagGenerationIfSafe\(true\)/,
+  'new evidence arriving during a model call must retain the background single-flight rerun');
 assert.doesNotMatch(indexPage, /Row\(\) \{\s*WaterfallVoiceDock/,
-  'the voice control must overlay the feed instead of consuming a chrome row');
+  'the composer must overlay the feed instead of consuming a chrome row');
 assert.match(indexPage, /Stack\(\{\s*alignContent:\s*Alignment\.Bottom\s*\}\)\s*\{\s*Image\(\$r\('app\.media\.home_light_aurora_background'\)\)[\s\S]*?HtmlHomeSurfaceView[\s\S]*?WaterfallVoiceDock/s,
-  'the independent discovery page must reuse the home aurora and pin the round voice button to the feed');
+  'the independent discovery page must reuse the home aurora and pin the floating composer to the feed');
   assert.match(voiceDock, /this\.pressed \? 0\.96 : 1/,
   'the voice entry needs immediate tactile press feedback');
 assert.match(voiceDock, /shouldStop = this\.pressed \|\| this\.isListening/,
   'releasing a fast press must stop ASR even before the parent prop catches up');
 assert.match(voiceDock, /from '\.\.\/style\/A2uiHomeTheme'/,
   'the independent voice dock must use the same theme source as the home composer');
-for (const token of ['COLOR_ACCENT', 'COLOR_ACCENT_DEEP', 'COLOR_ACCENT_SOFT', 'COLOR_CARD',
-  'COLOR_CARD_EDGE', 'COLOR_CARD_SHADOW', 'COLOR_MUTED']) {
+for (const token of ['COLOR_ACCENT', 'COLOR_ACCENT_DEEP', 'COLOR_ACCENT_SOFT',
+  'COLOR_MUTED', 'COLOR_TEXT']) {
   assert.match(voiceDock, new RegExp(`\\b${token}\\b`), `voice dock must use ${token}`);
 }
-assert.doesNotMatch(voiceDock, /COLOR_GLASS/,
-  'translucent glass over the warm paper stains the mic button yellow');
+for (const color of ['#B8FFFFFF', '#E9DED5', '#248C6A53', '#C9C4BF', '#995F4C', '#38995F4C']) {
+  assert.match(voiceDock, new RegExp(color), `voice dock must match the home composer color ${color}`);
+}
 assert.doesNotMatch(voiceDock, /#252522|#E9E8E3|#F8F7F3|#DAD9D3/,
-  'the discovery voice dock must not introduce a separate black and gray palette');
-assert.match(voiceDock, /\.opacity\(this\.isBusy \? 0\.72 : 1\)/,
-  'busy voice text must retain readable contrast on the warm surface');
+  'the discovery composer must not introduce a separate black and gray palette');
+assert.match(voiceDock, /\.opacity\(this\.isBusy \? 0\.55 : 1\)/,
+  'busy input must remain visible without looking actionable');
 assert.match(waterfallJs, /if \(directDiscovery\) setFullscreen\(true\)/,
   'reader, source sheet, and video detail must hide the independent voice dock');
 assert.match(waterfallJs, /if \(directDiscovery\) setFullscreen\(false\)/,
@@ -605,8 +710,8 @@ assert.match(waterfallJs, /searchFeedScrollTop/,
 assert.match(waterfallJs, /searchInput\.blur\(\)/,
   'exiting search must release the web input focus before returning home');
 assert.match(indexPage,
-  /\.onChange\(\(index: number\)[\s\S]*?index === 1[\s\S]*?else inputMethod\.getController\(\)\.hideTextInput\(\)/,
-  'returning home must dismiss a keyboard opened by discovery search');
+  /\.onChange\(\(index: number\)[\s\S]*?index === 1[\s\S]*?else \{[\s\S]*?scheduleWaterfallTagGenerationIfSafe\(\)[\s\S]*?inputMethod\.getController\(\)\.hideTextInput\(\)/,
+  'returning home must schedule preference refresh and dismiss a keyboard opened by discovery search');
 assert.match(indexPage,
   /actionId\.length === 0 && sourceBimId\.length === 0 \?\s*waterfallSearchQueryForHomePrompt\(trimmed\)[\s\S]*?appendMessage\('user', visibleText\)[\s\S]*?ensureInterestWaterfall\(false\)[\s\S]*?startInterestWaterfallSearch\([\s\S]*?bimRootController\.changeIndex\(1/,
   'only Home aggregate intents may preserve the user turn and route directly into Waterfall search');
@@ -929,11 +1034,6 @@ assert.ok(
   'the close motion must start before player teardown'
 );
 assert.ok(
-  closeReaderSource.indexOf('setFullscreen(false)') <
-    closeReaderSource.indexOf('= setTimeout'),
-  'native chrome must restore while the reader still covers the feed'
-);
-assert.ok(
   closeReaderSource.indexOf("overlay.classList.remove('reading')") <
     closeReaderSource.indexOf('= setTimeout'),
   'the feed must accept scrolls as soon as the reader starts closing'
@@ -1069,10 +1169,28 @@ const openReaderSource = waterfallJs.slice(
   waterfallJs.indexOf('function openReader'),
   waterfallJs.indexOf('function toggleVideoFullscreen')
 );
+assert.match(openReaderSource, /stopStageMedia\(track\);\s*destroyInlinePlayer\(\);/,
+  'opening details must stop the feed player before mounting the reader');
+assert.doesNotMatch(openReaderSource, /item\.source !== 'bilibili'\) stopStageMedia\(track\)/,
+  'detail scrolling must not keep a hidden Bilibili player alive');
 assert.doesNotMatch(openReaderSource, /classList\.remove\('active'\)/,
   'reopening during the close transition must reverse from the current visual state');
 assert.match(openReaderSource, /requestAnimationFrame\(reveal\)/,
   'first entry must paint the mounted detail at its resting origin before starting the transition');
+const replaceRenderedCardSource = waterfallJs.slice(
+  waterfallJs.indexOf('function replaceRenderedWaterfallCard'),
+  waterfallJs.indexOf('function renderWaterfallIncrementalPatch')
+);
+assert.match(replaceRenderedCardSource,
+  /var html = renderCandidate\(item\);\s*if \(renderedCards\[renderedIndex\]\.html === html\) return true;/,
+  'comment-only patches must not rebuild an unchanged hidden video card');
+const syncReaderCommentsSource = waterfallJs.slice(
+  waterfallJs.indexOf('function syncReaderComments()'),
+  waterfallJs.indexOf('function postSourceSelection()')
+);
+assert.match(syncReaderCommentsSource,
+  /var markup = commentsMarkup\(item\);\s*if \(slot\.innerHTML !== markup\) slot\.innerHTML = markup;/,
+  'unrelated background patches must not rebuild unchanged reader comments');
 const settleSource = waterfallJs.slice(
   waterfallJs.indexOf('function settleInteraction'),
   waterfallJs.indexOf('function requestFullRefresh')
@@ -1550,7 +1668,7 @@ documentListeners.click({
     closest: (selector) => selector === '[data-waterfall-enter]' ? {} : null
   }
 });
-assert.deepEqual(fullscreenStates, ['true']);
+assert.deepEqual(fullscreenStates, ['feed']);
 assert.equal(overlay.classList.contains('active'), true);
 assert.equal(overlay.classList.contains('closing'), false);
 assert.match(track.innerHTML, /waterfall-card--video waterfall-card--landscape/);
@@ -2142,6 +2260,7 @@ reader.emit('touchstart', {
   touches: [{ clientX: 24, clientY: 80 }],
   target: readerCloseTarget
 });
+const fullscreenStateCountBeforeReaderClose = fullscreenStates.length;
 reader.emit('touchend', {
   cancelable: true,
   preventDefault: () => { readerTapPrevented = true; },
@@ -2150,6 +2269,8 @@ reader.emit('touchend', {
 });
 assert.equal(reader.classList.contains('closing'), true,
   'the first completed back tap after detail scrolling must close on touchend');
+assert.equal(fullscreenStates.length, fullscreenStateCountBeforeReaderClose,
+  'reader close must not raise and rerender the native composer while the return motion is starting');
 assert.equal(readerTapPrevented, true, 'reader back must commit on touchend after nested scrolling');
 assert.equal(closeFeedTraversalCount, feedTraversalsBeforeReaderClose,
   'reader back must paint its closing state before any hidden-feed DOM traversal');
@@ -2168,6 +2289,8 @@ assert.equal(timers.filter((timer) => timer.delay === 96 && !timer.canceled).len
   returnScrollSettleCount + 1,
   'the feed must accept a new scroll while the reader is finishing its visual close');
 finishReaderClose();
+assert.equal(fullscreenStates.length, fullscreenStateCountBeforeReaderClose,
+  'the embedded mode must not publish native chrome state while revealing the retained card');
 assert.equal(track.scrollTop, 640,
   'closing details must not rewind a return gesture that already moved the feed');
 assert.equal(overlay.classList.contains('reading'), false,
@@ -2617,10 +2740,10 @@ window.__aiphoneApplyWaterfallUpdate({
 });
 preferencesButton.emit('click');
 backButton.emit('click');
-assert.deepEqual(fullscreenStates, ['true']);
+assert.deepEqual(fullscreenStates, ['feed']);
 assert.equal(preferences.classList.contains('active'), false);
 backButton.emit('click');
-assert.deepEqual(fullscreenStates, ['true', 'false']);
+assert.deepEqual(fullscreenStates, ['feed', 'false']);
 assert.equal(overlay.classList.contains('active'), true, 'the overlay must remain mounted while it fades out');
 assert.equal(overlay.classList.contains('closing'), true);
 assert.equal(timers.at(-1)?.delay, 140);

@@ -107,6 +107,18 @@ export default function waterfallSourcePoolContainerTest() {
       expect(container.size).assertEqual(0);
     });
 
+    it('takes the requested profile recall before unrelated cached content', 0, () => {
+      const container = new WaterfallSourcePoolContainer('youtube');
+      container.putOne(poolCandidate('generic', 'youtube', '普通缓存内容'), { insertedAt: 200 });
+      const football = poolCandidate('football', 'youtube', '英超赛后分析');
+      football.recallRoute = 'profile';
+      football.searchQuery = '足球';
+      container.putOne(football, { insertedAt: 100 });
+
+      expect(container.takeForProfile(emptyProfile(), '足球')?.candidate.id).assertEqual('football');
+      expect(container.size).assertEqual(1);
+    });
+
     it('applies explicit blocks and uses newest insertion as the zero-score fallback', 0, () => {
       const container = new WaterfallSourcePoolContainer('youtube');
       container.putOne(poolCandidate('old', 'youtube', '科技旧闻'), { insertedAt: 100 });

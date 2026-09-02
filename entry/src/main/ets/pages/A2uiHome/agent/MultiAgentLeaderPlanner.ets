@@ -76,6 +76,11 @@ const CONTINUATION_MODE_FIELD_RULE: string =
   'planning round must consume real output from this round, sequence when the user explicitly ordered another ' +
   'capability after this round, and complete when no further planning round is required. Answer and clarify use ' +
   'complete. A sequence decision contains exactly the current Data task and no actionIntent.';
+const WATERFALL_PREFERENCE_SELECTION_CONTRACT: string =
+  'When waterfall.preference.adjust is registered, a request to change how often future Waterfall recommendations ' +
+  'show a topic, source, or format must execute that capability in this round. This includes requests such as ' +
+  '"show me more football content". Do not answer, clarify, or retrieve content for that request; explicit keyword ' +
+  'search remains a separate user action.';
 const FULL_DECISION_CONTRACT: string =
   'Every decision, including a correction or repair, must include personaId, skillId, requestedCapabilityIds, ' +
   'roundAction, continuationMode, dataTasks, and uiIntent. For answer or clarify, set continuationMode to complete, ' +
@@ -1909,6 +1914,8 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       TRAVEL_SELECTION_CONTRACT,
       VIDEO_SELECTION_CONTRACT,
       this.registeredCapability(context, 'maps.place.search') ? MAPS_SELECTION_CONTRACT : '',
+      this.registeredCapability(context, 'waterfall.preference.adjust') ?
+        WATERFALL_PREFERENCE_SELECTION_CONTRACT : '',
       memoryAvailable ? C10_C11_SELECTION_CONTRACT : C10_C11_SELECTION_CONTRACT_WITHOUT_MEMORY,
       SOCIAL_SELECTION_CONTRACT,
       this.registeredCapability(context, 'media.aggregate.search') ?

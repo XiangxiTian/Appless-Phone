@@ -1839,6 +1839,7 @@ const WATERFALL_JS: string = `
   var state = window.__aiphoneWaterfallInitial || null;
   var directDiscovery = window.__aiphoneWaterfallDirect === true;
   var mode = directDiscovery ? 'discovering' : 'entry';
+  var waterfallLayerState = directDiscovery ? 'feed' : 'false';
   var enabledSources = state && state.enabledSources ? state.enabledSources.slice() : [];
   var preferenceBaseline = '';
   var committedPreferenceSources = null;
@@ -2016,6 +2017,7 @@ const WATERFALL_JS: string = `
       requestWaterfallSnapshot(patch.surfaceId);
       return false;
     }
+    if (mode === 'reading') syncReaderComments();
     var domAppliedAtMs = Date.now();
     var domCountAfter = renderedCards.length;
     var renderMode = patch.appendRenderedCandidateIds.length > 0 ? 'patch_append' :
@@ -2789,9 +2791,10 @@ const WATERFALL_JS: string = `
     button.textContent = '加载中';
     postApplePodcastResolve(candidateId);
   }
-  function setFullscreen(active) {
+  function setFullscreen(active, feed) {
+    waterfallLayerState = active ? (feed ? 'feed' : 'true') : 'false';
     if (window.AIPhoneHome && typeof window.AIPhoneHome.setWaterfallFullscreen === 'function') {
-      window.AIPhoneHome.setWaterfallFullscreen(active ? 'true' : 'false');
+      window.AIPhoneHome.setWaterfallFullscreen(waterfallLayerState);
     }
   }
   function syncSearchTitle() {
@@ -3291,6 +3294,10 @@ const WATERFALL_JS: string = `
       videoVisibilityNodes = [];
       return;
     }
+    if (directDiscovery && window.AIPhoneHome &&
+      typeof window.AIPhoneHome.setWaterfallFullscreen === 'function') {
+      window.AIPhoneHome.setWaterfallFullscreen(waterfallLayerState);
+    }
     syncVideoVisibilityObserver(true);
   };
   function scheduleAdvance(index) {
@@ -3438,7 +3445,9 @@ const WATERFALL_JS: string = `
     if (mode !== 'reading' || !readerCandidateId || !reader || typeof reader.querySelector !== 'function') return;
     var slot = reader.querySelector('[data-waterfall-comments-slot]');
     var item = candidateById(readerCandidateId);
-    if (slot && item) slot.innerHTML = commentsMarkup(item);
+    if (!slot || !item) return;
+    var markup = commentsMarkup(item);
+    if (slot.innerHTML !== markup) slot.innerHTML = markup;
   }
   function postSourceSelection() {
     if (!state || !window.AIPhoneHome || typeof window.AIPhoneHome.postAction !== 'function') return;
@@ -3559,7 +3568,6 @@ const WATERFALL_JS: string = `
     mode = 'reader_closing';
     if (overlay) overlay.classList.remove('reading');
     var completedReturnMode = readerReturnMode;
-    if (directDiscovery && completedReturnMode !== 'collection') setFullscreen(false);
     if (playerCleanupTimer !== null) clearTimeout(playerCleanupTimer);
     playerCleanupTimer = setTimeout(function () {
       playerCleanupTimer = null;
@@ -3583,6 +3591,11 @@ const WATERFALL_JS: string = `
       if (reader.style) reader.style.pointerEvents = '';
       readerCloseTimer = null;
       mode = completedReturnMode;
+      if (directDiscovery && completedReturnMode !== 'collection') {
+        setTimeout(function () {
+          if (mode === completedReturnMode) setFullscreen(false);
+        }, 0);
+      }
       if (completedReturnMode === 'collection') {
         if (pendingPayload) {
           mergePayload(pendingPayload);
@@ -3603,7 +3616,7 @@ const WATERFALL_JS: string = `
         }
       }
       if (completedReturnMode === 'discovering') {
-        syncVideoVisibilityObserver(true);
+        syncVideoVisibilityObserver();
         resumeCurrentBehavior();
       }
       if (completedCandidateId && completedDurationMs >= 8000) {
@@ -4130,10 +4143,11 @@ const WATERFALL_JS: string = `
     var item = candidateById(candidateId);
     var oldNode = waterfallCardNodeById['$' + text(candidateId)];
     if (!item || !oldNode || typeof oldNode.insertAdjacentHTML !== 'function') return false;
+    var html = renderCandidate(item);
+    if (renderedCards[renderedIndex].html === html) return true;
     if (activeInlineCard === oldNode || text(candidateId) === activeInlineCandidateId) {
       destroyInlinePlayer(false);
     }
-    var html = renderCandidate(item);
     oldNode.insertAdjacentHTML('afterend', html);
     var replacement = oldNode.nextElementSibling;
     if (!replacement || text(replacement.getAttribute('data-waterfall-id')) !== text(candidateId)) return false;
@@ -4757,7 +4771,7 @@ const WATERFALL_JS: string = `
     overlay.classList.remove('closing');
     overlay.classList.add('active');
     setSearchShellHidden(true);
-    setFullscreen(true);
+    setFullscreen(true, true);
     render();
     realignDiscoveryAfterReveal();
     resumeCurrentBehavior();

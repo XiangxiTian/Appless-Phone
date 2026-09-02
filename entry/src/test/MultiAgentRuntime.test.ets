@@ -892,6 +892,26 @@ function publishTurnTerminal(
 
 export default function multiAgentRuntimeTest() {
   describe('multiAgentRuntime', () => {
+    it('observes only the first Leader tool selection without adding a planning round', 0, async () => {
+      const bus = new CountingBus();
+      const options = runtimeOptions(bus, new HotelRoundPlanner(), new ControlledWriter());
+      const selected: string[][] = [];
+      const generations: number[] = [];
+      options.firstDecisionObserver = (requestedCapabilityIds: string[], hostGeneration: number): void => {
+        selected.push(requestedCapabilityIds.slice());
+        generations.push(hostGeneration);
+      };
+      const runtime = new MultiAgentRuntime(options);
+
+      const outcome = await runtime.submit('查酒店', { text: '' }, 42) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('success');
+      expect(selected.length).assertEqual(1);
+      expect(selected[0][0]).assertEqual('hotel.search');
+      expect(generations[0]).assertEqual(42);
+      runtime.dispose();
+    });
+
     it('uses stable privacy tokens for the actual C19 click identity and rejects invalid action surfaces', 0, () => {
       const formatter = new MultiAgentEvidenceFormatter(32);
       const payload: ActionRunPayload = {

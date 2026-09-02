@@ -47,7 +47,8 @@ export function waterfallLayerFullscreen(rendererFullscreen: boolean, popupVisib
 
 class HtmlHomeActionBridge {
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
-  onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
+  onWaterfallFullscreenChange: (active: boolean, composerHidden: boolean) => void =
+    (_active: boolean, _composerHidden: boolean) => {};
   onWaterfallSourceOpen: (url: string) => void = (_url: string) => {};
   onWaterfallShare: (raw: string) => void = (_raw: string) => {};
 
@@ -77,7 +78,7 @@ class HtmlHomeActionBridge {
   }
 
   setWaterfallFullscreen(raw: string): void {
-    this.onWaterfallFullscreenChange(raw === 'true');
+    this.onWaterfallFullscreenChange(raw !== 'false', raw === 'true');
   }
 
   openWaterfallSource(raw: string): void {
@@ -111,6 +112,7 @@ export struct HtmlHomeSurfaceView {
   @Prop @Watch('onDeepSearchProgressChange') deepSearchProgressJson: string = '';
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
+  onWaterfallComposerChange: (hidden: boolean) => void = (_hidden: boolean) => {};
   onCurrentHtmlReady: () => void = () => {};
   private controller: webview.WebviewController = new webview.WebviewController();
   private popupController: webview.WebviewController = new webview.WebviewController();
@@ -136,6 +138,7 @@ export struct HtmlHomeSurfaceView {
   private conversationStreamPushInFlight: boolean = false;
   private appliedConversationStreamTick: number = -1;
   private rendererWaterfallFullscreen: boolean = false;
+  private rendererWaterfallComposerHidden: boolean = false;
   private waterfallShareBusy: boolean = false;
   @State private popupVisible: boolean = false;
   @State private popupTitle: string = '支付确认';
@@ -145,8 +148,9 @@ export struct HtmlHomeSurfaceView {
     this.bridge.onAction = (action: A2uiAction): void => {
       this.onAction(action);
     };
-    this.bridge.onWaterfallFullscreenChange = (active: boolean): void => {
+    this.bridge.onWaterfallFullscreenChange = (active: boolean, composerHidden: boolean): void => {
       this.rendererWaterfallFullscreen = active;
+      this.rendererWaterfallComposerHidden = composerHidden;
       this.publishWaterfallFullscreen();
     };
     this.bridge.onWaterfallSourceOpen = (url: string): void => {
@@ -193,6 +197,7 @@ export struct HtmlHomeSurfaceView {
   private publishWaterfallFullscreen(): void {
     this.onWaterfallFullscreenChange(waterfallLayerFullscreen(
       this.rendererWaterfallFullscreen, this.popupVisible));
+    this.onWaterfallComposerChange(this.rendererWaterfallComposerHidden || this.popupVisible);
   }
 
   private async openExternalWaterfallSource(url: string): Promise<void> {
@@ -219,6 +224,7 @@ export struct HtmlHomeSurfaceView {
 
   aboutToDisappear(): void {
     this.rendererWaterfallFullscreen = false;
+    this.rendererWaterfallComposerHidden = false;
     this.popupVisible = false;
     this.publishWaterfallFullscreen();
   }

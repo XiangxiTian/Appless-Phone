@@ -20,6 +20,7 @@ import {
 export const WATERFALL_PREFERENCES_STORE_NAME: string = 'aiphone_waterfall_preferences';
 export const WATERFALL_PREFERENCES_KEY: string = 'profile.v1';
 export const WATERFALL_CARDS_KEY: string = 'cards.v1';
+export const WATERFALL_TAGS_KEY: string = 'tags.v1';
 const THIRTY_DAYS_MS: number = 30 * 24 * 60 * 60 * 1000;
 const MAX_WEIGHT: number = 20;
 const MAX_EVIDENCE: number = 500;
@@ -69,8 +70,16 @@ interface StoredWaterfallCards {
   records: WaterfallCardRecord[];
 }
 
+export interface WaterfallPreferenceTagState {
+  version: 1;
+  suggestions: string[];
+  lastEvidenceAt: number;
+  dirty: boolean;
+}
+
 export interface WaterfallBehaviorEvidence {
   candidateId: string;
+  title?: string;
   topics: string[];
   source: string;
   format: WaterfallFormat;
@@ -128,6 +137,7 @@ function validRule(value: WaterfallExplicitPreference): boolean {
 
 function validEvidence(value: WaterfallBehaviorEvidence): boolean {
   return value !== null && typeof value.candidateId === 'string' && value.candidateId.length > 0 &&
+    (value.title === undefined || (typeof value.title === 'string' && value.title.length <= 80)) &&
     Array.isArray(value.topics) && typeof value.source === 'string' &&
     (value.format === 'landscape_video' || value.format === 'portrait_video' ||
       value.format === 'image_text' || value.format === 'text') &&
@@ -191,6 +201,7 @@ function copyRule(value: WaterfallExplicitPreference): WaterfallExplicitPreferen
 function copyEvidence(value: WaterfallBehaviorEvidence): WaterfallBehaviorEvidence {
   return {
     candidateId: value.candidateId,
+    title: value.title,
     topics: value.topics.slice(),
     source: value.source,
     format: value.format,
@@ -349,6 +360,32 @@ function parsedCardRecords(raw: string): WaterfallCardRecord[] {
   }
 }
 
+function emptyTagState(): WaterfallPreferenceTagState {
+  return { version: 1, suggestions: [], lastEvidenceAt: 0, dirty: true };
+}
+
+function copyTagState(value: WaterfallPreferenceTagState): WaterfallPreferenceTagState {
+  return {
+    version: 1, suggestions: value.suggestions.slice(),
+    lastEvidenceAt: value.lastEvidenceAt, dirty: value.dirty
+  };
+}
+
+function parsedTagState(raw: string): WaterfallPreferenceTagState {
+  if (raw.trim().length === 0) return emptyTagState();
+  try {
+    const value = JSON.parse(raw) as WaterfallPreferenceTagState;
+    if (value === null || value.version !== 1 || !Array.isArray(value.suggestions) ||
+      value.suggestions.length > 4 || !value.suggestions.every((tag: string): boolean =>
+        typeof tag === 'string' && tag.trim().length > 0 && tag.trim().length <= 16) ||
+      typeof value.lastEvidenceAt !== 'number' || !isFinite(value.lastEvidenceAt) || value.lastEvidenceAt < 0 ||
+      typeof value.dirty !== 'boolean') return emptyTagState();
+    return copyTagState(value);
+  } catch (_error) {
+    return emptyTagState();
+  }
+}
+
 function formatForCandidate(candidate: WaterfallCandidate): WaterfallFormat {
   return candidate.format ?? (candidate.mediaType === 'video' ? 'landscape_video' :
     (candidate.mediaType === 'image_text' ? 'image_text' : 'text'));
@@ -498,6 +535,7 @@ export class WaterfallPreferencesStore {
   private readonly store: preferences.Preferences;
   private profile: WaterfallPreferenceProfile | null = null;
   private cardRecords: WaterfallCardRecord[] | null = null;
+  private tagState: WaterfallPreferenceTagState | null = null;
 
   constructor(store: preferences.Preferences) {
     this.store = store;
@@ -530,6 +568,23 @@ export class WaterfallPreferencesStore {
       this.cardRecords = parsedCardRecords(typeof value === 'string' ? value : '');
     }
     return this.cardRecords.map(copyCardRecord);
+  }
+
+  loadTagState(): WaterfallPreferenceTagState {
+    if (this.tagState === null) {
+      const value = this.store.getSync(WATERFALL_TAGS_KEY, '');
+      this.tagState = parsedTagState(typeof value === 'string' ? value : '');
+    }
+    return copyTagState(this.tagState);
+  }
+
+  saveTagState(value: WaterfallPreferenceTagState): WaterfallPreferenceTagState {
+    this.tagState = parsedTagState(JSON.stringify(value));
+    this.store.putSync(WATERFALL_TAGS_KEY, JSON.stringify(this.tagState));
+    this.store.flush().catch((error: Error): void => {
+      console.warn('[AIPhone][WaterfallTagsFlushFailed] ' + error.message.substring(0, 160));
+    });
+    return copyTagState(this.tagState);
   }
 
   private saveCardRecords(records: WaterfallCardRecord[]): WaterfallCardRecord[] {

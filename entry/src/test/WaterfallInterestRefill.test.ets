@@ -16,6 +16,7 @@ import {
   mergeWaterfallBatchDeferredRanking,
   planWaterfallContinuation,
   planWaterfallInterestRecall,
+  removeWaterfallProfileRecallQueries,
   waterfallInterestRecallLimitForSource
 } from '@loop/agent-core';
 
@@ -138,6 +139,27 @@ export default function waterfallInterestRefillTest() {
         .map((item: WaterfallSourceState): string => item.source).join(','))
         .assertEqual('youtube,bilibili,x');
       expect(update.expansionRequest === undefined).assertTrue();
+    });
+
+    it('does not continue a restored profile query after its tag is removed', 0, () => {
+      const state = interestState([
+        source('youtube', 'loading', { kind: 'cursor', value: 'next-football' }, true)
+      ]);
+      state.sources[0].query = '足球';
+      state.sources[0].recallRoute = 'profile';
+      state.sources[0].loadMode = 'search';
+      const recalled = candidate('football', 'youtube');
+      recalled.searchQuery = '足球';
+      recalled.recallRoute = 'profile';
+      state.tail = [recalled];
+
+      const update = planWaterfallContinuation(removeWaterfallProfileRecallQueries(state, ['足球']));
+
+      expect(update.state.tail.some((item: WaterfallRankedCandidate): boolean =>
+        item.searchQuery === '足球')).assertFalse();
+      expect(update.state.sources[0].query ?? '').assertEqual('');
+      expect(update.state.sources[0].recallRoute ?? '').assertEqual('');
+      expect(update.loadRequests.some((request): boolean => request.query === '足球')).assertFalse();
     });
 
     it('requests each native continuation after interest advance reaches low inventory', 0, () => {
@@ -283,7 +305,7 @@ export default function waterfallInterestRefillTest() {
       expect(nonTwitchRequests.map((request: WaterfallInterestRecallRequest): string =>
         request.sources[0]).join(',')).assertEqual('youtube,x,reddit,zhihu,bilibili');
       expect(nonTwitchRequests.map((request: WaterfallInterestRecallRequest): string => request.query).join(','))
-        .assertEqual(',artificial intelligence,consumer technology,编程开发,科学科普');
+        .assertEqual(',artificial intelligence,consumer technology,AI,科学科普');
       expect(twitchRequests.length).assertEqual(1);
       expect(twitchRequests[0].query).assertEqual('');
       expect(twitchRequests[0].sources.join(',')).assertEqual('twitch');

@@ -63,6 +63,7 @@ import {
   parseWaterfallExpandedQuery,
   planWaterfallInterestRecall,
   rankWaterfallCandidates,
+  removeWaterfallProfileRecallQueries,
   waterfallCommentSourceSupported,
   waterfallSearchPolicyForRuntime
 } from '@loop/agent-core';
@@ -1371,6 +1372,39 @@ export default function aggregateSearchClientTest() {
       expect(requests[2].query).assertEqual('consumer technology');
     });
 
+    it('rotates query-capable recall slots across explicit history and exploration', 0, () => {
+      const profile = emptyPreferenceProfile();
+      profile.explicitRules = [{ dimension: 'topic', key: '足球', effect: 'boost' }];
+      profile.topicWeights = [{ key: '人工智能', weight: 8, updatedAt: WATERFALL_NOW_MS }];
+      const routes: string[] = [];
+      const queries: string[] = [];
+
+      for (let offset = 0; offset < 20; offset++) {
+        const request = planWaterfallInterestRecall(profile, [], ['reddit'], 0, offset)[0];
+        routes.push(request.route);
+        queries.push(request.query);
+      }
+
+      expect(routes.filter((route: string): boolean => route === 'profile').length).assertEqual(7);
+      expect(routes.filter((route: string): boolean => route === 'similar').length).assertEqual(5);
+      expect(routes.filter((route: string): boolean => route === 'explore').length).assertEqual(8);
+      expect(queries.filter((query: string): boolean => query === '足球').length).assertEqual(7);
+      expect(queries.filter((query: string): boolean => query === '人工智能').length).assertEqual(5);
+    });
+
+    it('reuses one immediate preference query across every enabled source', 0, () => {
+      const sources = ['youtube', 'bilibili', 'twitch', 'github', 'steam', 'globalnews'];
+      const requests = planWaterfallInterestRecall(
+        emptyPreferenceProfile(), [], sources, 0, 0, '足球'
+      );
+
+      expect(requests.length).assertEqual(sources.length);
+      expect(requests.map((request: WaterfallInterestRecallRequest): string => request.sources[0]).join(','))
+        .assertEqual(sources.join(','));
+      expect(requests.every((request: WaterfallInterestRecallRequest): boolean =>
+        request.route === 'profile' && request.query === '足球')).assertTrue();
+    });
+
     it('uses provider discovery for Twitch plus technology exploration for an empty profile', 0, () => {
       const requests: WaterfallInterestRecallRequest[] =
         planWaterfallInterestRecall(emptyPreferenceProfile(), [], ['youtube', 'x', 'twitch']);
@@ -1537,6 +1571,68 @@ export default function aggregateSearchClientTest() {
       expect(finalized.reserve?.length).assertEqual(40);
       expect(waterfallInventoryIds(finalized).length).assertEqual(60);
       expect(active.some((candidate: WaterfallRankedCandidate): boolean => candidate.source === 'twitch')).assertTrue();
+    });
+
+    it('mixes explicit history and exploration recall into the active interest window', 0, () => {
+      const source = sourceState('x', null, 'exhausted');
+      source.query = '足球';
+      source.recallRoute = 'profile';
+      const candidates: WaterfallRankedCandidate[] = [];
+      for (let index = 0; index < 30; index += 1) {
+        const profile = rankedWaterfallCandidate('profile-' + index.toString(), 'x',
+          '足球内容 ' + index.toString(), index);
+        profile.recallRoute = 'profile';
+        profile.searchQuery = '足球';
+        candidates.push(profile);
+        const similar = rankedWaterfallCandidate('similar-' + index.toString(), 'x',
+          '历史兴趣 ' + index.toString(), 100 + index);
+        similar.recallRoute = 'similar';
+        candidates.push(similar);
+        const explore = rankedWaterfallCandidate('explore-' + index.toString(), 'x',
+          '探索内容 ' + index.toString(), 200 + index);
+        explore.recallRoute = 'explore';
+        candidates.push(explore);
+      }
+      const state = feedState(null, [], candidates, [source]);
+      state.mode = 'interest';
+      state.query = '';
+      state.profile = emptyPreferenceProfile();
+      state.profile.explicitRules = [{ dimension: 'topic', key: '足球', effect: 'boost' }];
+
+      const finalized = finalizeInterestWaterfallRecallRanking(state, WATERFALL_NOW_MS);
+      const active = (finalized.current === null ? [] : [finalized.current])
+        .concat(finalized.stable, finalized.tail);
+      expect(active.length).assertEqual(20);
+      expect(active.filter((candidate: WaterfallRankedCandidate): boolean =>
+        candidate.recallRoute === 'profile').length).assertEqual(7);
+      expect(active.filter((candidate: WaterfallRankedCandidate): boolean =>
+        candidate.recallRoute === 'similar').length).assertEqual(5);
+      expect(active.filter((candidate: WaterfallRankedCandidate): boolean =>
+        candidate.recallRoute === 'explore').length).assertEqual(8);
+      for (let index = 1; index < active.length; index += 1) {
+        expect(active[index].recallRoute === 'profile' && active[index - 1].recallRoute === 'profile').assertFalse();
+      }
+    });
+
+    it('drops only the restored topic recall from the unshown backlog', 0, () => {
+      const exact = rankedWaterfallCandidate('football-profile', 'x', '足球新闻', 0);
+      exact.recallRoute = 'profile';
+      exact.searchQuery = '足球';
+      const organic = rankedWaterfallCandidate('football-organic', 'x', '足球新闻', 1);
+      organic.recallRoute = 'explore';
+      organic.searchQuery = '足球';
+      const other = rankedWaterfallCandidate('kpop-profile', 'x', 'Kpop 新闻', 2);
+      other.recallRoute = 'profile';
+      other.searchQuery = 'Kpop';
+      const state = feedState(exact, [exact], [exact, organic, other], [sourceState('x', null)]);
+      state.reserve = [exact];
+
+      const restored = removeWaterfallProfileRecallQueries(state, ['足球']);
+      expect(restored.current?.id).assertEqual('football-profile');
+      expect(restored.stable.length).assertEqual(1);
+      expect(restored.tail.map((candidate: WaterfallRankedCandidate): string => candidate.id).join(','))
+        .assertEqual('football-organic,kpop-profile');
+      expect(restored.reserve?.length).assertEqual(0);
     });
 
     it('keeps promoting interest reserve without starting search loads', 0, () => {

@@ -8,10 +8,13 @@ import {
   WaterfallCandidate,
   WaterfallColdStartTopic,
   WaterfallFeedState,
+  WaterfallInterestRecallRequest,
   WaterfallPool,
+  WaterfallPoolAcceptedPage,
   WaterfallPoolAcceptedEvent,
   WaterfallPoolAvailabilityWait,
   WaterfallPoolTakeCoordinatorCallbacks,
+  WaterfallPoolTopicSupplementResult,
   WaterfallScheduledDiscoveryAdapter,
   WaterfallScheduledDiscoveryListener,
   WaterfallPreferenceSnapshot,
@@ -21,6 +24,13 @@ import {
   WaterfallSourcePoolEntry,
   WaterfallSourceSubscription
 } from '@loop/agent-core';
+
+interface WaterfallIdleOnlyPool {
+  supplementTopic(
+    topic: WaterfallColdStartTopic,
+    skipBusyAdapters: boolean
+  ): Promise<WaterfallPoolTopicSupplementResult>;
+}
 
 function poolTestCandidate(id: string, source: 'youtube' | 'bilibili' = 'youtube'): WaterfallCandidate {
   return {
@@ -364,6 +374,116 @@ export default function waterfallPoolTest() {
       expect(pool.searchQueueSnapshots()[0].running).assertFalse();
     });
 
+    it('runs an explicit preference recall before queued background searches', 0, async () => {
+      const order: string[] = [];
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        async (query, _continuation, _limit) => {
+          order.push(query);
+          await new Promise<void>((resolve): void => {
+            setTimeout(resolve, 5);
+          });
+          return poolTestBatch('youtube', [query]);
+        }
+      );
+      const pool = new WaterfallPool({ search: [search], discovery: [], scheduledDiscovery: [] });
+      const background: WaterfallColdStartTopic = {
+        id: 'background', domesticQuery: '后台主题', globalQuery: 'background topic'
+      };
+      const request: WaterfallInterestRecallRequest = {
+        route: 'profile', query: '足球', sources: ['youtube'], weight: 1, continuation: null
+      };
+
+      await Promise.all([
+        pool.supplement('running'),
+        pool.supplementTopic(background),
+        pool.supplementRecallRequests([request], true)
+      ]);
+
+      expect(order.join(',')).assertEqual('running,足球,后台主题');
+    });
+
+    it('does not queue periodic topics behind a busy adapter', 0, async () => {
+      const order: string[] = [];
+      let releaseRunning: () => void = (): void => {};
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        async (query, _continuation, _limit) => {
+          order.push(query);
+          if (query === 'running') {
+            await new Promise<void>((resolve): void => {
+              releaseRunning = resolve;
+            });
+          }
+          return poolTestBatch('youtube', [query]);
+        }
+      );
+      const pool = new WaterfallPool({ search: [search], discovery: [], scheduledDiscovery: [] });
+      const background: WaterfallColdStartTopic = {
+        id: 'background', domesticQuery: '后台主题', globalQuery: 'background topic'
+      };
+      const idleOnlyPool = pool as Object as WaterfallIdleOnlyPool;
+
+      const running = pool.supplement('running');
+      await new Promise<void>((resolve): void => {
+        setTimeout(resolve, 0);
+      });
+      const periodic = idleOnlyPool.supplementTopic(background, true);
+      await new Promise<void>((resolve): void => {
+        setTimeout(resolve, 0);
+      });
+      const pendingWhileBusy = pool.searchQueueSnapshots()[0].pendingCount;
+      releaseRunning();
+      await Promise.all([running, periodic]);
+
+      expect(pendingWhileBusy).assertEqual(0);
+      expect(order.join(',')).assertEqual('running');
+    });
+
+    it('stamps a preference recall and fetches only its first page', 0, async () => {
+      let calls = 0;
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        (query, _continuation, _limit) => {
+          calls++;
+          return Promise.resolve(poolTestBatch('youtube', [query], 'next'));
+        }
+      );
+      const pool = new WaterfallPool({ search: [search], discovery: [], scheduledDiscovery: [] });
+      const request: WaterfallInterestRecallRequest = {
+        route: 'profile', query: '足球', sources: ['youtube'], weight: 1, continuation: null
+      };
+
+      await pool.supplementRecallRequests([request], true);
+      const entry = requiredFirstPoolEntry(pool, 'youtube');
+
+      expect(calls).assertEqual(1);
+      expect(entry.candidate.recallRoute).assertEqual('profile');
+      expect(entry.candidate.searchQuery).assertEqual('足球');
+    });
+
+    it('drops a restored preference result that arrives after cancellation', 0, async () => {
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        async (query, _continuation, _limit) => {
+          await new Promise<void>((resolve): void => {
+            setTimeout(resolve, 5);
+          });
+          return poolTestBatch('youtube', [query]);
+        }
+      );
+      const pool = new WaterfallPool({ search: [search], discovery: [], scheduledDiscovery: [] });
+      const request: WaterfallInterestRecallRequest = {
+        route: 'profile', query: '足球', sources: ['youtube'], weight: 1, continuation: null
+      };
+
+      const pending: Promise<WaterfallPoolAcceptedPage[]> = pool.supplementRecallRequests([request], true);
+      pool.removeProfileRecallQueries(['足球']);
+      await pending;
+
+      expect(pool.containerFor('youtube')?.size).assertEqual(0);
+    });
+
     it('runs different adapter queues concurrently', 0, async () => {
       let active = 0;
       let maximumActive = 0;
@@ -501,6 +621,24 @@ export default function waterfallPoolTest() {
       pool.settleAvailabilityWaiters();
 
       expect(await wait.promise).assertFalse();
+    });
+
+    it('does not settle an exact preference wait with unrelated pooled content', 0, async () => {
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        (query, _continuation, _limit) => Promise.resolve(poolTestBatch('youtube', [query]))
+      );
+      const pool = new WaterfallPool({ search: [search], discovery: [], scheduledDiscovery: [] });
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: []
+      };
+      await pool.supplement('普通内容');
+      const wait = pool.waitForAvailable(profile, ['youtube'], '足球');
+
+      pool.settleAvailabilityWaiters();
+
+      expect(await wait.promise).assertFalse();
+      expect(pool.containerFor('youtube')?.size).assertEqual(1);
     });
 
     it('returns an empty result after three failed Worker supply rounds', 0, async () => {

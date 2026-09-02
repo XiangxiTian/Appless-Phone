@@ -134,6 +134,10 @@ function poolCandidateFormat(candidate: WaterfallCandidate): string {
     (candidate.mediaType === 'image_text' ? 'image_text' : 'text'));
 }
 
+function profileRecallQuery(candidate: WaterfallCandidate): string {
+  return candidate.recallRoute === 'profile' ? (candidate.searchQuery ?? '').trim().toLowerCase() : '';
+}
+
 function scoreOutranks(
   next: WaterfallCandidatePreferenceScore,
   nextInsertedAt: number,
@@ -247,13 +251,28 @@ export class WaterfallSourcePoolContainer {
     return this.orderedEntries.map((entry: WaterfallSourcePoolEntry): WaterfallSourcePoolEntry => copyEntry(entry));
   }
 
-  hasForProfile(profile: WaterfallPreferenceSnapshot): boolean {
+  removeProfileRecallQueries(normalizedQueries: string[]): number {
+    let removed = 0;
+    for (let index = this.orderedEntries.length - 1; index >= 0; index -= 1) {
+      const entry = this.orderedEntries[index];
+      const query = (entry.candidate.searchQuery ?? '').trim().toLowerCase();
+      if (entry.candidate.recallRoute !== 'profile' || normalizedQueries.indexOf(query) < 0) continue;
+      this.orderedEntries.splice(index, 1);
+      this.entriesByKey.delete(entry.key);
+      removed += 1;
+    }
+    return removed;
+  }
+
+  hasForProfile(profile: WaterfallPreferenceSnapshot, preferredQuery: string = ''): boolean {
+    const preferred = preferredQuery.trim().toLowerCase();
     for (let index = 0; index < this.orderedEntries.length; index += 1) {
       const entry = this.orderedEntries[index];
+      if (preferred.length > 0 && profileRecallQuery(entry.candidate) !== preferred) continue;
       const score = scoreWaterfallPreferenceText(
         entry.candidate.source,
         poolCandidateFormat(entry.candidate),
-        entry.candidate.title,
+        entry.candidate.title + ' ' + profileRecallQuery(entry.candidate),
         profile
       );
       if (!score.blocked) return true;
@@ -262,11 +281,17 @@ export class WaterfallSourcePoolContainer {
   }
 
   /** Selects and removes one item using shared preference semantics and title-only topic matching. */
-  takeForProfile(profile: WaterfallPreferenceSnapshot): WaterfallSourcePoolEntry | null {
-    return this.takeForProfileMeasured(profile).entry;
+  takeForProfile(
+    profile: WaterfallPreferenceSnapshot,
+    preferredQuery: string = ''
+  ): WaterfallSourcePoolEntry | null {
+    return this.takeForProfileMeasured(profile, preferredQuery).entry;
   }
 
-  takeForProfileMeasured(profile: WaterfallPreferenceSnapshot): WaterfallSourcePoolTakeProfileResult {
+  takeForProfileMeasured(
+    profile: WaterfallPreferenceSnapshot,
+    preferredQuery: string = ''
+  ): WaterfallSourcePoolTakeProfileResult {
     const totalStartedAtMs = Date.now();
     const sizeBefore = this.orderedEntries.length;
     let scannedCount = 0;
@@ -274,13 +299,15 @@ export class WaterfallSourcePoolContainer {
     let selected: WaterfallSourcePoolEntry | null = null;
     let selectedScore: WaterfallCandidatePreferenceScore | null = null;
     let selectedIndex: number = -1;
+    const preferred = preferredQuery.trim().toLowerCase();
     const scanStartedAtMs = Date.now();
     this.orderedEntries.forEach((entry: WaterfallSourcePoolEntry, index: number): void => {
       scannedCount += 1;
+      if (preferred.length > 0 && profileRecallQuery(entry.candidate) !== preferred) return;
       const score = scoreWaterfallPreferenceText(
         entry.candidate.source,
         poolCandidateFormat(entry.candidate),
-        entry.candidate.title,
+        entry.candidate.title + ' ' + profileRecallQuery(entry.candidate),
         profile
       );
       if (score.blocked) {

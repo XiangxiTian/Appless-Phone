@@ -3,6 +3,7 @@ import {
   AggregateSearchPolicy,
   aiLogInfo,
   WaterfallColdStartTopic,
+  WaterfallInterestRecallRequest,
   WaterfallPreferenceSnapshot,
   WaterfallSourcePoolEntry
 } from '@loop/agent-core';
@@ -14,6 +15,9 @@ export interface WaterfallPoolWorkerCommand {
   composioConfigJson?: string;
   searchPolicy?: AggregateSearchPolicy;
   topic?: WaterfallColdStartTopic;
+  recallRequests?: WaterfallInterestRecallRequest[];
+  preferredQuery?: string;
+  removedProfileQueries?: string[];
   profile?: WaterfallPreferenceSnapshot;
   enabledSources?: string[];
   enabledAdapterIds?: string[];
@@ -118,10 +122,16 @@ export class WaterfallPoolWorkerClient {
     }
   }
 
+  removeProfileRecallQueries(queries: string[]): void {
+    this.post({ type: 'remove_profile_queries', removedProfileQueries: queries.slice() });
+  }
+
   takeOrWait(
     profile: WaterfallPreferenceSnapshot,
     enabledSources: string[],
-    limit: number
+    limit: number,
+    recallRequests: WaterfallInterestRecallRequest[] = [],
+    preferredQuery: string = ''
   ): WaterfallPoolWorkerTake {
     const requestId = this.nextRequestId++;
     const dispatchedAtMs = Date.now();
@@ -152,7 +162,9 @@ export class WaterfallPoolWorkerClient {
         requestId,
         profile,
         enabledSources: enabledSources.slice(),
-        limit
+        limit,
+        recallRequests,
+        preferredQuery
       });
     } catch (error) {
       this.pendingTakes.delete(requestId);

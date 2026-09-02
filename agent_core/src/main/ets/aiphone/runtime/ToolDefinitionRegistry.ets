@@ -7,6 +7,8 @@ import {
 } from './ToolDefinitionTypes';
 import { aggregateSearchSearchSourceIds } from './AggregateSearchSourceRegistry';
 
+export const WATERFALL_PREFERENCE_TOOL_ID: string = 'waterfall.preference.adjust';
+
 const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     toolId: 'travel.search',
@@ -667,6 +669,18 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     outputSchema: 'genericToolResults',
     a2uiComponent: 'GenericToolResults',
     actions: ['web.monitor.detail', 'web.monitor.checks', 'web.monitor.run', 'web.monitor.pause', 'web.monitor.resume', 'web.monitor.delete']
+  },
+  {
+    toolId: WATERFALL_PREFERENCE_TOOL_ID,
+    domain: 'waterfall',
+    intent: WATERFALL_PREFERENCE_TOOL_ID,
+    riskLevel: 'read',
+    backendPriority: ['local_adapter'],
+    authModes: ['none'],
+    inputSchema: 'waterfallPreferenceAdjustment',
+    outputSchema: 'genericToolResults',
+    a2uiComponent: 'GenericToolResults',
+    actions: []
   }
 ];
 
@@ -754,7 +768,14 @@ export function toolPlanningDescriptionForToolId(
   }
   let description = definition.intent + ' risk=' + definition.riskLevel +
     ' inputSchema=' + definition.inputSchema + ' outputSchema=' + definition.outputSchema;
-  if (definition.toolId === 'travel.search') {
+  if (definition.toolId === WATERFALL_PREFERENCE_TOOL_ID) {
+    description += '. Available only from the Waterfall conversation. Use when the user asks to see more or less ' +
+      'of a topic, source, or format, restore one preference to normal, undo the last preference change, or reset ' +
+      'explicit Waterfall preferences. This changes recommendation weight only; it is never keyword search and ' +
+      'must not retrieve content. Input must contain operation adjust, undo, or reset and preferences. ' +
+      'adjust requires 1-8 items shaped as {dimension: topic|source|format, key, state: ' +
+      'boost|downweight|neutral}; undo and reset require an empty preferences array.';
+  } else if (definition.toolId === 'travel.search') {
     description += '. Use for general train/flight travel options. Before selecting execute, the query must contain an exact departure date, origin, and destination grounded in the current message or standard conversation context. If any is missing or ambiguous, select clarify and ask the user in your own words instead of calling the tool. Do not use for ferry or boat tickets; use dynamic.search for those unsupported transport domains.';
   } else if (definition.toolId === 'time') {
     description += '. Use only when the current device date or time is explicitly required. Input must be {}. It reads the device clock and never calls a network provider.';

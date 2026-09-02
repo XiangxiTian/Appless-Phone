@@ -483,6 +483,7 @@ export class MultiAgentRuntime {
   private readonly actionTimeoutMs: number;
   private readonly surfaceTurnActivator: ((turnId: string, hostGeneration: number) => void) | null;
   private readonly turnGenerationObserver: ((turnId: string, hostGeneration: number) => void) | null;
+  private readonly firstDecisionObserver: ((requestedCapabilityIds: string[], hostGeneration: number) => void) | null;
   private readonly directActionAdmission: ((action: A2uiAction, context: ActionExecutionContext) => boolean) | null;
   private readonly memorySelectionObserver: ((
     selection: MemorySelectionPayload,
@@ -516,6 +517,8 @@ export class MultiAgentRuntime {
       null : options.surfaceTurnActivator;
     this.turnGenerationObserver = options.turnGenerationObserver === undefined ?
       null : options.turnGenerationObserver;
+    this.firstDecisionObserver = options.firstDecisionObserver === undefined ?
+      null : options.firstDecisionObserver;
     this.directActionAdmission = options.directActionAdmission === undefined ?
       null : options.directActionAdmission;
     this.memorySelectionObserver = options.memorySelectionObserver === undefined ?
@@ -1037,7 +1040,7 @@ export class MultiAgentRuntime {
     conversationId: string,
     turnId: string,
     taskId: string,
-    _requestedCapabilityIds: string[],
+    requestedCapabilityIds: string[],
     personaId: string,
     skillId: string
   ): void {
@@ -1048,6 +1051,11 @@ export class MultiAgentRuntime {
       return;
     }
     this.acceptPersonaAuthority(pending, personaId, skillId);
+    if (this.firstDecisionObserver !== null) {
+      try {
+        this.firstDecisionObserver(requestedCapabilityIds.slice(), pending.hostGeneration);
+      } catch (_error) {}
+    }
   }
 
   private trySettleTurn(pending: PendingTurn): void {

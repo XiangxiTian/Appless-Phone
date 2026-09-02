@@ -122,6 +122,15 @@ const ANSWER_DECISION: string = '{"personaId":"default_companion","skillId":"",'
   '"uiIntent":{"purpose":"conversation",' +
   '"preferredDensity":"comfortable","requiredSections":[]},"answer":"你好",' +
   '"reasonCode":"greeting"}';
+const WATERFALL_PREFERENCE_DECISION: string = '{"personaId":"default_companion","skillId":"",' +
+  '"requestedCapabilityIds":["waterfall.preference.adjust"],"roundAction":"execute",' +
+  '"continuationMode":"complete","dataTasks":[{"localId":"preference-adjust",' +
+  '"goal":"增加足球内容推荐权重","allowedToolIds":["waterfall.preference.adjust"],' +
+  '"toolId":"waterfall.preference.adjust","input":{"operation":"adjust",' +
+  '"summary":"足球内容会多一些","preferences":[' +
+  '{"dimension":"topic","key":"足球","state":"boost"}]},"required":true}],' +
+  '"uiIntent":{"purpose":"waterfall.preference.adjust","preferredDensity":"comfortable",' +
+  '"requiredSections":[]},"reasonCode":"waterfall_preference"}';
 const MANUAL_RECALL_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
   '"requestedCapabilityIds":[],"roundAction":"execute","continuationMode":"complete","dataTasks":[],' +
   '"uiIntent":{"purpose":"memory.recall","preferredDensity":"comfortable","requiredSections":[]},' +
@@ -952,13 +961,15 @@ class GatedForgetMemoryRuntime extends RecordingPhoneLocalMemoryRuntime {
 class GatedModel implements LocalModel {
   readonly started: TestGate = new TestGate();
   readonly release: TestGate = new TestGate();
+  readonly systemPrompts: string[] = [];
   private readonly output: string;
 
   constructor(output: string) {
     this.output = output;
   }
 
-  async complete(_prompt: string): Promise<string> {
+  async complete(_prompt: string, _conversation?: ConversationContext, systemPrompt?: string): Promise<string> {
+    this.systemPrompts.push(systemPrompt === undefined ? '' : systemPrompt);
     this.started.open();
     await this.release.promise;
     return this.output;
@@ -1916,6 +1927,65 @@ export default function multiAgentCanaryRuntimeTest() {
 
       expect(outcome.status).assertEqual('success');
       expect(outcome.message).assertEqual('你好');
+      runtime.dispose();
+    });
+
+    it('exposes and observes the preference tool only for Waterfall submissions', 0, async () => {
+      const homeModel = new QueueModel([ANSWER_DECISION]);
+      const homeOptions = canaryOptions(
+        homeModel, new RecordingGenericExecutor(), new RecordingOpener(), [], []
+      );
+      homeOptions.focusedRelease = true;
+      const homeRuntime = new MultiAgentCanaryRuntime(homeOptions);
+      await homeRuntime.submit('你好', { text: '' });
+      expect(homeModel.systemPrompts[0].indexOf('waterfall.preference.adjust')).assertEqual(-1);
+      homeRuntime.dispose();
+
+      const waterfallModel = new QueueModel([WATERFALL_PREFERENCE_DECISION]);
+      const executor = new RecordingGenericExecutor();
+      const selected: string[][] = [];
+      const waterfallOptions = canaryOptions(
+        waterfallModel, executor, new RecordingOpener(), [], []
+      );
+      waterfallOptions.focusedRelease = true;
+      waterfallOptions.onToolSelected = (toolIds: string[], _runtimeGeneration: number): void => {
+        selected.push(toolIds.slice());
+      };
+      const waterfallRuntime = new MultiAgentCanaryRuntime(waterfallOptions);
+
+      const outcome = await waterfallRuntime.submit(
+        '我想看多点足球相关的内容', { text: '' }, 0, 'waterfall'
+      ) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('success');
+      expect(waterfallModel.systemPrompts[0].indexOf('waterfall.preference.adjust') >= 0).assertTrue();
+      expect(selected.length).assertEqual(1);
+      expect(selected[0][0]).assertEqual('waterfall.preference.adjust');
+      expect(executor.tasks[0].toolId).assertEqual('waterfall.preference.adjust');
+      waterfallRuntime.dispose();
+    });
+
+    it('keeps the Waterfall tool available until asynchronous planning starts', 0, async () => {
+      const model = new GatedModel(WATERFALL_PREFERENCE_DECISION);
+      const executor = new RecordingGenericExecutor();
+      const options = canaryOptions(model, executor, new RecordingOpener(), [], []);
+      options.focusedRelease = true;
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const pending = runtime.submit(
+        '多给我推荐点足球内容', { text: '' }, 0, 'waterfall'
+      ) as Promise<MultiAgentSettledOutcome>;
+      await model.started.promise;
+      const exposesPreference = model.systemPrompts[0].indexOf('waterfall.preference.adjust') >= 0;
+      const requiresPreference = model.systemPrompts[0].indexOf(
+        'must execute that capability in this round') >= 0;
+      model.release.open();
+      const outcome = await pending;
+
+      expect(exposesPreference).assertTrue();
+      expect(requiresPreference).assertTrue();
+      expect(outcome.status).assertEqual('success');
+      expect(executor.tasks[0].toolId).assertEqual('waterfall.preference.adjust');
       runtime.dispose();
     });
 

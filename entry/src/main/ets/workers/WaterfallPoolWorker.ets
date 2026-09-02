@@ -8,7 +8,9 @@ import {
   coordinateWaterfallPoolTake,
   WaterfallColdStartTopic,
   WATERFALL_COLD_START_TOPICS,
+  WaterfallInterestRecallRequest,
   WaterfallPool,
+  WaterfallPoolAcceptedPage,
   WaterfallPoolAcceptedEvent,
   WaterfallPoolAvailabilityWait,
   WaterfallPoolTopicAcceptedPage,
@@ -27,6 +29,9 @@ interface WaterfallPoolWorkerCommand {
   composioConfigJson?: string;
   searchPolicy?: AggregateSearchPolicy;
   topic?: WaterfallColdStartTopic;
+  recallRequests?: WaterfallInterestRecallRequest[];
+  preferredQuery?: string;
+  removedProfileQueries?: string[];
   profile?: WaterfallPreferenceSnapshot;
   enabledSources?: string[];
   enabledAdapterIds?: string[];
@@ -77,7 +82,7 @@ function requirePool(): WaterfallPool {
   return pool;
 }
 
-function enqueueNextTopic(): Promise<WaterfallPoolTopicSupplementResult> {
+function enqueueNextTopic(skipBusyAdapters: boolean = false): Promise<WaterfallPoolTopicSupplementResult> {
   if (WATERFALL_COLD_START_TOPICS.length === 0) {
     const empty: WaterfallPoolTopicSupplementResult = { topicId: '', results: [] };
     return Promise.resolve(empty);
@@ -85,7 +90,7 @@ function enqueueNextTopic(): Promise<WaterfallPoolTopicSupplementResult> {
   const runtime = requirePool();
   const index = coldStartIndex % WATERFALL_COLD_START_TOPICS.length;
   coldStartIndex = (index + 1) % WATERFALL_COLD_START_TOPICS.length;
-  return runtime.supplementTopic(WATERFALL_COLD_START_TOPICS[index]);
+  return runtime.supplementTopic(WATERFALL_COLD_START_TOPICS[index], skipBusyAdapters);
 }
 
 function lowWatermarkRetryDelayMs(): number {
@@ -105,7 +110,7 @@ async function runLowWatermarkTopic(): Promise<void> {
   lowWatermarkTopicRunning = true;
   let inserted = 0;
   try {
-    const result = await enqueueNextTopic();
+    const result = await enqueueNextTopic(true);
     result.results.forEach((page: WaterfallPoolTopicAcceptedPage): void => {
       inserted += page.accepted.insert.inserted;
     });
@@ -262,6 +267,44 @@ async function takeOrWait(command: WaterfallPoolWorkerCommand): Promise<void> {
       postTakeResult(requestId, [], workerReceivedAtMs, 0, 0, 0);
       return;
     }
+    const preferredQuery = command.preferredQuery ?? '';
+    const recallRequests = command.recallRequests ?? [];
+    const recallPromise: Promise<WaterfallPoolAcceptedPage[]> | null = recallRequests.length > 0 ?
+      runtime.supplementRecallRequests(recallRequests, preferredQuery.length > 0) : null;
+    let exactWaitMs = 0;
+    let exactTakeMs = 0;
+    let exactWaitCycles = 0;
+    if (recallPromise !== null && preferredQuery.length > 0) {
+      let takeStartedAtMs = Date.now();
+      let entries = runtime.takeUpToForProfile(profile, enabledSources, limit, preferredQuery);
+      exactTakeMs += Date.now() - takeStartedAtMs;
+      const wait = entries.length === 0 ?
+        runtime.waitForAvailable(profile, enabledSources, preferredQuery) : null;
+      if (wait !== null) {
+        pendingWaits.set(requestId, wait);
+        exactWaitCycles = 1;
+        const waitStartedAtMs = Date.now();
+        const available = await Promise.race<boolean>([
+          wait.promise,
+          recallPromise.then((_pages: WaterfallPoolAcceptedPage[]): boolean => false)
+            .catch((_error: Error): boolean => false)
+        ]);
+        exactWaitMs += Date.now() - waitStartedAtMs;
+        pendingWaits.delete(requestId);
+        if (available) {
+          takeStartedAtMs = Date.now();
+          entries = runtime.takeUpToForProfile(profile, enabledSources, limit, preferredQuery);
+          exactTakeMs += Date.now() - takeStartedAtMs;
+        } else {
+          wait.cancel();
+        }
+      }
+      if (entries.length > 0) {
+        postTakeResult(requestId, entries, workerReceivedAtMs,
+          exactWaitMs, exactTakeMs, exactWaitCycles);
+        return;
+      }
+    }
     const callbacks = new WorkerPoolTakeCallbacks(runtime, profile, enabledSources, limit, requestId);
     const result: WaterfallPoolTakeCoordinatorResult<WaterfallSourcePoolEntry> =
       await coordinateWaterfallPoolTake(callbacks, {
@@ -272,7 +315,8 @@ async function takeOrWait(command: WaterfallPoolWorkerCommand): Promise<void> {
       });
     if (result.cancelled) return;
     postTakeResult(requestId, result.entries, workerReceivedAtMs,
-      result.waitMs, result.takeMs, result.waitCycles);
+      exactWaitMs + result.waitMs, exactTakeMs + result.takeMs,
+      exactWaitCycles + result.waitCycles);
   } catch (error) {
     pendingWaits.delete(requestId);
     postTakeResult(requestId, [], workerReceivedAtMs, 0, 0, 0,
@@ -331,6 +375,10 @@ workerPort.onmessage = (event: MessageEvents): void => {
     if (command.searchPolicy !== undefined) {
       applyWaterfallPoolWorkerSearchPolicy(command.searchPolicy);
     }
+    return;
+  }
+  if (command.type === 'remove_profile_queries') {
+    requirePool().removeProfileRecallQueries(command.removedProfileQueries ?? []);
     return;
   }
   if (command.type === 'take_or_wait') {

@@ -97,7 +97,9 @@ interface TravelHubLocation {
 const NAVIGATION_CARD_SOURCE_TAG_LIMIT: number = 4;
 const NAVIGATION_CARD_MISSING_COORDINATE: string = '缺少真实坐标，不能生成导航卡片';
 const NAVIGATION_CARD_MISSING_TRAVEL_TARGET_COORDINATE: string = '缺少真实出发站或机场坐标，不能生成出行卡片';
-const NAVIGATION_CARD_STORE: string = 'navigation_card_snapshot_store';
+export const NAVIGATION_CARD_STORE: string = 'navigation_card_snapshot_store';
+/** Existing device-wide form registry. Keep the legacy name so installed desktop cards remain discoverable. */
+export const NAVIGATION_CARD_FORM_REGISTRY_STORE: string = NAVIGATION_CARD_STORE;
 const NAVIGATION_CARD_SNAPSHOT_KEY: string = 'current_snapshot';
 const NAVIGATION_CARD_FORM_IDS_KEY: string = 'form_ids';
 const TRAIN_HUB_LOCATIONS: TravelHubLocation[] = [
@@ -116,6 +118,21 @@ function cleanText(value: string | undefined): string {
     return '';
   }
   return value.trim();
+}
+
+export interface NavigationCardPersistenceScope {
+  snapshotStoreName: string;
+  formRegistryStoreName: string;
+}
+
+export function navigationCardPersistenceScope(snapshotStoreName: string = NAVIGATION_CARD_STORE,
+  formRegistryStoreName: string = NAVIGATION_CARD_FORM_REGISTRY_STORE): NavigationCardPersistenceScope {
+  const snapshotName: string = cleanText(snapshotStoreName);
+  const registryName: string = cleanText(formRegistryStoreName);
+  return {
+    snapshotStoreName: snapshotName.length > 0 ? snapshotName : NAVIGATION_CARD_STORE,
+    formRegistryStoreName: registryName.length > 0 ? registryName : NAVIGATION_CARD_STORE
+  };
 }
 
 function cleanNumber(value: number): number {
@@ -741,21 +758,37 @@ function snapshotFromRaw(raw: string): NavigationCardSnapshot | null {
 
 export class PreferencesNavigationCardSnapshotStore implements NavigationCardSnapshotStore {
   private context: common.Context;
+  private snapshotStoreName: string;
+  private formRegistryStoreName: string;
 
-  constructor(context: common.Context) {
+  constructor(context: common.Context, snapshotStoreName: string = NAVIGATION_CARD_STORE,
+    formRegistryStoreName: string = NAVIGATION_CARD_FORM_REGISTRY_STORE) {
+    const scope: NavigationCardPersistenceScope = navigationCardPersistenceScope(
+      snapshotStoreName, formRegistryStoreName
+    );
     this.context = context;
+    this.snapshotStoreName = scope.snapshotStoreName;
+    this.formRegistryStoreName = scope.formRegistryStoreName;
   }
 
-  private preferences(): preferences.Preferences | null {
+  private snapshotPreferences(): preferences.Preferences | null {
     try {
-      return preferences.getPreferencesSync(this.context, { name: NAVIGATION_CARD_STORE });
+      return preferences.getPreferencesSync(this.context, { name: this.snapshotStoreName });
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  private formRegistryPreferences(): preferences.Preferences | null {
+    try {
+      return preferences.getPreferencesSync(this.context, { name: this.formRegistryStoreName });
     } catch (_error) {
       return null;
     }
   }
 
   saveSnapshotSync(snapshot: NavigationCardSnapshot): void {
-    const store = this.preferences();
+    const store = this.snapshotPreferences();
     if (store === null) {
       return;
     }
@@ -767,7 +800,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
   }
 
   async saveSnapshot(snapshot: NavigationCardSnapshot): Promise<void> {
-    const store = this.preferences();
+    const store = this.snapshotPreferences();
     if (store === null) {
       throw navigationCardStoreError();
     }
@@ -780,7 +813,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
   }
 
   getSnapshotSync(): NavigationCardSnapshot | null {
-    const store = this.preferences();
+    const store = this.snapshotPreferences();
     if (store === null) {
       return null;
     }
@@ -797,7 +830,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
   }
 
   clearSnapshotSync(): void {
-    const store = this.preferences();
+    const store = this.snapshotPreferences();
     if (store === null) {
       return;
     }
@@ -809,7 +842,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
   }
 
   async clearSnapshot(): Promise<void> {
-    const store = this.preferences();
+    const store = this.snapshotPreferences();
     if (store === null) {
       return;
     }
@@ -825,7 +858,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
     if (id.length === 0) {
       return;
     }
-    const store = this.preferences();
+    const store = this.formRegistryPreferences();
     if (store === null) {
       return;
     }
@@ -845,7 +878,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
     if (id.length === 0) {
       return;
     }
-    const store = this.preferences();
+    const store = this.formRegistryPreferences();
     if (store === null) {
       return;
     }
@@ -862,7 +895,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
 
   removeFormIdSync(formId: string): void {
     const id = cleanText(formId);
-    const store = this.preferences();
+    const store = this.formRegistryPreferences();
     if (store === null) {
       return;
     }
@@ -877,7 +910,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
 
   async removeFormId(formId: string): Promise<void> {
     const id = cleanText(formId);
-    const store = this.preferences();
+    const store = this.formRegistryPreferences();
     if (store === null) {
       return;
     }
@@ -891,7 +924,7 @@ export class PreferencesNavigationCardSnapshotStore implements NavigationCardSna
   }
 
   getFormIdsSync(): string[] {
-    const store = this.preferences();
+    const store = this.formRegistryPreferences();
     if (store === null) {
       return [];
     }

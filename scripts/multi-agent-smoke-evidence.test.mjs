@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import * as smokeLifecycle from './multi-agent-smoke-evidence.mjs';
 import {
+  accountScopedPublicPersonaStoreName,
+  activeAccountOwnerIdFromPreferences,
   composioAuthEvidence,
   calendarConfirmationButtonCenter,
   calendarProviderActionEvidence,
@@ -23,6 +25,19 @@ import {
   socialReplyButtonCenter,
   toolExecutionEvidence
 } from './multi-agent-smoke-evidence.mjs';
+
+test('derives the public-persona Preferences scope only from a valid active account owner', () => {
+  const owner = '0123456789abcdef'.repeat(4);
+  assert.equal(activeAccountOwnerIdFromPreferences(
+    JSON.stringify({ active_owner_id: owner })), owner);
+  assert.equal(activeAccountOwnerIdFromPreferences(
+    `<map><string key="active_owner_id" value="${owner}" /></map>`), owner);
+  assert.equal(activeAccountOwnerIdFromPreferences('{"active_owner_id":"local-user-v1"}'), '');
+  assert.equal(activeAccountOwnerIdFromPreferences('{"another_key":"' + owner + '"}'), '');
+  assert.equal(accountScopedPublicPersonaStoreName(owner),
+    `aiphone_public_persona__owner_${owner}`);
+  assert.throws(() => accountScopedPublicPersonaStoreName('local-user-v1'), /64-character hex digest/);
+});
 
 const f16ExternalReturns = ['QQ 邮箱', '瑞幸咖啡', '滴滴出行'].map((app) => ({
   app,
@@ -199,11 +214,15 @@ test('keeps public-persona smoke separate from default queries and manual-gated'
   const finallyBody = publicSmoke.slice(finallyStart);
   assert.doesNotMatch(finallyBody, /删除画像|确认删除/);
   assert.match(finallyBody, /force-stop/);
-  assert.match(source, /function publicPersonaSnapshotExists\(\)/);
-  assert.match(source, /aiphone_public_persona/);
+  assert.match(source, /function publicPersonaSnapshotProbe\(\)/);
+  assert.match(source, /appless_account_device_state/);
+  assert.match(source, /activeAccountOwnerIdFromPreferences\(deviceState\)/);
+  assert.match(source, /accountScopedPublicPersonaStoreName\(ownerId\)/);
+  assert.doesNotMatch(source, /preferences\/aiphone_public_persona['"`]/);
   assert.match(publicSmoke, /const nativeAdmission = publicPersonaExpectedPlatform\.length > 0 &&/);
-  assert.match(publicSmoke, /if \(publicPersonaSnapshotExists\(\) && !nativeAdmission\)/);
-  assert.match(publicSmoke, /enterPublicPersonaFromHome\(nativeAdmission && publicPersonaSnapshotExists\(\)\)/);
+  assert.match(publicSmoke, /initialSnapshotProbe\.status === 'BLOCKED'/);
+  assert.match(publicSmoke, /if \(publicPersonaSnapshotExists\(initialSnapshotProbe\) && !nativeAdmission\)/);
+  assert.match(publicSmoke, /enterPublicPersonaFromHome\([\s\S]*nativeAdmission && publicPersonaSnapshotExists\(firstLaunchProbe\)\)/);
   assert.match(source, /if \(existingSnapshot && input === false\)[\s\S]*重新认识我/);
   assert.doesNotMatch(publicSmoke, /cleanBundleData\(\)/);
   assert.match(publicSmoke, /let snapshotCreatedThisRun = false/);
@@ -324,7 +343,7 @@ test('requires an explicit manual resume before public-persona destructive gates
   assert.match(publicSmoke, /if \(manualResume(?: &&|\))/);
   assert.doesNotMatch(publicSmoke, /const selected = findTextCenter/);
   assert.doesNotMatch(publicSmoke, /tapPublicPersonaText\('确认并生成画像'/);
-  assert.match(publicSmoke, /publicPersonaSnapshotExists\(\)/);
+  assert.match(publicSmoke, /publicPersonaSnapshotExists\(/);
   assert.match(source, /tapPublicPersonaText\('重新输入', 'public-persona-retry-input'\)/);
   assert.match(source, /let opened = await tapPublicPersonaText\('我的画像', 'public-persona-open', 2\)/);
   assert.match(source, /findHeaderPublicPersonaCenter\(opened\.layout\)/);

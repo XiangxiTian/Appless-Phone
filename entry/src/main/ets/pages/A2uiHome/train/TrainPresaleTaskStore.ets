@@ -1,3 +1,4 @@
+import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 
 export const TRAIN_PRESALE_TASK_STORE_NAME: string = 'aiphone_train_presale_tasks';
@@ -190,6 +191,11 @@ export class TrainPresaleTaskStore {
 
   constructor(store: preferences.Preferences) {
     this.store = store;
+  }
+
+  static fromContext(context: common.Context,
+    storeName: string = TRAIN_PRESALE_TASK_STORE_NAME): TrainPresaleTaskStore {
+    return new TrainPresaleTaskStore(preferences.getPreferencesSync(context, { name: storeName }));
   }
 
   private tasks(): TrainPresaleTask[] {

@@ -8,6 +8,7 @@ import {
   MemoryDraft,
   MemoryError,
   MemoryHit,
+  MemoryRecord,
   MemoryWriteResult,
   MEMORY_RECALL_DEFAULT_TOP_K,
   MEMORY_RECALL_FACT_MAX_CHARS,
@@ -17,8 +18,16 @@ import {
 } from '@loop/agent-core';
 import { BertWordPieceTokenizer } from './BertWordPieceTokenizer';
 import { BgeMindSporeEmbeddingPort } from './BgeMindSporeEmbeddingPort';
-import { PhoneLocalMemoryProvider } from './PhoneLocalMemoryProvider';
-import { ArkDataPhoneLocalMemoryStore, PhoneLocalMemoryStore } from './PhoneLocalMemoryStore';
+import {
+  PhoneLocalMemoryPersonaTagReplaceResult,
+  PhoneLocalMemoryProvider
+} from './PhoneLocalMemoryProvider';
+import {
+  ArkDataPhoneLocalMemoryStore,
+  PhoneLocalMemoryProjectionFact,
+  PhoneLocalMemoryProjectionStats,
+  PhoneLocalMemoryStore
+} from './PhoneLocalMemoryStore';
 import { ArkDataPhoneLocalMemoryBlobStore } from './PhoneLocalMemoryBlobFallbackPort';
 import {
   ArkDataPhoneLocalMemoryBackendRegistry,
@@ -28,6 +37,7 @@ import {
 
 export const PHONE_LOCAL_MEMORY_OWNER_ID: string = 'local-user-v1';
 export const PHONE_LOCAL_MEMORY_GLOBAL_SCENE_ID: string = 'global';
+export const PHONE_LOCAL_MEMORY_PUBLIC_PERSONA_TAG: string = 'public_persona';
 export const PHONE_LOCAL_MEMORY_RECALL_TOP_K: number = MEMORY_RECALL_DEFAULT_TOP_K;
 export const PHONE_LOCAL_MEMORY_RECALL_TIMEOUT_MS: number = 2500;
 export const PHONE_LOCAL_MEMORY_RECALL_FACT_LIMIT: number = MEMORY_RECALL_FACT_MAX_CHARS;
@@ -53,7 +63,17 @@ export interface PhoneLocalMemoryRuntimeLogger {
   warn(code: string, operation: string, errorMessage: string): void;
 }
 
+export type PhoneLocalMemoryMutationOperation = 'remember' | 'update' | 'forget';
+
+export interface PhoneLocalMemoryMutationEvent {
+  operation: PhoneLocalMemoryMutationOperation;
+  committedAt: number;
+  memoryIds: string[];
+}
+
 export interface PhoneLocalMemoryRuntimeOptions {
+  /** Account owner scope. Omission preserves the pre-account local-user-v1 scope. */
+  ownerId?: string;
   /** Explicit single-store injection retained for unit tests and embedders. It bypasses backend selection. */
   storeFactory?: () => PhoneLocalMemoryStore;
   vectorStoreFactory?: () => PhoneLocalMemoryStore;
@@ -63,19 +83,31 @@ export interface PhoneLocalMemoryRuntimeOptions {
   idFactory?: () => string;
   recallTimeoutMs?: number;
   logger?: PhoneLocalMemoryRuntimeLogger;
+  /** Runs off the mutation return path. Observer failures never change the memory tool result. */
+  onMutationCommitted?: (event: PhoneLocalMemoryMutationEvent) => Promise<void>;
 }
 
 interface SelectedMemoryStore {
   store: PhoneLocalMemoryStore;
 }
 
-export interface PhoneLocalMemoryRuntimePort {
+export interface PhoneLocalMemoryProjectionSourcePort {
+  getProjectionStats(basedOnMemoryMutationAt: number): Promise<PhoneLocalMemoryProjectionStats>;
+  listProjectionFacts(): Promise<PhoneLocalMemoryProjectionFact[]>;
+}
+
+export interface PhoneLocalMemoryRuntimePort extends PhoneLocalMemoryProjectionSourcePort {
   recall(text: string, topK?: number): Promise<PhoneLocalRecalledMemory[]>;
   remember(facts: string[], sourceTurnId: string, personaTag: string,
     guard?: MemoryCommitGuard): Promise<MemoryBatchResult>;
-  update(memoryId: string, fact: string, sourceTurnId: string,
-    personaTag: string, guard?: MemoryCommitGuard): Promise<MemoryWriteResult>;
-  forget(memoryId: string, guard?: MemoryCommitGuard): Promise<MemoryWriteResult>;
+  update(updates: PhoneLocalMemoryUpdate[], sourceTurnId: string,
+    personaTag: string, guard?: MemoryCommitGuard): Promise<MemoryBatchResult>;
+  forget(memoryIds: string[], guard?: MemoryCommitGuard): Promise<MemoryBatchResult>;
+}
+
+export interface PhoneLocalMemoryUpdate {
+  memoryId: string;
+  fact: string;
 }
 
 class HilogPhoneLocalMemoryRuntimeLogger implements PhoneLocalMemoryRuntimeLogger {
@@ -116,6 +148,22 @@ function boundedFact(fact: string, remaining: number): string {
   return fact.substring(0, Math.max(0, limit));
 }
 
+function successfulRecordBatch(records: MemoryRecord[]): MemoryBatchResult {
+  const results: MemoryWriteResult[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    results.push({ inputIndex: index, status: 'success', record: records[index] });
+  }
+  return {
+    status: 'success', records: results, succeededCount: records.length, failedCount: 0, warnings: []
+  };
+}
+
+function tagMutationFailure(recordCount: number, outcome: PhoneLocalMemoryPersonaTagReplaceResult): MemoryBatchResult {
+  return unavailableBatch(recordCount, outcome.error ?? runtimeMemoryError(
+    'memory_persona_tag_replace_failed', 'Long-term persona memory could not be changed.', true
+  ));
+}
+
 /**
  * Application-lifetime composition root for phone-local memory.
  * Recall is fail-open; mutations surface initialization/model/storage failures to the caller.
@@ -123,12 +171,16 @@ function boundedFact(fact: string, remaining: number): string {
 export class PhoneLocalMemoryRuntime implements PhoneLocalMemoryRuntimePort {
   private context: common.Context | null;
   private options: PhoneLocalMemoryRuntimeOptions;
+  private storePromise: Promise<PhoneLocalMemoryStore> | null = null;
   private providerPromise: Promise<PhoneLocalMemoryProvider> | null = null;
   private logger: PhoneLocalMemoryRuntimeLogger;
+  private ownerId: string;
 
   constructor(context: common.Context | null, options: PhoneLocalMemoryRuntimeOptions = {}) {
     this.context = context;
     this.options = options;
+    const ownerId: string = options.ownerId?.trim() ?? '';
+    this.ownerId = ownerId.length > 0 ? ownerId : PHONE_LOCAL_MEMORY_OWNER_ID;
     this.logger = options.logger ?? new HilogPhoneLocalMemoryRuntimeLogger();
   }
 
@@ -171,7 +223,17 @@ export class PhoneLocalMemoryRuntime implements PhoneLocalMemoryRuntimePort {
           sourceTurnId
         });
       }
-      return await provider.remember({ ownerId: PHONE_LOCAL_MEMORY_OWNER_ID, records }, guard);
+      const result = await provider.remember({ ownerId: this.ownerId, records }, guard);
+      const memoryIds: string[] = [];
+      let committedAt: number = 0;
+      for (let index = 0; index < result.records.length; index += 1) {
+        const record = result.records[index].record;
+        if (result.records[index].status !== 'success' || record === undefined) continue;
+        memoryIds.push(record.memoryId);
+        committedAt = Math.max(committedAt, record.updatedAt);
+      }
+      if (memoryIds.length > 0) this.notifyMutation({ operation: 'remember', committedAt, memoryIds });
+      return result;
     } catch (error) {
       this.log('memory_runtime_unavailable', 'remember', error);
       return unavailableBatch(facts.length, runtimeMemoryError(
@@ -180,36 +242,256 @@ export class PhoneLocalMemoryRuntime implements PhoneLocalMemoryRuntimePort {
     }
   }
 
-  async update(memoryId: string, fact: string, sourceTurnId: string,
-    personaTag: string, guard?: MemoryCommitGuard): Promise<MemoryWriteResult> {
+  async update(updates: PhoneLocalMemoryUpdate[], sourceTurnId: string,
+    personaTag: string, guard?: MemoryCommitGuard): Promise<MemoryBatchResult> {
+    const invalidError: MemoryError = runtimeMemoryError(
+      'memory_update_invalid', 'Long-term memory update requires one to five unique record IDs.', false
+    );
+    if (updates.length < 1 || updates.length > 5) {
+      const records: MemoryWriteResult[] = [];
+      for (let index = 0; index < updates.length; index++) {
+        records.push(unavailableWrite(invalidError, index));
+      }
+      return {
+        status: 'error', records, succeededCount: 0, failedCount: updates.length,
+        warnings: [], error: invalidError
+      };
+    }
+    const requestedIds: Set<string> = new Set<string>();
+    for (let index = 0; index < updates.length; index++) {
+      const memoryId: string = updates[index].memoryId.trim();
+      if (memoryId.length === 0 || requestedIds.has(memoryId)) {
+        return unavailableBatch(updates.length, invalidError);
+      }
+      requestedIds.add(memoryId);
+    }
     try {
       const provider = await this.provider();
-      return await provider.update({
-        ownerId: PHONE_LOCAL_MEMORY_OWNER_ID,
-        memoryId,
-        fact,
-        personaTag: personaTag.length > 0 ? personaTag : PHONE_LOCAL_MEMORY_GLOBAL_SCENE_ID,
-        authority: 'leader',
-        sourceTurnId
-      }, guard);
+      const records: MemoryWriteResult[] = [];
+      const memoryIds: string[] = [];
+      let committedAt: number = 0;
+      let firstError: MemoryError | undefined;
+      for (let index = 0; index < updates.length; index += 1) {
+        let result: MemoryWriteResult;
+        try {
+          result = await provider.update({
+            ownerId: this.ownerId,
+            memoryId: updates[index].memoryId,
+            fact: updates[index].fact,
+            personaTag: personaTag.length > 0 ? personaTag : PHONE_LOCAL_MEMORY_GLOBAL_SCENE_ID,
+            authority: 'leader',
+            sourceTurnId
+          }, guard);
+        } catch (error) {
+          this.log('memory_runtime_update_failed', 'update', error);
+          result = unavailableWrite(runtimeMemoryError(
+            'memory_runtime_update_failed', 'Long-term memory record could not be updated.', true
+          ), index);
+        }
+        result.inputIndex = index;
+        records.push(result);
+        if (result.status === 'success' && result.record !== undefined) {
+          memoryIds.push(result.record.memoryId);
+          committedAt = Math.max(committedAt, result.record.updatedAt);
+        } else if (firstError === undefined && result.error !== undefined) {
+          firstError = result.error;
+        }
+      }
+      const succeededCount: number = memoryIds.length;
+      const failedCount: number = updates.length - succeededCount;
+      if (succeededCount > 0) {
+        this.notifyMutation({ operation: 'update', committedAt, memoryIds });
+      }
+      const batch: MemoryBatchResult = {
+        status: succeededCount > 0 ? 'success' : 'error',
+        records,
+        succeededCount,
+        failedCount,
+        warnings: failedCount > 0 && succeededCount > 0 ? ['Some long-term memories could not be updated.'] : []
+      };
+      if (succeededCount === 0) {
+        batch.error = firstError ?? runtimeMemoryError(
+          'memory_update_failed', 'Long-term memory could not be updated.', true
+        );
+      }
+      return batch;
     } catch (error) {
       this.log('memory_runtime_unavailable', 'update', error);
-      return unavailableWrite(runtimeMemoryError(
+      return unavailableBatch(updates.length, runtimeMemoryError(
         'memory_runtime_unavailable', 'Long-term memory is unavailable on this device.', true
       ));
     }
   }
 
-  async forget(memoryId: string, guard?: MemoryCommitGuard): Promise<MemoryWriteResult> {
+  async forget(memoryIds: string[], guard?: MemoryCommitGuard): Promise<MemoryBatchResult> {
+    const invalidError: MemoryError = runtimeMemoryError(
+      'memory_forget_invalid', 'Long-term memory deletion requires one to five unique record IDs.', false
+    );
+    if (memoryIds.length < 1 || memoryIds.length > 5) {
+      return unavailableBatch(memoryIds.length, invalidError);
+    }
+    const requestedIds: Set<string> = new Set<string>();
+    for (let index = 0; index < memoryIds.length; index++) {
+      const memoryId: string = memoryIds[index].trim();
+      if (memoryId.length === 0 || requestedIds.has(memoryId)) {
+        return unavailableBatch(memoryIds.length, invalidError);
+      }
+      requestedIds.add(memoryId);
+    }
     try {
       const provider = await this.provider();
-      return await provider.forget(PHONE_LOCAL_MEMORY_OWNER_ID, memoryId, guard);
+      const records: MemoryWriteResult[] = [];
+      const forgottenIds: string[] = [];
+      let firstError: MemoryError | undefined;
+      for (let index = 0; index < memoryIds.length; index++) {
+        let result: MemoryWriteResult;
+        try {
+          result = await provider.forget(this.ownerId, memoryIds[index], guard);
+        } catch (error) {
+          this.log('memory_runtime_forget_failed', 'forget', error);
+          result = unavailableWrite(runtimeMemoryError(
+            'memory_runtime_forget_failed', 'Long-term memory record could not be deleted.', true
+          ), index);
+        }
+        result.inputIndex = index;
+        records.push(result);
+        if (result.status === 'success' && result.record !== undefined) {
+          forgottenIds.push(result.record.memoryId);
+        } else if (firstError === undefined && result.error !== undefined) {
+          firstError = result.error;
+        }
+      }
+      const succeededCount: number = forgottenIds.length;
+      const failedCount: number = memoryIds.length - succeededCount;
+      if (succeededCount > 0) {
+        this.notifyMutation({ operation: 'forget', committedAt: Date.now(), memoryIds: forgottenIds });
+      }
+      const batch: MemoryBatchResult = {
+        status: succeededCount > 0 ? 'success' : 'error',
+        records,
+        succeededCount,
+        failedCount,
+        warnings: failedCount > 0 && succeededCount > 0 ?
+          ['Some long-term memories could not be deleted.'] : []
+      };
+      if (succeededCount === 0) {
+        batch.error = firstError ?? runtimeMemoryError(
+          'memory_forget_failed', 'Long-term memory could not be deleted.', true
+        );
+      }
+      return batch;
     } catch (error) {
       this.log('memory_runtime_unavailable', 'forget', error);
-      return unavailableWrite(runtimeMemoryError(
+      return unavailableBatch(memoryIds.length, runtimeMemoryError(
         'memory_runtime_unavailable', 'Long-term memory is unavailable on this device.', true
       ));
     }
+  }
+
+  async getProjectionStats(basedOnMemoryMutationAt: number): Promise<PhoneLocalMemoryProjectionStats> {
+    return await (await this.memoryStore()).getProjectionStats(
+      this.ownerId,
+      PHONE_LOCAL_MEMORY_GLOBAL_SCENE_ID,
+      basedOnMemoryMutationAt
+    );
+  }
+
+  async listProjectionFacts(): Promise<PhoneLocalMemoryProjectionFact[]> {
+    return await (await this.memoryStore()).listProjectionFacts(
+      this.ownerId,
+      PHONE_LOCAL_MEMORY_GLOBAL_SCENE_ID
+    );
+  }
+
+  async replacePublicPersonaFacts(facts: string[], sourceTurnId: string,
+    guard?: MemoryCommitGuard): Promise<MemoryBatchResult> {
+    if (facts.length < 1) {
+      return unavailableBatch(facts.length, runtimeMemoryError(
+        'memory_request_invalid', 'Public persona memory requires at least one fact.', false
+      ));
+    }
+    try {
+      const records: MemoryDraft[] = [];
+      for (let index = 0; index < facts.length; index += 1) {
+        records.push({
+          fact: facts[index],
+          sceneId: PHONE_LOCAL_MEMORY_GLOBAL_SCENE_ID,
+          personaTag: PHONE_LOCAL_MEMORY_PUBLIC_PERSONA_TAG,
+          authority: 'leader',
+          sourceTurnId
+        });
+      }
+      const outcome = await (await this.provider()).replacePersonaTag({
+        ownerId: this.ownerId,
+        sceneId: PHONE_LOCAL_MEMORY_GLOBAL_SCENE_ID,
+        personaTag: PHONE_LOCAL_MEMORY_PUBLIC_PERSONA_TAG,
+        records
+      }, guard);
+      if (outcome.status !== 'success') return tagMutationFailure(facts.length, outcome);
+      const result = successfulRecordBatch(outcome.insertedRecords);
+      if (outcome.removedRecords.length > 0) {
+        const affectedIds: string[] = [];
+        for (let index = 0; index < outcome.removedRecords.length; index += 1) {
+          affectedIds.push(outcome.removedRecords[index].memoryId);
+        }
+        for (let index = 0; index < outcome.insertedRecords.length; index += 1) {
+          affectedIds.push(outcome.insertedRecords[index].memoryId);
+        }
+        this.notifyMutation({ operation: 'forget', committedAt: Date.now(), memoryIds: affectedIds });
+      } else if (outcome.insertedRecords.length > 0) {
+        let committedAt: number = 0;
+        const insertedIds: string[] = [];
+        for (let index = 0; index < outcome.insertedRecords.length; index += 1) {
+          insertedIds.push(outcome.insertedRecords[index].memoryId);
+          committedAt = Math.max(committedAt, outcome.insertedRecords[index].updatedAt);
+        }
+        this.notifyMutation({ operation: 'remember', committedAt, memoryIds: insertedIds });
+      }
+      return result;
+    } catch (error) {
+      this.log('memory_runtime_unavailable', 'replacePublicPersonaFacts', error);
+      return unavailableBatch(facts.length, runtimeMemoryError(
+        'memory_runtime_unavailable', 'Long-term memory is unavailable on this device.', true
+      ));
+    }
+  }
+
+  async deletePublicPersonaFacts(guard?: MemoryCommitGuard): Promise<MemoryBatchResult> {
+    try {
+      const outcome = await (await this.provider()).replacePersonaTag({
+        ownerId: this.ownerId,
+        sceneId: PHONE_LOCAL_MEMORY_GLOBAL_SCENE_ID,
+        personaTag: PHONE_LOCAL_MEMORY_PUBLIC_PERSONA_TAG,
+        records: []
+      }, guard);
+      if (outcome.status !== 'success') return tagMutationFailure(1, outcome);
+      const result = successfulRecordBatch(outcome.removedRecords);
+      if (outcome.removedRecords.length > 0) {
+        const removedIds: string[] = [];
+        for (let index = 0; index < outcome.removedRecords.length; index += 1) {
+          removedIds.push(outcome.removedRecords[index].memoryId);
+        }
+        this.notifyMutation({ operation: 'forget', committedAt: Date.now(), memoryIds: removedIds });
+      }
+      return result;
+    } catch (error) {
+      this.log('memory_runtime_unavailable', 'deletePublicPersonaFacts', error);
+      return unavailableBatch(1, runtimeMemoryError(
+        'memory_runtime_unavailable', 'Long-term memory is unavailable on this device.', true
+      ));
+    }
+  }
+
+  /**
+   * First-login migration hook. Both record rows and their history rows move in one store
+   * transaction; repeating the claim returns zero and leaves the account scope unchanged.
+   */
+  async claimLegacyOwner(legacyOwnerId: string = PHONE_LOCAL_MEMORY_OWNER_ID): Promise<number> {
+    return await (await this.memoryStore()).claimOwner(legacyOwnerId, this.ownerId);
+  }
+
+  getOwnerId(): string {
+    return this.ownerId;
   }
 
   private provider(): Promise<PhoneLocalMemoryProvider> {
@@ -217,9 +499,17 @@ export class PhoneLocalMemoryRuntime implements PhoneLocalMemoryRuntimePort {
     return this.providerPromise;
   }
 
+  private memoryStore(): Promise<PhoneLocalMemoryStore> {
+    if (this.storePromise === null) {
+      this.storePromise = this.selectStore().then((selected: SelectedMemoryStore): PhoneLocalMemoryStore => {
+        return selected.store;
+      });
+    }
+    return this.storePromise;
+  }
+
   private async createProvider(): Promise<PhoneLocalMemoryProvider> {
-    const selected = await this.selectStore();
-    const store = selected.store;
+    const store = await this.memoryStore();
     const embedder = this.options.embedderFactory !== undefined ?
       await this.options.embedderFactory() : await this.createDefaultEmbedder();
     // The runtime wrapper fixes every new write to global. Keep the provider compatible with
@@ -227,6 +517,13 @@ export class PhoneLocalMemoryRuntime implements PhoneLocalMemoryRuntimePort {
     return new PhoneLocalMemoryProvider(store, embedder, {
       idFactory: this.options.idFactory
     });
+  }
+
+  private notifyMutation(event: PhoneLocalMemoryMutationEvent): void {
+    const observer = this.options.onMutationCommitted;
+    if (observer === undefined) return;
+    Promise.resolve<void>(undefined).then((): Promise<void> => observer(event)).then((): void => {},
+      (error: Object): void => this.log('memory_mutation_observer_failed', event.operation, error));
   }
 
   private async selectStore(): Promise<SelectedMemoryStore> {
@@ -312,7 +609,7 @@ export class PhoneLocalMemoryRuntime implements PhoneLocalMemoryRuntimePort {
   private async search(query: string, topK: number): Promise<MemoryHit[]> {
     const provider = await this.provider();
     return await provider.search({
-      ownerId: PHONE_LOCAL_MEMORY_OWNER_ID,
+      ownerId: this.ownerId,
       text: query,
       sceneIds: [],
       topK

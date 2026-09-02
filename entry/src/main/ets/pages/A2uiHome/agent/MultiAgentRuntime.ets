@@ -484,6 +484,10 @@ export class MultiAgentRuntime {
   private readonly surfaceTurnActivator: ((turnId: string, hostGeneration: number) => void) | null;
   private readonly turnGenerationObserver: ((turnId: string, hostGeneration: number) => void) | null;
   private readonly directActionAdmission: ((action: A2uiAction, context: ActionExecutionContext) => boolean) | null;
+  private readonly memorySelectionObserver: ((
+    selection: MemorySelectionPayload,
+    hostGeneration: number
+  ) => boolean) | null;
   private readonly leader: LeaderAgent;
   private readonly planningContextProvider: ((prompt: string) => LeaderPlanningContext) | null;
   private readonly data: DataAgent;
@@ -514,6 +518,8 @@ export class MultiAgentRuntime {
       null : options.turnGenerationObserver;
     this.directActionAdmission = options.directActionAdmission === undefined ?
       null : options.directActionAdmission;
+    this.memorySelectionObserver = options.memorySelectionObserver === undefined ?
+      null : options.memorySelectionObserver;
     this.leader = new LeaderAgent(
       this.bus,
       options.planner,
@@ -532,7 +538,8 @@ export class MultiAgentRuntime {
       ),
       options.currentLocalDateProvider,
       options.memoryToolExecutor,
-      options.memoryRecallToolExecutor
+      options.memoryRecallToolExecutor,
+      (selection: MemorySelectionPayload): boolean => this.observeMemorySelection(selection)
     );
     this.planningContextProvider = options.planningContextProvider === undefined ?
       null : options.planningContextProvider;
@@ -1405,6 +1412,21 @@ export class MultiAgentRuntime {
       ids.add(candidate.memoryId);
     }
     return true;
+  }
+
+  private observeMemorySelection(selection: MemorySelectionPayload): boolean {
+    const pending = this.pendingTurn;
+    const observer = this.memorySelectionObserver;
+    if (pending === null || observer === null || pending.generation !== this.generation ||
+      selection.originTurnId !== pending.turnId || selection.sourceTaskId !== pending.inputTaskId ||
+      selection.personaId !== pending.personaId || !this.validMemorySelection(selection)) {
+      return false;
+    }
+    try {
+      return observer(selection, pending.hostGeneration);
+    } catch (_error) {
+      return false;
+    }
   }
 
   private validBimSuggestion(value: LeaderBimSuggestion): boolean {

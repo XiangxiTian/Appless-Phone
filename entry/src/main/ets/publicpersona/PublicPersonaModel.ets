@@ -102,6 +102,20 @@ export interface PublicPersonaAccountEvidence {
   providerState: PublicPersonaProviderState;
 }
 
+export type PublicPersonaMemoryFactKind =
+  'identity' | 'expertise' | 'preference' | 'communication_style' | 'recent_focus';
+
+export interface PublicPersonaMemoryCandidate {
+  fact: string;
+  confidence: number;
+  kind: PublicPersonaMemoryFactKind;
+}
+
+export interface PublicPersonaMemoryFact extends PublicPersonaMemoryCandidate {
+  source: 'public_persona';
+  observedAt: string;
+}
+
 export interface PublicPersonaInference {
   titleName: string;
   oneLineSummary: string;
@@ -113,6 +127,8 @@ export interface PublicPersonaInference {
   personalityInference: string[];
   mbtiType: string;
   mbtiConfidence: number;
+  /** Optional for compatibility with model responses produced before public-persona memory projection. */
+  memoryCandidates?: PublicPersonaMemoryCandidate[];
 }
 
 export interface PublicPersonaSourceRef {
@@ -132,6 +148,12 @@ export interface PublicPersonaSnapshot {
   sources: PublicPersonaSourceRef[];
   generatedAt: string;
   mbtiHidden: boolean;
+  /** Optional so persisted schemaVersion 1 snapshots written by older releases remain readable. */
+  memoryFacts?: PublicPersonaMemoryFact[];
+  /** Fingerprint of personaMarkdown that the model-derived memoryFacts describe. */
+  memoryFactsMarkdownFingerprint?: string;
+  /** Current personaMarkdown fingerprint after a successful explicit memory import. */
+  importedMarkdownFingerprint?: string;
 }
 
 export interface PublicPersonaProgress {
@@ -1168,8 +1190,259 @@ function inferenceJsonText(raw: string): string {
   return start >= 0 && end > start ? trimmed.substring(start, end + 1) : trimmed;
 }
 
+export const PUBLIC_PERSONA_MEMORY_MIN_CONFIDENCE: number = 0.85;
+
+const PUBLIC_PERSONA_SENSITIVE_FACT_PATTERN: RegExp =
+  /(政治立场|政治倾向|宗教信仰|性取向|健康状况|疾病诊断|残疾|种族血统|民族血统|精确位置|收入水平|资产状况|political views?|religious beliefs?|sexual orientation|health condition|medical diagnosis|disability|ethnicity|financial status)/i;
+
+const PUBLIC_PERSONA_MEMORY_EXCLUDED_PATTERN: RegExp =
+  /(MBTI|性格|人格|心理类型|性格推断|性格猜测|personality type|personality inference)/i;
+
+function publicPersonaMemoryKind(value: string): PublicPersonaMemoryFactKind | null {
+  if (value === 'identity' || value === 'expertise' || value === 'preference' ||
+    value === 'communication_style' || value === 'recent_focus') {
+    return value as PublicPersonaMemoryFactKind;
+  }
+  return null;
+}
+
+function atomicPublicPersonaMemoryFact(value: string, maxLength: number = 200): string | null {
+  const fact = value.replace(/\u3000/g, ' ').replace(/\s+/g, ' ').trim();
+  const selfContained = /^(用户|该用户|the user)/i.test(fact) ||
+    /^截至 \d{4}-\d{2}-\d{2}，(用户|该用户|the user)/i.test(fact);
+  if (fact.length === 0 || fact.length > maxLength || PUBLIC_PERSONA_SENSITIVE_FACT_PATTERN.test(fact) ||
+    PUBLIC_PERSONA_MEMORY_EXCLUDED_PATTERN.test(fact) || !selfContained) {
+    return null;
+  }
+  for (let index = 0; index < fact.length; index++) {
+    if ('。！？?!'.indexOf(fact.charAt(index)) < 0) continue;
+    let cursor = index + 1;
+    while (cursor < fact.length && ('。！？?!'.indexOf(fact.charAt(cursor)) >= 0 ||
+      /\s/.test(fact.charAt(cursor)))) cursor++;
+    if (cursor < fact.length) return null;
+    break;
+  }
+  return fact;
+}
+
+function parsePublicPersonaMemoryCandidates(
+  value: Object | string | number | boolean | undefined,
+  maxFactLength: number = 200
+): PublicPersonaMemoryCandidate[] {
+  if (!Array.isArray(value)) return [];
+  const output: PublicPersonaMemoryCandidate[] = [];
+  const rawItems = value as Object[];
+  for (let index = 0; index < rawItems.length; index++) {
+    const item = rawItems[index];
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) continue;
+    const raw = item as Record<string, Object | string | number | boolean>;
+    const fact = atomicPublicPersonaMemoryFact(nonEmptyString(raw['fact']), maxFactLength);
+    const confidence = raw['confidence'];
+    const kind = publicPersonaMemoryKind(nonEmptyString(raw['kind']));
+    if (fact === null || kind === null || typeof confidence !== 'number' ||
+      !Number.isFinite(confidence) || confidence < PUBLIC_PERSONA_MEMORY_MIN_CONFIDENCE || confidence > 1) continue;
+    output.push({ fact: fact, confidence: confidence, kind: kind });
+  }
+  return output;
+}
+
+/**
+ * Converts every qualifying model candidate into a memory-ready fact. It intentionally applies no
+ * count limit, time decay, exact deduplication, or semantic deduplication.
+ */
+function projectPublicPersonaMemoryCandidates(
+  candidates: PublicPersonaMemoryCandidate[],
+  observedAt: string,
+  maxFactLength: number = 200
+): PublicPersonaMemoryFact[] {
+  if (!validTimestamp(observedAt)) return [];
+  const facts: PublicPersonaMemoryFact[] = [];
+  const observedDate = observedAt.substring(0, 10);
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index];
+    const fact = atomicPublicPersonaMemoryFact(candidate.fact, maxFactLength);
+    const kind = publicPersonaMemoryKind(candidate.kind);
+    if (fact === null || kind === null || !Number.isFinite(candidate.confidence) ||
+      candidate.confidence < PUBLIC_PERSONA_MEMORY_MIN_CONFIDENCE || candidate.confidence > 1) continue;
+    let memoryFact = fact;
+    if (kind === 'recent_focus' && memoryFact.indexOf(observedDate) < 0) {
+      const withoutTerminal = memoryFact.replace(/[。！？?!]+$/, '');
+      memoryFact = '截至 ' + observedDate + '，' + withoutTerminal + '。';
+    }
+    facts.push({
+      fact: memoryFact,
+      confidence: candidate.confidence,
+      kind: kind,
+      source: 'public_persona',
+      observedAt: observedAt
+    });
+  }
+  return facts;
+}
+
+export function projectPublicPersonaMemoryFacts(
+  inference: PublicPersonaInference,
+  observedAt: string
+): PublicPersonaMemoryFact[] {
+  return projectPublicPersonaMemoryCandidates(inference.memoryCandidates ?? [], observedAt);
+}
+
+/** Parses a memory-only model response and applies every host confidence, safety, and atomicity filter. */
+export function parsePublicPersonaMemoryFacts(
+  raw: string,
+  observedAt: string
+): PublicPersonaMemoryFact[] | null {
+  if (!validTimestamp(observedAt)) return null;
+  try {
+    const parsed = JSON.parse(inferenceJsonText(raw)) as Record<string, Object | string | number | boolean | Object[]>;
+    if (!Array.isArray(parsed['memoryCandidates'])) return null;
+    const rawCandidates = parsed['memoryCandidates'] as Object[];
+    const candidates = parsePublicPersonaMemoryCandidates(rawCandidates);
+    if (rawCandidates.length > 0 && candidates.length === 0) return null;
+    return projectPublicPersonaMemoryCandidates(candidates, observedAt);
+  } catch (_error) {
+    return null;
+  }
+}
+
+export function publicPersonaMemoryFacts(snapshot: PublicPersonaSnapshot): PublicPersonaMemoryFact[] {
+  const stored = snapshot.memoryFacts ?? [];
+  return stored.map((fact: PublicPersonaMemoryFact): PublicPersonaMemoryFact => ({
+    fact: fact.fact,
+    confidence: fact.confidence,
+    kind: fact.kind,
+    source: 'public_persona',
+    observedAt: fact.observedAt
+  }));
+}
+
+export function publicPersonaMemoryFactsAreCurrent(snapshot: PublicPersonaSnapshot): boolean {
+  const basis = (snapshot.memoryFactsMarkdownFingerprint ?? '').trim();
+  return validPublicPersonaMarkdownFingerprint(basis) &&
+    basis === publicPersonaMarkdownFingerprint(snapshot.personaMarkdown);
+}
+
+function publicPersonaFingerprintHex(value: number): string {
+  let hex = (value >>> 0).toString(16);
+  while (hex.length < 8) hex = '0' + hex;
+  return hex;
+}
+
+function canonicalPublicPersonaMarkdown(markdown: string): string {
+  return markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+}
+
+/** Stable non-cryptographic content identity used only for local import idempotency. */
+export function publicPersonaMarkdownFingerprint(markdown: string): string {
+  const canonical = canonicalPublicPersonaMarkdown(markdown);
+  let hash = 2166136261;
+  for (let index = 0; index < canonical.length; index++) {
+    hash ^= canonical.charCodeAt(index);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    hash >>>= 0;
+  }
+  return 'fnv1a32:' + publicPersonaFingerprintHex(hash) + ':' + canonical.length.toString();
+}
+
+function validPublicPersonaMarkdownFingerprint(value: string): boolean {
+  return /^fnv1a32:[0-9a-f]{8}:[0-9]+$/.test(value);
+}
+
+export function isPublicPersonaImported(snapshot: PublicPersonaSnapshot): boolean {
+  const imported = (snapshot.importedMarkdownFingerprint ?? '').trim();
+  return imported.length > 0 && imported === publicPersonaMarkdownFingerprint(snapshot.personaMarkdown);
+}
+
+export function markPublicPersonaImported(snapshot: PublicPersonaSnapshot): PublicPersonaSnapshot {
+  return {
+    schemaVersion: 1,
+    personaMarkdown: snapshot.personaMarkdown,
+    primaryAvatarUrl: snapshot.primaryAvatarUrl,
+    sources: snapshot.sources,
+    generatedAt: snapshot.generatedAt,
+    mbtiHidden: snapshot.mbtiHidden,
+    memoryFacts: snapshot.memoryFacts,
+    memoryFactsMarkdownFingerprint: snapshot.memoryFactsMarkdownFingerprint,
+    importedMarkdownFingerprint: publicPersonaMarkdownFingerprint(snapshot.personaMarkdown)
+  };
+}
+
+/** Clears model candidates when a user saves edited Markdown; explicit import must rebuild them with the model. */
+export function publicPersonaSnapshotAfterMarkdownEdit(
+  snapshot: PublicPersonaSnapshot,
+  markdown: string
+): PublicPersonaSnapshot {
+  return {
+    schemaVersion: 1,
+    personaMarkdown: markdown,
+    primaryAvatarUrl: snapshot.primaryAvatarUrl,
+    sources: snapshot.sources,
+    generatedAt: snapshot.generatedAt,
+    mbtiHidden: snapshot.mbtiHidden,
+    memoryFacts: [],
+    memoryFactsMarkdownFingerprint: '',
+    importedMarkdownFingerprint: snapshot.importedMarkdownFingerprint
+  };
+}
+
+function sanitizeRebuiltPublicPersonaMemoryFacts(
+  facts: PublicPersonaMemoryFact[]
+): PublicPersonaMemoryFact[] {
+  const safe: PublicPersonaMemoryFact[] = [];
+  for (let index = 0; index < facts.length; index++) {
+    const item = facts[index];
+    if (item.source !== 'public_persona' || !validTimestamp(item.observedAt)) continue;
+    const candidate: PublicPersonaMemoryCandidate = {
+      fact: item.kind === 'recent_focus' ?
+        item.fact.replace(/^截至 \d{4}-\d{2}-\d{2}，/, '') : item.fact,
+      confidence: item.confidence,
+      kind: item.kind
+    };
+    const projected = projectPublicPersonaMemoryCandidates([candidate], item.observedAt, 240);
+    if (projected.length > 0) safe.push(projected[0]);
+  }
+  return safe;
+}
+
+export function publicPersonaSnapshotWithMemoryFacts(
+  snapshot: PublicPersonaSnapshot,
+  facts: PublicPersonaMemoryFact[]
+): PublicPersonaSnapshot {
+  const safeFacts = sanitizeRebuiltPublicPersonaMemoryFacts(facts);
+  return {
+    schemaVersion: 1,
+    personaMarkdown: snapshot.personaMarkdown,
+    primaryAvatarUrl: snapshot.primaryAvatarUrl,
+    sources: snapshot.sources,
+    generatedAt: snapshot.generatedAt,
+    mbtiHidden: snapshot.mbtiHidden,
+    memoryFacts: safeFacts,
+    memoryFactsMarkdownFingerprint: publicPersonaMarkdownFingerprint(snapshot.personaMarkdown),
+    importedMarkdownFingerprint: snapshot.importedMarkdownFingerprint
+  };
+}
+
+/**
+ * Produces a cached explicit-import payload only while its Markdown basis still matches. A stale
+ * snapshot deliberately returns no facts so callers cannot bypass the required model rebuild.
+ */
+export function publicPersonaImportFacts(
+  snapshot: PublicPersonaSnapshot,
+  importedAt: string
+): PublicPersonaMemoryFact[] {
+  if (!publicPersonaMemoryFactsAreCurrent(snapshot)) return [];
+  const storedFacts = publicPersonaMemoryFacts(snapshot);
+  const candidates: PublicPersonaMemoryCandidate[] = storedFacts.map(
+    (fact: PublicPersonaMemoryFact): PublicPersonaMemoryCandidate => ({
+      fact: fact.kind === 'recent_focus' ?
+        fact.fact.replace(/^截至 \d{4}-\d{2}-\d{2}，/, '') : fact.fact,
+      confidence: fact.confidence,
+      kind: fact.kind
+    }));
+  return projectPublicPersonaMemoryCandidates(candidates, importedAt, 240);
+}
+
 function validPublicPersonaInference(value: PublicPersonaInference, itemLimit: number = 32): boolean {
-  const sensitive = /(政治立场|政治倾向|宗教信仰|性取向|健康状况|疾病诊断|残疾|种族血统|民族血统|精确位置|收入水平|资产状况|political views?|religious beliefs?|sexual orientation|health condition|medical diagnosis|disability|ethnicity|financial status)/i;
   const fields: string[] = [value.titleName, value.oneLineSummary];
   const arrays: string[][] = [
     value.identityAndExperience, value.expertise, value.interestsAndPreferences,
@@ -1185,7 +1458,8 @@ function validPublicPersonaInference(value: PublicPersonaInference, itemLimit: n
   }
   let total = 0;
   for (let index = 0; index < fields.length; index++) {
-    if (fields[index].indexOf('\n') >= 0 || fields[index].indexOf('\r') >= 0 || sensitive.test(fields[index])) return false;
+    if (fields[index].indexOf('\n') >= 0 || fields[index].indexOf('\r') >= 0 ||
+      PUBLIC_PERSONA_SENSITIVE_FACT_PATTERN.test(fields[index])) return false;
     total += fields[index].length;
   }
   return total <= 800;
@@ -1193,7 +1467,8 @@ function validPublicPersonaInference(value: PublicPersonaInference, itemLimit: n
 
 export function parsePublicPersonaInference(raw: string): PublicPersonaInference | null {
   try {
-    const parsed = JSON.parse(inferenceJsonText(raw)) as Record<string, Object | string | number | boolean>;
+    const parsed = JSON.parse(inferenceJsonText(raw)) as Record<string, Object | string | number | boolean | Object[]>;
+    const memoryCandidates = parsePublicPersonaMemoryCandidates(parsed['memoryCandidates']);
     const firstString = (key: string): string => {
       const values = stringArray(parsed[key]);
       return values.length > 0 ? values[0] : nonEmptyString(parsed[key]);
@@ -1235,7 +1510,8 @@ export function parsePublicPersonaInference(raw: string): PublicPersonaInference
         recentFocus: recent,
         personalityInference: [],
         mbtiType: alternateType,
-        mbtiConfidence: alternateConfidence
+        mbtiConfidence: alternateConfidence,
+        memoryCandidates: memoryCandidates
       };
       return validPublicPersonaInference(alternate, 64) ? alternate : null;
     }
@@ -1263,7 +1539,8 @@ export function parsePublicPersonaInference(raw: string): PublicPersonaInference
       recentFocus: stringArray(parsed['recentFocus']),
       personalityInference: stringArray(parsed['personalityInference']),
       mbtiType: type.toUpperCase(),
-      mbtiConfidence: Math.round(confidence)
+      mbtiConfidence: Math.round(confidence),
+      memoryCandidates: memoryCandidates
     };
     return result.titleName.length > 0 && result.oneLineSummary.length > 0 && validPublicPersonaInference(result) ? result : null;
   } catch (_error) {
@@ -1446,7 +1723,8 @@ export function sanitizePublicPersonaSnapshot(value: Object): PublicPersonaSnaps
       return null;
     }
     const primaryAvatarUrl = raw['primaryAvatarUrl'] as string;
-    if (primaryAvatarUrl.length > 0 && !validHttps(primaryAvatarUrl) || !validTimestamp(raw['generatedAt'])) {
+    const generatedAt = raw['generatedAt'] as string;
+    if (primaryAvatarUrl.length > 0 && !validHttps(primaryAvatarUrl) || !validTimestamp(generatedAt)) {
       return null;
     }
     const markdownLines = raw['personaMarkdown'].replace(/\r\n/g, '\n').split('\n');
@@ -1512,13 +1790,27 @@ export function sanitizePublicPersonaSnapshot(value: Object): PublicPersonaSnaps
     if (sources.filter((source: PublicPersonaSourceRef): boolean => source.avatarUrl === primary).length === 0) {
       return null;
     }
+    const parsedMemoryFacts = projectPublicPersonaMemoryCandidates(
+      parsePublicPersonaMemoryCandidates(raw['memoryFacts'], 240), generatedAt, 240);
+    const currentMarkdownFingerprint = publicPersonaMarkdownFingerprint(raw['personaMarkdown'] as string);
+    const rawMemoryFingerprint = nonEmptyString(raw['memoryFactsMarkdownFingerprint']);
+    const memoryFactsMarkdownFingerprint = validPublicPersonaMarkdownFingerprint(rawMemoryFingerprint) ?
+      rawMemoryFingerprint : (parsedMemoryFacts.length > 0 ? currentMarkdownFingerprint : '');
+    const memoryFacts = memoryFactsMarkdownFingerprint === currentMarkdownFingerprint ? parsedMemoryFacts : [];
+    const rawImportedFingerprint = nonEmptyString(raw['importedMarkdownFingerprint']);
+    const importedMarkdownFingerprint = validPublicPersonaMarkdownFingerprint(rawImportedFingerprint) ?
+      rawImportedFingerprint : '';
     return {
       schemaVersion: 1,
       personaMarkdown: raw['personaMarkdown'] as string,
       primaryAvatarUrl: primary,
       sources: sources,
-      generatedAt: raw['generatedAt'] as string,
-      mbtiHidden: raw['mbtiHidden'] as boolean
+      generatedAt: generatedAt,
+      mbtiHidden: raw['mbtiHidden'] as boolean,
+      memoryFacts: memoryFacts,
+      memoryFactsMarkdownFingerprint: memoryFactsMarkdownFingerprint === currentMarkdownFingerprint ?
+        memoryFactsMarkdownFingerprint : '',
+      importedMarkdownFingerprint: importedMarkdownFingerprint
     };
   } catch (_error) {
     return null;

@@ -26,6 +26,8 @@ import {
   TrainPresaleTaskState,
   updateTrainPresaleTask
 } from '../pages/A2uiHome/train/TrainPresaleTaskStore';
+import { activeAccountOwnerId } from '../account/ActiveAccountOwnerStore';
+import { accountScopedStoreName } from '../account/AccountStorageScope';
 
 const DOMAIN = 0x0000;
 const A2UI_SYSTEM_TOP_INSET_STORAGE_KEY = 'a2uiSystemTopInsetVp';
@@ -462,7 +464,14 @@ export default class EntryAbility extends UIAbility {
 
   private claimTrainPresaleTask(want: Want): TrainPresaleHandoffClaimResult {
     try {
-      const store = preferences.getPreferencesSync(this.context, { name: TRAIN_PRESALE_TASK_STORE_NAME });
+      const ownerId: string = activeAccountOwnerId(this.context);
+      if (ownerId.length === 0) {
+        aiLogInfo('[AIPhone][TrainPresaleClaim] skipped=not_authenticated');
+        return { taskId: '', changed: false };
+      }
+      const store = preferences.getPreferencesSync(this.context, {
+        name: accountScopedStoreName(TRAIN_PRESALE_TASK_STORE_NAME, ownerId)
+      });
       const result = claimTrainPresaleHandoff(store, new Date().toISOString(), trainPresaleTaskIdFromWant(want));
       if (result.taskId.length > 0) {
         aiLogInfo('[AIPhone][TrainPresaleClaim] taskId=' + result.taskId +

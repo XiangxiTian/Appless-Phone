@@ -8,6 +8,13 @@ import {
 
 export const A2UI_SEND_SPINNER_STEP_DEG: number = 24;
 
+export type A2uiSessionResetCause = 'account_scope_invalidated' | 'user_requested';
+
+/** Account changes discard only live UI state; only the user's reset action erases persisted turns. */
+export function sessionResetDeletesPersistedConversation(cause: A2uiSessionResetCause): boolean {
+  return cause === 'user_requested';
+}
+
 export interface ConnectionPanelState {
   connectionStatus: string;
   connectionMessage: string;

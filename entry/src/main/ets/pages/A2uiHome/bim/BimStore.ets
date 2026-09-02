@@ -1,3 +1,4 @@
+import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import {
   A2uiAction,
@@ -711,6 +712,10 @@ export class BimStore {
 
   constructor(store: preferences.Preferences) {
     this.store = store;
+  }
+
+  static fromContext(context: common.Context, storeName: string = BIM_STORE_NAME): BimStore {
+    return new BimStore(preferences.getPreferencesSync(context, { name: storeName }));
   }
 
   private records(): BimRecord[] {

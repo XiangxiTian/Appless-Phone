@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 
-const FOOD_ADDRESS_BOOK_STORE_NAME: string = 'aiphone_food_address_book';
+export const FOOD_ADDRESS_BOOK_STORE_NAME: string = 'aiphone_food_address_book';
 const FOOD_ADDRESS_BOOK_KEY: string = 'saved_addresses';
 const FOOD_ADDRESS_BOOK_VERSION_KEY: string = 'saved_addresses_version';
 const FOOD_ADDRESS_BOOK_VERSION: string = 'food_address_book_v1';
@@ -85,8 +85,8 @@ export class FoodAddressBookStore {
   private store: preferences.Preferences;
   private addresses: FoodSavedAddressViewModel[] = [];
 
-  constructor(context: common.Context) {
-    this.store = preferences.getPreferencesSync(context, { name: FOOD_ADDRESS_BOOK_STORE_NAME });
+  constructor(context: common.Context, storeName: string = FOOD_ADDRESS_BOOK_STORE_NAME) {
+    this.store = preferences.getPreferencesSync(context, { name: storeName });
     this.addresses = this.loadFromPreferences();
   }
 

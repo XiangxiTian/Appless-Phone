@@ -31,6 +31,7 @@ import {
   LeaderPlanner,
   LeaderPlanningContext,
   LinkedMessageBus,
+  MemorySelectionPayload,
   RegisteredActionExecutor,
   SurfaceActionAuthorizer,
   TaskErrorPayload,
@@ -784,6 +785,19 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 16; index++) {
     await Promise.resolve();
   }
+}
+
+function observedMemorySelectionOperation(value: MemorySelectionPayload | null): string {
+  return value === null ? '' : value.operation;
+}
+
+function observedMemorySelectionCount(value: MemorySelectionPayload | null): number {
+  return value === null ? 0 : value.candidates.length;
+}
+
+function observedMemorySelectionId(value: MemorySelectionPayload | null, index: number): string {
+  return value === null || index < 0 || index >= value.candidates.length ? '' :
+    value.candidates[index].memoryId;
 }
 
 async function runtimeRejectsBimTerminal(payload: TurnResultPayload): Promise<boolean> {
@@ -1948,9 +1962,19 @@ export default function multiAgentRuntimeTest() {
       runtime.dispose();
     });
 
-    it('settles and preserves a validated Leader forget selection payload', 0, async () => {
+    it('forwards a validated forget selection with the exact host generation', 0, async () => {
       const bus = new CountingBus();
       const options = runtimeOptions(bus, new MemoryClarificationPlanner(), new ControlledWriter());
+      let observed: MemorySelectionPayload | null = null;
+      let observedGeneration: number = 0;
+      options.memorySelectionObserver = (
+        selection: MemorySelectionPayload,
+        hostGeneration: number
+      ): boolean => {
+        observed = selection;
+        observedGeneration = hostGeneration;
+        return true;
+      };
       options.planningContext.tools.push({
         toolId: 'memory.forget', domain: 'memory', intent: 'memory.forget', riskLevel: 'draft',
         registeredBackends: ['local_adapter'], inputSchema: 'memoryForgetRequest',
@@ -1963,12 +1987,14 @@ export default function multiAgentRuntimeTest() {
           memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
           personaTag: 'food_companion', authority: 'leader'
         }]
-      }) as MultiAgentSettledOutcome;
+      }, 37) as MultiAgentSettledOutcome;
 
       expect(result.status).assertEqual('success');
-      expect(result.memorySelection?.operation).assertEqual('forget');
-      expect(result.memorySelection?.candidates.length).assertEqual(1);
-      expect(result.memorySelection?.candidates[0].memoryId).assertEqual('memory-coffee-1');
+      expect(result.memorySelection).assertEqual(undefined);
+      expect(observedGeneration).assertEqual(37);
+      expect(observedMemorySelectionOperation(observed)).assertEqual('forget');
+      expect(observedMemorySelectionCount(observed)).assertEqual(1);
+      expect(observedMemorySelectionId(observed, 0)).assertEqual('memory-coffee-1');
       runtime.dispose();
     });
 

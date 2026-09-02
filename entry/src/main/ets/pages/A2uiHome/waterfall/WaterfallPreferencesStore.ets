@@ -1,3 +1,4 @@
+import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import {
   aggregateSearchDefaultEnabledSourceIds,
@@ -500,6 +501,11 @@ export class WaterfallPreferencesStore {
 
   constructor(store: preferences.Preferences) {
     this.store = store;
+  }
+
+  static fromContext(context: common.Context,
+    storeName: string = WATERFALL_PREFERENCES_STORE_NAME): WaterfallPreferencesStore {
+    return new WaterfallPreferencesStore(preferences.getPreferencesSync(context, { name: storeName }));
   }
 
   load(): WaterfallPreferenceProfile {

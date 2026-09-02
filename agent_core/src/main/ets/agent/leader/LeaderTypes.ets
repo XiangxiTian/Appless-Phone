@@ -56,6 +56,10 @@ export interface LeaderMemoryRememberMutation {
 
 export interface LeaderMemoryUpdateMutation {
   operation: 'update';
+  updates: LeaderMemoryUpdateItem[];
+}
+
+export interface LeaderMemoryUpdateItem {
   memoryId: string;
   fact: string;
 }

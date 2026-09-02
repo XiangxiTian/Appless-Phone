@@ -32,6 +32,7 @@ import {
   LocalModel,
   MAX_LEADER_DATA_TASKS_PER_ROUND,
   MAX_LEADER_DATA_TASKS_PER_TURN,
+  MemorySelectionPayload,
   TaskErrorPayload,
   TurnResultPayload,
   UiRenderResultPayload
@@ -2116,7 +2117,7 @@ export default function leaderAgentTest() {
       observer.close();
     });
 
-    it('executes pure memory through the Leader-owned executor without Action or A2UI', 0, async () => {
+    it('acknowledges pure memory immediately after enqueue without Action or A2UI', 0, async () => {
       const bus = new LinkedMessageBus();
       const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: '已记住。' });
       const leader = new LeaderAgent(
@@ -2132,9 +2133,174 @@ export default function leaderAgentTest() {
 
       expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
       expect((terminal.payload as TurnResultPayload).status).assertEqual('success');
-      expect((terminal.payload as TurnResultPayload).message).assertEqual('已记住。');
+      expect((terminal.payload as TurnResultPayload).message)
+        .assertEqual('好的，我会按你的要求处理长期记忆。');
       expect(executor.requests.length).assertEqual(1);
       expect(executor.requests[0].mutation.operation).assertEqual('remember');
+      leader.stop();
+      observer.close();
+    });
+
+    it('keeps a normal answer as primary output when its remember side effect succeeds', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: '已记住。' });
+      const decision: LeaderDecision = semanticDecision([], 'answer');
+      decision.requestedCapabilityIds = ['memory.remember'];
+      decision.answer = '当然可以，我也会继续正常回答你的问题。';
+      decision.memoryMutation = {
+        operation: 'remember', facts: [{ fact: '用户偏好先给简洁结论。' }]
+      };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+
+      bus.publish(inputMessage());
+      await receive(observer);
+      const terminal = await receive(observer);
+
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
+      expect((terminal.payload as TurnResultPayload).status).assertEqual('success');
+      expect((terminal.payload as TurnResultPayload).message)
+        .assertEqual('当然可以，我也会继续正常回答你的问题。');
+      expect(executor.requests.length).assertEqual(1);
+      leader.stop();
+      observer.close();
+    });
+
+    it('keeps a normal answer successful when its detached remember side effect fails', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ScriptedMemoryToolExecutor({ status: 'error', message: 'Memory write failed.' });
+      const decision: LeaderDecision = semanticDecision([], 'answer');
+      decision.requestedCapabilityIds = ['memory.remember'];
+      decision.answer = '这是正常的聊天回复。';
+      decision.memoryMutation = {
+        operation: 'remember', facts: [{ fact: '用户偏好先给简洁结论。' }]
+      };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+
+      bus.publish(inputMessage());
+      await receive(observer);
+      const terminal = await receive(observer);
+      const result = terminal.payload as TurnResultPayload;
+
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
+      expect(result.status).assertEqual('success');
+      expect(result.message).assertEqual('这是正常的聊天回复。');
+      expect(executor.requests.length).assertEqual(1);
+      leader.stop();
+      observer.close();
+    });
+
+    it('enqueues one exact multi-record update and acknowledges it without waiting', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ControlledMemoryToolExecutor();
+      const decision: LeaderDecision = semanticDecision([]);
+      decision.requestedCapabilityIds = ['memory.update'];
+      decision.memoryMutation = {
+        operation: 'update',
+        updates: [
+          { memoryId: 'memory-coffee', fact: '用户喝咖啡时选择半糖。' },
+          { memoryId: 'memory-video', fact: '用户偏好横屏长视频。' }
+        ]
+      };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'memory-coffee', fact: '用户喝咖啡时不加糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }, {
+        memoryId: 'memory-video', fact: '用户偏好竖屏短视频。',
+        personaTag: 'media_companion', authority: 'leader'
+      }];
+
+      bus.publish(input);
+      await receive(observer);
+      const terminal = await receive(observer);
+
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
+      expect(executor.requests.length).assertEqual(1);
+      const mutation = executor.requests[0].mutation;
+      expect(mutation.operation).assertEqual('update');
+      if (mutation.operation === 'update') {
+        expect(mutation.updates.length).assertEqual(2);
+        expect(mutation.updates[0].memoryId).assertEqual('memory-coffee');
+        expect(mutation.updates[1].memoryId).assertEqual('memory-video');
+      }
+      leader.stop();
+      observer.close();
+    });
+
+    it('enqueues memory and publishes a virtual Action request without coupling their completion', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ControlledMemoryToolExecutor();
+      const decision: LeaderDecision = rememberDecision();
+      decision.actionIntent = {
+        goal: 'Open the World Cup page',
+        allowedActionIds: ['worldcup.open']
+      };
+      decision.requestedCapabilityIds.push('worldcup.open');
+      const context = memoryPlanningContext();
+      context.tools.push({
+        toolId: 'worldcup.open', domain: 'media', intent: 'worldcup.open', riskLevel: 'read',
+        registeredBackends: ['system_intent'], inputSchema: 'worldCupExperienceRequest',
+        outputSchema: 'worldCupExperience', actions: []
+      });
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), context,
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+
+      bus.publish(inputMessage());
+      await receive(observer);
+      const actionRequest = await receive(observer);
+
+      expect(actionRequest.type).assertEqual(AgentMessageType.ACTION_PLAN_REQUEST);
+      expect((actionRequest.payload as ActionPlanRequestPayload).allowedActionIds[0])
+        .assertEqual('worldcup.open');
+      expect(executor.requests.length).assertEqual(1);
+      expect(executor.guard!.isActive()).assertTrue();
+      leader.stop();
+      expect(executor.guard!.isActive()).assertTrue();
+      observer.close();
+    });
+
+    it('rejects a second memory side effect after one was already enqueued in an earlier round', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: '已记住。' });
+      const first = rememberDecision([semanticDataTask('hotel')]);
+      first.reasonCode = 'dependency_requires_next_round';
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([first, rememberDecision()]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+
+      bus.publish(inputMessage());
+      await receive(observer);
+      const dataTask = await receive(observer);
+      bus.publish(dataResultMessage(dataTask));
+      expect((await receive(observer)).type).assertEqual(AgentMessageType.TASK_RESULT_DATA);
+      const error = await receive(observer);
+
+      expect(error.type).assertEqual(AgentMessageType.TASK_ERROR);
+      expect((error.payload as TaskErrorPayload).code).assertEqual('LEADER_MEMORY_DUPLICATE');
+      expect(executor.requests.length).assertEqual(1);
       leader.stop();
       observer.close();
     });
@@ -2144,7 +2310,8 @@ export default function leaderAgentTest() {
       const decision: LeaderDecision = semanticDecision([]);
       decision.requestedCapabilityIds = ['memory.update'];
       decision.memoryMutation = {
-        operation: 'update', memoryId: 'invented-memory', fact: '用户喝咖啡时选择半糖。'
+        operation: 'update',
+        updates: [{ memoryId: 'invented-memory', fact: '用户喝咖啡时选择半糖。' }]
       };
       const leader = new LeaderAgent(
         bus, new RoundScriptedPlanner([decision]), memoryPlanningContext()
@@ -2169,12 +2336,17 @@ export default function leaderAgentTest() {
     it('publishes a host-trusted forget selection without executing memory', 0, async () => {
       const bus = new LinkedMessageBus();
       const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: 'must not run' });
+      const selections: MemorySelectionPayload[] = [];
       const decision: LeaderDecision = semanticDecision([]);
       decision.requestedCapabilityIds = ['memory.forget'];
       decision.memoryClarification = { operation: 'forget' };
       const leader = new LeaderAgent(
         bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
-        30000, undefined, undefined, undefined, executor
+        30000, undefined, undefined, undefined, executor, undefined,
+        (selection: MemorySelectionPayload): boolean => {
+          selections.push(selection);
+          return true;
+        }
       );
       const observer = bus.openReader();
       leader.start();
@@ -2193,14 +2365,122 @@ export default function leaderAgentTest() {
 
       expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
       expect(result.status).assertEqual('success');
-      expect(result.memorySelection?.operation).assertEqual('forget');
-      expect(result.memorySelection?.originTurnId).assertEqual(input.turnId);
-      expect(result.memorySelection?.sourceTaskId).assertEqual(input.taskId);
-      expect(result.memorySelection?.candidates.length).assertEqual(2);
-      expect(result.memorySelection?.candidates[0].memoryId).assertEqual('memory-coffee-1');
-      expect(result.memorySelection?.candidates[1].memoryId).assertEqual('memory-coffee-2');
-      expect(result.memorySelection?.candidates[1].authority).assertEqual('seed');
+      expect(result.message).assertEqual('已找到相关长期记忆，请在弹窗中选择要忘记的内容。');
+      expect(result.memorySelection).assertEqual(undefined);
+      expect(selections.length).assertEqual(1);
+      expect(selections[0].operation).assertEqual('forget');
+      expect(selections[0].originTurnId).assertEqual(input.turnId);
+      expect(selections[0].sourceTaskId).assertEqual(input.taskId);
+      expect(selections[0].candidates.length).assertEqual(2);
+      expect(selections[0].candidates[0].memoryId).assertEqual('memory-coffee-1');
+      expect(selections[0].candidates[1].memoryId).assertEqual('memory-coffee-2');
+      expect(selections[0].candidates[1].authority).assertEqual('seed');
       expect(executor.requests.length).assertEqual(0);
+      leader.stop();
+      observer.close();
+    });
+
+    it('keeps a normal answer while publishing forget selection once', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const selections: MemorySelectionPayload[] = [];
+      const decision: LeaderDecision = semanticDecision([], 'answer');
+      decision.requestedCapabilityIds = ['memory.forget'];
+      decision.answer = '我会继续正常回答你的问题。';
+      decision.memoryClarification = { operation: 'forget' };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, undefined, undefined,
+        (selection: MemorySelectionPayload): boolean => {
+          selections.push(selection);
+          return true;
+        }
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'memory-answer', fact: '用户偏好简洁回答。',
+        personaTag: 'default_companion', authority: 'leader'
+      }];
+
+      bus.publish(input);
+      await receive(observer);
+      const terminal = await receive(observer);
+
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
+      expect((terminal.payload as TurnResultPayload).message).assertEqual('我会继续正常回答你的问题。');
+      expect(selections.length).assertEqual(1);
+      leader.stop();
+      observer.close();
+    });
+
+    it('keeps Data execution while publishing forget selection once', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const selections: MemorySelectionPayload[] = [];
+      const decision: LeaderDecision = semanticDecision([semanticDataTask('hotel')]);
+      decision.requestedCapabilityIds.push('memory.forget');
+      decision.memoryClarification = { operation: 'forget' };
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
+        30000, undefined, undefined, undefined, undefined, undefined,
+        (selection: MemorySelectionPayload): boolean => {
+          selections.push(selection);
+          return true;
+        }
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'memory-data', fact: '用户不喜欢吸烟房。',
+        personaTag: 'travel_companion', authority: 'leader'
+      }];
+
+      bus.publish(input);
+      await receive(observer);
+      const dataTask = await receive(observer);
+
+      expect(dataTask.type).assertEqual(AgentMessageType.TASK_CREATE_DATA);
+      expect(selections.length).assertEqual(1);
+      leader.stop();
+      observer.close();
+    });
+
+    it('keeps Action execution while publishing forget selection once', 0, async () => {
+      const bus = new LinkedMessageBus();
+      const selections: MemorySelectionPayload[] = [];
+      const decision: LeaderDecision = semanticDecision([]);
+      decision.requestedCapabilityIds = ['memory.forget', 'worldcup.open'];
+      decision.memoryClarification = { operation: 'forget' };
+      decision.actionIntent = { goal: 'Open the World Cup page', allowedActionIds: ['worldcup.open'] };
+      const context = memoryPlanningContext();
+      context.tools.push({
+        toolId: 'worldcup.open', domain: 'media', intent: 'worldcup.open', riskLevel: 'read',
+        registeredBackends: ['system_intent'], inputSchema: 'worldCupExperienceRequest',
+        outputSchema: 'worldCupExperience', actions: []
+      });
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([decision]), context,
+        30000, undefined, undefined, undefined, undefined, undefined,
+        (selection: MemorySelectionPayload): boolean => {
+          selections.push(selection);
+          return true;
+        }
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage();
+      (input.payload as InputUserPayload).recalledMemories = [{
+        memoryId: 'memory-action', fact: '用户不再关注旧球队。',
+        personaTag: 'entertainment_companion', authority: 'leader'
+      }];
+
+      bus.publish(input);
+      await receive(observer);
+      const actionRequest = await receive(observer);
+
+      expect(actionRequest.type).assertEqual(AgentMessageType.ACTION_PLAN_REQUEST);
+      expect(selections.length).assertEqual(1);
       leader.stop();
       observer.close();
     });
@@ -2267,12 +2547,17 @@ export default function leaderAgentTest() {
     it('publishes a selection for one recalled memory without invoking the executor', 0, async () => {
       const bus = new LinkedMessageBus();
       const executor = new ScriptedMemoryToolExecutor({ status: 'success', message: 'must not run' });
+      const selections: MemorySelectionPayload[] = [];
       const decision: LeaderDecision = semanticDecision([]);
       decision.requestedCapabilityIds = ['memory.forget'];
       decision.memoryClarification = { operation: 'forget' };
       const leader = new LeaderAgent(
         bus, new RoundScriptedPlanner([decision]), memoryPlanningContext(),
-        30000, undefined, undefined, undefined, executor
+        30000, undefined, undefined, undefined, executor, undefined,
+        (selection: MemorySelectionPayload): boolean => {
+          selections.push(selection);
+          return true;
+        }
       );
       const observer = bus.openReader();
       leader.start();
@@ -2287,14 +2572,16 @@ export default function leaderAgentTest() {
       const result = terminal.payload as TurnResultPayload;
 
       expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
-      expect(result.memorySelection?.candidates.length).assertEqual(1);
-      expect(result.memorySelection?.candidates[0].memoryId).assertEqual('memory-coffee-1');
+      expect(result.memorySelection).assertEqual(undefined);
+      expect(selections.length).assertEqual(1);
+      expect(selections[0].candidates.length).assertEqual(1);
+      expect(selections[0].candidates[0].memoryId).assertEqual('memory-coffee-1');
       expect(executor.requests.length).assertEqual(0);
       leader.stop();
       observer.close();
     });
 
-    it('merges mixed Data and memory partial status while preserving the business surface', 0, async () => {
+    it('keeps mixed Data terminal independent from a detached memory partial result', 0, async () => {
       const bus = new LinkedMessageBus();
       const executor = new ScriptedMemoryToolExecutor({
         status: 'partial', message: '部分长期记忆保存失败。'
@@ -2324,16 +2611,15 @@ export default function leaderAgentTest() {
       const terminal = await receive(observer);
 
       expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
-      expect((terminal.payload as TurnResultPayload).status).assertEqual('partial');
+      expect((terminal.payload as TurnResultPayload).status).assertEqual('success');
       expect((terminal.payload as TurnResultPayload).surfaceId).assertEqual('surface-memory-mixed');
-      expect((terminal.payload as TurnResultPayload).message.indexOf('部分长期记忆保存失败') >= 0)
-        .assertTrue();
+      expect((terminal.payload as TurnResultPayload).message.indexOf('长期记忆') < 0).assertTrue();
       expect(executor.requests.length).assertEqual(1);
       leader.stop();
       observer.close();
     });
 
-    it('ignores a late Leader memory result after turn cancellation', 0, async () => {
+    it('does not publish a second terminal for a late detached memory result', 0, async () => {
       const bus = new LinkedMessageBus();
       const executor = new ControlledMemoryToolExecutor();
       const leader = new LeaderAgent(
@@ -2345,17 +2631,10 @@ export default function leaderAgentTest() {
       const input = inputMessage('memory-cancel-conversation', 'memory-cancel-turn', 'memory-cancel-input');
       bus.publish(input);
       await receive(observer);
+      const terminal = await receive(observer);
+      expect(terminal.type).assertEqual(AgentMessageType.TURN_RESULT);
       await settle();
       expect(executor.guard!.isActive()).assertTrue();
-      bus.publish({
-        type: AgentMessageType.TURN_CANCEL,
-        conversationId: input.conversationId,
-        turnId: input.turnId,
-        taskId: input.taskId,
-        payload: new Object()
-      });
-      await receive(observer);
-      expect(executor.guard!.isActive()).assertFalse();
       executor.finish({ status: 'success', message: '已记住。' });
       await settle();
       bus.publish(inputMessage('marker-conversation', 'marker-turn', 'marker-task'));
@@ -2366,27 +2645,57 @@ export default function leaderAgentTest() {
       observer.close();
     });
 
-    it('revokes the memory commit guard when the turn times out', 1000, async () => {
+    it('does not revoke an enqueued memory job when its primary Data turn is canceled', 0, async () => {
       const bus = new LinkedMessageBus();
       const executor = new ControlledMemoryToolExecutor();
       const leader = new LeaderAgent(
-        bus, new RoundScriptedPlanner([rememberDecision()]), memoryPlanningContext(),
+        bus,
+        new RoundScriptedPlanner([rememberDecision([semanticDataTask('hotel')])]),
+        memoryPlanningContext(), 30000, undefined, undefined, undefined, executor
+      );
+      const observer = bus.openReader();
+      leader.start();
+      const input = inputMessage('memory-cancel-conversation', 'memory-cancel-turn', 'memory-cancel-input');
+      bus.publish(input);
+      await receive(observer);
+      expect((await receive(observer)).type).assertEqual(AgentMessageType.TASK_CREATE_DATA);
+      expect(executor.guard!.isActive()).assertTrue();
+
+      bus.publish({
+        type: AgentMessageType.TURN_CANCEL,
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        taskId: input.taskId,
+        payload: new Object()
+      });
+      expect((await receive(observer)).type).assertEqual(AgentMessageType.TURN_CANCEL);
+      expect(executor.guard!.isActive()).assertTrue();
+      leader.stop();
+      observer.close();
+    });
+
+    it('keeps an enqueued memory job active when its primary Data turn times out', 1000, async () => {
+      const bus = new LinkedMessageBus();
+      const executor = new ControlledMemoryToolExecutor();
+      const leader = new LeaderAgent(
+        bus, new RoundScriptedPlanner([rememberDecision([semanticDataTask('hotel')])]), memoryPlanningContext(),
         10, undefined, undefined, undefined, executor
       );
       const observer = bus.openReader();
       leader.start();
       bus.publish(inputMessage('memory-timeout-conversation', 'memory-timeout-turn', 'memory-timeout-input'));
       await receive(observer);
+      expect((await receive(observer)).type).assertEqual(AgentMessageType.TASK_CREATE_DATA);
       const timeout = await receive(observer);
 
       expect(timeout.type).assertEqual(AgentMessageType.TASK_ERROR);
       expect((timeout.payload as TaskErrorPayload).code).assertEqual('LEADER_TURN_TIMEOUT');
-      expect(executor.guard!.isActive()).assertFalse();
+      expect(executor.guard!.isActive()).assertTrue();
       leader.stop();
       observer.close();
     });
 
-    it('revokes the memory commit guard when the Leader is disposed', 0, async () => {
+    it('keeps an enqueued memory job active when the Leader is disposed', 0, async () => {
       const bus = new LinkedMessageBus();
       const executor = new ControlledMemoryToolExecutor();
       const leader = new LeaderAgent(
@@ -2397,11 +2706,12 @@ export default function leaderAgentTest() {
       leader.start();
       bus.publish(inputMessage('memory-stop-conversation', 'memory-stop-turn', 'memory-stop-input'));
       await receive(observer);
+      expect((await receive(observer)).type).assertEqual(AgentMessageType.TURN_RESULT);
       await settle();
 
       expect(executor.guard!.isActive()).assertTrue();
       leader.stop();
-      expect(executor.guard!.isActive()).assertFalse();
+      expect(executor.guard!.isActive()).assertTrue();
       observer.close();
     });
 

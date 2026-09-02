@@ -6,10 +6,12 @@ import {
   ConversationContext,
   CurrentSurfaceSummary,
   DataResult,
+  LeaderMemoryToolResult,
   LlmProvider,
   loadConversation,
   LocalModel,
   LocalModelSettings,
+  MemoryCommitGuard,
   OpenAiA2uiModel,
   OpenAiCompatibleModel,
   PaymentAccount,
@@ -196,6 +198,8 @@ import {
 import {
   NavigationCardSnapshot,
   NavigationCardSnapshotBuildResult,
+  NAVIGATION_CARD_FORM_REGISTRY_STORE,
+  NAVIGATION_CARD_STORE,
   PreferencesNavigationCardSnapshotStore,
   buildNavigationCardBindingData,
   navigationCardSnapshotFromFlightOption,
@@ -238,7 +242,7 @@ import {
   waterfallExplicitPreferencesFromStatement,
   PersonaMemoryUpdateRequest
 } from '../../model/PersonaMemoryUpdate';
-import { PreferencesPersonaPackStore } from '../../model/PersonaPreferencesStore';
+import { PERSONA_STORE_NAME, PreferencesPersonaPackStore } from '../../model/PersonaPreferencesStore';
 import { allPersonaPacks, personaPackForId, resetPersonaPackText, updatePersonaPackText } from '../../model/PersonaStore';
 import { PersonaPack } from '../../model/PersonaTypes';
 import { startVoiceInputSession, VoiceInputResult, VoiceInputSession } from '../../model/VoiceInputBridge';
@@ -281,10 +285,31 @@ import {
   CheckoutWebKind,
   isAllowed12306BookingUrl
 } from './components/CheckoutWebOverlay';
+import {
+  AccountSessionStore,
+  createDefaultAccountSessionStore,
+  installGlobalAccountSessionStore
+} from '../../account/AccountSessionStore';
+import { AccountSessionSnapshot, AccountSessionStatus } from '../../account/AccountModels';
+import {
+  AccountProfileSnapshot,
+  AccountProfileStore,
+  effectiveAccountDisplayName,
+  emptyAccountProfileSnapshot
+} from '../../account/AccountProfileStore';
+import { accountScopedStoreName } from '../../account/AccountStorageScope';
+import { HuaweiAccountLoginPage } from '../../account/HuaweiAccountLoginPage';
+import { configuredHuaweiAccountClientId } from '../../account/HuaweiAccountService';
+import { DefaultLegacyAccountClaimCoordinator } from '../../account/LegacyAccountMigration';
 import { ConfigPage } from './components/ConfigPage';
+import { LongTermMemoryPlaceholderPage } from './components/LongTermMemoryPlaceholderPage';
 import { PublicPersonaPage } from './components/PublicPersonaPage';
+import { UserManagementPage } from './components/UserManagementPage';
 import { PublicPersonaClient } from '../../publicpersona/PublicPersonaClient';
-import { PhoneLocalMemoryRuntime } from '../../memory/PhoneLocalMemoryRuntime';
+import {
+  PhoneLocalMemoryMutationEvent,
+  PhoneLocalMemoryRuntime
+} from '../../memory/PhoneLocalMemoryRuntime';
 import {
   PhoneLocalMemoryAvailabilityPort,
   phoneLocalMemoryAvailabilityForContext
@@ -295,7 +320,13 @@ import {
   PublicPersonaProgress,
   PublicPersonaSearchMode,
   PublicPersonaSnapshot,
+  isPublicPersonaImported,
+  markPublicPersonaImported,
   parsePublicPersonaMarkdown,
+  publicPersonaImportFacts,
+  publicPersonaMemoryFactsAreCurrent,
+  publicPersonaSnapshotAfterMarkdownEdit,
+  publicPersonaSnapshotWithMemoryFacts,
   replacePublicPersonaMbti,
   sanitizePublicPersonaSnapshot
 } from '../../publicpersona/PublicPersonaModel';
@@ -310,10 +341,18 @@ import {
   MailDetailInPlaceEvent,
   MailDetailWriteLease,
   MemoryCandidateManagerActionResult,
+  MemoryForgetOverlayGateState,
+  MemoryForgetOverlayRequest,
+  memoryForgetOverlayBlocked as shouldBlockMemoryForgetOverlay,
   MultiAgentCanaryOptions,
   MultiAgentCanaryRuntime
 } from './agent/MultiAgentCanaryRuntime';
 import {
+  MEMORY_FORGET_OVERLAY_SELECTION_LIMIT,
+  MemoryForgetOverlayCandidateView
+} from './components/MemoryForgetOverlay';
+import {
+  MemoryCandidatesForgetActionArgs,
   MEMORY_CANDIDATES_FORGET_ACTION_ID
 } from '../../model/MemoryCandidateSelectionSurface';
 import {
@@ -343,6 +382,19 @@ import {
   WaterfallPreferencesStore,
   WATERFALL_PREFERENCES_STORE_NAME
 } from './waterfall/WaterfallPreferencesStore';
+import {
+  DiscoveryMemoryPreferenceProjection,
+  discoveryMemoryProjectionSnapshot,
+  emptyDiscoveryMemoryPreferenceProjection
+} from './waterfall/DiscoveryMemoryProjection';
+import {
+  DiscoveryMemoryProjectionCoordinator,
+  DiscoveryMemoryProjectionCoordinatorOptions
+} from './waterfall/DiscoveryMemoryProjectionCoordinator';
+import {
+  DISCOVERY_MEMORY_PROJECTION_STORE_NAME,
+  DiscoveryMemoryProjectionStore
+} from './waterfall/DiscoveryMemoryProjectionStore';
 import {
   buildCtripFlightSearchUrl,
   buildCtripFlightSelectionContext,
@@ -411,8 +463,16 @@ import {
   waterfallSnapshotRequestFromAction
 } from './html/HtmlAggregateSearchHomeRenderer';
 import { createFirecrawlPendingDocument, isFirecrawlToolId } from './html/HtmlFirecrawlHomeRenderer';
-import { FoodAddressBookStore, FoodSavedAddressViewModel } from './FoodAddressBookStore';
-import { FoodFavoritesStore, FoodFavoriteViewModel } from './FoodFavoritesStore';
+import {
+  FOOD_ADDRESS_BOOK_STORE_NAME,
+  FoodAddressBookStore,
+  FoodSavedAddressViewModel
+} from './FoodAddressBookStore';
+import {
+  FOOD_FAVORITES_STORE_NAME,
+  FoodFavoritesStore,
+  FoodFavoriteViewModel
+} from './FoodFavoritesStore';
 import { buildFoodStoreMapSnapshot } from './FoodStoreMapSnapshot';
 import { isHtmlHomeActionAllowed } from './html/HtmlHomeActionPolicy';
 import {
@@ -455,6 +515,7 @@ import {
   DEFAULT_AGGREGATE_SEARCH_POLICY
 } from './state/AggregateSearchPolicy';
 import {
+  A2uiSessionResetCause,
   ConnectionPanelState,
   createTurnConversationSurface,
   createTurnFailureSurface,
@@ -467,6 +528,7 @@ import {
   runtimeCallbackIsCurrent,
   runtimeOwnerAllowsSurfaceAction,
   runtimeSurfaceIdentityMatches,
+  sessionResetDeletesPersistedConversation,
   shouldApplySurfaceUpdate,
   shouldShowDeepSearchPendingSurface,
   shouldShowFirecrawlPendingSurface,
@@ -508,6 +570,7 @@ import {
   transitionDailyBriefCatchUp
 } from './dailybrief/DailyBriefScheduler';
 import {
+  DAILY_BRIEF_STORE_NAME,
   DailyBriefStore,
   isValidDailyBriefAction
 } from './dailybrief/DailyBriefStore';
@@ -549,7 +612,6 @@ const COMPOSIO_USER_ID_KEY: string = 'composio_user_id';
 const MODEL_PRESET_STORE_NAME: string = 'aiphone_model_preset_store';
 const MODEL_PRESET_KEY: string = 'model_preset';
 const AGGREGATE_SEARCH_POLICY_STORE_NAME: string = 'aiphone_aggregate_search_policy_store';
-
 export function htmlHomeHtmlForViewValue(
   showDeepSearch: boolean,
   currentIntent: string,
@@ -565,6 +627,11 @@ export function htmlHomeHtmlForViewValue(
   if (waterfallShellHtml.length > 0) return waterfallShellHtml;
   if (keepStableHtml()) return stableHtml.length > 0 ? stableHtml : currentHtml();
   return currentHtml();
+}
+
+export function memorySideEffectToastText(message: string): string {
+  const value: string = message.replace(/[\r\n\t]+/g, ' ').trim();
+  return value.substring(0, 240);
 }
 
 const AGGREGATE_DOMESTIC_ONLY_KEY: string = 'only_domestic_sources';
@@ -1084,9 +1151,29 @@ function waterfallSourcesForContext(enabledSources: string[], availableSources: 
     availableSources.indexOf(source as AggregateSearchSource) >= 0);
 }
 
+class PublicPersonaMemoryCommitGuard implements MemoryCommitGuard {
+  private readonly active: () => boolean;
+
+  constructor(active: () => boolean) {
+    this.active = active;
+  }
+
+  isActive(): boolean {
+    return this.active();
+  }
+}
+
 @Entry
 @Component
 struct Index {
+  @State accountSessionStatus: AccountSessionStatus = AccountSessionStatus.UNINITIALIZED;
+  @State accountOwnerId: string = '';
+  @State showUserManagementPage: boolean = false;
+  @State showLongTermMemoryPage: boolean = false;
+  @State showLogoutConfirmation: boolean = false;
+  @State accountDisplayName: string = effectiveAccountDisplayName(emptyAccountProfileSnapshot());
+  @State accountNameSaveMessage: string = '';
+  @State accountNameSaving: boolean = false;
   @State showConfigPage: boolean = false;
   @State showComposioAuthPage: boolean = false;
   @State showAdvancedSettings: boolean = false;
@@ -1177,8 +1264,20 @@ struct Index {
   @State publicPersonaSnapshot: PublicPersonaSnapshot | null = null;
   @State publicPersonaRenderTick: number = 0;
   @State publicPersonaError: string = '';
+  @State publicPersonaImporting: boolean = false;
   private publicPersonaJobId: number = 0;
+  private publicPersonaImportGeneration: number = 0;
   private publicPersonaInitialized: boolean = false;
+  private accountSessionStoreInstance: AccountSessionStore | null = null;
+  private accountProfileStoreInstance: AccountProfileStore | null = null;
+  private accountProfileSnapshot: AccountProfileSnapshot = emptyAccountProfileSnapshot();
+  private accountRestorePromise: Promise<boolean> | null = null;
+  private accountLifecycleGeneration: number = 0;
+  private accountOwnerGeneration: number = 0;
+  private accountDataInitializedOwnerId: string = '';
+  private navigationCardAccountRefreshGeneration: number = 0;
+  private navigationCardAccountRefreshQueue: Promise<void> = Promise.resolve();
+  private publicPersonaReturnToUserManagement: boolean = false;
   private readonly publicPersonaClient: PublicPersonaClient = new PublicPersonaClient();
   @State mailDetailEventJson: string = '';
   @State mailReplyEventJson: string = '';
@@ -1201,6 +1300,11 @@ struct Index {
   @State foodLocationName: string = '坂田';
   @State foodLocationAddress: string = '深圳市龙岗区坂田街道';
   @State locationServiceNotice: string = '';
+  @State showMemoryForgetOverlay: boolean = false;
+  @State memoryForgetCandidates: MemoryForgetOverlayCandidateView[] = [];
+  @State memoryForgetSelectedKeys: string[] = [];
+  @State memoryForgetWorking: boolean = false;
+  private pendingMemoryForgetOverlay: MemoryForgetOverlayRequest | null = null;
   private foodLocationOwnerSurfaceId: string = '';
   @State foodStoreMapOpen: boolean = false;
   @State foodStoreMapSnapshotJson: string = '';
@@ -1262,6 +1366,10 @@ struct Index {
   private interestSourceRequestSeq: Map<string, number> = new Map<string, number>();
   private waterfallConversationState: WaterfallConversationState = { history: [], rules: [], summary: '' };
   private waterfallPreferencesStoreInstance: WaterfallPreferencesStore | null = null;
+  private discoveryMemoryProjectionStoreInstance: DiscoveryMemoryProjectionStore | null = null;
+  private discoveryMemoryProjectionCoordinatorInstance: DiscoveryMemoryProjectionCoordinator | null = null;
+  private discoveryMemoryProjection: DiscoveryMemoryPreferenceProjection =
+    emptyDiscoveryMemoryPreferenceProjection();
   private waterfallPreferenceProfile: WaterfallPreferenceProfile = emptyWaterfallPreferenceProfile();
   private waterfallCardRecords: WaterfallCardRecord[] = [];
   private waterfallReactionProjection: WaterfallReactionProjection = {
@@ -2714,6 +2822,7 @@ struct Index {
   }
 
   private ensureInterestWaterfall(startRecall: boolean = true): void {
+    this.requestDiscoveryMemoryProjectionRefresh();
     if (this.interestWaterfallFeedState === null) {
       this.cancelInterestPoolRefill();
       this.interestWaterfallGeneration += 1;
@@ -3483,7 +3592,7 @@ struct Index {
     if (this.messages.length > 0) return;
     const context = this.getUIContext().getHostContext() as common.Context;
     if (context === null) return;
-    const stored = loadConversation(context).toChatMessages();
+    const stored = loadConversation(context, this.scopedStoreName('loop_conversation')).toChatMessages();
     const restored: A2uiMessage[] = [];
     for (let index = 0; index < stored.length; index++) {
       restored.push({
@@ -3499,16 +3608,208 @@ struct Index {
   private persistConversationMessages(): void {
     const context = this.getUIContext().getHostContext() as common.Context;
     if (context === null) return;
-    saveConversation(context, ConversationContext.fromMessages(this.messages));
+    saveConversation(context, ConversationContext.fromMessages(this.messages),
+      this.scopedStoreName('loop_conversation'));
   }
 
-  aboutToAppear(): void {
+  private accountSessionStore(): AccountSessionStore {
+    if (this.accountSessionStoreInstance === null) {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      this.accountSessionStoreInstance = createDefaultAccountSessionStore(
+        context,
+        configuredHuaweiAccountClientId(),
+        new DefaultLegacyAccountClaimCoordinator(context)
+      );
+      installGlobalAccountSessionStore(this.accountSessionStoreInstance);
+    }
+    return this.accountSessionStoreInstance;
+  }
+
+  private accountProfileStore(): AccountProfileStore {
+    if (this.accountProfileStoreInstance === null) {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      this.accountProfileStoreInstance = AccountProfileStore.fromContext(
+        context,
+        this.requireAccountOwnerId()
+      );
+    }
+    return this.accountProfileStoreInstance;
+  }
+
+  private refreshAccountProfile(): void {
+    try {
+      this.accountProfileSnapshot = this.accountProfileStore().load();
+      this.accountDisplayName = effectiveAccountDisplayName(this.accountProfileSnapshot);
+      this.accountNameSaveMessage = '';
+    } catch (_error) {
+      this.accountProfileSnapshot = emptyAccountProfileSnapshot();
+      this.accountDisplayName = effectiveAccountDisplayName(this.accountProfileSnapshot);
+      this.accountNameSaveMessage = '用户名称暂时无法读取。';
+    }
+  }
+
+  private saveAccountDisplayName(name: string): void {
+    const normalized: string = name.trim();
+    if (this.accountNameSaving) return;
+    if (normalized.length > 40) {
+      this.accountNameSaveMessage = '名称最多 40 个字符。';
+      return;
+    }
+    this.accountNameSaving = true;
+    try {
+      this.accountProfileSnapshot = normalized.length === 0 ? this.accountProfileStore().clearCustomName() :
+        this.accountProfileStore().setCustomName(normalized);
+      this.accountDisplayName = effectiveAccountDisplayName(this.accountProfileSnapshot);
+      this.accountNameSaveMessage = normalized.length === 0 ? '已恢复华为账号名称。' : '名称已保存。';
+    } catch (_error) {
+      this.accountNameSaveMessage = '名称保存失败，请重试。';
+    } finally {
+      this.accountNameSaving = false;
+    }
+  }
+
+  private async logoutCurrentAccount(): Promise<void> {
+    if (this.accountNameSaving) return;
+    this.accountNameSaving = true;
+    this.showLogoutConfirmation = false;
+    try {
+      const snapshot = await this.accountSessionStore().clearLocalSession();
+      if (snapshot.status === AccountSessionStatus.ERROR) {
+        this.getUIContext().getPromptAction().showToast({
+          message: snapshot.errorMessage.length > 0 ? snapshot.errorMessage : '退出登录失败。'
+        });
+        return;
+      }
+      this.applyAccountSessionSnapshot(snapshot);
+    } catch (_error) {
+      this.getUIContext().getPromptAction().showToast({
+        message: '退出登录失败。'
+      });
+    } finally {
+      this.accountNameSaving = false;
+    }
+  }
+
+  private openUserManagement(): void {
+    this.refreshAccountProfile();
+    this.showUserManagementPage = true;
+    this.showLongTermMemoryPage = false;
+    this.showLogoutConfirmation = false;
+  }
+
+  private requireAccountOwnerId(): string {
+    const ownerId: string = this.accountOwnerId.trim();
+    if (ownerId.length === 0) {
+      throw new Error('Account-scoped storage requested without an authenticated account.');
+    }
+    return ownerId;
+  }
+
+  private scopedStoreName(baseName: string): string {
+    return accountScopedStoreName(baseName, this.requireAccountOwnerId());
+  }
+
+  private async applyNavigationCardAccountBinding(ownerId: string, generation: number,
+    reason: string): Promise<void> {
+    const context = this.getUIContext().getHostContext() as common.Context;
+    const snapshotStoreName = ownerId.length > 0 ?
+      accountScopedStoreName(NAVIGATION_CARD_STORE, ownerId) : NAVIGATION_CARD_STORE;
+    const store = new PreferencesNavigationCardSnapshotStore(
+      context, snapshotStoreName, NAVIGATION_CARD_FORM_REGISTRY_STORE
+    );
+    const snapshot: NavigationCardSnapshot | null = ownerId.length > 0 ? await store.getSnapshot() : null;
+    if (generation !== this.navigationCardAccountRefreshGeneration) {
+      return;
+    }
+    const formIds: string[] = await store.getFormIds();
+    if (generation !== this.navigationCardAccountRefreshGeneration) {
+      return;
+    }
+    const binding = formBindingData.createFormBindingData(buildNavigationCardBindingData(snapshot, Date.now()));
+    for (let index = 0; index < formIds.length; index += 1) {
+      if (generation !== this.navigationCardAccountRefreshGeneration) {
+        return;
+      }
+      const formId: string = formIds[index];
+      try {
+        await formProvider.updateForm(formId, binding);
+        aiLogInfo('[AIPhone][NavigationCardAccountRefresh] reason=' + reason +
+          ' formId=' + formId + ' ok=true');
+      } catch (error) {
+        const businessError = error as BusinessError;
+        aiLogError('[AIPhone][NavigationCardAccountRefresh] reason=' + reason +
+          ' formId=' + formId + ' ok=false code=' +
+          (businessError.code === undefined || businessError.code === null ? 'unknown' : businessError.code.toString()) +
+          ' message=' + businessError.message);
+      }
+    }
+  }
+
+  private refreshNavigationCardForAccount(ownerId: string, reason: string): void {
+    const generation: number = ++this.navigationCardAccountRefreshGeneration;
+    const nextOwnerId: string = ownerId.trim();
+    this.navigationCardAccountRefreshQueue = this.navigationCardAccountRefreshQueue.then((): Promise<void> => {
+      return this.applyNavigationCardAccountBinding(nextOwnerId, generation, reason);
+    }).catch((error: Error): void => {
+      aiLogError('[AIPhone][NavigationCardAccountRefresh] reason=' + reason +
+        ' ok=false message=' + error.message);
+    });
+  }
+
+  private invalidateAccountScopedState(preserveInput: boolean): void {
+    const pendingInput: string = preserveInput ? this.inputText : '';
+    this.accountOwnerGeneration += 1;
+    this.unsubscribeTrainPresaleHandoff();
+    this.disposeHotelRuntime();
+    this.phoneLocalMemoryRuntime = null;
+    this.bimStoreInstance = null;
+    this.waterfallPreferencesStoreInstance = null;
+    this.discoveryMemoryProjectionStoreInstance = null;
+    this.discoveryMemoryProjectionCoordinatorInstance = null;
+    this.foodAddressBookStoreInstance = null;
+    this.foodFavoritesStoreInstance = null;
+    this.accountProfileStoreInstance = null;
+    this.accountProfileSnapshot = emptyAccountProfileSnapshot();
+    this.accountDisplayName = effectiveAccountDisplayName(this.accountProfileSnapshot);
+    this.accountNameSaveMessage = '';
+    this.accountNameSaving = false;
+    this.showUserManagementPage = false;
+    this.showLongTermMemoryPage = false;
+    this.showLogoutConfirmation = false;
+    this.publicPersonaJobId++;
+    this.publicPersonaImportGeneration++;
+    this.showPublicPersonaPage = false;
+    this.publicPersonaReturnToUserManagement = false;
+    this.trainPresaleResumeDrain = null;
+    this.publicPersonaInitialized = false;
+    this.publicPersonaSnapshot = null;
+    this.publicPersonaPhase = 'input';
+    this.publicPersonaCandidates = [];
+    this.publicPersonaProgress = null;
+    this.publicPersonaError = '';
+    this.publicPersonaImporting = false;
+    this.dailyBriefSnapshot = null;
+    this.bimRecords = [];
+    this.foodSavedAddresses = [];
+    this.foodFavorites = [];
+    this.discoveryMemoryProjection = emptyDiscoveryMemoryPreferenceProjection();
+    this.waterfallPreferenceProfile = emptyWaterfallPreferenceProfile();
+    this.waterfallCardRecords = [];
+    this.waterfallReactionProjection = { topicWeights: [], sourceWeights: [], formatWeights: [] };
+    this.accountDataInitializedOwnerId = '';
+    this.resetCurrentSession('account_scope_invalidated');
+    if (preserveInput) {
+      this.inputText = pendingInput;
+    }
+  }
+
+  private initializeAccountScopedState(ownerId: string): void {
+    if (this.accountDataInitializedOwnerId === ownerId) {
+      return;
+    }
+    this.loadPersonaOverrides();
+    this.refreshAccountProfile();
     this.restoreConversationMessages();
-    this.loadModelPreset();
-    this.loadAggregateSearchPolicy();
-    this.loadBimMotionPreference();
-    this.readDebugBuildState();
-    this.configureComposioRuntimeForCurrentUser();
     this.loadWaterfallPreferences();
     this.startWaterfallPoolRuntime();
     this.ensureInterestWaterfall(false);
@@ -3516,14 +3817,82 @@ struct Index {
     this.loadFoodFavorites();
     this.loadPublicPersona();
     this.subscribeTrainPresaleHandoff();
-    this.subscribeWaterfallConversationTypedTest();
     this.requestPendingTrainPresaleResume();
+    this.accountDataInitializedOwnerId = ownerId;
+  }
+
+  private activateAccountOwner(ownerId: string): void {
+    const nextOwner: string = ownerId.trim();
+    if (nextOwner.length === 0) {
+      return;
+    }
+    if (this.accountOwnerId.length > 0 && this.accountOwnerId !== nextOwner) {
+      this.invalidateAccountScopedState(true);
+    }
+    this.accountOwnerId = nextOwner;
+    this.initializeAccountScopedState(nextOwner);
+    this.accountSessionStatus = AccountSessionStatus.AUTHENTICATED;
+    this.refreshNavigationCardForAccount(nextOwner, 'account_activated');
+  }
+
+  private deactivateAccountOwner(status: AccountSessionStatus): void {
+    if (this.accountOwnerId.length > 0 || this.accountDataInitializedOwnerId.length > 0) {
+      this.invalidateAccountScopedState(true);
+    }
+    this.accountOwnerId = '';
+    this.accountSessionStatus = status;
+    this.refreshNavigationCardForAccount('', 'account_deactivated');
+  }
+
+  private applyAccountSessionSnapshot(snapshot: AccountSessionSnapshot): boolean {
+    if (snapshot.status === AccountSessionStatus.AUTHENTICATED && snapshot.ownerId.length > 0) {
+      this.activateAccountOwner(snapshot.ownerId);
+      return true;
+    }
+    this.deactivateAccountOwner(snapshot.status);
+    return false;
+  }
+
+  private restoreAccountSession(): Promise<boolean> {
+    if (this.accountRestorePromise !== null) {
+      return this.accountRestorePromise;
+    }
+    const generation: number = ++this.accountLifecycleGeneration;
+    const run = this.accountSessionStore().restore().then((snapshot: AccountSessionSnapshot): boolean => {
+      if (generation !== this.accountLifecycleGeneration) {
+        return false;
+      }
+      return this.applyAccountSessionSnapshot(snapshot);
+    }).catch((_error: Error): boolean => {
+      if (generation === this.accountLifecycleGeneration) {
+        this.deactivateAccountOwner(AccountSessionStatus.ERROR);
+      }
+      return false;
+    });
+    this.accountRestorePromise = run.then((authenticated: boolean): boolean => {
+      if (generation === this.accountLifecycleGeneration) {
+        this.accountRestorePromise = null;
+      }
+      return authenticated;
+    });
+    return this.accountRestorePromise;
+  }
+
+  aboutToAppear(): void {
+    this.loadModelPreset();
+    this.loadAggregateSearchPolicy();
+    this.loadBimMotionPreference();
+    this.readDebugBuildState();
+    this.configureComposioRuntimeForCurrentUser();
+    this.subscribeWaterfallConversationTypedTest();
+    this.accountSessionStatus = AccountSessionStatus.RESTORING;
+    void this.restoreAccountSession();
   }
 
   onPageShow(): void {
-    this.subscribeTrainPresaleHandoff();
     this.subscribeWaterfallConversationTypedTest();
-    this.requestPendingTrainPresaleResume();
+    this.accountSessionStatus = AccountSessionStatus.RESTORING;
+    void this.restoreAccountSession();
   }
 
   onPageHide(): void {
@@ -3531,6 +3900,8 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    this.accountLifecycleGeneration += 1;
+    this.accountRestorePromise = null;
     this.stopBimMotionPreference();
     this.unsubscribeTrainPresaleHandoff();
     this.unsubscribeWaterfallConversationTypedTest();
@@ -3570,7 +3941,9 @@ struct Index {
 
   private personaPackStore(): PreferencesPersonaPackStore | null {
     const context = this.getUIContext().getHostContext() as common.Context;
-    return context === null ? null : new PreferencesPersonaPackStore(context);
+    return context === null ? null : new PreferencesPersonaPackStore(
+      context, null, this.scopedStoreName(PERSONA_STORE_NAME)
+    );
   }
 
   private refreshPersonaEditor(personaId: string = this.selectedPersonaId): void {
@@ -3582,6 +3955,10 @@ struct Index {
   }
 
   private loadPersonaOverrides(): void {
+    const packs: PersonaPack[] = allPersonaPacks();
+    for (let index = 0; index < packs.length; index += 1) {
+      resetPersonaPackText(packs[index].manifest.id);
+    }
     const store = this.personaPackStore();
     if (store !== null) {
       store.loadSync();
@@ -3595,9 +3972,7 @@ struct Index {
       return null;
     }
     try {
-      return new PublicPersonaStore(preferences.getPreferencesSync(context, {
-        name: PUBLIC_PERSONA_STORE_NAME
-      }));
+      return PublicPersonaStore.fromContext(context, this.scopedStoreName(PUBLIC_PERSONA_STORE_NAME));
     } catch (_error) {
       return null;
     }
@@ -3624,10 +3999,19 @@ struct Index {
       (store.onboardingSeen() ? 'input' : 'welcome');
   }
 
-  private openPublicPersona(): void {
+  private openPublicPersona(returnToUserManagement: boolean = false): void {
     aiLogInfo('[AIPhone][PublicPersonaEntry] open=true');
     this.loadPublicPersona();
+    this.publicPersonaReturnToUserManagement = returnToUserManagement;
+    this.showUserManagementPage = false;
     this.showPublicPersonaPage = true;
+  }
+
+  private closePublicPersona(): void {
+    const returnToUserManagement: boolean = this.publicPersonaReturnToUserManagement;
+    this.publicPersonaReturnToUserManagement = false;
+    this.showPublicPersonaPage = false;
+    if (returnToUserManagement) this.showUserManagementPage = true;
   }
 
   private skipPublicPersonaOnboarding(): void {
@@ -3685,21 +4069,113 @@ struct Index {
     void this.runPublicPersonaDiscovery(jobId, username, mode);
   }
 
-  private async runPublicPersonaBuild(jobId: number, selected: PublicPersonaCandidate[]): Promise<void> {
+  private publicPersonaMemoryGuard(jobId: number, ownerGeneration: number): MemoryCommitGuard {
+    return new PublicPersonaMemoryCommitGuard((): boolean => jobId === this.publicPersonaJobId &&
+        ownerGeneration === this.accountOwnerGeneration &&
+        this.accountSessionStatus === AccountSessionStatus.AUTHENTICATED);
+  }
+
+  private async importPublicPersonaMemory(): Promise<boolean> {
+    if (this.publicPersonaImporting || this.publicPersonaSnapshot === null) return false;
+    if (isPublicPersonaImported(this.publicPersonaSnapshot)) return true;
+    let snapshot = this.publicPersonaSnapshot;
+    const store = this.publicPersonaStore();
+    if (store === null) {
+      this.publicPersonaError = '画像导入状态暂时无法保存。';
+      return false;
+    }
+    const jobId = ++this.publicPersonaJobId;
+    const importGeneration = ++this.publicPersonaImportGeneration;
+    const ownerGeneration = this.accountOwnerGeneration;
+    this.publicPersonaImporting = true;
+    this.publicPersonaError = '';
+    try {
+      if (!this.localMemoryAvailability().isAvailable()) {
+        throw new Error('长期记忆当前不可用，画像未导入。');
+      }
+      const importedAt = new Date().toISOString();
+      if (!publicPersonaMemoryFactsAreCurrent(snapshot)) {
+        const rebuiltFacts = await this.publicPersonaClient.rebuildMemoryFacts(
+          snapshot,
+          this.getSettings(),
+          importedAt
+        );
+        if (jobId !== this.publicPersonaJobId || ownerGeneration !== this.accountOwnerGeneration) return false;
+        const rebuiltSnapshot = sanitizePublicPersonaSnapshot(
+          publicPersonaSnapshotWithMemoryFacts(snapshot, rebuiltFacts) as Object
+        );
+        if (rebuiltSnapshot === null || !store.save(rebuiltSnapshot)) {
+          throw new Error('画像记忆候选保存失败，请重试。');
+        }
+        snapshot = rebuiltSnapshot;
+        this.updatePublicPersonaSnapshot(rebuiltSnapshot);
+      }
+      const projectedFacts = publicPersonaImportFacts(snapshot, importedAt);
+      const facts: string[] = [];
+      for (let index = 0; index < projectedFacts.length; index += 1) {
+        facts.push(projectedFacts[index].fact);
+      }
+      const guard = this.publicPersonaMemoryGuard(jobId, ownerGeneration);
+      const result = facts.length > 0 ? await this.localMemoryRuntime().replacePublicPersonaFacts(
+        facts,
+        'public-persona-' + Date.now().toString(),
+        guard
+      ) : await this.localMemoryRuntime().deletePublicPersonaFacts(guard);
+      if (result.status !== 'success') {
+        throw new Error(result.error?.message ?? '画像记忆同步失败，请重试。');
+      }
+      if (jobId !== this.publicPersonaJobId || ownerGeneration !== this.accountOwnerGeneration) return false;
+      const imported = sanitizePublicPersonaSnapshot(markPublicPersonaImported(snapshot) as Object);
+      if (imported === null || !store.save(imported)) {
+        this.publicPersonaError = '长期记忆已更新，但导入状态保存失败，请重试。';
+        return false;
+      }
+      this.updatePublicPersonaSnapshot(imported);
+      return true;
+    } catch (error) {
+      if (jobId === this.publicPersonaJobId && ownerGeneration === this.accountOwnerGeneration) {
+        this.publicPersonaError = error instanceof Error ? error.message : '画像导入长期记忆失败。';
+      }
+      return false;
+    } finally {
+      if (importGeneration === this.publicPersonaImportGeneration &&
+        ownerGeneration === this.accountOwnerGeneration) {
+        this.publicPersonaImporting = false;
+      }
+    }
+  }
+
+  private restorePublicPersonaSnapshot(
+    store: PublicPersonaStore,
+    previous: PublicPersonaSnapshot | null
+  ): void {
+    if (previous === null) {
+      store.deleteSnapshot();
+    } else {
+      store.save(previous);
+    }
+  }
+
+  private async runPublicPersonaBuild(
+    jobId: number,
+    selected: PublicPersonaCandidate[],
+    confirmedDisplayName: string
+  ): Promise<void> {
     try {
       const snapshot = await this.publicPersonaClient.buildSnapshot(selected, this.getSettings(), (progress: PublicPersonaProgress): void => {
         if (jobId === this.publicPersonaJobId) {
           this.publicPersonaProgress = progress;
           this.publicPersonaPhase = 'reading';
         }
-      });
+      }, confirmedDisplayName);
       if (jobId !== this.publicPersonaJobId) {
         return;
       }
       const store = this.publicPersonaStore();
-      if (store === null || !store.save(snapshot)) {
+      if (store === null) {
         throw new Error('画像保存失败');
       }
+      if (!store.save(snapshot)) throw new Error('画像保存失败');
       this.updatePublicPersonaSnapshot(snapshot);
       this.publicPersonaProgress = null;
       this.publicPersonaPhase = 'complete';
@@ -3712,7 +4188,8 @@ struct Index {
     }
   }
 
-  private confirmPublicPersona(candidateIds: string[]): void {
+  private confirmPublicPersona(candidateIds: string[], confirmedDisplayName: string): void {
+    const normalizedDisplayName: string = confirmedDisplayName.trim();
     const selected = this.publicPersonaCandidates.map((candidate: PublicPersonaCandidate): PublicPersonaCandidate => ({
       id: candidate.id,
       platform: candidate.platform,
@@ -3732,11 +4209,15 @@ struct Index {
       this.publicPersonaError = '至少选择一个已确认账号';
       return;
     }
+    if (normalizedDisplayName.length === 0) {
+      this.publicPersonaError = '请先确认用户姓名';
+      return;
+    }
     this.publicPersonaJobId++;
     this.publicPersonaPhase = 'reading';
     this.publicPersonaProgress = null;
     this.publicPersonaError = '';
-    void this.runPublicPersonaBuild(this.publicPersonaJobId, selected);
+    void this.runPublicPersonaBuild(this.publicPersonaJobId, selected, normalizedDisplayName);
   }
 
   private savePublicPersonaMarkdown(markdown: string): boolean {
@@ -3747,14 +4228,7 @@ struct Index {
       this.publicPersonaError = 'Markdown 缺少姓名、摘要或画像固定章节，未保存。';
       return false;
     }
-    const updated: PublicPersonaSnapshot = {
-      schemaVersion: 1,
-      personaMarkdown: markdown,
-      primaryAvatarUrl: this.publicPersonaSnapshot.primaryAvatarUrl,
-      sources: this.publicPersonaSnapshot.sources,
-      generatedAt: this.publicPersonaSnapshot.generatedAt,
-      mbtiHidden: this.publicPersonaSnapshot.mbtiHidden
-    };
+    const updated = publicPersonaSnapshotAfterMarkdownEdit(this.publicPersonaSnapshot, markdown);
     const safe = sanitizePublicPersonaSnapshot(updated as Object);
     if (safe === null) {
       this.publicPersonaError = 'Markdown 缺少画像固定章节，未保存。';
@@ -3784,11 +4258,18 @@ struct Index {
         primaryAvatarUrl: snapshot.primaryAvatarUrl,
         sources: snapshot.sources,
         generatedAt: snapshot.generatedAt,
-        mbtiHidden: false
+        mbtiHidden: false,
+        memoryFacts: snapshot.memoryFacts?.slice() ?? [],
+        memoryFactsMarkdownFingerprint: snapshot.memoryFactsMarkdownFingerprint,
+        importedMarkdownFingerprint: snapshot.importedMarkdownFingerprint
       };
-      const safe = sanitizePublicPersonaSnapshot(updated as Object);
+      let safe = sanitizePublicPersonaSnapshot(updated as Object);
       if (safe === null) {
         throw new Error('重新推测结果未通过本地校验');
+      }
+      if (isPublicPersonaImported(snapshot)) {
+        safe = sanitizePublicPersonaSnapshot(markPublicPersonaImported(safe) as Object);
+        if (safe === null) throw new Error('重新推测后的导入状态未通过本地校验');
       }
       const store = this.publicPersonaStore();
       if (store === null || !store.save(safe)) {
@@ -3822,7 +4303,10 @@ struct Index {
       primaryAvatarUrl: this.publicPersonaSnapshot.primaryAvatarUrl,
       sources: this.publicPersonaSnapshot.sources,
       generatedAt: this.publicPersonaSnapshot.generatedAt,
-      mbtiHidden: hidden
+      mbtiHidden: hidden,
+      memoryFacts: this.publicPersonaSnapshot.memoryFacts?.slice() ?? [],
+      memoryFactsMarkdownFingerprint: this.publicPersonaSnapshot.memoryFactsMarkdownFingerprint,
+      importedMarkdownFingerprint: this.publicPersonaSnapshot.importedMarkdownFingerprint
     };
     const safe = sanitizePublicPersonaSnapshot(updated as Object);
     if (safe === null) {
@@ -3840,13 +4324,39 @@ struct Index {
     return true;
   }
 
-  private deletePublicPersona(): boolean {
+  private async deletePublicPersona(): Promise<boolean> {
     this.publicPersonaJobId++;
+    const jobId = this.publicPersonaJobId;
+    const ownerGeneration = this.accountOwnerGeneration;
     const store = this.publicPersonaStore();
-    if (store === null || !store.deleteSnapshot()) {
+    if (store === null) {
       this.publicPersonaError = '画像删除失败，请重试。';
       return false;
     }
+    const previousSnapshot = store.load();
+    if (!store.deleteSnapshot()) {
+      this.publicPersonaError = '画像删除失败，请重试。';
+      return false;
+    }
+    this.publicPersonaImporting = false;
+    try {
+      if (!this.localMemoryAvailability().isAvailable()) {
+        throw new Error('长期记忆当前不可用，画像未删除。');
+      }
+      const result = await this.localMemoryRuntime().deletePublicPersonaFacts(
+        this.publicPersonaMemoryGuard(jobId, ownerGeneration)
+      );
+      if (result.status !== 'success') {
+        throw new Error(result.error?.message ?? '画像记忆删除失败，请重试。');
+      }
+    } catch (error) {
+      if (jobId === this.publicPersonaJobId && ownerGeneration === this.accountOwnerGeneration) {
+        this.restorePublicPersonaSnapshot(store, previousSnapshot);
+        this.publicPersonaError = error instanceof Error ? error.message : '画像删除失败，请重试。';
+      }
+      return false;
+    }
+    if (jobId !== this.publicPersonaJobId || ownerGeneration !== this.accountOwnerGeneration) return true;
     this.updatePublicPersonaSnapshot(null);
     this.publicPersonaCandidates = [];
     this.publicPersonaProgress = null;
@@ -4469,8 +4979,7 @@ struct Index {
   private bimStore(): BimStore {
     if (this.bimStoreInstance === null) {
       const context = this.getUIContext().getHostContext() as common.Context;
-      const native = preferences.getPreferencesSync(context, { name: BIM_STORE_NAME });
-      this.bimStoreInstance = new BimStore(native);
+      this.bimStoreInstance = BimStore.fromContext(context, this.scopedStoreName(BIM_STORE_NAME));
     }
     return this.bimStoreInstance;
   }
@@ -4478,22 +4987,40 @@ struct Index {
   private waterfallPreferencesStore(): WaterfallPreferencesStore {
     if (this.waterfallPreferencesStoreInstance === null) {
       const context = this.getUIContext().getHostContext() as common.Context;
-      const native = preferences.getPreferencesSync(context, { name: WATERFALL_PREFERENCES_STORE_NAME });
-      this.waterfallPreferencesStoreInstance = new WaterfallPreferencesStore(native);
+      this.waterfallPreferencesStoreInstance = WaterfallPreferencesStore.fromContext(
+        context, this.scopedStoreName(WATERFALL_PREFERENCES_STORE_NAME)
+      );
     }
     return this.waterfallPreferencesStoreInstance;
   }
 
-  private currentWaterfallPreferenceProfile(includeConversation: boolean = true): WaterfallPreferenceProfile {
+  private discoveryMemoryProjectionStore(): DiscoveryMemoryProjectionStore {
+    if (this.discoveryMemoryProjectionStoreInstance === null) {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      this.discoveryMemoryProjectionStoreInstance = DiscoveryMemoryProjectionStore.fromContext(
+        context, this.scopedStoreName(DISCOVERY_MEMORY_PROJECTION_STORE_NAME)
+      );
+    }
+    return this.discoveryMemoryProjectionStoreInstance;
+  }
+
+  private currentWaterfallPreferenceProfile(
+    includeConversation: boolean = true,
+    includeDiscoveryMemory: boolean = includeConversation
+  ): WaterfallPreferenceProfile {
+    const memory: WaterfallPreferenceSnapshot = includeDiscoveryMemory ? discoveryMemoryProjectionSnapshot(
+      this.discoveryMemoryProjection,
+      Date.now()
+    ) : { topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: [] };
     return {
       version: 2,
       sourceRegistryVersion: this.waterfallPreferenceProfile.sourceRegistryVersion,
       topicWeights: this.waterfallPreferenceProfile.topicWeights.concat(
-        this.waterfallReactionProjection.topicWeights),
+        this.waterfallReactionProjection.topicWeights).concat(memory.topicWeights),
       sourceWeights: this.waterfallPreferenceProfile.sourceWeights.concat(
-        this.waterfallReactionProjection.sourceWeights),
+        this.waterfallReactionProjection.sourceWeights).concat(memory.sourceWeights),
       formatWeights: this.waterfallPreferenceProfile.formatWeights.concat(
-        this.waterfallReactionProjection.formatWeights),
+        this.waterfallReactionProjection.formatWeights).concat(memory.formatWeights),
       explicitRules: this.waterfallPreferenceProfile.explicitRules.concat(
         includeConversation ? this.waterfallConversationState.rules : []),
       recentEvidence: this.waterfallPreferenceProfile.recentEvidence.slice(),
@@ -4529,9 +5056,69 @@ struct Index {
       this.waterfallCardRecords = [];
       this.waterfallReactionProjection = { topicWeights: [], sourceWeights: [], formatWeights: [] };
     }
+    try {
+      this.discoveryMemoryProjection = this.discoveryMemoryProjectionStore().load();
+    } catch (_error) {
+      this.discoveryMemoryProjection = emptyDiscoveryMemoryPreferenceProjection();
+    }
     configureWaterfallEnabledSourcesForRuntime(
       this.waterfallPreferenceProfile.discoveryEnabledSources as AggregateSearchSource[]);
     configureWaterfallPreferenceProfileForRuntime(this.currentWaterfallPreferenceProfile(false));
+  }
+
+  private discoveryMemoryProjectionCoordinator(): DiscoveryMemoryProjectionCoordinator {
+    if (this.discoveryMemoryProjectionCoordinatorInstance === null) {
+      const ownerId: string = this.requireAccountOwnerId();
+      const ownerGeneration: number = this.accountOwnerGeneration;
+      const options: DiscoveryMemoryProjectionCoordinatorOptions = {
+        source: this.localMemoryRuntime(),
+        store: this.discoveryMemoryProjectionStore(),
+        modelProvider: (): LocalModel => this.canaryModel(),
+        isActive: (): boolean => this.accountOwnerId === ownerId &&
+          this.accountOwnerGeneration === ownerGeneration,
+        onProjection: (projection: DiscoveryMemoryPreferenceProjection): void => {
+          this.applyDiscoveryMemoryProjection(projection);
+        },
+        logger: (message: string): void => aiLogError(message)
+      };
+      this.discoveryMemoryProjectionCoordinatorInstance = new DiscoveryMemoryProjectionCoordinator(options);
+    }
+    return this.discoveryMemoryProjectionCoordinatorInstance;
+  }
+
+  private applyDiscoveryMemoryProjection(projection: DiscoveryMemoryPreferenceProjection): void {
+    this.discoveryMemoryProjection = projection;
+    aiLogInfo('[AIPhone][DiscoveryMemoryProjection] status=applied signals=' + projection.signals.length.toString() +
+      ' watermark=' + projection.basedOnMemoryMutationAt.toString() +
+      ' interestActive=' + (this.interestWaterfallFeedState === null ? 'false' : 'true'));
+    if (this.interestWaterfallFeedState !== null) {
+      this.applyInterestWaterfallUpdate(applyWaterfallProfile(
+        this.interestWaterfallFeedState,
+        this.currentWaterfallPreferenceProfile(),
+        Date.now()
+      ));
+    }
+  }
+
+  private requestDiscoveryMemoryProjectionRefresh(): void {
+    try {
+      if (!this.localMemoryAvailability().isAvailable()) return;
+      this.discoveryMemoryProjectionCoordinator().requestRefresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      aiLogError('[AIPhone][DiscoveryMemoryProjection] code=schedule_unavailable detail=' +
+        message.substring(0, 240));
+    }
+  }
+
+  private onPhoneLocalMemoryMutation(event: PhoneLocalMemoryMutationEvent): void {
+    try {
+      this.discoveryMemoryProjectionCoordinator().notify(event);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      aiLogError('[AIPhone][DiscoveryMemoryProjection] code=mutation_schedule_failed operation=' +
+        event.operation + ' detail=' + message.substring(0, 200));
+    }
   }
 
   private refreshBimRecords(): void {
@@ -4820,11 +5407,19 @@ struct Index {
         const accepted = this.applyRuntimeSurface(surface, 'multi_agent', generation);
         if (accepted) {
           this.isAwaitingFirstSurface = false;
+          this.presentPendingMemoryForgetOverlay();
         }
         return accepted;
       },
       onAnswerStream: (answer: string, generation: number): void => {
         this.updateStreamingAssistantAnswer(answer, generation);
+      },
+      onMemorySideEffectResult: (result: LeaderMemoryToolResult): void => {
+        this.showMemoryResultToast(result.message);
+        aiLogInfo('[AIPhone][MemorySideEffect] status=' + result.status);
+      },
+      onMemoryForgetOverlay: (request: MemoryForgetOverlayRequest | null): void => {
+        this.acceptMemoryForgetOverlay(request);
       },
       onMailDetail: async (
         result: MailDetailInPlaceEvent,
@@ -4896,7 +5491,13 @@ struct Index {
   private localMemoryRuntime(): PhoneLocalMemoryRuntime {
     if (this.phoneLocalMemoryRuntime === null) {
       const context = this.getUIContext().getHostContext() as common.Context;
-      this.phoneLocalMemoryRuntime = new PhoneLocalMemoryRuntime(context);
+      this.phoneLocalMemoryRuntime = new PhoneLocalMemoryRuntime(context, {
+        ownerId: this.requireAccountOwnerId(),
+        onMutationCommitted: (event: PhoneLocalMemoryMutationEvent): Promise<void> => {
+          this.onPhoneLocalMemoryMutation(event);
+          return Promise.resolve();
+        }
+      });
     }
     return this.phoneLocalMemoryRuntime;
   }
@@ -5732,7 +6333,13 @@ struct Index {
     return this.isSocialHubActionId(action) && this.isCurrentSocialHubSurface();
   }
 
-  private resetCurrentSession(): void {
+  private resetCurrentSession(cause: A2uiSessionResetCause): void {
+    if (sessionResetDeletesPersistedConversation(cause)) {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      if (context !== null && this.accountOwnerId.trim().length > 0) {
+        clearStoredConversation(context, this.scopedStoreName('loop_conversation'));
+      }
+    }
     this.disposeHotelRuntime();
     this.closeDeepSearch();
     this.showHistory = false;
@@ -5740,8 +6347,6 @@ struct Index {
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;
     this.messages = [];
-    const context = this.getUIContext().getHostContext() as common.Context;
-    if (context !== null) clearStoredConversation(context);
     this.clearStreamingAssistantMessage();
     this.sessionContextCompactor.reset();
     this.waterfallSessionTopicWeights = [];
@@ -5917,11 +6522,10 @@ struct Index {
   }
 
   private showMemoryResultToast(message: string): void {
-    if (!/^已记住\s*\d+\s*条|^已更新长期记忆|^已忘记这条长期记忆/.test(message)) {
-      return;
-    }
+    const toastMessage: string = memorySideEffectToastText(message);
+    if (toastMessage.length === 0) return;
     this.getUIContext().getPromptAction().showToast({
-      message,
+      message: toastMessage,
       duration: 2500,
       alignment: Alignment.Top
     });
@@ -5946,10 +6550,15 @@ struct Index {
 
   private dailyBriefStore(): DailyBriefStore | null {
     const context = this.getUIContext().getHostContext() as common.Context;
-    return context === null ? null : new DailyBriefStore(context);
+    return context === null ? null : new DailyBriefStore(
+      context, this.scopedStoreName(DAILY_BRIEF_STORE_NAME)
+    );
   }
 
   private async openDailyBrief(regenerate: boolean): Promise<boolean> {
+    if (!await this.restoreAccountSession()) {
+      return false;
+    }
     const store = this.dailyBriefStore();
     const now = new Date();
     const date = dailyBriefDate(now);
@@ -6206,6 +6815,7 @@ struct Index {
 
   private finishForegroundTurn(): void {
     this.isBusy = false;
+    this.presentPendingMemoryForgetOverlay();
     const transition = transitionDailyBriefCatchUp(
       this.dailyBriefCatchUpPending, 'idle', false, this.isBusy
     );
@@ -6333,6 +6943,7 @@ struct Index {
     this.deepSearchQuery = '';
     this.deepSearchSettingsJson = '';
     this.deepSearchContextJson = '';
+    this.presentPendingMemoryForgetOverlay();
   }
 
   private completeDeepSearch(answer: string): void {
@@ -6429,6 +7040,14 @@ struct Index {
   ): Promise<void> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || this.isBusy) {
+      return;
+    }
+    // Validate the current device account before consuming input or appending a user message.
+    // A rejected send leaves the draft untouched and the root build switches to the login page.
+    if (!await this.restoreAccountSession()) {
+      return;
+    }
+    if (this.isBusy) {
       return;
     }
     this.clearStreamingAssistantMessage();
@@ -7982,7 +8601,7 @@ struct Index {
       return null;
     }
     return preferences.getPreferencesSync(context, {
-      name: TRAIN_PRESALE_TASK_STORE_NAME
+      name: this.scopedStoreName(TRAIN_PRESALE_TASK_STORE_NAME)
     });
   }
 
@@ -8817,8 +9436,90 @@ struct Index {
       }));
       if (completed) this.appendMessage('assistant', result.message);
     } finally {
+      this.memoryForgetWorking = false;
       this.isBusy = false;
+      this.presentPendingMemoryForgetOverlay();
     }
+  }
+
+  private memoryForgetOverlayBlocked(): boolean {
+    const state: MemoryForgetOverlayGateState = {
+      busy: this.isBusy,
+      checkout: this.showCheckoutWeb,
+      train: this.showTrainPresalePanel,
+      deepSearch: this.showDeepSearch,
+      map: this.foodStoreMapOpen,
+      confirming: this.memoryForgetWorking
+    };
+    return shouldBlockMemoryForgetOverlay(state);
+  }
+
+  private acceptMemoryForgetOverlay(request: MemoryForgetOverlayRequest | null): void {
+    if (request === null) {
+      this.pendingMemoryForgetOverlay = null;
+      this.showMemoryForgetOverlay = false;
+      this.memoryForgetCandidates = [];
+      this.memoryForgetSelectedKeys = [];
+      this.memoryForgetWorking = false;
+      return;
+    }
+    this.pendingMemoryForgetOverlay = request;
+    this.memoryForgetSelectedKeys = [];
+    this.presentPendingMemoryForgetOverlay();
+  }
+
+  private presentPendingMemoryForgetOverlay(): void {
+    const pending = this.pendingMemoryForgetOverlay;
+    if (pending === null || this.memoryForgetOverlayBlocked()) return;
+    this.memoryForgetCandidates = pending.candidates.map(
+      (candidate): MemoryForgetOverlayCandidateView => ({
+        candidateKey: candidate.candidateKey,
+        fact: candidate.fact,
+        personaTag: candidate.personaTag
+      })
+    );
+    this.showMemoryForgetOverlay = true;
+  }
+
+  private toggleMemoryForgetCandidate(candidateKey: string): void {
+    if (this.memoryForgetWorking) return;
+    const index = this.memoryForgetSelectedKeys.indexOf(candidateKey);
+    if (index < 0 && this.memoryForgetSelectedKeys.length >= MEMORY_FORGET_OVERLAY_SELECTION_LIMIT) {
+      this.showMemoryCandidateActionToast('一次最多选择 5 条长期记忆。');
+      return;
+    }
+    this.memoryForgetSelectedKeys = index >= 0 ?
+      this.memoryForgetSelectedKeys.filter((key: string): boolean => key !== candidateKey) :
+      this.memoryForgetSelectedKeys.concat([candidateKey]);
+  }
+
+  private cancelMemoryForgetOverlay(): void {
+    const pending = this.pendingMemoryForgetOverlay;
+    const runtime = this.multiAgentRuntime;
+    if (pending !== null && runtime !== null) {
+      runtime.cancelMemoryForgetSelection(pending.selectionId, pending.revision);
+    }
+    this.acceptMemoryForgetOverlay(null);
+  }
+
+  private confirmMemoryForgetOverlay(): void {
+    const pending = this.pendingMemoryForgetOverlay;
+    if (pending === null || this.memoryForgetSelectedKeys.length === 0 || this.memoryForgetWorking) return;
+    this.memoryForgetWorking = true;
+    const args: MemoryCandidatesForgetActionArgs = {
+      selectionId: pending.selectionId,
+      revision: pending.revision,
+      candidateKeys: this.memoryForgetSelectedKeys.slice()
+    };
+    const action: A2uiAction = {
+      id: MEMORY_CANDIDATES_FORGET_ACTION_ID,
+      label: '确认删除长期记忆',
+      prompt: '删除选中的长期记忆',
+      variant: 'danger',
+      kind: 'client',
+      args
+    };
+    void this.handleMemoryCandidateClientAction(action);
   }
 
   private async handleClientAction(action: A2uiAction): Promise<void> {
@@ -9182,7 +9883,9 @@ struct Index {
     }
     try {
       const context = this.getUIContext().getHostContext() as common.Context;
-      this.foodAddressBookStoreInstance = new FoodAddressBookStore(context);
+      this.foodAddressBookStoreInstance = new FoodAddressBookStore(
+        context, this.scopedStoreName(FOOD_ADDRESS_BOOK_STORE_NAME)
+      );
       return this.foodAddressBookStoreInstance;
     } catch (error) {
       aiLogError('[AIPhone][FoodAddressBookStore] phase=open ok=false reason=' +
@@ -9205,7 +9908,9 @@ struct Index {
     }
     try {
       const context = this.getUIContext().getHostContext() as common.Context;
-      this.foodFavoritesStoreInstance = new FoodFavoritesStore(context);
+      this.foodFavoritesStoreInstance = new FoodFavoritesStore(
+        context, this.scopedStoreName(FOOD_FAVORITES_STORE_NAME)
+      );
       return this.foodFavoritesStoreInstance;
     } catch (error) {
       aiLogError('[AIPhone][FoodFavoritesStore] phase=open ok=false reason=' +
@@ -9873,7 +10578,9 @@ struct Index {
 
   private navigationCardStore(): PreferencesNavigationCardSnapshotStore {
     const context = this.getUIContext().getHostContext() as common.Context;
-    return new PreferencesNavigationCardSnapshotStore(context);
+    return new PreferencesNavigationCardSnapshotStore(
+      context, this.scopedStoreName(NAVIGATION_CARD_STORE), NAVIGATION_CARD_FORM_REGISTRY_STORE
+    );
   }
 
   private async refreshNavigationCardForms(snapshot: NavigationCardSnapshot): Promise<void> {
@@ -10837,8 +11544,21 @@ struct Index {
       this.showConfigPage = false;
       return true;
     }
+    if (this.showLongTermMemoryPage) {
+      this.showLongTermMemoryPage = false;
+      this.showUserManagementPage = true;
+      return true;
+    }
     if (this.showPublicPersonaPage) {
-      this.showPublicPersonaPage = false;
+      this.closePublicPersona();
+      return true;
+    }
+    if (this.showUserManagementPage) {
+      if (this.showLogoutConfirmation) {
+        this.showLogoutConfirmation = false;
+        return true;
+      }
+      this.showUserManagementPage = false;
       return true;
     }
     if (this.showBimPage) {
@@ -10860,6 +11580,52 @@ struct Index {
       }
     }
     return false;
+  }
+
+  @Builder
+  private UserManagementPageContent() {
+    UserManagementPage({
+      displayName: this.accountDisplayName,
+      saveMessage: this.accountNameSaveMessage,
+      isSavingName: this.accountNameSaving,
+      hasCustomDisplayName: this.accountProfileSnapshot.customName.trim().length > 0,
+      showLogoutConfirm: this.showLogoutConfirmation,
+      onBack: (): void => {
+        this.showUserManagementPage = false;
+      },
+      onSaveDisplayName: (name: string): void => {
+        this.saveAccountDisplayName(name);
+      },
+      onResetDisplayName: (): void => {
+        this.saveAccountDisplayName('');
+      },
+      onOpenSocialPersona: (): void => {
+        this.openPublicPersona(true);
+      },
+      onOpenLongTermMemory: (): void => {
+        this.showUserManagementPage = false;
+        this.showLongTermMemoryPage = true;
+      },
+      onRequestLogoutConfirmation: (): void => {
+        this.showLogoutConfirmation = true;
+      },
+      onCancelLogout: (): void => {
+        this.showLogoutConfirmation = false;
+      },
+      onLogout: (): void => {
+        void this.logoutCurrentAccount();
+      }
+    })
+  }
+
+  @Builder
+  private LongTermMemoryPageContent() {
+    LongTermMemoryPlaceholderPage({
+      onBack: (): void => {
+        this.showLongTermMemoryPage = false;
+        this.showUserManagementPage = true;
+      }
+    })
   }
 
   @Builder
@@ -11043,20 +11809,26 @@ struct Index {
       progress: this.publicPersonaProgress,
       snapshot: this.publicPersonaSnapshot,
       errorMessage: this.publicPersonaError,
+      imported: this.publicPersonaSnapshot !== null && isPublicPersonaImported(this.publicPersonaSnapshot),
+      importing: this.publicPersonaImporting,
+      defaultDisplayName: this.accountDisplayName,
       onBack: (): void => {
-        this.showPublicPersonaPage = false;
+        this.closePublicPersona();
       },
       onChooseSetup: (): void => {
         this.publicPersonaPhase = 'input';
       },
       onSkip: (): void => {
+        const returnToUserManagement: boolean = this.publicPersonaReturnToUserManagement;
         this.skipPublicPersonaOnboarding();
+        this.publicPersonaReturnToUserManagement = false;
+        if (returnToUserManagement) this.showUserManagementPage = true;
       },
       onStartDiscovery: (username: string, mode: PublicPersonaSearchMode): void => {
         this.startPublicPersonaDiscovery(username, mode);
       },
-      onConfirm: (candidateIds: string[]): void => {
-        this.confirmPublicPersona(candidateIds);
+      onConfirm: (candidateIds: string[], confirmedDisplayName: string): void => {
+        this.confirmPublicPersona(candidateIds, confirmedDisplayName);
       },
       onSaveMarkdown: (markdown: string): boolean => {
         return this.savePublicPersonaMarkdown(markdown);
@@ -11067,14 +11839,45 @@ struct Index {
       onSetMbtiHidden: (hidden: boolean): void => {
         this.setPublicPersonaMbtiHidden(hidden);
       },
-      onDelete: (): boolean => {
+      onImport: (): Promise<boolean> => {
+        return this.importPublicPersonaMemory();
+      },
+      onDelete: (): Promise<boolean> => {
         return this.deletePublicPersona();
       }
     })
   }
 
   build() {
-    if (this.showComposioAuthPage) {
+    if (this.accountSessionStatus === AccountSessionStatus.UNINITIALIZED ||
+      this.accountSessionStatus === AccountSessionStatus.RESTORING) {
+      Column({ space: 14 }) {
+        LoadingProgress()
+          .width(36)
+          .height(36)
+          .color('#CF0A2C')
+        Text('正在检查华为账号…')
+          .fontSize(14)
+          .fontColor('#646A73')
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .backgroundColor('#F7F8FA')
+    } else if (this.accountSessionStatus !== AccountSessionStatus.AUTHENTICATED ||
+      this.accountOwnerId.length === 0) {
+      HuaweiAccountLoginPage({
+        accountSessionStore: this.accountSessionStore(),
+        onLoginSuccess: (ownerId: string): void => {
+          this.activateAccountOwner(ownerId);
+        }
+      })
+    } else if (this.showUserManagementPage) {
+      this.UserManagementPageContent();
+    } else if (this.showLongTermMemoryPage) {
+      this.LongTermMemoryPageContent();
+    } else if (this.showComposioAuthPage) {
       ComposioAuthPage({
         userShortId: this.composioUserId,
         items: this.composioAuthItems,
@@ -11147,6 +11950,10 @@ struct Index {
         deepSearchSettingsJson: this.deepSearchSettingsJson,
         deepSearchContextJson: this.deepSearchContextJson,
         locationServiceNotice: this.locationServiceNotice,
+        showMemoryForgetOverlay: this.showMemoryForgetOverlay,
+        memoryForgetCandidates: this.memoryForgetCandidates,
+        memoryForgetSelectedKeys: this.memoryForgetSelectedKeys,
+        memoryForgetWorking: this.memoryForgetWorking,
         trainPresaleTrip: this.trainPresaleTrip,
         trainPresaleTask: this.trainPresaleTask,
         trainPresaleTaskState: this.trainPresaleTaskState,
@@ -11162,6 +11969,9 @@ struct Index {
         onOpenConfig: () => {
           this.showConfigPage = true;
         },
+        onOpenUserManagement: () => {
+          this.openUserManagement();
+        },
         onOpenPublicPersona: () => {
           this.openPublicPersona();
         },
@@ -11172,10 +11982,11 @@ struct Index {
           this.openBimRoot();
         },
         onResetSession: () => {
-          this.resetCurrentSession();
+          this.resetCurrentSession('user_requested');
         },
         onCloseFoodStoreMap: () => {
           this.foodStoreMapOpen = false;
+          this.presentPendingMemoryForgetOverlay();
         },
         onFoodStoreMapLocationConfirm: (longitude: number, latitude: number,
           name: string, address: string): void => {
@@ -11248,6 +12059,7 @@ struct Index {
           if (closedFlightBooking) {
             this.getUIContext().getPromptAction().showToast({ message: '请核对携程订单后确认是否完成预订。' });
           }
+          this.presentPendingMemoryForgetOverlay();
         },
         onCheckoutWebReturn: (url: string) => {
           this.handlePaymentCheckoutReturn(url);
@@ -11258,6 +12070,7 @@ struct Index {
         onCloseTrainPresale: () => {
           if (!this.trainPresaleWorking) {
             this.showTrainPresalePanel = false;
+            this.presentPendingMemoryForgetOverlay();
           }
         },
         onDeepSearchComplete: (answer: string): void => {
@@ -11265,6 +12078,15 @@ struct Index {
         },
         onCancelTrainPresaleTask: () => {
           void this.cancelTrainPresaleTask();
+        },
+        onToggleMemoryForgetCandidate: (candidateKey: string): void => {
+          this.toggleMemoryForgetCandidate(candidateKey);
+        },
+        onCancelMemoryForget: (): void => {
+          this.cancelMemoryForgetOverlay();
+        },
+        onConfirmMemoryForget: (): void => {
+          this.confirmMemoryForgetOverlay();
         },
         onAction: (action: A2uiAction) => {
           this.sendAction(action);

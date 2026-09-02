@@ -45,6 +45,10 @@ import {
 } from '../style/A2uiHomeMotion';
 import { formatBimCount } from './BimHomePage';
 import { WelcomeCardDeck } from './WelcomeCardDeck';
+import {
+  MemoryForgetOverlay,
+  MemoryForgetOverlayCandidateView
+} from './MemoryForgetOverlay';
 
 const A2UI_HISTORY_EMPTY_HEIGHT: number = 108;
 const A2UI_HISTORY_ROW_HEIGHT: number = 76;
@@ -269,6 +273,10 @@ export struct HomePage {
   @Prop deepSearchSettingsJson: string = '';
   @Prop deepSearchContextJson: string = '';
   @Prop locationServiceNotice: string = '';
+  @Prop showMemoryForgetOverlay: boolean = false;
+  @Prop memoryForgetCandidates: MemoryForgetOverlayCandidateView[] = [];
+  @Prop memoryForgetSelectedKeys: string[] = [];
+  @Prop memoryForgetWorking: boolean = false;
   @State sendSpinnerRotation: number = 0;
   @State voicePulseTick: number = 0;
   @State waterfallFullscreen: boolean = false;
@@ -286,6 +294,7 @@ export struct HomePage {
   private previousKeyboardAvoidMode: KeyboardAvoidMode = KeyboardAvoidMode.OFFSET;
   onOpenConfig: () => void = () => {};
   onOpenPublicPersona: () => void = () => {};
+  onOpenUserManagement: () => void = () => {};
   onToggleHistory: () => void = () => {};
   onSendPrompt: () => void = () => {};
   onSendWelcomePrompt: (prompt: string) => void = (_prompt: string): void => {};
@@ -303,6 +312,9 @@ export struct HomePage {
     (_submission: TrainPresalePanelSubmission): void => {};
   onCloseTrainPresale: () => void = () => {};
   onCancelTrainPresaleTask: () => void = () => {};
+  onToggleMemoryForgetCandidate: (candidateKey: string) => void = (_candidateKey: string): void => {};
+  onCancelMemoryForget: () => void = (): void => {};
+  onConfirmMemoryForget: () => void = (): void => {};
   onOpenBim: () => void = () => {};
   onRememberBim: () => void = () => {};
   onReturnDailyBrief: () => void = () => {};
@@ -540,6 +552,9 @@ export struct HomePage {
       })
       this.WelcomeToolbarButton($r('app.media.icon_settings'), '设置', () => {
         this.onOpenConfig();
+      })
+      this.WelcomeToolbarButton($r('app.media.icon_user'), '用户管理', () => {
+        this.onOpenUserManagement();
       })
     }
     .width('100%')
@@ -789,6 +804,25 @@ export struct HomePage {
               .onClick(() => {
                 this.onOpenConfig();
               })
+              .margin({ left: A2UI_HEADER_BUTTON_GAP })
+
+            A2uiButtonView({
+              icon: $r('app.media.icon_user'),
+              hasIcon: true,
+              shape: 'circle',
+              circleSize: A2UI_HEADER_BUTTON_SIZE,
+              iconSize: A2UI_HEADER_BUTTON_ICON_SIZE,
+              tone: 'secondary',
+              customBackgroundColor: A2UI_HOME_HEADER_BUTTON_BACKGROUND,
+              customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
+              shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
+              shadowRadius: 8,
+              shadowOffsetY: 3
+            })
+              .onClick(() => {
+                this.onOpenUserManagement();
+              })
+              .accessibilityText('用户管理')
               .margin({ left: A2UI_HEADER_BUTTON_GAP })
           }
           .width('100%')
@@ -1118,6 +1152,17 @@ export struct HomePage {
         bottom: this.waterfallFullscreen ? 0 : this.composerBottomPadding()
       })
       .backgroundColor('#00000000')
+
+      MemoryForgetOverlay({
+        visible: this.showMemoryForgetOverlay,
+        candidates: this.memoryForgetCandidates,
+        selectedKeys: this.memoryForgetSelectedKeys,
+        isWorking: this.memoryForgetWorking,
+        bottomInsetVp: this.systemBottomInsetVp,
+        onToggle: this.onToggleMemoryForgetCandidate,
+        onCancel: this.onCancelMemoryForget,
+        onConfirm: this.onConfirmMemoryForget
+      })
 
     }
     .width('100%')

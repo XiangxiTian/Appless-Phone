@@ -621,13 +621,14 @@ function hasBoundedLeaderModelCalls(source) {
     prompt.includes('return { stableSystemPrompt, dynamicPrompt }') &&
     bounded.includes('stableSystemPrompt.length + prompt.length > MAX_LEADER_PROMPT_CHARS') &&
     bounded.includes("throw new Error('LEADER_PROMPT_LIMIT')") &&
-    bounded.includes('return this.model.complete(prompt, conversation, stableSystemPrompt)') &&
+    bounded.includes('return this.model.complete(prompt, conversation, stableSystemPrompt, onTextDelta)') &&
     bounded.includes('ConversationContext.fromMessages(messages)') &&
     boundedCalls.length === 5 &&
-    initialCall.length === 3 &&
+    initialCall.length === 4 &&
     initialCall[0] === 'prompt' &&
     initialCall[1] === 'input' &&
     initialCall[2] === 'promptParts.stableSystemPrompt' &&
+    initialCall[3] === 'onTextDelta' &&
     repairCalls.every((args) => args.length === 3 && args[0].startsWith('prompt +') &&
       args[1] === 'input' && args[2] === 'promptParts.stableSystemPrompt') &&
     repairCalls.some((args) => args[0].includes('correction')) &&

@@ -50,6 +50,20 @@ export interface PhoneLocalMemoryProviderOptions {
   logger?: PhoneLocalMemoryLogger;
 }
 
+export interface PhoneLocalMemoryPersonaTagReplaceRequest {
+  ownerId: string;
+  sceneId: string;
+  personaTag: string;
+  records: MemoryDraft[];
+}
+
+export interface PhoneLocalMemoryPersonaTagReplaceResult {
+  status: 'success' | 'error';
+  insertedRecords: MemoryRecord[];
+  removedRecords: MemoryRecord[];
+  error?: MemoryError;
+}
+
 function memoryError(code: string, message: string, retryable: boolean = false): MemoryError {
   return { code, message, retryable };
 }
@@ -118,6 +132,10 @@ function invalidBatchResult(request: MemoryRememberRequest, message: string): Me
   return buildBestEffortMemoryBatchResult(records);
 }
 
+function failedPersonaTagReplace(error: MemoryError): PhoneLocalMemoryPersonaTagReplaceResult {
+  return { status: 'error', insertedRecords: [], removedRecords: [], error };
+}
+
 export class PhoneLocalMemoryProvider implements ConversationMemoryPort {
   private store: PhoneLocalMemoryStore;
   private embedder: EmbeddingPort;
@@ -168,6 +186,125 @@ export class PhoneLocalMemoryProvider implements ConversationMemoryPort {
       results.push(await this.rememberOne(ownerId, validation.records[0], index, guard));
     }
     return buildBestEffortMemoryBatchResult(results);
+  }
+
+  /** Prepares the complete replacement before entering one store transaction. Empty records delete the tag. */
+  async replacePersonaTag(request: PhoneLocalMemoryPersonaTagReplaceRequest,
+    guard?: MemoryCommitGuard): Promise<PhoneLocalMemoryPersonaTagReplaceResult> {
+    const ownerId = request.ownerId.trim();
+    const sceneId = request.sceneId.trim();
+    const personaTag = request.personaTag.trim();
+    if (ownerId.length === 0) {
+      return failedPersonaTagReplace(memoryError('memory_request_invalid', 'Memory ownerId must not be empty.'));
+    }
+    let drafts: MemoryDraft[] = [];
+    if (request.records.length === 0) {
+      const scopeValidation = validateMemoryDraftBatch([{
+        fact: 'Persona tag scope deletion',
+        sceneId,
+        personaTag,
+        authority: 'leader',
+        sourceTurnId: 'persona-tag-delete'
+      }], {
+        allowedSceneIds: this.allowedSceneIds,
+        maxFactLength: this.maxFactLength
+      });
+      if (!scopeValidation.valid) {
+        return failedPersonaTagReplace(memoryError('memory_request_invalid', scopeValidation.issues[0].message));
+      }
+    } else {
+      for (let index = 0; index < request.records.length; index += 1) {
+        const validation = validateMemoryDraftBatch([request.records[index]], {
+          allowedSceneIds: this.allowedSceneIds,
+          maxFactLength: this.maxFactLength
+        });
+        if (!validation.valid) {
+          return failedPersonaTagReplace(memoryError('memory_request_invalid', validation.issues[0].message));
+        }
+        drafts.push(validation.records[0]);
+      }
+    }
+    const normalizedFacts: Set<string> = new Set<string>();
+    const uniqueDrafts: MemoryDraft[] = [];
+    for (let index = 0; index < drafts.length; index += 1) {
+      if (drafts[index].sceneId !== sceneId || drafts[index].personaTag !== personaTag) {
+        return failedPersonaTagReplace(memoryError(
+          'memory_request_invalid', 'Every replacement record must match the requested persona tag scope.'
+        ));
+      }
+      const normalizedFact = normalizeMemoryFact(drafts[index].fact);
+      if (normalizedFacts.has(normalizedFact)) continue;
+      normalizedFacts.add(normalizedFact);
+      uniqueDrafts.push(drafts[index]);
+    }
+    drafts = uniqueDrafts;
+    try {
+      if (drafts.length > 0) {
+        const existing = await this.store.list(ownerId, [sceneId]);
+        const factsOwnedByOtherTags: Set<string> = new Set<string>();
+        for (let index = 0; index < existing.length; index += 1) {
+          if (existing[index].personaTag === personaTag) continue;
+          factsOwnedByOtherTags.add(existing[index].normalizedFact);
+        }
+        const nonDuplicateDrafts: MemoryDraft[] = [];
+        for (let index = 0; index < drafts.length; index += 1) {
+          if (!factsOwnedByOtherTags.has(normalizeMemoryFact(drafts[index].fact))) {
+            nonDuplicateDrafts.push(drafts[index]);
+          }
+        }
+        drafts = nonDuplicateDrafts;
+      }
+      const embeddings: number[][] = [];
+      for (let index = 0; index < drafts.length; index += 1) {
+        embeddings.push(normalizedVector(await this.embedder.embed(drafts[index].fact), this.embedder.dimension));
+      }
+      if (!commitIsActive(guard)) {
+        return failedPersonaTagReplace(memoryError(
+          'memory_operation_canceled', 'Memory operation was canceled before local commit.'
+        ));
+      }
+      const now = this.clock();
+      const replacements: MemoryRecord[] = [];
+      const replacementIds: Set<string> = new Set<string>();
+      for (let index = 0; index < drafts.length; index += 1) {
+        const memoryId = this.idFactory().trim();
+        if (memoryId.length === 0 || memoryId.length > 128 || replacementIds.has(memoryId)) {
+          throw new Error('Memory id factory returned an invalid or duplicate identifier');
+        }
+        replacementIds.add(memoryId);
+        replacements.push({
+          memoryId,
+          ownerId,
+          sceneId,
+          personaTag,
+          authority: drafts[index].authority ?? 'leader',
+          fact: drafts[index].fact,
+          normalizedFact: normalizeMemoryFact(drafts[index].fact),
+          factHash: normalizedMemoryFactHash(drafts[index].fact),
+          embedding: embeddings[index],
+          embeddingProfileId: this.embedder.profileId,
+          sourceTurnId: drafts[index].sourceTurnId,
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+      const removedRecords = await this.store.replaceByPersonaTag(
+        ownerId, sceneId, personaTag, replacements, guard
+      );
+      return { status: 'success', insertedRecords: replacements, removedRecords };
+    } catch (error) {
+      if (phoneLocalMemoryOperationCanceled(error)) {
+        this.log('memory_operation_canceled', 'replacePersonaTag', -1,
+          'Memory operation was canceled before local commit.');
+        return failedPersonaTagReplace(memoryError(
+          'memory_operation_canceled', 'Memory operation was canceled before local commit.'
+        ));
+      }
+      this.log('memory_persona_tag_replace_failed', 'replacePersonaTag', -1, boundedErrorMessage(error));
+      return failedPersonaTagReplace(memoryError(
+        'memory_persona_tag_replace_failed', 'Memory persona facts could not be replaced.', true
+      ));
+    }
   }
 
   private async rememberOne(ownerId: string, draft: MemoryDraft, inputIndex: number,

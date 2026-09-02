@@ -80,6 +80,31 @@ export const PHONE_LOCAL_MEMORY_UPDATE_SQL: string =
 export const PHONE_LOCAL_MEMORY_DELETE_SQL: string =
   'DELETE FROM conversation_memory WHERE owner_id = ? AND memory_id = ?';
 
+export const PHONE_LOCAL_MEMORY_PERSONA_TAG_RECORDS_SQL: string =
+  'SELECT * FROM conversation_memory WHERE owner_id = ? AND scene_id = ? AND persona_tag = ? ' +
+  'ORDER BY updated_at DESC, memory_id ASC';
+
+export const PHONE_LOCAL_MEMORY_DELETE_PERSONA_TAG_HISTORY_SQL: string =
+  'DELETE FROM conversation_memory_history WHERE owner_id = ? AND memory_id IN (' +
+    'SELECT memory_id FROM conversation_memory WHERE owner_id = ? AND scene_id = ? AND persona_tag = ?)';
+
+export const PHONE_LOCAL_MEMORY_DELETE_PERSONA_TAG_SQL: string =
+  'DELETE FROM conversation_memory WHERE owner_id = ? AND scene_id = ? AND persona_tag = ?';
+
+export const PHONE_LOCAL_MEMORY_CLAIM_OWNER_SQL: string =
+  'UPDATE conversation_memory SET owner_id = ? WHERE owner_id = ?';
+
+export const PHONE_LOCAL_MEMORY_CLAIM_HISTORY_OWNER_SQL: string =
+  'UPDATE conversation_memory_history SET owner_id = ? WHERE owner_id = ?';
+
+export const PHONE_LOCAL_MEMORY_PROJECTION_STATS_SQL: string =
+  'SELECT COUNT(*) AS changed_count, MIN(updated_at) AS oldest_pending_updated_at ' +
+  "FROM conversation_memory WHERE owner_id = ? AND scene_id = ? AND authority = 'leader' AND updated_at > ?";
+
+export const PHONE_LOCAL_MEMORY_PROJECTION_FACTS_SQL: string =
+  'SELECT memory_id, fact, persona_tag, authority, updated_at FROM conversation_memory ' +
+  "WHERE owner_id = ? AND scene_id = ? AND authority = 'leader' ORDER BY updated_at ASC, memory_id ASC";
+
 const PHONE_LOCAL_MEMORY_INSERT_HISTORY_SQL: string =
   'INSERT INTO conversation_memory_history (' +
     'history_id, memory_id, owner_id, scene_id, operation, fact, created_at' +
@@ -96,17 +121,38 @@ export interface PhoneLocalMemorySearchRequest {
   minScore?: number;
 }
 
+export interface PhoneLocalMemoryProjectionStats {
+  changedCount: number;
+  oldestPendingUpdatedAt: number | null;
+}
+
+export interface PhoneLocalMemoryProjectionFact {
+  memoryId: string;
+  fact: string;
+  personaTag: string;
+  authority: MemoryAuthority;
+  updatedAt: number;
+}
+
 export interface PhoneLocalMemoryStore {
   initialize(): Promise<void>;
   findByFact(ownerId: string, embeddingProfileId: string, factHash: string,
     normalizedFact: string): Promise<MemoryRecord | null>;
   get(ownerId: string, memoryId: string): Promise<MemoryRecord | null>;
   list(ownerId: string, sceneIds: string[]): Promise<MemoryRecord[]>;
+  getProjectionStats(ownerId: string, sceneId: string,
+    basedOnMemoryMutationAt: number): Promise<PhoneLocalMemoryProjectionStats>;
+  listProjectionFacts(ownerId: string, sceneId: string): Promise<PhoneLocalMemoryProjectionFact[]>;
   search(request: PhoneLocalMemorySearchRequest): Promise<MemoryHit[]>;
   insert(record: MemoryRecord, guard?: MemoryCommitGuard): Promise<void>;
   replace(ownerId: string, record: MemoryRecord, guard?: MemoryCommitGuard): Promise<void>;
   remove(ownerId: string, memoryId: string, guard?: MemoryCommitGuard): Promise<MemoryRecord | null>;
   removeAll(ownerId: string, sceneIds: string[]): Promise<MemoryRecord[]>;
+  /** Atomically removes one exact persona tag scope and inserts its prepared replacement records. */
+  replaceByPersonaTag(ownerId: string, sceneId: string, personaTag: string,
+    replacements: MemoryRecord[], guard?: MemoryCommitGuard): Promise<MemoryRecord[]>;
+  /** Atomically moves all records and audit history from one owner scope to another. */
+  claimOwner(fromOwnerId: string, toOwnerId: string): Promise<number>;
   getMetadata(key: string): Promise<string | null>;
   setMetadata(key: string, value: string): Promise<void>;
 }
@@ -230,6 +276,25 @@ function recordsFromResult(result: relationalStore.ResultSet): MemoryRecord[] {
     if (!result.goToFirstRow()) return output;
     do {
       output.push(recordFromResult(result));
+    } while (result.goToNextRow());
+    return output;
+  } finally {
+    result.close();
+  }
+}
+
+function projectionFactsFromResult(result: relationalStore.ResultSet): PhoneLocalMemoryProjectionFact[] {
+  const output: PhoneLocalMemoryProjectionFact[] = [];
+  try {
+    if (!result.goToFirstRow()) return output;
+    do {
+      output.push({
+        memoryId: result.getString(result.getColumnIndex('memory_id')),
+        fact: result.getString(result.getColumnIndex('fact')),
+        personaTag: result.getString(result.getColumnIndex('persona_tag')),
+        authority: memoryAuthorityFromValue(result.getString(result.getColumnIndex('authority'))),
+        updatedAt: result.getLong(result.getColumnIndex('updated_at'))
+      });
     } while (result.goToNextRow());
     return output;
   } finally {
@@ -377,6 +442,29 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
     return recordsFromResult(await store.querySql(sql, args));
   }
 
+  async getProjectionStats(ownerId: string, sceneId: string,
+    basedOnMemoryMutationAt: number): Promise<PhoneLocalMemoryProjectionStats> {
+    const result = await (await this.readyStore()).querySql(PHONE_LOCAL_MEMORY_PROJECTION_STATS_SQL,
+      [ownerId, sceneId, basedOnMemoryMutationAt]);
+    try {
+      if (!result.goToFirstRow()) return { changedCount: 0, oldestPendingUpdatedAt: null };
+      const changedCount = result.getLong(result.getColumnIndex('changed_count'));
+      return {
+        changedCount,
+        oldestPendingUpdatedAt: changedCount > 0 ?
+          result.getLong(result.getColumnIndex('oldest_pending_updated_at')) : null
+      };
+    } finally {
+      result.close();
+    }
+  }
+
+  async listProjectionFacts(ownerId: string, sceneId: string): Promise<PhoneLocalMemoryProjectionFact[]> {
+    return projectionFactsFromResult(await (await this.readyStore()).querySql(
+      PHONE_LOCAL_MEMORY_PROJECTION_FACTS_SQL, [ownerId, sceneId]
+    ));
+  }
+
   async search(request: PhoneLocalMemorySearchRequest): Promise<MemoryHit[]> {
     const store = await this.readyStore();
     const topK = Math.min(100, Math.max(1, Math.floor(request.topK)));
@@ -482,6 +570,71 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
       await this.remove(ownerId, existing[index].memoryId);
     }
     return existing;
+  }
+
+  async replaceByPersonaTag(ownerId: string, sceneId: string, personaTag: string,
+    replacements: MemoryRecord[], guard?: MemoryCommitGuard): Promise<MemoryRecord[]> {
+    for (let index = 0; index < replacements.length; index += 1) {
+      const record = replacements[index];
+      if (record.ownerId !== ownerId || record.sceneId !== sceneId || record.personaTag !== personaTag) {
+        throw new Error('Memory replacement record does not match persona tag scope.');
+      }
+    }
+    const store = await this.readyStore();
+    await this.writeMutex.acquire();
+    try {
+      const existing = recordsFromResult(await store.querySql(PHONE_LOCAL_MEMORY_PERSONA_TAG_RECORDS_SQL,
+        [ownerId, sceneId, personaTag]));
+      requireActiveCommit(guard);
+      const txId = await store.beginTrans();
+      try {
+        await store.execute(PHONE_LOCAL_MEMORY_DELETE_PERSONA_TAG_HISTORY_SQL, txId,
+          [ownerId, ownerId, sceneId, personaTag]);
+        await store.execute(PHONE_LOCAL_MEMORY_DELETE_PERSONA_TAG_SQL, txId, [ownerId, sceneId, personaTag]);
+        for (let index = 0; index < replacements.length; index += 1) {
+          await store.execute(PHONE_LOCAL_MEMORY_INSERT_SQL, txId, recordValues(replacements[index]));
+          await this.insertHistory(store, txId, replacements[index], 'add');
+        }
+        await store.commit(txId);
+        return existing;
+      } catch (error) {
+        await store.rollback(txId);
+        throw error instanceof Error ? error : new Error('Local memory persona tag replacement failed.');
+      }
+    } finally {
+      this.writeMutex.release();
+    }
+  }
+
+  async claimOwner(fromOwnerId: string, toOwnerId: string): Promise<number> {
+    const from: string = fromOwnerId.trim();
+    const to: string = toOwnerId.trim();
+    if (from.length === 0 || to.length === 0) throw new Error('Memory owner claim requires two owner IDs.');
+    if (from === to) return 0;
+    const store = await this.readyStore();
+    await this.writeMutex.acquire();
+    try {
+      const countResult = await store.querySql(
+        'SELECT COUNT(*) AS record_count FROM conversation_memory WHERE owner_id = ?', [from]);
+      let claimed: number = 0;
+      try {
+        if (countResult.goToFirstRow()) claimed = countResult.getLong(countResult.getColumnIndex('record_count'));
+      } finally {
+        countResult.close();
+      }
+      const txId = await store.beginTrans();
+      try {
+        await store.execute(PHONE_LOCAL_MEMORY_CLAIM_OWNER_SQL, txId, [to, from]);
+        await store.execute(PHONE_LOCAL_MEMORY_CLAIM_HISTORY_OWNER_SQL, txId, [to, from]);
+        await store.commit(txId);
+        return claimed;
+      } catch (error) {
+        await store.rollback(txId);
+        throw error instanceof Error ? error : new Error('Local memory owner claim failed.');
+      }
+    } finally {
+      this.writeMutex.release();
+    }
   }
 
   async getMetadata(key: string): Promise<string | null> {

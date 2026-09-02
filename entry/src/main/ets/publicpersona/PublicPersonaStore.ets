@@ -1,3 +1,4 @@
+import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import {
   PublicPersonaSnapshot,
@@ -17,6 +18,11 @@ export class PublicPersonaStore {
 
   constructor(store: preferences.Preferences) {
     this.store = store;
+  }
+
+  static fromContext(context: common.Context,
+    storeName: string = PUBLIC_PERSONA_STORE_NAME): PublicPersonaStore {
+    return new PublicPersonaStore(preferences.getPreferencesSync(context, { name: storeName }));
   }
 
   onboardingSeen(): boolean {

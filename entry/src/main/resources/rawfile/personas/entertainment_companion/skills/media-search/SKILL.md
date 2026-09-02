@@ -29,7 +29,8 @@ status: active
 - 用户查询自己的 YouTube 播放列表或订阅时，分别使用 youtube.mine.playlists 或 youtube.mine.subscriptions。
 - 世界杯赛程、下一场比赛或专页请求使用 worldcup.open；只有明确要找视频时才使用媒体搜索。
 - 不要把电影专页请求交给 dynamic.search。
-- 新增长期娱乐偏好使用 memory.remember；更正或忘记仅使用本轮召回到的精确记忆 ID。
+- 新增长期稳定娱乐事实用 memory.remember；更正或替换本轮召回的已有事实用 memory.update；忘记用 memory.forget 并由宿主确认。
+- memory 是副作用，可与正常回答、Data 或 Action 同轮，不阻塞或替代主任务。
 
 ## Boundaries
 不编造比分、赛程、播放链接、平台内容或版权状态。

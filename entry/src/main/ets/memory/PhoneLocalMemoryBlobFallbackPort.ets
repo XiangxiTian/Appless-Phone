@@ -6,6 +6,8 @@ import {
   PHONE_LOCAL_MEMORY_OPERATION_CANCELED,
   PHONE_LOCAL_MEMORY_VECTOR_DIMENSION,
   PhoneLocalMemoryHistoryOperation,
+  PhoneLocalMemoryProjectionFact,
+  PhoneLocalMemoryProjectionStats,
   PhoneLocalMemorySearchRequest,
   PhoneLocalMemoryStore
 } from './PhoneLocalMemoryStore';
@@ -41,6 +43,37 @@ export const PHONE_LOCAL_MEMORY_BLOB_DEDUPE_INDEX_SQL: string =
 export const PHONE_LOCAL_MEMORY_BLOB_SCOPE_INDEX_SQL: string =
   'CREATE INDEX IF NOT EXISTS idx_conversation_memory_blob_scope ' +
   'ON conversation_memory_blob(owner_id, embedding_profile_id, scene_id, updated_at)';
+
+export const PHONE_LOCAL_MEMORY_BLOB_PROJECTION_INDEX_SQL: string =
+  'CREATE INDEX IF NOT EXISTS idx_conversation_memory_blob_projection ' +
+  'ON conversation_memory_blob(owner_id, scene_id, updated_at)';
+
+export const PHONE_LOCAL_MEMORY_BLOB_PROJECTION_STATS_SQL: string =
+  'SELECT COUNT(*) AS changed_count, MIN(updated_at) AS oldest_pending_updated_at ' +
+  "FROM conversation_memory_blob WHERE owner_id = ? AND scene_id = ? AND authority = 'leader' " +
+  'AND updated_at > ?';
+
+export const PHONE_LOCAL_MEMORY_BLOB_PROJECTION_FACTS_SQL: string =
+  'SELECT memory_id, fact, persona_tag, authority, updated_at FROM conversation_memory_blob ' +
+  "WHERE owner_id = ? AND scene_id = ? AND authority = 'leader' ORDER BY updated_at ASC, memory_id ASC";
+
+export const PHONE_LOCAL_MEMORY_BLOB_CLAIM_OWNER_SQL: string =
+  'UPDATE conversation_memory_blob SET owner_id = ? WHERE owner_id = ?';
+
+export const PHONE_LOCAL_MEMORY_BLOB_CLAIM_HISTORY_OWNER_SQL: string =
+  'UPDATE conversation_memory_blob_history SET owner_id = ? WHERE owner_id = ?';
+
+export const PHONE_LOCAL_MEMORY_BLOB_PERSONA_TAG_RECORDS_SQL: string =
+  'SELECT * FROM conversation_memory_blob WHERE owner_id = ? AND scene_id = ? AND persona_tag = ? ' +
+  'ORDER BY updated_at DESC, memory_id ASC';
+
+export const PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_HISTORY_SQL: string =
+  'DELETE FROM conversation_memory_blob_history WHERE owner_id = ? AND memory_id IN (' +
+    'SELECT memory_id FROM conversation_memory_blob ' +
+    'WHERE owner_id = ? AND scene_id = ? AND persona_tag = ?)';
+
+export const PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_SQL: string =
+  'DELETE FROM conversation_memory_blob WHERE owner_id = ? AND scene_id = ? AND persona_tag = ?';
 
 const BLOB_INSERT_SQL: string =
   'INSERT INTO conversation_memory_blob (' +
@@ -268,6 +301,25 @@ function recordsFromResult(result: relationalStore.ResultSet): MemoryRecord[] {
   }
 }
 
+function projectionFactsFromResult(result: relationalStore.ResultSet): PhoneLocalMemoryProjectionFact[] {
+  const records: PhoneLocalMemoryProjectionFact[] = [];
+  try {
+    if (!result.goToFirstRow()) return records;
+    do {
+      records.push({
+        memoryId: result.getString(result.getColumnIndex('memory_id')),
+        fact: result.getString(result.getColumnIndex('fact')),
+        personaTag: result.getString(result.getColumnIndex('persona_tag')),
+        authority: authorityFromText(result.getString(result.getColumnIndex('authority'))),
+        updatedAt: result.getLong(result.getColumnIndex('updated_at'))
+      });
+    } while (result.goToNextRow());
+    return records;
+  } finally {
+    result.close();
+  }
+}
+
 function insertValues(record: MemoryRecord): relationalStore.ValueType[] {
   return [record.memoryId, record.ownerId, record.sceneId, record.personaTag, record.authority,
     record.fact, record.normalizedFact, record.factHash, encodePhoneLocalMemoryEmbeddingBlob(record.embedding),
@@ -328,6 +380,7 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
     await opened.execute(PHONE_LOCAL_MEMORY_BLOB_METADATA_SCHEMA_SQL);
     await opened.execute(PHONE_LOCAL_MEMORY_BLOB_DEDUPE_INDEX_SQL);
     await opened.execute(PHONE_LOCAL_MEMORY_BLOB_SCOPE_INDEX_SQL);
+    await opened.execute(PHONE_LOCAL_MEMORY_BLOB_PROJECTION_INDEX_SQL);
     const schemaVersion = await this.metadataValue(opened, PHONE_LOCAL_MEMORY_BLOB_SCHEMA_VERSION_KEY);
     if (schemaVersion !== PHONE_LOCAL_MEMORY_BLOB_SCHEMA_VERSION) {
       try {
@@ -385,6 +438,29 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
     }
     return recordsFromResult(await (await this.readyStore()).querySql(
       sql + ' ORDER BY updated_at DESC, memory_id ASC', args));
+  }
+
+  async getProjectionStats(ownerId: string, sceneId: string,
+    basedOnMemoryMutationAt: number): Promise<PhoneLocalMemoryProjectionStats> {
+    const result = await (await this.readyStore()).querySql(PHONE_LOCAL_MEMORY_BLOB_PROJECTION_STATS_SQL,
+      [ownerId, sceneId, basedOnMemoryMutationAt]);
+    try {
+      if (!result.goToFirstRow()) return { changedCount: 0, oldestPendingUpdatedAt: null };
+      const changedCount = result.getLong(result.getColumnIndex('changed_count'));
+      return {
+        changedCount,
+        oldestPendingUpdatedAt: changedCount > 0 ?
+          result.getLong(result.getColumnIndex('oldest_pending_updated_at')) : null
+      };
+    } finally {
+      result.close();
+    }
+  }
+
+  async listProjectionFacts(ownerId: string, sceneId: string): Promise<PhoneLocalMemoryProjectionFact[]> {
+    return projectionFactsFromResult(await (await this.readyStore()).querySql(
+      PHONE_LOCAL_MEMORY_BLOB_PROJECTION_FACTS_SQL, [ownerId, sceneId]
+    ));
   }
 
   async search(request: PhoneLocalMemorySearchRequest): Promise<MemoryHit[]> {
@@ -467,6 +543,73 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
       await this.remove(ownerId, existing[index].memoryId);
     }
     return existing;
+  }
+
+  async replaceByPersonaTag(ownerId: string, sceneId: string, personaTag: string,
+    replacements: MemoryRecord[], guard?: MemoryCommitGuard): Promise<MemoryRecord[]> {
+    for (let index = 0; index < replacements.length; index += 1) {
+      const record = replacements[index];
+      if (record.ownerId !== ownerId || record.sceneId !== sceneId || record.personaTag !== personaTag) {
+        throw new Error('Memory replacement record does not match persona tag scope.');
+      }
+    }
+    const store = await this.readyStore();
+    await this.writeMutex.acquire();
+    try {
+      const existing = recordsFromResult(await store.querySql(PHONE_LOCAL_MEMORY_BLOB_PERSONA_TAG_RECORDS_SQL,
+        [ownerId, sceneId, personaTag]));
+      requireActiveCommit(guard);
+      const statements: PhoneLocalMemoryBlobStatement[] = [{
+        sql: PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_HISTORY_SQL,
+        args: [ownerId, ownerId, sceneId, personaTag]
+      }, {
+        sql: PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_SQL,
+        args: [ownerId, sceneId, personaTag]
+      }];
+      for (let index = 0; index < replacements.length; index += 1) {
+        statements.push({ sql: BLOB_INSERT_SQL, args: insertValues(replacements[index]) });
+        statements.push(historyStatement(replacements[index], 'add'));
+      }
+      try {
+        await executePhoneLocalMemoryBlobTransaction(new ArkDataBlobTransactionAdapter(store), statements);
+        return existing;
+      } catch (error) {
+        throw error instanceof Error ? error : new Error('BLOB memory persona tag replacement failed.');
+      }
+    } finally {
+      this.writeMutex.release();
+    }
+  }
+
+  async claimOwner(fromOwnerId: string, toOwnerId: string): Promise<number> {
+    const from: string = fromOwnerId.trim();
+    const to: string = toOwnerId.trim();
+    if (from.length === 0 || to.length === 0) throw new Error('Memory owner claim requires two owner IDs.');
+    if (from === to) return 0;
+    const store = await this.readyStore();
+    await this.writeMutex.acquire();
+    try {
+      const countResult = await store.querySql(
+        'SELECT COUNT(*) AS record_count FROM conversation_memory_blob WHERE owner_id = ?', [from]);
+      let claimed: number = 0;
+      try {
+        if (countResult.goToFirstRow()) claimed = countResult.getLong(countResult.getColumnIndex('record_count'));
+      } finally {
+        countResult.close();
+      }
+      try {
+        await executePhoneLocalMemoryBlobTransaction(new ArkDataBlobTransactionAdapter(store), [{
+          sql: PHONE_LOCAL_MEMORY_BLOB_CLAIM_OWNER_SQL, args: [to, from]
+        }, {
+          sql: PHONE_LOCAL_MEMORY_BLOB_CLAIM_HISTORY_OWNER_SQL, args: [to, from]
+        }]);
+        return claimed;
+      } catch (error) {
+        throw error instanceof Error ? error : new Error('BLOB memory owner claim failed.');
+      }
+    } finally {
+      this.writeMutex.release();
+    }
   }
 
   async getMetadata(key: string): Promise<string | null> {

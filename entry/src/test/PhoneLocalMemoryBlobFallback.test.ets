@@ -6,9 +6,12 @@ import {
   decodePhoneLocalMemoryEmbeddingBlob,
   encodePhoneLocalMemoryEmbeddingBlob,
   executePhoneLocalMemoryBlobTransaction,
+  PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_HISTORY_SQL,
+  PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_SQL,
   PHONE_LOCAL_MEMORY_BLOB_DEDUPE_INDEX_SQL,
   PHONE_LOCAL_MEMORY_BLOB_SCHEMA_SQL,
   PHONE_LOCAL_MEMORY_BLOB_SCOPE_INDEX_SQL,
+  PHONE_LOCAL_MEMORY_BLOB_PERSONA_TAG_RECORDS_SQL,
   PhoneLocalMemoryBlobTransactionPort,
   rankPhoneLocalMemoryBlobRecords
 } from '../main/ets/memory/PhoneLocalMemoryBlobFallbackPort';
@@ -78,6 +81,12 @@ export default function phoneLocalMemoryBlobFallbackTest() {
       expect(PHONE_LOCAL_MEMORY_BLOB_DEDUPE_INDEX_SQL).assertContain(
         'owner_id, embedding_profile_id, fact_hash, normalized_fact'
       );
+      expect(PHONE_LOCAL_MEMORY_BLOB_PERSONA_TAG_RECORDS_SQL)
+        .assertContain('owner_id = ? AND scene_id = ? AND persona_tag = ?');
+      expect(PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_HISTORY_SQL)
+        .assertContain('memory_id IN (SELECT memory_id');
+      expect(PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_SQL)
+        .assertContain('owner_id = ? AND scene_id = ? AND persona_tag = ?');
     });
 
     it('encodes 512 FP32 values little-endian and round-trips them', 0, () => {

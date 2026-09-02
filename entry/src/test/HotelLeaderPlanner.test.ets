@@ -14,7 +14,8 @@ import {
 } from '../main/ets/pages/A2uiHome/agent/HotelLeaderPlanner';
 import {
   hotelModelSettingsFingerprint,
-  hotelTurnReadyMessage
+  hotelTurnReadyMessage,
+  memorySideEffectToastText
 } from '../main/ets/pages/A2uiHome/Index';
 
 const SEARCH_JSON: string = '{' +
@@ -169,6 +170,13 @@ async function rejected(text: string, response: string): Promise<boolean> {
 
 export default function hotelLeaderPlannerTest() {
   describe('hotelLeaderPlanner', () => {
+    it('keeps both successful and failed memory side-effect messages toastable', 0, () => {
+      expect(memorySideEffectToastText('已记住 2 条长期记忆。'))
+        .assertEqual('已记住 2 条长期记忆。');
+      expect(memorySideEffectToastText('Long-term memory operation failed.'))
+        .assertEqual('Long-term memory operation failed.');
+      expect(memorySideEffectToastText(' \n\t ')).assertEqual('');
+    });
     it('extracts one fenced object and builds paired hotel search tasks', 0, async () => {
       const model = new FakeHotelModel('Thought: extract only.\n```json\n' + SEARCH_JSON + '\n```');
       const ids = new SequentialPlannerIds();

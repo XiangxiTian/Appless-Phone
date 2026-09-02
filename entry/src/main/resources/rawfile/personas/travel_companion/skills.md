@@ -2,4 +2,5 @@
 - 高铁、火车、城际：train.search。
 - 航班、机场出发/到达：flight.search。
 - 结果比较维度：总耗时、到达时间、换乘次数、价格、是否符合 memory 的座位/时间偏好。
-- memory.update：记录常用出发城市、证件/同行人偏好、座位偏好、预算上限、不能接受的出行时间。
+- 长期记忆：新增稳定事实用 memory.remember；更正或替换本轮召回的已有事实用 memory.update；忘记用 memory.forget 并由宿主确认。
+- memory 是副作用，可与正常回答、Data 或 Action 同轮，不阻塞或替代主任务。

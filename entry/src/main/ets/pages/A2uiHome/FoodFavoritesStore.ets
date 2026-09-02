@@ -2,7 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { A2uiFoodData } from '@loop/agent-core';
 
-const FOOD_FAVORITES_STORE_NAME: string = 'aiphone_food_favorites';
+export const FOOD_FAVORITES_STORE_NAME: string = 'aiphone_food_favorites';
 const FOOD_FAVORITES_KEY: string = 'favorites';
 const FOOD_FAVORITES_VERSION_KEY: string = 'favorites_version';
 const FOOD_FAVORITES_VERSION: string = 'food_favorites_v1';
@@ -189,8 +189,8 @@ export class FoodFavoritesStore {
   private readonly store: preferences.Preferences;
   private favorites: FoodFavoriteViewModel[];
 
-  constructor(context: common.Context) {
-    this.store = preferences.getPreferencesSync(context, { name: FOOD_FAVORITES_STORE_NAME });
+  constructor(context: common.Context, storeName: string = FOOD_FAVORITES_STORE_NAME) {
+    this.store = preferences.getPreferencesSync(context, { name: storeName });
     this.favorites = this.loadFromPreferences();
   }
 

@@ -25,6 +25,7 @@ import {
   LeaderDecision,
   LeaderDecisionDataTask,
   LeaderMemoryRememberFact,
+  LeaderMemoryUpdateItem,
   LeaderMemoryRecallToolExecutor,
   LeaderMemoryRecallToolRequest,
   LeaderMemoryForgetClarification,
@@ -32,7 +33,6 @@ import {
   LeaderMemoryToolExecutor,
   LeaderMemoryToolExecutionGuard,
   LeaderMemoryToolRequest,
-  LeaderMemoryToolResult,
   LeaderPlan,
   LeaderPlanner,
   LeaderPlannerResult,
@@ -89,7 +89,7 @@ interface LeaderTurnState {
   uiIntent: string;
   originalUserInput: string;
   pendingActionDecision: LeaderDecision | null;
-  pendingMemoryMutation: LeaderMemoryMutation | null;
+  memorySideEffectEnqueued: boolean;
   observations: ObservationDigest[];
   turnObservations: ObservationDigest[];
   personaId: string;
@@ -99,7 +99,6 @@ interface LeaderTurnState {
   uiSurfaceId: string;
   virtualActionTaskId: string;
   pendingAnswer: string | null;
-  memoryActionStatus: '' | 'success' | 'partial' | 'error';
   memoryExecutionGeneration: number;
   leaderRecallAttempted: boolean;
   bimSuggestion: LeaderBimSuggestion | null;
@@ -150,6 +149,7 @@ export class LeaderAgent extends MessageDrivenAgent {
   private readonly currentLocalDate: LeaderCurrentLocalDateProvider;
   private readonly memoryToolExecutor: LeaderMemoryToolExecutor | null;
   private readonly memoryRecallToolExecutor: LeaderMemoryRecallToolExecutor | null;
+  private readonly memorySelectionObserver: ((selection: MemorySelectionPayload) => boolean) | null;
   private readonly decisionObserver: ((
     conversationId: string,
     turnId: string,
@@ -179,7 +179,8 @@ export class LeaderAgent extends MessageDrivenAgent {
     ) => void,
     currentLocalDate?: LeaderCurrentLocalDateProvider,
     memoryToolExecutor?: LeaderMemoryToolExecutor,
-    memoryRecallToolExecutor?: LeaderMemoryRecallToolExecutor
+    memoryRecallToolExecutor?: LeaderMemoryRecallToolExecutor,
+    memorySelectionObserver?: (selection: MemorySelectionPayload) => boolean
   ) {
     super(bus);
     this.bus = bus;
@@ -197,6 +198,7 @@ export class LeaderAgent extends MessageDrivenAgent {
     } : currentLocalDate;
     this.memoryToolExecutor = memoryToolExecutor === undefined ? null : memoryToolExecutor;
     this.memoryRecallToolExecutor = memoryRecallToolExecutor === undefined ? null : memoryRecallToolExecutor;
+    this.memorySelectionObserver = memorySelectionObserver === undefined ? null : memorySelectionObserver;
   }
 
   stop(): void {
@@ -337,7 +339,7 @@ export class LeaderAgent extends MessageDrivenAgent {
       uiIntent: '',
       originalUserInput: this.boundedText(inputText, UI_TASK_ORIGINAL_USER_INPUT_MAX_LENGTH),
       pendingActionDecision: null,
-      pendingMemoryMutation: null,
+      memorySideEffectEnqueued: false,
       observations: input.recentObservations as ObservationDigest[],
       turnObservations: [],
       personaId: '',
@@ -347,7 +349,6 @@ export class LeaderAgent extends MessageDrivenAgent {
       uiSurfaceId: '',
       virtualActionTaskId: '',
       pendingAnswer: null,
-      memoryActionStatus: '',
       memoryExecutionGeneration: 0,
       leaderRecallAttempted: false,
       bimSuggestion: null,
@@ -512,7 +513,8 @@ export class LeaderAgent extends MessageDrivenAgent {
     const trustedPreflightClarify: boolean = decision.roundAction === 'clarify' &&
       decision.reasonCode === 'host_preflight_clarify';
     if ((decision.roundAction === 'answer' || decision.roundAction === 'clarify') && !trustedPreflightClarify &&
-      state.turnObservations.length === 0 && decision.requestedCapabilityIds.length > 0) {
+      state.turnObservations.length === 0 && decision.requestedCapabilityIds.length > 0 &&
+      decision.memoryMutation === undefined && decision.memoryClarification === undefined) {
       this.publishError(
         message,
         'LEADER_UNOBSERVED_TERMINAL',
@@ -603,15 +605,23 @@ export class LeaderAgent extends MessageDrivenAgent {
       state.bimContextUpdate = decision.bimContextUpdate;
     }
     if (decision.memoryMutation !== undefined) {
-      if (state.pendingMemoryMutation !== null || state.memoryActionStatus !== '') {
+      if (state.memorySideEffectEnqueued) {
         this.finishTurn(state);
         this.publishError(message, 'LEADER_MEMORY_DUPLICATE',
           'Leader can execute long-term memory at most once per turn');
         return;
       }
-      state.pendingMemoryMutation = this.copyMemoryMutation(decision.memoryMutation);
+      state.memorySideEffectEnqueued = true;
+      this.enqueueMemorySideEffect(state, decision.memoryMutation);
     }
+    let memorySelectionAccepted: boolean = false;
     if (decision.memoryClarification !== undefined) {
+      if (state.memorySideEffectEnqueued) {
+        this.finishTurn(state);
+        this.publishError(message, 'LEADER_MEMORY_DUPLICATE',
+          'Leader can execute long-term memory at most once per turn');
+        return;
+      }
       const selection: MemorySelectionPayload | null = this.memorySelection(
         message, state, decision.memoryClarification
       );
@@ -621,14 +631,15 @@ export class LeaderAgent extends MessageDrivenAgent {
           'Leader memory clarification candidates are unavailable');
         return;
       }
-      this.publishTurnResult(
-        message,
-        state,
-        '找到多条相关长期记忆，请选择要忘记的一条。',
-        selection
-      );
-      this.finishTurn(state);
-      return;
+      state.memorySideEffectEnqueued = true;
+      const observer = this.memorySelectionObserver;
+      if (observer !== null) {
+        try {
+          memorySelectionAccepted = observer(selection);
+        } catch (_error) {
+          // Selection admission is an independent host side effect.
+        }
+      }
     }
     if (decision.roundAction === 'answer' || decision.roundAction === 'clarify') {
       if (state.dataTaskIds.length > 0) {
@@ -683,8 +694,19 @@ export class LeaderAgent extends MessageDrivenAgent {
       );
       return;
     }
-    if (dataTaskIds.length === 0 && state.pendingMemoryMutation !== null) {
-      this.startMemoryExecution(message, state);
+    if (dataTaskIds.length === 0 && decision.actionIntent === undefined &&
+      (decision.memoryMutation !== undefined || decision.memoryClarification !== undefined)) {
+      if (decision.memoryClarification !== undefined && !memorySelectionAccepted) {
+        this.finishTurn(state);
+        this.publishError(message, 'LEADER_MEMORY_CLARIFICATION_UNAVAILABLE',
+          'Long-term memory selection is unavailable.');
+        return;
+      }
+      const acknowledgement: string = decision.memoryClarification === undefined ?
+        '好的，我会按你的要求处理长期记忆。' :
+        '已找到相关长期记忆，请在弹窗中选择要忘记的内容。';
+      this.publishTurnResult(message, state, acknowledgement);
+      this.finishTurn(state);
     }
   }
 
@@ -987,10 +1009,6 @@ export class LeaderAgent extends MessageDrivenAgent {
       return;
     }
     if (state.pendingAnswer === null) {
-      return;
-    }
-    if (state.pendingMemoryMutation !== null) {
-      this.startMemoryExecution(this.inputMessage(state), state);
       return;
     }
     const answer: string = state.pendingAnswer;
@@ -1330,9 +1348,10 @@ export class LeaderAgent extends MessageDrivenAgent {
     }
     if (hasMemoryClarification) {
       const clarification: LeaderMemoryForgetClarification | undefined = decision.memoryClarification;
-      if (clarification === undefined || decision.roundAction !== 'execute' ||
-        decision.actionIntent !== undefined || decision.answer !== undefined ||
-        decision.dataTasks.length !== 0 || memoryActionIds.length !== 1 ||
+      if (clarification === undefined ||
+        (decision.roundAction !== 'execute' && decision.roundAction !== 'answer') ||
+        (decision.roundAction !== 'execute' && decision.requestedCapabilityIds.length !== 1) ||
+        memoryActionIds.length !== 1 ||
         memoryActionIds[0] !== 'memory.forget' ||
         Object.keys(clarification).join(',') !== 'operation' ||
         clarification.operation !== 'forget' || input.recalledMemories === undefined ||
@@ -1345,7 +1364,8 @@ export class LeaderAgent extends MessageDrivenAgent {
       return memoryActionIds.length === 0 && decision.memoryMutation === undefined;
     }
     if (decision.memoryMutation === undefined || memoryActionIds.length !== 1 ||
-      decision.roundAction !== 'execute' || decision.actionIntent !== undefined) {
+      (decision.roundAction !== 'execute' && decision.roundAction !== 'answer') ||
+      (decision.roundAction !== 'execute' && decision.requestedCapabilityIds.length !== 1)) {
       return false;
     }
     const mutation: LeaderMemoryMutation = decision.memoryMutation;
@@ -1373,9 +1393,18 @@ export class LeaderAgent extends MessageDrivenAgent {
     }
     const keys: string = Object.keys(mutation).sort().join(',');
     if (mutation.operation === 'update') {
-      return keys === 'fact,memoryId,operation' &&
-        this.validMemoryFact(mutation.fact) &&
-        this.recalledMemoryId(input, mutation.memoryId);
+      if (keys !== 'operation,updates' || !Array.isArray(mutation.updates) ||
+        mutation.updates.length < 1 || mutation.updates.length > 5) return false;
+      const memoryIds: Set<string> = new Set<string>();
+      for (let index = 0; index < mutation.updates.length; index++) {
+        const update = mutation.updates[index];
+        if (update === null || typeof update !== 'object' || Array.isArray(update) ||
+          Object.keys(update).sort().join(',') !== 'fact,memoryId' ||
+          !this.validMemoryFact(update.fact) || memoryIds.has(update.memoryId) ||
+          !this.recalledMemoryId(input, update.memoryId)) return false;
+        memoryIds.add(update.memoryId);
+      }
+      return true;
     }
     return false;
   }
@@ -2078,17 +2107,21 @@ export class LeaderAgent extends MessageDrivenAgent {
       };
     }
     if (mutation.operation === 'update') {
-      return { operation: 'update', memoryId: mutation.memoryId, fact: mutation.fact };
+      return {
+        operation: 'update',
+        updates: mutation.updates.map((item): LeaderMemoryUpdateItem => ({
+          memoryId: item.memoryId,
+          fact: item.fact
+        }))
+      };
     }
     return { operation: 'forget', memoryId: mutation.memoryId };
   }
 
-  private startMemoryExecution(input: AgentMessage, state: LeaderTurnState): void {
-    const mutation: LeaderMemoryMutation | null = state.pendingMemoryMutation;
-    if (mutation === null || state.terminal) return;
-    state.pendingMemoryMutation = null;
-    state.memoryExecutionGeneration++;
-    const generation: number = state.memoryExecutionGeneration;
+  private enqueueMemorySideEffect(state: LeaderTurnState, mutation: LeaderMemoryMutation): void {
+    if (state.terminal) return;
+    const executor: LeaderMemoryToolExecutor | null = this.memoryToolExecutor;
+    if (executor === null) return;
     const request: LeaderMemoryToolRequest = {
       conversationId: state.conversationId,
       turnId: state.turnId,
@@ -2096,58 +2129,12 @@ export class LeaderAgent extends MessageDrivenAgent {
       personaId: state.personaId,
       mutation: this.copyMemoryMutation(mutation)
     };
-    const executor: LeaderMemoryToolExecutor | null = this.memoryToolExecutor;
-    if (executor === null) {
-      this.finishMemoryExecution(input, state, generation, {
-        status: 'error',
-        message: 'Long-term memory is unavailable.'
-      });
-      return;
-    }
-    const guard: LeaderMemoryToolExecutionGuard =
-      new CallbackLeaderMemoryToolExecutionGuard((): boolean => {
-        const key: string = this.turnKeyFor(state.conversationId, state.turnId);
-        return !state.terminal && state.memoryExecutionGeneration === generation &&
-          this.turns.get(key) === state;
-      });
+    const guard = new CallbackLeaderMemoryToolExecutionGuard((): boolean => true);
     try {
-      executor.execute(request, guard).then((result: LeaderMemoryToolResult): void => {
-        this.finishMemoryExecution(input, state, generation, result);
-      }).catch((_error: Object): void => {
-        this.finishMemoryExecution(input, state, generation, {
-          status: 'error',
-          message: 'Long-term memory operation failed.'
-        });
-      });
+      void executor.execute(request, guard).catch((_error: Object): void => {});
     } catch (_error) {
-      this.finishMemoryExecution(input, state, generation, {
-        status: 'error',
-        message: 'Long-term memory operation failed.'
-      });
+      // Memory is a detached side effect; admission/execution errors never settle the primary turn.
     }
-  }
-
-  private finishMemoryExecution(
-    input: AgentMessage,
-    state: LeaderTurnState,
-    generation: number,
-    result: LeaderMemoryToolResult
-  ): void {
-    const key: string = this.turnKeyFor(state.conversationId, state.turnId);
-    if (state.terminal || state.memoryExecutionGeneration !== generation ||
-      this.turns.get(key) !== state) return;
-    const validStatus: boolean = result !== null && typeof result === 'object' &&
-      !Array.isArray(result) && Object.keys(result).sort().join(',') === 'message,status' &&
-      (result.status === 'success' || result.status === 'partial' || result.status === 'error');
-    const status: 'success' | 'partial' | 'error' = validStatus ? result.status : 'error';
-    const memoryMessage: string = validStatus && typeof result.message === 'string' &&
-      result.message.trim().length > 0 ? result.message.trim() : 'Long-term memory operation failed.';
-    state.memoryActionStatus = status;
-    let answer: string = state.pendingAnswer === null ? memoryMessage : state.pendingAnswer;
-    state.pendingAnswer = null;
-    if (answer !== memoryMessage) answer += ' ' + memoryMessage;
-    this.publishTurnResult(input, state, answer);
-    this.finishTurn(state);
   }
 
   private handleVirtualActionResult(state: LeaderTurnState, message: AgentMessage): void {
@@ -2162,10 +2149,6 @@ export class LeaderAgent extends MessageDrivenAgent {
     const virtualRunId = 'virtual:' + state.virtualActionTaskId;
     if (result.surfaceId !== virtualRunId || result.planId !== 'direct:' + virtualRunId ||
       result.runId !== virtualRunId) {
-      return;
-    }
-    if (state.pendingMemoryMutation !== null) {
-      this.startMemoryExecution(this.inputMessage(state), state);
       return;
     }
     if (state.pendingAnswer !== null) {
@@ -2240,12 +2223,6 @@ export class LeaderAgent extends MessageDrivenAgent {
   }
 
   private turnResultStatus(state: LeaderTurnState): 'success' | 'partial' | 'empty' | 'error' {
-    if (state.memoryActionStatus === 'partial') return 'partial';
-    if (state.memoryActionStatus === 'error') {
-      return state.turnObservations.some((item: ObservationDigest): boolean =>
-        item.status === 'success' || item.status === 'partial'
-      ) ? 'partial' : 'error';
-    }
     if (state.turnObservations.length === 0) {
       return 'success';
     }

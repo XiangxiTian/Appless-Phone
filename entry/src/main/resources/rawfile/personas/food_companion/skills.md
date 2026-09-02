@@ -3,4 +3,5 @@
 - 星巴克、麦当劳、霸王茶姬等其他品牌意图仍用 food.search，把品牌作为筛选条件。
 - 只有用户明确说 Google Maps、gmap、谷歌地图或 Google Places 时才使用地图相关能力。
 - 结果排序优先级：匹配 memory 的品牌/口味 > 距离 > 评分 > 营业状态。
-- memory.update：记录长期口味、忌口、固定品牌、预算、配送/自取偏好；建议 action 用“按新偏好重新查”。
+- 长期记忆：新增稳定事实用 memory.remember；更正或替换本轮召回的已有事实用 memory.update；忘记用 memory.forget 并由宿主确认。
+- memory 是副作用，可与正常回答、Data 或 Action 同轮，不阻塞或替代主任务。

@@ -29,6 +29,7 @@ import {
   LinkedMessageBus,
   MemoryBatchResult,
   MemoryCommitGuard,
+  LeaderMemoryToolResult,
   MemoryRecallObservation,
   MemoryWriteResult,
   ObservationDigest,
@@ -51,11 +52,19 @@ import {
   setJsonPointer
 } from '@loop/agent-core';
 import {
+  PhoneLocalMemoryUpdate,
   PhoneLocalMemoryRuntimePort,
   PhoneLocalRecalledMemory
 } from '../main/ets/memory/PhoneLocalMemoryRuntime';
+import {
+  PhoneLocalMemoryProjectionFact,
+  PhoneLocalMemoryProjectionStats
+} from '../main/ets/memory/PhoneLocalMemoryStore';
 import { PhoneLocalMemoryAvailabilityPort } from '../main/ets/memory/PhoneLocalMemoryAvailability';
 import {
+  MemoryForgetOverlayRequest,
+  MemoryForgetOverlayGateState,
+  memoryForgetOverlayBlocked,
   MultiAgentCanaryActionContext,
   MultiAgentCanaryOptions,
   MultiAgentCanaryRuntime,
@@ -70,6 +79,12 @@ import {
 import {
   MultiAgentSettledOutcome
 } from '../main/ets/pages/A2uiHome/agent/MultiAgentRuntimeTypes';
+import {
+  MEMORY_FORGET_OVERLAY_BASE_BOTTOM_PADDING,
+  MEMORY_FORGET_OVERLAY_SCROLL_MAX_HEIGHT,
+  memoryForgetOverlayBottomPadding,
+  memoryForgetOverlayPersonaName
+} from '../main/ets/pages/A2uiHome/components/MemoryForgetOverlay';
 import { createHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeSnapshot';
 import { HtmlHomeAction, HtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeTypes';
 import {
@@ -121,6 +136,20 @@ const MEMORY_DECISION: string = '{"personaId":"food_companion","skillId":"",' +
   '"preferredDensity":"comfortable","requiredSections":[]},' +
   '"memoryMutation":{"operation":"remember","facts":[{"fact":"用户喝咖啡时只选择瑞幸。"}]},' +
   '"reasonCode":"stable_preference"}';
+const MEMORY_ANSWER_DECISION: string = '{"personaId":"food_companion","skillId":"",' +
+  '"requestedCapabilityIds":["memory.remember"],"roundAction":"answer",' +
+  '"continuationMode":"complete","dataTasks":[],"uiIntent":{"purpose":"conversation",' +
+  '"preferredDensity":"comfortable","requiredSections":[]},' +
+  '"memoryMutation":{"operation":"remember","facts":[{"fact":"用户喝咖啡时只选择瑞幸。"}]},' +
+  '"answer":"当然可以，瑞幸新品和价格我也可以继续帮你查。","reasonCode":"answer_with_memory"}';
+const MEMORY_BATCH_UPDATE_DECISION: string = '{"personaId":"food_companion","skillId":"",' +
+  '"requestedCapabilityIds":["memory.update"],"roundAction":"execute",' +
+  '"continuationMode":"complete","dataTasks":[],"uiIntent":{"purpose":"memory.update",' +
+  '"preferredDensity":"comfortable","requiredSections":[]},' +
+  '"memoryMutation":{"operation":"update","updates":[' +
+  '{"memoryId":"memory-coffee","fact":"用户喝咖啡时选择半糖。"},' +
+  '{"memoryId":"memory-commute","fact":"用户通勤时偏好地铁。"}]},' +
+  '"reasonCode":"stable_preferences_updated"}';
 const MEMORY_FORGET_SELECTION_DECISION: string = '{"personaId":"food_companion","skillId":"",' +
   '"requestedCapabilityIds":["memory.forget"],"roundAction":"execute",' +
   '"continuationMode":"complete","dataTasks":[],"uiIntent":{"purpose":"choose memory to forget",' +
@@ -299,6 +328,13 @@ const WORLDCUP_ACTION_DECISION: string = '{"personaId":"default_companion","skil
   '"uiIntent":{"purpose":"worldcup.open","preferredDensity":"comfortable",' +
   '"requiredSections":[]},"actionIntent":{"goal":"open the World Cup page",' +
   '"allowedActionIds":["worldcup.open"]},"reasonCode":"worldcup_action"}';
+const WORLDCUP_ACTION_WITH_MEMORY_DECISION: string = '{"personaId":"default_companion","skillId":"",' +
+  '"requestedCapabilityIds":["worldcup.open","memory.remember"],"roundAction":"execute",' +
+  '"continuationMode":"complete","dataTasks":[],"uiIntent":{"purpose":"worldcup.open",' +
+  '"preferredDensity":"comfortable","requiredSections":[]},"actionIntent":{' +
+  '"goal":"open the World Cup page","allowedActionIds":["worldcup.open"]},' +
+  '"memoryMutation":{"operation":"remember","facts":[{"fact":"用户关注世界杯比赛。"}]},' +
+  '"reasonCode":"worldcup_action_with_memory"}';
 const MIXED_DATA_ACTION_DECISION: string = '{"personaId":"travel_companion","skillId":"",' +
   '"requestedCapabilityIds":["travel.search","worldcup.open"],"roundAction":"execute","continuationMode":"complete",' +
   '"dataTasks":[{"localId":"travel","goal":"search travel options",' +
@@ -647,13 +683,22 @@ interface RememberCall {
   personaTag: string;
 }
 
+interface UpdateCall {
+  updates: PhoneLocalMemoryUpdate[];
+  sourceTurnId: string;
+  personaTag: string;
+}
+
 class RecordingPhoneLocalMemoryRuntime implements PhoneLocalMemoryRuntimePort {
   readonly recalled: PhoneLocalRecalledMemory[];
   readonly rememberCalls: RememberCall[] = [];
+  readonly updateCalls: UpdateCall[] = [];
   recallQueries: string[] = [];
   recallTopKs: number[] = [];
   forgetCalls: string[] = [];
+  forgetBatches: string[][] = [];
   failRemember: boolean = false;
+  failUpdateIndexes: number[] = [];
   failForget: boolean = false;
   failForgetMemoryIds: string[] = [];
   persistRememberedFacts: boolean = false;
@@ -700,28 +745,77 @@ class RecordingPhoneLocalMemoryRuntime implements PhoneLocalMemoryRuntimePort {
     };
   }
 
-  async update(_memoryId: string, _fact: string, _sourceTurnId: string,
-    _personaTag: string, _guard?: MemoryCommitGuard): Promise<MemoryWriteResult> {
-    return { inputIndex: 0, status: 'success' };
+  async update(updates: PhoneLocalMemoryUpdate[], sourceTurnId: string,
+    personaTag: string, _guard?: MemoryCommitGuard): Promise<MemoryBatchResult> {
+    this.updateCalls.push({
+      updates: updates.map((item): PhoneLocalMemoryUpdate => ({ memoryId: item.memoryId, fact: item.fact })),
+      sourceTurnId,
+      personaTag
+    });
+    const records: MemoryWriteResult[] = [];
+    let succeededCount: number = 0;
+    for (let index = 0; index < updates.length; index++) {
+      if (this.failUpdateIndexes.indexOf(index) >= 0) {
+        records.push({
+          inputIndex: index,
+          status: 'error',
+          error: { code: 'memory_update_failed', message: 'Memory update failed.', retryable: true }
+        });
+      } else {
+        records.push({ inputIndex: index, status: 'success' });
+        succeededCount++;
+      }
+    }
+    const failedCount: number = updates.length - succeededCount;
+    const result: MemoryBatchResult = {
+      status: succeededCount > 0 ? 'success' : 'error',
+      records,
+      succeededCount,
+      failedCount,
+      warnings: []
+    };
+    if (succeededCount === 0) {
+      result.error = { code: 'memory_update_failed', message: 'Memory update failed.', retryable: true };
+    }
+    return result;
   }
 
-  async forget(memoryId: string, guard?: MemoryCommitGuard): Promise<MemoryWriteResult> {
-    this.forgetCalls.push(memoryId);
-    if (guard !== undefined && !guard.isActive()) {
-      return {
-        inputIndex: 0,
-        status: 'error',
-        error: { code: 'memory_operation_canceled', message: 'Memory operation canceled.', retryable: false }
-      };
+  async forget(memoryIds: string[], guard?: MemoryCommitGuard): Promise<MemoryBatchResult> {
+    this.forgetBatches.push(memoryIds.slice());
+    const records: MemoryWriteResult[] = [];
+    let succeededCount: number = 0;
+    for (let index = 0; index < memoryIds.length; index++) {
+      const memoryId: string = memoryIds[index];
+      this.forgetCalls.push(memoryId);
+      if ((guard !== undefined && !guard.isActive()) || this.failForget ||
+        this.failForgetMemoryIds.indexOf(memoryId) >= 0) {
+        records.push({
+          inputIndex: index,
+          status: 'error',
+          error: { code: 'memory_delete_failed', message: 'Memory delete failed.', retryable: true }
+        });
+      } else {
+        records.push({ inputIndex: index, status: 'success' });
+        succeededCount++;
+      }
     }
-    if (this.failForget || this.failForgetMemoryIds.indexOf(memoryId) >= 0) {
-      return {
-        inputIndex: 0,
-        status: 'error',
-        error: { code: 'memory_delete_failed', message: 'Memory delete failed.', retryable: true }
-      };
+    const failedCount: number = memoryIds.length - succeededCount;
+    const result: MemoryBatchResult = {
+      status: succeededCount > 0 ? 'success' : 'error', records,
+      succeededCount, failedCount, warnings: []
+    };
+    if (succeededCount === 0) {
+      result.error = { code: 'memory_delete_failed', message: 'Memory delete failed.', retryable: true };
     }
-    return { inputIndex: 0, status: 'success' };
+    return result;
+  }
+
+  async getProjectionStats(_basedOnMemoryMutationAt: number): Promise<PhoneLocalMemoryProjectionStats> {
+    return { changedCount: 0, oldestPendingUpdatedAt: null };
+  }
+
+  async listProjectionFacts(): Promise<PhoneLocalMemoryProjectionFact[]> {
+    return [];
   }
 }
 
@@ -802,21 +896,56 @@ class GatedCommitMemoryRuntime extends RecordingPhoneLocalMemoryRuntime {
   }
 }
 
+class FifoGatedMemoryRuntime extends RecordingPhoneLocalMemoryRuntime {
+  readonly firstStarted: TestGate = new TestGate();
+  readonly firstRelease: TestGate = new TestGate();
+  readonly startedFacts: string[] = [];
+  readonly guards: MemoryCommitGuard[] = [];
+
+  async remember(facts: string[], sourceTurnId: string, personaTag: string,
+    guard?: MemoryCommitGuard): Promise<MemoryBatchResult> {
+    this.startedFacts.push(facts[0]);
+    if (guard !== undefined) this.guards.push(guard);
+    if (this.startedFacts.length === 1) {
+      this.firstStarted.open();
+      await this.firstRelease.promise;
+    }
+    if (guard === undefined || !guard.isActive()) {
+      return {
+        status: 'error', records: [{ inputIndex: 0, status: 'error' }],
+        succeededCount: 0, failedCount: facts.length, warnings: [],
+        error: { code: 'memory_commit_canceled', message: 'Memory commit canceled.', retryable: false }
+      };
+    }
+    return super.remember(facts, sourceTurnId, personaTag, guard);
+  }
+}
+
 class GatedForgetMemoryRuntime extends RecordingPhoneLocalMemoryRuntime {
   readonly forgetStarted: TestGate = new TestGate();
   readonly forgetRelease: TestGate = new TestGate();
 
-  async forget(memoryId: string, guard?: MemoryCommitGuard): Promise<MemoryWriteResult> {
-    if (guard === undefined || !guard.isActive()) {
-      return {
-        inputIndex: 0, status: 'error',
-        error: { code: 'memory_operation_canceled', message: 'Memory operation canceled.', retryable: false }
-      };
-    }
-    this.forgetCalls.push(memoryId);
+  async forget(memoryIds: string[], guard?: MemoryCommitGuard): Promise<MemoryBatchResult> {
+    this.forgetBatches.push(memoryIds.slice());
     this.forgetStarted.open();
     await this.forgetRelease.promise;
-    return { inputIndex: 0, status: 'success' };
+    if (guard === undefined || !guard.isActive()) {
+      return {
+        status: 'error',
+        records: memoryIds.map((_memoryId: string, index: number): MemoryWriteResult => ({
+          inputIndex: index, status: 'error'
+        })),
+        succeededCount: 0, failedCount: memoryIds.length, warnings: []
+      };
+    }
+    this.forgetCalls.push(...memoryIds);
+    return {
+      status: 'success',
+      records: memoryIds.map((_memoryId: string, index: number): MemoryWriteResult => ({
+        inputIndex: index, status: 'success'
+      })),
+      succeededCount: memoryIds.length, failedCount: 0, warnings: []
+    };
   }
 }
 
@@ -1378,6 +1507,35 @@ async function flush(rounds: number = 12): Promise<void> {
   }
 }
 
+function overlayForgetAction(request: MemoryForgetOverlayRequest, indexes: number[]): A2uiAction {
+  const keys: string[] = indexes.map((index: number): string => request.candidates[index].candidateKey);
+  const args: MemoryCandidatesForgetActionArgs = {
+    selectionId: request.selectionId,
+    revision: request.revision,
+    candidateKeys: keys
+  };
+  return {
+    id: 'memory_candidates_forget',
+    label: '确认删除长期记忆',
+    prompt: '删除选中的长期记忆',
+    variant: 'danger',
+    kind: 'client',
+    args
+  };
+}
+
+function sideEffectStatus(result: LeaderMemoryToolResult | null): string {
+  return result === null ? '' : result.status;
+}
+
+function overlayFact(request: MemoryForgetOverlayRequest | null, index: number): string {
+  return request === null || index < 0 || index >= request.candidates.length ? '' : request.candidates[index].fact;
+}
+
+function overlayCandidateCount(request: MemoryForgetOverlayRequest | null): number {
+  return request === null ? 0 : request.candidates.length;
+}
+
 function renderedAction(surface: A2uiSurfaceState, actionId: string): A2uiAction | null {
   const document: HtmlHomeDocument = createHtmlHomeDocument({
     surface,
@@ -1660,6 +1818,36 @@ class AlwaysActiveSurfaceWriteLease implements UiSurfaceWriteLease {
 
 export default function multiAgentCanaryRuntimeTest() {
   describe('multiAgentCanaryRuntime', () => {
+    it('queues memory overlay only behind real foreground modal state', 0, () => {
+      const idle: MemoryForgetOverlayGateState = {
+        busy: false, checkout: false, train: false, deepSearch: false, map: false, confirming: false
+      };
+      const confirming: MemoryForgetOverlayGateState = {
+        busy: false, checkout: false, train: false, deepSearch: false, map: false, confirming: true
+      };
+      const busy: MemoryForgetOverlayGateState = {
+        busy: true, checkout: false, train: false, deepSearch: false, map: false, confirming: false
+      };
+      expect(memoryForgetOverlayBlocked(idle)).assertFalse();
+      expect(memoryForgetOverlayBlocked(confirming)).assertTrue();
+      expect(memoryForgetOverlayBlocked(busy)).assertTrue();
+      expect(memoryForgetOverlayBottomPadding(24))
+        .assertEqual(MEMORY_FORGET_OVERLAY_BASE_BOTTOM_PADDING + 24);
+      expect(memoryForgetOverlayBottomPadding(-10))
+        .assertEqual(MEMORY_FORGET_OVERLAY_BASE_BOTTOM_PADDING);
+      expect(MEMORY_FORGET_OVERLAY_SCROLL_MAX_HEIGHT > 0).assertTrue();
+    });
+    it('maps memory persona tags to user-facing Chinese names without exposing unknown IDs', 0, () => {
+      expect(memoryForgetOverlayPersonaName('default_companion')).assertEqual('默认分身');
+      expect(memoryForgetOverlayPersonaName('food_companion')).assertEqual('饮食搭子');
+      expect(memoryForgetOverlayPersonaName('travel_companion')).assertEqual('旅行搭子');
+      expect(memoryForgetOverlayPersonaName('work_companion')).assertEqual('工作分身');
+      expect(memoryForgetOverlayPersonaName('entertainment_companion')).assertEqual('娱乐搭子');
+      expect(memoryForgetOverlayPersonaName('game_companion')).assertEqual('游戏搭子');
+      expect(memoryForgetOverlayPersonaName('shopping_companion')).assertEqual('购物搭子');
+      expect(memoryForgetOverlayPersonaName('future_internal_persona')).assertEqual('其他分身');
+      expect(memoryForgetOverlayPersonaName('')).assertEqual('');
+    });
     it('keeps UI Lab catalog bindings without widening the default parser profile', 0, async () => {
       const jsonl = '{"version":"v0.9.1","createSurface":{"surfaceId":"profile-bindings",' +
         '"root":"root","title":"Bindings","status":"ready"}}\n' +
@@ -3422,6 +3610,7 @@ export default function multiAgentCanaryRuntimeTest() {
     it('executes one exact phone-local remember mutation', 0, async () => {
       const bus = new TrackingBus();
       const memory = new RecordingPhoneLocalMemoryRuntime();
+      const sideEffects: LeaderMemoryToolResult[] = [];
       const options = canaryOptions(
         new QueueModel([MEMORY_DECISION]),
         new CanaryHotelExecutor(),
@@ -3431,27 +3620,91 @@ export default function multiAgentCanaryRuntimeTest() {
         bus
       );
       options.memoryRuntime = memory;
+      options.onMemorySideEffectResult = (result: LeaderMemoryToolResult): void => {
+        sideEffects.push(result);
+      };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       const outcome = await runtime.submit('我只喝瑞幸咖啡', {
         text: '',
         previousPersonaId: 'food_companion'
       }) as MultiAgentSettledOutcome;
+      await flush();
 
       expect(outcome.status).assertEqual('success');
       expect(memory.rememberCalls.length).assertEqual(1);
+      expect(sideEffects.length).assertEqual(1);
+      expect(sideEffects[0].status).assertEqual('success');
       expect(memory.rememberCalls[0].personaTag).assertEqual('food_companion');
       expect(memory.rememberCalls[0].facts.join('|')).assertEqual('用户喝咖啡时只选择瑞幸。');
-      expect(outcome.message).assertEqual('已记住 1 条长期记忆。');
+      expect(outcome.message).assertEqual('好的，我会按你的要求处理长期记忆。');
       expect(bus.count(AgentMessageType.ACTION_PLAN_REQUEST)).assertEqual(0);
       expect(bus.count(AgentMessageType.ACTION_RESULT)).assertEqual(0);
       runtime.dispose();
     });
 
-    it('does not publish memory success when phone-local persistence fails', 0, async () => {
+    it('keeps the normal chat answer when its remember side effect fails', 0, async () => {
+      const memory = new RecordingPhoneLocalMemoryRuntime();
+      memory.failRemember = true;
+      let sideEffect: LeaderMemoryToolResult | null = null;
+      const options = canaryOptions(
+        new QueueModel([MEMORY_ANSWER_DECISION]),
+        new CanaryHotelExecutor(), new RecordingOpener(), [], []
+      );
+      options.memoryRuntime = memory;
+      options.onMemorySideEffectResult = (result: LeaderMemoryToolResult): void => { sideEffect = result; };
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const outcome = await runtime.submit('以后我只喝瑞幸，也顺便说说你能做什么', {
+        text: '', previousPersonaId: 'food_companion'
+      }) as MultiAgentSettledOutcome;
+      await flush();
+
+      expect(outcome.status).assertEqual('success');
+      expect(outcome.message).assertEqual('当然可以，瑞幸新品和价格我也可以继续帮你查。');
+      expect(sideEffectStatus(sideEffect)).assertEqual('error');
+      expect(memory.rememberCalls.length).assertEqual(1);
+      runtime.dispose();
+    });
+
+    it('executes one two-record update mutation and reports partial without splitting the call', 0, async () => {
+      const memory = new RecordingPhoneLocalMemoryRuntime([{
+        memoryId: 'memory-coffee', fact: '用户喝咖啡时不加糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }, {
+        memoryId: 'memory-commute', fact: '用户通勤时偏好公交。',
+        personaTag: 'travel_companion', authority: 'leader'
+      }]);
+      memory.failUpdateIndexes = [1];
+      let sideEffect: LeaderMemoryToolResult | null = null;
+      const options = canaryOptions(
+        new QueueModel([MEMORY_BATCH_UPDATE_DECISION]),
+        new CanaryHotelExecutor(), new RecordingOpener(), [], []
+      );
+      options.memoryRuntime = memory;
+      options.onMemorySideEffectResult = (result: LeaderMemoryToolResult): void => { sideEffect = result; };
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const outcome = await runtime.submit('咖啡改半糖，通勤改地铁', {
+        text: '', previousPersonaId: 'food_companion'
+      }) as MultiAgentSettledOutcome;
+      await flush();
+
+      expect(outcome.status).assertEqual('success');
+      expect(outcome.message).assertEqual('好的，我会按你的要求处理长期记忆。');
+      expect(sideEffectStatus(sideEffect)).assertEqual('partial');
+      expect(memory.updateCalls.length).assertEqual(1);
+      expect(memory.updateCalls[0].updates.length).assertEqual(2);
+      expect(memory.updateCalls[0].updates[0].memoryId).assertEqual('memory-coffee');
+      expect(memory.updateCalls[0].updates[1].memoryId).assertEqual('memory-commute');
+      runtime.dispose();
+    });
+
+    it('reports persistence failure only through the memory side-effect channel', 0, async () => {
       const bus = new TrackingBus();
       const memory = new RecordingPhoneLocalMemoryRuntime();
       memory.failRemember = true;
+      let sideEffect: LeaderMemoryToolResult | null = null;
       const options = canaryOptions(
         new QueueModel([MEMORY_DECISION]),
         new CanaryHotelExecutor(),
@@ -3461,6 +3714,7 @@ export default function multiAgentCanaryRuntimeTest() {
         bus
       );
       options.memoryRuntime = memory;
+      options.onMemorySideEffectResult = (result: LeaderMemoryToolResult): void => { sideEffect = result; };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       const outcome = await runtime.submit('我只喝瑞幸咖啡', {
@@ -3468,8 +3722,10 @@ export default function multiAgentCanaryRuntimeTest() {
         previousPersonaId: 'food_companion'
       }) as MultiAgentSettledOutcome;
 
-      expect(outcome.status).assertEqual('error');
-      expect(outcome.message).assertEqual('Memory write failed.');
+      await flush();
+      expect(outcome.status).assertEqual('success');
+      expect(outcome.message).assertEqual('好的，我会按你的要求处理长期记忆。');
+      expect(sideEffectStatus(sideEffect)).assertEqual('error');
       expect(bus.count(AgentMessageType.ACTION_PLAN_REQUEST)).assertEqual(0);
       runtime.dispose();
     });
@@ -3511,9 +3767,12 @@ export default function multiAgentCanaryRuntimeTest() {
         runtime.dispose();
       });
 
-    it('deletes one exact opaque multi-selection and rejects forged empty duplicate stale or replayed actions', 0,
+    it('keeps forget selection in an overlay across a new turn and confirms through the FIFO sidecar', 0,
       async () => {
       const surfaces: A2uiSurfaceState[] = [];
+      let overlay: MemoryForgetOverlayRequest | null = null;
+      const sideEffects: LeaderMemoryToolResult[] = [];
+      let hostGeneration: number = 7;
       const memory = new RecordingPhoneLocalMemoryRuntime([{
         memoryId: 'memory-coffee-1',
         fact: '用户喝咖啡时选择半糖。',
@@ -3526,31 +3785,32 @@ export default function multiAgentCanaryRuntimeTest() {
         authority: 'leader'
       }]);
       const options = canaryOptions(
-        new QueueModel([MEMORY_FORGET_SELECTION_DECISION]),
+        new QueueModel([MEMORY_FORGET_SELECTION_DECISION, ANSWER_DECISION]),
         new CanaryHotelExecutor(), new RecordingOpener(), surfaces, []
       );
       options.memoryRuntime = memory;
-      options.currentHostGeneration = (): number => 7;
-      options.currentHostSurface = (): A2uiSurfaceState | null =>
-        surfaces.length === 0 ? null : surfaces[surfaces.length - 1];
+      options.currentHostGeneration = (): number => hostGeneration;
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => {
+        overlay = request;
+      };
+      options.onMemorySideEffectResult = (result: LeaderMemoryToolResult): void => {
+        sideEffects.push(result);
+      };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       const outcome = await runtime.submit('忘掉咖啡偏好', { text: '忘掉咖啡偏好' }, 7) as MultiAgentSettledOutcome;
-      const selectionSurface = surfaces[surfaces.length - 1];
-      const document = createHtmlHomeDocument({
-        surface: selectionSurface, messages: [], isBusy: false, isAwaitingFirstSurface: false
-      });
-      const template = renderedAction(selectionSurface, 'memory_candidates_forget');
-      const selected = finalMemoryForgetAction(selectionSurface, [0, 1]);
-      expect(outcome.memorySelection?.candidates.length).assertEqual(2);
-      expect(selectionSurface.intent).assertEqual('memory.forget.selection');
-      expect(document.actions.length).assertEqual(0);
-      expect(template === null).assertFalse();
-      expect(selected === null).assertFalse();
-      if (selected === null || selected.args === undefined) {
+      expect(outcome.memorySelection).assertEqual(undefined);
+      expect(outcome.surfaceId).assertEqual('');
+      expect(surfaces.length).assertEqual(0);
+      expect(overlay === null).assertFalse();
+      hostGeneration = 8;
+      await runtime.submit('继续正常聊天', { text: '继续正常聊天' }, hostGeneration);
+      expect(overlay === null).assertFalse();
+      if (overlay === null) {
         runtime.dispose();
         return;
       }
+      const selected = overlayForgetAction(overlay as MemoryForgetOverlayRequest, [0, 1]);
       const selectedArgs = selected.args as MemoryCandidatesForgetActionArgs;
       const forgedArgs: MemoryCandidatesForgetActionArgs = {
         selectionId: selectedArgs.selectionId,
@@ -3600,12 +3860,17 @@ export default function multiAgentCanaryRuntimeTest() {
       expect(JSON.stringify(selected.args).indexOf('memoryId')).assertEqual(-1);
       expect(JSON.stringify(selected.args).indexOf('fact')).assertEqual(-1);
       expect(memory.forgetCalls.join(',')).assertEqual('memory-coffee-1,memory-coffee-2');
-      expect(surfaces[surfaces.length - 1].intent).assertEqual('memory.forget.confirmation');
+      expect(memory.forgetBatches.length).assertEqual(1);
+      expect(memory.forgetBatches[0].join(',')).assertEqual('memory-coffee-1,memory-coffee-2');
+      expect(sideEffects.length).assertEqual(0);
+      expect(overlay === null).assertTrue();
+      expect(surfaces.length).assertEqual(0);
       runtime.dispose();
     });
 
-    it('keeps the forget selection surface when its local delete fails', 0, async () => {
+    it('keeps the forget overlay when its local delete fails', 0, async () => {
       const surfaces: A2uiSurfaceState[] = [];
+      let overlay: MemoryForgetOverlayRequest | null = null;
       const memory = new RecordingPhoneLocalMemoryRuntime([{
         memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
         personaTag: 'food_companion', authority: 'leader'
@@ -3620,25 +3885,25 @@ export default function multiAgentCanaryRuntimeTest() {
       );
       options.memoryRuntime = memory;
       options.currentHostGeneration = (): number => 8;
-      options.currentHostSurface = (): A2uiSurfaceState | null =>
-        surfaces.length === 0 ? null : surfaces[surfaces.length - 1];
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => { overlay = request; };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       await runtime.submit('忘掉咖啡偏好', { text: '忘掉咖啡偏好' }, 8);
-      const selectionSurface = surfaces[surfaces.length - 1];
-      const deleteAction = finalMemoryForgetAction(selectionSurface, [0]);
-      expect(deleteAction === null).assertFalse();
-      if (deleteAction !== null) {
-        const result = await runtime.handleMemoryCandidateAction(deleteAction);
+      expect(surfaces.length).assertEqual(0);
+      if (overlay !== null) {
+        const result = await runtime.handleMemoryCandidateAction(
+          overlayForgetAction(overlay as MemoryForgetOverlayRequest, [0])
+        );
         expect(result.status).assertEqual('error');
       }
-      expect(surfaces[surfaces.length - 1].surfaceId).assertEqual(selectionSurface.surfaceId);
-      expect(renderedAction(surfaces[surfaces.length - 1], 'memory_candidates_forget') === null).assertFalse();
+      expect(overlay === null).assertFalse();
+      expect(surfaces.length).assertEqual(0);
       runtime.dispose();
     });
 
     it('removes successful candidates once and keeps failed selected candidates retryable', 0, async () => {
       const surfaces: A2uiSurfaceState[] = [];
+      let overlay: MemoryForgetOverlayRequest | null = null;
       const memory = new RecordingPhoneLocalMemoryRuntime([{
         memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
         personaTag: 'food_companion', authority: 'leader'
@@ -3653,25 +3918,27 @@ export default function multiAgentCanaryRuntimeTest() {
       );
       options.memoryRuntime = memory;
       options.currentHostGeneration = (): number => 10;
-      options.currentHostSurface = (): A2uiSurfaceState | null =>
-        surfaces.length === 0 ? null : surfaces[surfaces.length - 1];
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => { overlay = request; };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       await runtime.submit('忘掉咖啡偏好', { text: '忘掉咖啡偏好' }, 10);
-      const deleteAction = finalMemoryForgetAction(surfaces[surfaces.length - 1], [0, 1]);
-      expect(deleteAction === null).assertFalse();
-      const result = deleteAction === null ? null : await runtime.handleMemoryCandidateAction(deleteAction);
+      const result = overlay === null ? null :
+        await runtime.handleMemoryCandidateAction(
+          overlayForgetAction(overlay as MemoryForgetOverlayRequest, [0, 1])
+        );
 
       expect(result?.status).assertEqual('partial');
       expect(result?.message).assertEqual('已删除 1 条，1 条失败，可重试。');
       expect(memory.forgetCalls.join(',')).assertEqual('memory-coffee-1,memory-coffee-2');
-      expect(surfaces[surfaces.length - 1].components[1].actions?.length).assertEqual(1);
-      expect(renderedAction(surfaces[surfaces.length - 1], 'memory_candidates_forget') === null).assertFalse();
+      expect(memory.forgetBatches.length).assertEqual(1);
+      expect(overlayCandidateCount(overlay)).assertEqual(1);
+      expect(surfaces.length).assertEqual(0);
       runtime.dispose();
     });
 
-    it('does not overwrite or present a completed delete after the current surface changes', 0, async () => {
+    it('does not overwrite the current surface when an overlay delete completes', 0, async () => {
       const surfaces: A2uiSurfaceState[] = [];
+      let overlay: MemoryForgetOverlayRequest | null = null;
       const memory = new GatedForgetMemoryRuntime([{
         memoryId: 'memory-coffee-1', fact: '用户喝咖啡时选择半糖。',
         personaTag: 'food_companion', authority: 'leader'
@@ -3685,18 +3952,17 @@ export default function multiAgentCanaryRuntimeTest() {
       );
       options.memoryRuntime = memory;
       options.currentHostGeneration = (): number => 9;
-      options.currentHostSurface = (): A2uiSurfaceState | null =>
-        surfaces.length === 0 ? null : surfaces[surfaces.length - 1];
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => { overlay = request; };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       await runtime.submit('忘掉咖啡偏好', { text: '忘掉咖啡偏好' }, 9);
-      const deleteAction = finalMemoryForgetAction(surfaces[surfaces.length - 1], [0]);
-      expect(deleteAction === null).assertFalse();
-      if (deleteAction === null) {
+      if (overlay === null) {
         runtime.dispose();
         return;
       }
-      const pending = runtime.handleMemoryCandidateAction(deleteAction);
+      const pending = runtime.handleMemoryCandidateAction(
+        overlayForgetAction(overlay as MemoryForgetOverlayRequest, [0, 1])
+      );
       await memory.forgetStarted.promise;
       const replacement = createSeedA2uiSurface();
       replacement.surfaceId = 'newer-surface';
@@ -3707,45 +3973,222 @@ export default function multiAgentCanaryRuntimeTest() {
       const result = await pending;
 
       expect(result.status).assertEqual('success');
-      expect(result.presented).assertFalse();
+      expect(result.presented).assertTrue();
       expect(surfaces[surfaces.length - 1].surfaceId).assertEqual('newer-surface');
-      expect(memory.forgetCalls.join(',')).assertEqual('memory-coffee-1');
+      expect(overlay === null).assertTrue();
+      expect(memory.forgetCalls.join(',')).assertEqual('memory-coffee-1,memory-coffee-2');
       runtime.dispose();
     });
 
-    it('passes the live turn guard and skips a canceled memory commit', 0, async () => {
-      const memory = new GatedCommitMemoryRuntime();
+    it('consumes a partial forget selection when republishing the overlay fails', 0, async () => {
+      let overlay: MemoryForgetOverlayRequest | null = null;
+      let nonNullPublications: number = 0;
+      const memory = new RecordingPhoneLocalMemoryRuntime([{
+        memoryId: 'memory-partial-a', fact: '用户喜欢半糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }, {
+        memoryId: 'memory-partial-b', fact: '用户喜欢燕麦奶。',
+        personaTag: 'food_companion', authority: 'leader'
+      }]);
+      memory.failForgetMemoryIds = ['memory-partial-b'];
       const options = canaryOptions(
-        new QueueModel([MEMORY_DECISION]),
+        new QueueModel([MEMORY_FORGET_SELECTION_DECISION]),
+        new CanaryHotelExecutor(), new RecordingOpener(), [], []
+      );
+      options.memoryRuntime = memory;
+      options.currentHostGeneration = (): number => 17;
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => {
+        if (request === null) {
+          overlay = null;
+          return;
+        }
+        nonNullPublications++;
+        if (nonNullPublications > 1) throw new Error('overlay republish failed');
+        overlay = request;
+      };
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      await runtime.submit('忘掉咖啡偏好', { text: '忘掉咖啡偏好' }, 17);
+      if (overlay === null) {
+        runtime.dispose();
+        return;
+      }
+      const action = overlayForgetAction(overlay as MemoryForgetOverlayRequest, [0, 1]);
+      const result = await runtime.handleMemoryCandidateAction(action);
+      const replay = await runtime.handleMemoryCandidateAction(action);
+
+      expect(result.status).assertEqual('partial');
+      expect(result.presented).assertFalse();
+      expect(result.notify).assertFalse();
+      expect(overlay === null).assertTrue();
+      expect(replay.status).assertEqual('rejected');
+      expect(memory.forgetBatches.length).assertEqual(1);
+      runtime.dispose();
+    });
+
+    it('cancels one in-flight forget batch when the memory owner changes', 0, async () => {
+      let overlay: MemoryForgetOverlayRequest | null = null;
+      const memory = new GatedForgetMemoryRuntime([{
+        memoryId: 'memory-owner-1', fact: '用户偏好半糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }, {
+        memoryId: 'memory-owner-2', fact: '用户偏好燕麦奶。',
+        personaTag: 'food_companion', authority: 'leader'
+      }]);
+      const options = canaryOptions(
+        new QueueModel([MEMORY_FORGET_SELECTION_DECISION]),
+        new CanaryHotelExecutor(), new RecordingOpener(), [], []
+      );
+      options.memoryRuntime = memory;
+      options.currentHostGeneration = (): number => 19;
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => { overlay = request; };
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      await runtime.submit('忘掉咖啡偏好', { text: '忘掉咖啡偏好' }, 19);
+      if (overlay === null) {
+        runtime.dispose();
+        return;
+      }
+      const pending = runtime.handleMemoryCandidateAction(
+        overlayForgetAction(overlay as MemoryForgetOverlayRequest, [0, 1])
+      );
+      await memory.forgetStarted.promise;
+      runtime.invalidateMemoryOwner();
+      memory.forgetRelease.open();
+      const result = await pending;
+
+      expect(result.status).assertEqual('rejected');
+      expect(memory.forgetBatches.length).assertEqual(1);
+      expect(memory.forgetCalls.length).assertEqual(0);
+      expect(overlay === null).assertTrue();
+      runtime.dispose();
+    });
+
+    it('clears a forget selection when its overlay observer rejects publication', 0, async () => {
+      const memory = new RecordingPhoneLocalMemoryRuntime([{
+        memoryId: 'memory-overlay-failure', fact: '用户偏好半糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }]);
+      const options = canaryOptions(
+        new QueueModel([MEMORY_FORGET_SELECTION_DECISION]),
+        new CanaryHotelExecutor(), new RecordingOpener(), [], []
+      );
+      options.memoryRuntime = memory;
+      options.currentHostGeneration = (): number => 23;
+      options.onMemoryForgetOverlay = (_request: MemoryForgetOverlayRequest | null): void => {
+        throw new Error('overlay unavailable');
+      };
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const outcome = await runtime.submit('忘掉咖啡偏好', {
+        text: '忘掉咖啡偏好'
+      }, 23) as MultiAgentSettledOutcome;
+
+      expect(outcome.status).assertEqual('error');
+      expect(memory.forgetCalls.length).assertEqual(0);
+      runtime.dispose();
+    });
+
+    it('does not let Action or a new turn wait for or cancel FIFO memory side effects', 0, async () => {
+      const memory = new FifoGatedMemoryRuntime();
+      const options = canaryOptions(
+        new QueueModel([WORLDCUP_ACTION_WITH_MEMORY_DECISION, MEMORY_ANSWER_DECISION]),
         new CanaryHotelExecutor(),
         new RecordingOpener(),
         [],
         []
       );
       options.memoryRuntime = memory;
+      options.currentHostGeneration = (): number => 41;
+      options.pageAction = async (
+        _actionId: string,
+        _args: Object,
+        _context: ActionExecutionContext
+      ): Promise<ActionExecutionResult> => ({
+        status: 'success',
+        output: JSON.parse('{"route":"pages/A2uiHome/AnythingDemo","status":"opened"}') as Object
+      });
       const runtime = new MultiAgentCanaryRuntime(options);
-      const pending = runtime.submit('我只喝瑞幸咖啡', {
+      const first = runtime.submit('记住我关注世界杯并打开页面', { text: '' }, 41) as
+        Promise<MultiAgentSettledOutcome>;
+      await memory.firstStarted.promise;
+      const actionOutcome = await first;
+      const secondOutcome = await runtime.submit('也记住我只喝瑞幸并正常回答', {
         text: '', previousPersonaId: 'food_companion'
-      }) as Promise<MultiAgentSettledOutcome>;
-      await memory.commitStarted.promise;
+      }, 41) as MultiAgentSettledOutcome;
 
-      runtime.cancelActiveTurn('user_cancel');
-      memory.commitRelease.open();
+      expect(actionOutcome.status).assertEqual('success');
+      expect(secondOutcome.status).assertEqual('success');
+      expect(memory.startedFacts.length).assertEqual(1);
+      expect(memory.guards.length).assertEqual(1);
+      expect(memory.guards[0].isActive()).assertTrue();
+
+      runtime.invalidateMemoryOwner();
+      expect(memory.guards[0].isActive()).assertFalse();
+      memory.firstRelease.open();
+      await flush();
+      expect(memory.rememberCalls.length).assertEqual(0);
+      runtime.dispose();
+    });
+
+    it('does not enqueue a late memory side effect after owner invalidation', 0, async () => {
+      const model = new GatedModel(MEMORY_DECISION);
+      const memory = new RecordingPhoneLocalMemoryRuntime();
+      const options = canaryOptions(
+        model, new CanaryHotelExecutor(), new RecordingOpener(), [], []
+      );
+      options.memoryRuntime = memory;
+      options.currentHostGeneration = (): number => 31;
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const pending = runtime.submit('记住我只喝瑞幸', { text: '记住我只喝瑞幸' }, 31) as
+        Promise<MultiAgentSettledOutcome>;
+      await model.started.promise;
+      runtime.invalidateMemoryOwner();
+      model.release.open();
       const outcome = await pending;
       await flush();
-      const receivedGuard: MemoryCommitGuard | null = memory.receivedGuard;
 
       expect(outcome.status).assertEqual('canceled');
-      expect(receivedGuard !== null).assertTrue();
-      if (receivedGuard !== null) expect(receivedGuard.isActive()).assertFalse();
-      expect(memory.committed).assertEqual(0);
       expect(memory.rememberCalls.length).assertEqual(0);
+      runtime.dispose();
+    });
+
+    it('does not publish a late forget selection after owner invalidation', 0, async () => {
+      const model = new GatedModel(MEMORY_FORGET_SELECTION_DECISION);
+      const memory = new RecordingPhoneLocalMemoryRuntime([{
+        memoryId: 'memory-late-selection', fact: '用户喜欢半糖。',
+        personaTag: 'food_companion', authority: 'leader'
+      }]);
+      let overlayPublications: number = 0;
+      const options = canaryOptions(
+        model, new CanaryHotelExecutor(), new RecordingOpener(), [], []
+      );
+      options.memoryRuntime = memory;
+      options.currentHostGeneration = (): number => 32;
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => {
+        if (request !== null) overlayPublications++;
+      };
+      const runtime = new MultiAgentCanaryRuntime(options);
+
+      const pending = runtime.submit('忘掉咖啡偏好', { text: '忘掉咖啡偏好' }, 32) as
+        Promise<MultiAgentSettledOutcome>;
+      await model.started.promise;
+      runtime.invalidateMemoryOwner();
+      model.release.open();
+      const outcome = await pending;
+      await flush();
+
+      expect(outcome.status).assertEqual('canceled');
+      expect(overlayPublications).assertEqual(0);
+      expect(memory.forgetCalls.length).assertEqual(0);
       runtime.dispose();
     });
 
     it('keeps a successful business surface and settles partial when memory fails', 0, async () => {
       const memory = new RecordingPhoneLocalMemoryRuntime();
       memory.failRemember = true;
+      let sideEffect: LeaderMemoryToolResult | null = null;
       const surfaces: A2uiSurfaceState[] = [];
       const options = canaryOptions(
         new QueueModel([HOTEL_WITH_MEMORY_DECISION]),
@@ -3755,14 +4198,17 @@ export default function multiAgentCanaryRuntimeTest() {
         []
       );
       options.memoryRuntime = memory;
+      options.onMemorySideEffectResult = (result: LeaderMemoryToolResult): void => { sideEffect = result; };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       const outcome = await runtime.submit(SEARCH_TEXT, { text: SEARCH_TEXT }) as MultiAgentSettledOutcome;
+      await flush();
 
-      expect(outcome.status).assertEqual('partial');
+      expect(outcome.status).assertEqual('success');
       expect(outcome.surfaceId.length).assertLarger(0);
       expect(surfaces.length).assertLarger(0);
       expect(memory.rememberCalls.length).assertEqual(1);
+      expect(sideEffectStatus(sideEffect)).assertEqual('error');
       runtime.dispose();
     });
 
@@ -5039,30 +5485,27 @@ export default function multiAgentCanaryRuntimeTest() {
       };
       const memory = new SequencedRecallMemoryRuntime([[prefetch], [refined]]);
       const surfaces: A2uiSurfaceState[] = [];
+      let overlay: MemoryForgetOverlayRequest | null = null;
       const options = canaryOptions(
         new QueueModel([MANUAL_RECALL_DECISION, MEMORY_FORGET_SELECTION_DECISION]),
         new CanaryHotelExecutor(), new RecordingOpener(), surfaces, []
       );
       options.memoryRuntime = memory;
       options.currentHostGeneration = (): number => 12;
-      options.currentHostSurface = (): A2uiSurfaceState | null =>
-        surfaces.length === 0 ? null : surfaces[surfaces.length - 1];
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => { overlay = request; };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       const outcome = await runtime.submit('忘掉咖啡偏好', { text: '忘掉咖啡偏好' }, 12) as
         MultiAgentSettledOutcome;
-      const surface = surfaces[surfaces.length - 1];
-      const selected = finalMemoryForgetAction(surface, [0]);
-
-      expect(outcome.memorySelection?.candidates.length).assertEqual(1);
-      expect(outcome.memorySelection?.candidates[0].memoryId).assertEqual('memory-manual-b');
-      expect(surface.dataModelJson.indexOf('用户现在偏好燕麦拿铁。')).assertLarger(-1);
-      expect(surface.dataModelJson.indexOf('用户以前偏好美式咖啡。')).assertEqual(-1);
-      expect(selected === null || selected.args === undefined).assertFalse();
-      if (selected === null || selected.args === undefined) {
+      expect(outcome.memorySelection).assertEqual(undefined);
+      expect(overlayCandidateCount(overlay)).assertEqual(1);
+      expect(surfaces.length).assertEqual(0);
+      expect(overlayFact(overlay, 0)).assertEqual('用户现在偏好燕麦拿铁。');
+      if (overlay === null) {
         runtime.dispose();
         return;
       }
+      const selected = overlayForgetAction(overlay as MemoryForgetOverlayRequest, [0]);
       const selectedArgs = selected.args as MemoryCandidatesForgetActionArgs;
       const forged: A2uiAction = {
         id: selected.id, label: selected.label, prompt: selected.prompt,
@@ -5096,30 +5539,42 @@ export default function multiAgentCanaryRuntimeTest() {
       }
       const memory = new SequencedRecallMemoryRuntime([[prefetch], refined]);
       const surfaces: A2uiSurfaceState[] = [];
+      let overlay: MemoryForgetOverlayRequest | null = null;
       const options = canaryOptions(
         new QueueModel([MANUAL_RECALL_TEN_DECISION, MEMORY_FORGET_SELECTION_DECISION]),
         new CanaryHotelExecutor(), new RecordingOpener(), surfaces, []
       );
       options.memoryRuntime = memory;
       options.currentHostGeneration = (): number => 13;
-      options.currentHostSurface = (): A2uiSurfaceState | null =>
-        surfaces.length === 0 ? null : surfaces[surfaces.length - 1];
+      options.onMemoryForgetOverlay = (request: MemoryForgetOverlayRequest | null): void => { overlay = request; };
       const runtime = new MultiAgentCanaryRuntime(options);
 
       const outcome = await runtime.submit('忘掉这些偏好', { text: '忘掉这些偏好' }, 13) as
         MultiAgentSettledOutcome;
-      const surface = surfaces[surfaces.length - 1];
-      const selected = finalMemoryForgetAction(surface, [5]);
-
       expect(memory.recallTopKs.join(',')).assertEqual('5,10');
-      expect(outcome.memorySelection?.candidates.length).assertEqual(6);
-      expect(surface.dataModelJson.indexOf('最终召回候选 5')).assertLarger(-1);
-      expect(surface.dataModelJson.indexOf('旧的召回候选')).assertEqual(-1);
-      expect(selected === null).assertFalse();
-      if (selected !== null) {
-        expect((await runtime.handleMemoryCandidateAction(selected)).status).assertEqual('success');
+      expect(outcome.memorySelection).assertEqual(undefined);
+      expect(overlayCandidateCount(overlay)).assertEqual(6);
+      expect(surfaces.length).assertEqual(0);
+      expect(overlayFact(overlay, 5)).assertEqual('最终召回候选 5');
+      if (overlay !== null) {
+        expect((await runtime.handleMemoryCandidateAction(overlayForgetAction(
+          overlay as MemoryForgetOverlayRequest, [0, 1, 2, 3, 4, 5]
+        ))).status).assertEqual('rejected');
+        expect(memory.forgetBatches.length).assertEqual(0);
+        expect((await runtime.handleMemoryCandidateAction(overlayForgetAction(
+          overlay as MemoryForgetOverlayRequest, [0, 1, 2, 3, 4]
+        ))).status).assertEqual('success');
+        expect(memory.forgetBatches.length).assertEqual(1);
+        expect(memory.forgetBatches[0].length).assertEqual(5);
+        expect(overlayCandidateCount(overlay)).assertEqual(1);
+        if (overlay !== null) {
+          expect((await runtime.handleMemoryCandidateAction(
+            overlayForgetAction(overlay as MemoryForgetOverlayRequest, [0])
+          )).status).assertEqual('success');
+        }
       }
-      expect(memory.forgetCalls.join(',')).assertEqual('memory-manual-expanded-5');
+      expect(memory.forgetCalls.length).assertEqual(6);
+      expect(overlay === null).assertTrue();
       runtime.dispose();
     });
 

@@ -55,6 +55,7 @@ export interface MultiAgentRuntimeOptions {
   currentLocalDateProvider?: LeaderCurrentLocalDateProvider;
   memoryToolExecutor?: LeaderMemoryToolExecutor;
   memoryRecallToolExecutor?: LeaderMemoryRecallToolExecutor;
+  memorySelectionObserver?: (selection: MemorySelectionPayload, hostGeneration: number) => boolean;
   dataTaskInputNormalizer?: LeaderDataTaskInputNormalizer;
   dataAuthorizer: DataTaskAuthorizer;
   dataExecutor: DataTaskExecutor;

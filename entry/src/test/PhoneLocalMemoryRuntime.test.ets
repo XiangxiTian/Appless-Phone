@@ -7,6 +7,8 @@ import {
 } from '../main/ets/memory/PhoneLocalMemoryRuntime';
 import {
   PHONE_LOCAL_MEMORY_OPERATION_CANCELED,
+  PhoneLocalMemoryProjectionFact,
+  PhoneLocalMemoryProjectionStats,
   PhoneLocalMemorySearchRequest,
   PhoneLocalMemoryStore
 } from '../main/ets/memory/PhoneLocalMemoryStore';
@@ -113,6 +115,36 @@ class RuntimeMemoryStore implements PhoneLocalMemoryStore {
     return output;
   }
 
+  async getProjectionStats(ownerId: string, sceneId: string,
+    basedOnMemoryMutationAt: number): Promise<PhoneLocalMemoryProjectionStats> {
+    const facts = await this.listProjectionFacts(ownerId, sceneId);
+    let changedCount: number = 0;
+    let oldestPendingUpdatedAt: number | null = null;
+    for (let index = 0; index < facts.length; index += 1) {
+      if (facts[index].updatedAt <= basedOnMemoryMutationAt) continue;
+      changedCount += 1;
+      oldestPendingUpdatedAt = oldestPendingUpdatedAt === null ? facts[index].updatedAt :
+        Math.min(oldestPendingUpdatedAt, facts[index].updatedAt);
+    }
+    return { changedCount, oldestPendingUpdatedAt };
+  }
+
+  async listProjectionFacts(ownerId: string, sceneId: string): Promise<PhoneLocalMemoryProjectionFact[]> {
+    const output: PhoneLocalMemoryProjectionFact[] = [];
+    for (let index = 0; index < this.records.length; index += 1) {
+      const record = this.records[index];
+      if (record.ownerId !== ownerId || record.sceneId !== sceneId) continue;
+      output.push({
+        memoryId: record.memoryId,
+        fact: record.fact,
+        personaTag: record.personaTag,
+        authority: record.authority,
+        updatedAt: record.updatedAt
+      });
+    }
+    return output;
+  }
+
   async search(request: PhoneLocalMemorySearchRequest): Promise<MemoryHit[]> {
     const records = await this.list(request.ownerId, request.sceneIds);
     const output: MemoryHit[] = [];
@@ -163,6 +195,34 @@ class RuntimeMemoryStore implements PhoneLocalMemoryStore {
       await this.remove(ownerId, existing[index].memoryId);
     }
     return existing;
+  }
+
+  async replaceByPersonaTag(ownerId: string, sceneId: string, personaTag: string,
+    replacements: MemoryRecord[], guard?: MemoryCommitGuard): Promise<MemoryRecord[]> {
+    requireRuntimeCommit(guard);
+    const removed: MemoryRecord[] = [];
+    const retained: MemoryRecord[] = [];
+    for (let index = 0; index < this.records.length; index += 1) {
+      const record = this.records[index];
+      if (record.ownerId === ownerId && record.sceneId === sceneId && record.personaTag === personaTag) {
+        removed.push(copyRuntimeRecord(record));
+      } else {
+        retained.push(copyRuntimeRecord(record));
+      }
+    }
+    this.records = retained.concat(replacements.map((record: MemoryRecord): MemoryRecord =>
+      copyRuntimeRecord(record)));
+    return removed;
+  }
+
+  async claimOwner(fromOwnerId: string, toOwnerId: string): Promise<number> {
+    let claimed: number = 0;
+    for (let index = 0; index < this.records.length; index += 1) {
+      if (this.records[index].ownerId !== fromOwnerId) continue;
+      this.records[index].ownerId = toOwnerId;
+      claimed += 1;
+    }
+    return claimed;
   }
 
   async getMetadata(key: string): Promise<string | null> {
@@ -253,6 +313,58 @@ export default function phoneLocalMemoryRuntimeTest() {
       expect(restartedHits.length).assertEqual(0);
       expect(store.records.length).assertEqual(0);
       expect(store.metadata.size).assertEqual(0);
+    });
+
+    it('isolates recall and mutations by the owner supplied at construction', 0, async () => {
+      const store = new RuntimeMemoryStore();
+      const first = new PhoneLocalMemoryRuntime(null, {
+        ownerId: 'owner-a',
+        storeFactory: (): PhoneLocalMemoryStore => store,
+        embedderFactory: async (): Promise<EmbeddingPort> => new RuntimeEmbeddingPort(),
+        idFactory: nextRuntimeMemoryId
+      });
+      const second = new PhoneLocalMemoryRuntime(null, {
+        ownerId: 'owner-b',
+        storeFactory: (): PhoneLocalMemoryStore => store,
+        embedderFactory: async (): Promise<EmbeddingPort> => new RuntimeEmbeddingPort(),
+        idFactory: nextRuntimeMemoryId
+      });
+      const firstWrite = await first.remember(['甲账号偏好无糖咖啡'], 'turn-owner-a', 'default_companion');
+      const secondWrite = await second.remember(['乙账号偏好博物馆'], 'turn-owner-b', 'default_companion');
+
+      const firstHits = await first.recall('偏好');
+      const secondHits = await second.recall('偏好');
+      expect(firstWrite.status).assertEqual('success');
+      expect(secondWrite.status).assertEqual('success');
+      expect(firstHits.length).assertEqual(1);
+      expect(secondHits.length).assertEqual(1);
+      expect(firstHits[0].fact).assertEqual('甲账号偏好无糖咖啡');
+      expect(secondHits[0].fact).assertEqual('乙账号偏好博物馆');
+      expect(store.records[0].ownerId).assertEqual('owner-a');
+      expect(store.records[1].ownerId).assertEqual('owner-b');
+    });
+
+    it('claims the legacy owner once and keeps repeated claims idempotent', 0, async () => {
+      const store = new RuntimeMemoryStore();
+      const legacy = new PhoneLocalMemoryRuntime(null, {
+        storeFactory: (): PhoneLocalMemoryStore => store,
+        embedderFactory: async (): Promise<EmbeddingPort> => new RuntimeEmbeddingPort(),
+        idFactory: nextRuntimeMemoryId
+      });
+      await legacy.remember(['旧安装留下的偏好'], 'turn-legacy', 'default_companion');
+      expect(legacy.getOwnerId()).assertEqual(PHONE_LOCAL_MEMORY_OWNER_ID);
+
+      const account = new PhoneLocalMemoryRuntime(null, {
+        ownerId: 'owner-first-login',
+        storeFactory: (): PhoneLocalMemoryStore => store,
+        embedderFactory: async (): Promise<EmbeddingPort> => new RuntimeEmbeddingPort(),
+        idFactory: nextRuntimeMemoryId
+      });
+      expect(await account.claimLegacyOwner()).assertEqual(1);
+      expect(await account.claimLegacyOwner()).assertEqual(0);
+      expect((await legacy.recall('旧安装')).length).assertEqual(0);
+      expect((await account.recall('旧安装'))[0].fact).assertEqual('旧安装留下的偏好');
+      expect(store.records[0].ownerId).assertEqual('owner-first-login');
     });
 
     it('writes leader facts globally and bounds the recalled projection', 0, async () => {
@@ -506,9 +618,10 @@ export default function phoneLocalMemoryRuntimeTest() {
         ['这条取消后的事实不能落库。'], 'turn-runtime-guard-2', 'work_companion', canceledGuard
       );
       const updated = await runtime.update(
-        memoryId, '用户偏好详细说明。', 'turn-runtime-guard-3', 'work_companion', canceledGuard
+        [{ memoryId, fact: '用户偏好详细说明。' }],
+        'turn-runtime-guard-3', 'work_companion', canceledGuard
       );
-      const forgotten = await runtime.forget(memoryId, canceledGuard);
+      const forgotten = await runtime.forget([memoryId], canceledGuard);
 
       expect(remembered.error?.code ?? '').assertEqual('memory_operation_canceled');
       expect(updated.error?.code ?? '').assertEqual('memory_operation_canceled');

@@ -60,9 +60,12 @@ function flushPreferences(store: preferences.Preferences): void {
   store.flush().catch((_error: Error) => {});
 }
 
-export function loadConversation(context: common.Context): ConversationContext {
+export function loadConversation(
+  context: common.Context,
+  storeName: string = CONVERSATION_STORE
+): ConversationContext {
   try {
-    const store = preferences.getPreferencesSync(context, { name: CONVERSATION_STORE });
+    const store = preferences.getPreferencesSync(context, { name: storeName });
     const raw = textFromValue(store.getSync(CONVERSATION_TURNS_KEY, ''));
     return ConversationContext.fromMessages(readTurnsFromRaw(raw));
   } catch (_error) {
@@ -70,9 +73,13 @@ export function loadConversation(context: common.Context): ConversationContext {
   }
 }
 
-export function saveConversation(context: common.Context, conversation: ConversationContext): void {
+export function saveConversation(
+  context: common.Context,
+  conversation: ConversationContext,
+  storeName: string = CONVERSATION_STORE
+): void {
   try {
-    const store = preferences.getPreferencesSync(context, { name: CONVERSATION_STORE });
+    const store = preferences.getPreferencesSync(context, { name: storeName });
     const turns = trimTurns(conversation.toChatMessages());
     store.putSync(CONVERSATION_TURNS_KEY, JSON.stringify(turns));
     flushPreferences(store);
@@ -80,9 +87,12 @@ export function saveConversation(context: common.Context, conversation: Conversa
   }
 }
 
-export function clearStoredConversation(context: common.Context): void {
+export function clearStoredConversation(
+  context: common.Context,
+  storeName: string = CONVERSATION_STORE
+): void {
   try {
-    const store = preferences.getPreferencesSync(context, { name: CONVERSATION_STORE });
+    const store = preferences.getPreferencesSync(context, { name: storeName });
     store.deleteSync(CONVERSATION_TURNS_KEY);
     flushPreferences(store);
   } catch (_error) {

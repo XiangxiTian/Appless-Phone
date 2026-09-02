@@ -15,6 +15,25 @@ const MODEL_DOWNSTREAM_WORK_MARKERS = new Set([
   'MultiAgentDataTask', 'MultiAgentUiTask', 'MultiAgentActionPlan', 'MultiAgentActionRun'
 ]);
 const DUPLICATE_HILOG_MAX_SKEW_MS = 1;
+const ACCOUNT_OWNER_ID_PATTERN = /^[0-9a-f]{64}$/;
+
+export function activeAccountOwnerIdFromPreferences(text) {
+  const source = String(text || '');
+  const marker = 'active_owner_id';
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex < 0) return '';
+  const valueWindow = source.slice(markerIndex + marker.length, markerIndex + marker.length + 512);
+  const match = /(?:[^0-9a-f])([0-9a-f]{64})(?![0-9a-f])/.exec(valueWindow);
+  return match === null ? '' : match[1];
+}
+
+export function accountScopedPublicPersonaStoreName(ownerId) {
+  const owner = String(ownerId || '').trim();
+  if (!ACCOUNT_OWNER_ID_PATTERN.test(owner)) {
+    throw new Error('Active account owner ID must be a lowercase 64-character hex digest.');
+  }
+  return `aiphone_public_persona__owner_${owner}`;
+}
 
 export function calendarEvidenceIdentityToken(kind, value) {
   let hash = 2166136261;

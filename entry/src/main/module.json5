@@ -11,6 +11,12 @@
     ],
     "deliveryWithInstall": true,
     "installationFree": false,
+    "metadata": [
+      {
+        "name": "client_id",
+        "value": "6917613462213244123"
+      }
+    ],
     "requestPermissions": [
       {
         "name": "ohos.permission.INTERNET"

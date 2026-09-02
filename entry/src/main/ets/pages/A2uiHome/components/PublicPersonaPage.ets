@@ -32,14 +32,48 @@ import {
   A2UI_MOTION_NORMAL_MS
 } from '../style/A2uiHomeMotion';
 
+export function publicPersonaDraftAfterDefaultChange(
+  current: string,
+  touched: boolean,
+  defaultDisplayName: string
+): string {
+  return touched ? current : defaultDisplayName.trim();
+}
+
+export type PublicPersonaMarkdownSurfaceKind = 'readonly_text' | 'editable_area';
+
+export function publicPersonaMarkdownSurfaceKind(editing: boolean): PublicPersonaMarkdownSurfaceKind {
+  return editing ? 'editable_area' : 'readonly_text';
+}
+
+export interface PublicPersonaImportButtonViewState {
+  label: string;
+  enabled: boolean;
+}
+
+export function publicPersonaImportButtonViewState(
+  imported: boolean,
+  importing: boolean,
+  editing: boolean
+): PublicPersonaImportButtonViewState {
+  if (imported) return { label: '已导入长期记忆', enabled: false };
+  if (importing) return { label: '导入中', enabled: false };
+  return { label: '将画像导入长期记忆', enabled: !editing };
+}
+
 @Component
 export struct PublicPersonaPage {
+  @StorageProp('a2uiSystemTopInsetVp') systemTopInsetVp: number = 24;
   @Prop phase: PublicPersonaPhase = 'input';
   @Prop candidates: PublicPersonaCandidate[] = [];
   @Prop progress: PublicPersonaProgress | null = null;
   @Prop snapshot: PublicPersonaSnapshot | null = null;
   @Prop errorMessage: string = '';
+  @Prop imported: boolean = false;
+  @Prop importing: boolean = false;
+  @Prop @Watch('onDefaultDisplayNameChanged') defaultDisplayName: string = '';
   @State username: string = '';
+  @State usernameTouched: boolean = false;
   @State searchMode: PublicPersonaSearchMode = 'fuzzy';
   @State possibleExpanded: boolean = false;
   @State selectedIds: string[] = [];
@@ -49,17 +83,37 @@ export struct PublicPersonaPage {
   @State draftMarkdown: string = '';
   @State mbtiMenuOpen: boolean = false;
   @State deleteConfirm: boolean = false;
+  @State deleteWorking: boolean = false;
+  @State importRequested: boolean = false;
+  @State confirmedDisplayName: string = '';
+  @State displayNameTouched: boolean = false;
 
   onBack: () => void = () => {};
   onChooseSetup: () => void = () => {};
   onSkip: () => void = () => {};
   onStartDiscovery: (username: string, mode: PublicPersonaSearchMode) => void =
     (_username: string, _mode: PublicPersonaSearchMode): void => {};
-  onConfirm: (candidateIds: string[]) => void = (_candidateIds: string[]): void => {};
+  onConfirm: (candidateIds: string[], confirmedDisplayName: string) => void =
+    (_candidateIds: string[], _confirmedDisplayName: string): void => {};
   onSaveMarkdown: (markdown: string) => boolean = (_markdown: string): boolean => false;
   onReinferMbti: () => void = () => {};
   onSetMbtiHidden: (hidden: boolean) => void = (_hidden: boolean): void => {};
-  onDelete: () => boolean = (): boolean => false;
+  onImport: () => Promise<boolean> = (): Promise<boolean> => Promise.resolve(false);
+  onDelete: () => Promise<boolean> = (): Promise<boolean> => Promise.resolve(false);
+
+  aboutToAppear(): void {
+    this.username = publicPersonaDraftAfterDefaultChange(
+      this.username, this.usernameTouched, this.defaultDisplayName);
+    this.confirmedDisplayName = publicPersonaDraftAfterDefaultChange(
+      this.confirmedDisplayName, this.displayNameTouched, this.defaultDisplayName);
+  }
+
+  private onDefaultDisplayNameChanged(): void {
+    this.username = publicPersonaDraftAfterDefaultChange(
+      this.username, this.usernameTouched, this.defaultDisplayName);
+    this.confirmedDisplayName = publicPersonaDraftAfterDefaultChange(
+      this.confirmedDisplayName, this.displayNameTouched, this.defaultDisplayName);
+  }
 
   private platformLabel(platform: PublicPersonaPlatform): string {
     return publicPersonaPlatformLabel(platform);
@@ -379,6 +433,7 @@ export struct PublicPersonaPage {
         .padding({ left: 12, right: 12 })
         .onChange((value: string) => {
           this.username = value;
+          this.usernameTouched = true;
         })
       Row() {
         Button('精确')
@@ -467,6 +522,37 @@ export struct PublicPersonaPage {
   private ConfirmationView() {
     this.Header('确认这些账号', '只选择你能确认属于自己的账号')
     Column() {
+      Text('确认画像姓名')
+        .fontSize(15)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(COLOR_INK)
+        .margin({ bottom: 7 })
+      Text('默认使用华为账号名称，你可以在生成画像前修改。')
+        .fontSize(12)
+        .fontColor(COLOR_MUTED)
+        .lineHeight(18)
+        .margin({ bottom: 9 })
+      TextInput({ placeholder: '请输入画像姓名', text: this.confirmedDisplayName })
+        .width('100%')
+        .height(46)
+        .fontSize(14)
+        .fontColor(COLOR_TEXT)
+        .backgroundColor(COLOR_PANEL)
+        .borderRadius(11)
+        .border({ width: 1, color: this.confirmedDisplayName.trim().length > 0 ? COLOR_CARD_EDGE : COLOR_WARNING })
+        .padding({ left: 12, right: 12 })
+        .maxLength(64)
+        .margin({ bottom: this.confirmedDisplayName.trim().length > 0 ? 14 : 5 })
+        .onChange((value: string) => {
+          this.confirmedDisplayName = value;
+          this.displayNameTouched = true;
+        })
+      if (this.confirmedDisplayName.trim().length === 0) {
+        Text('姓名不能为空')
+          .fontSize(11)
+          .fontColor(COLOR_WARNING)
+          .margin({ bottom: 10 })
+      }
       if (this.highCandidates().length > 0) {
         Text('可以确认 · ' + this.highCandidates().length.toString())
           .fontSize(15)
@@ -554,10 +640,10 @@ export struct PublicPersonaPage {
           .fontColor(Color.White)
           .backgroundColor(COLOR_ACCENT)
           .borderRadius(12)
-          .enabled(this.selectedCandidateIds().length > 0)
+          .enabled(this.selectedCandidateIds().length > 0 && this.confirmedDisplayName.trim().length > 0)
           .margin({ top: 8 })
           .onClick(() => {
-            this.onConfirm(this.selectedCandidateIds());
+            this.onConfirm(this.selectedCandidateIds(), this.confirmedDisplayName.trim());
           })
       }
     }
@@ -881,19 +967,53 @@ export struct PublicPersonaPage {
           })
       }
       .width('100%')
-      TextArea({ text: this.editingMarkdown ? this.markdownForEdit() : snapshot.personaMarkdown })
+      if (publicPersonaMarkdownSurfaceKind(this.editingMarkdown) === 'editable_area') {
+        TextArea({ text: this.markdownForEdit() })
+          .width('100%')
+          .height(420)
+          .fontSize(13)
+          .fontColor(COLOR_TEXT)
+          .lineHeight(20)
+          .padding(12)
+          .backgroundColor(COLOR_PANEL)
+          .borderRadius(10)
+          .margin({ top: 10 })
+          .onChange((value: string) => {
+            this.draftMarkdown = value;
+          })
+      } else {
+        Text(snapshot.personaMarkdown)
+          .width('100%')
+          .constraintSize({ minHeight: 420 })
+          .fontSize(13)
+          .fontColor(COLOR_TEXT)
+          .lineHeight(20)
+          .padding(12)
+          .backgroundColor(COLOR_PANEL)
+          .borderRadius(10)
+          .margin({ top: 10 })
+      }
+      Button(publicPersonaImportButtonViewState(
+        this.imported, this.importing || this.importRequested, this.editingMarkdown).label)
         .width('100%')
-        .height(420)
+        .height(42)
         .fontSize(13)
-        .fontColor(COLOR_TEXT)
-        .lineHeight(20)
-        .padding(12)
-        .backgroundColor(COLOR_PANEL)
+        .fontColor(this.imported ? COLOR_ACCENT : Color.White)
+        .backgroundColor(this.imported ? COLOR_ACCENT_SOFT : COLOR_ACCENT)
         .borderRadius(10)
         .margin({ top: 10 })
-        .enabled(this.editingMarkdown)
-        .onChange((value: string) => {
-          this.draftMarkdown = value;
+        .enabled(publicPersonaImportButtonViewState(
+          this.imported, this.importing || this.importRequested, this.editingMarkdown).enabled)
+        .onClick(() => {
+          const state = publicPersonaImportButtonViewState(
+            this.imported, this.importing || this.importRequested, this.editingMarkdown);
+          if (!state.enabled) return;
+          this.importRequested = true;
+          this.onImport().then((): void => {
+            this.importRequested = false;
+          }, (): void => {
+            this.importRequested = false;
+          });
         })
       if (this.errorMessage.length > 0) {
         Text(this.errorMessage)
@@ -973,17 +1093,23 @@ export struct PublicPersonaPage {
               .onClick(() => {
                 this.deleteConfirm = false;
               })
-            Button('确认删除')
+            Button(this.deleteWorking ? '删除中' : '确认删除')
               .height(34)
               .fontSize(12)
               .fontColor(COLOR_ERROR)
               .backgroundColor(COLOR_ERROR_SOFT)
               .borderRadius(8)
               .margin({ left: 8 })
+              .enabled(!this.deleteWorking)
               .onClick(() => {
-                if (this.onDelete()) {
-                  this.deleteConfirm = false;
-                }
+                if (this.deleteWorking) return;
+                this.deleteWorking = true;
+                this.onDelete().then((deleted: boolean): void => {
+                  if (deleted) this.deleteConfirm = false;
+                  this.deleteWorking = false;
+                }, (): void => {
+                  this.deleteWorking = false;
+                });
               })
           }
           .margin({ top: 8 })
@@ -1000,6 +1126,7 @@ export struct PublicPersonaPage {
           .fontColor(COLOR_ERROR)
           .backgroundColor(COLOR_ERROR_SOFT)
           .borderRadius(9)
+          .alignSelf(ItemAlign.Center)
           .margin({ top: 8 })
           .onClick(() => {
             this.deleteConfirm = true;
@@ -1033,7 +1160,8 @@ export struct PublicPersonaPage {
         }
       }
       .width('100%')
-      .padding(16)
+      .constraintSize({ minHeight: '100%' })
+      .padding({ left: 16, right: 16, top: 16 + this.systemTopInsetVp, bottom: 16 })
     }
     .width('100%')
     .height('100%')

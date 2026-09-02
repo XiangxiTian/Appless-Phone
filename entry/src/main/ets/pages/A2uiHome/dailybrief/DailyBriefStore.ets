@@ -564,9 +564,9 @@ export function replaceDailyBriefSnapshot(
 export class DailyBriefStore {
   private store: preferences.Preferences | null = null;
 
-  constructor(context: common.Context) {
+  constructor(context: common.Context, storeName: string = DAILY_BRIEF_STORE_NAME) {
     try {
-      this.store = preferences.getPreferencesSync(context, { name: DAILY_BRIEF_STORE_NAME });
+      this.store = preferences.getPreferencesSync(context, { name: storeName });
     } catch (_error) {
       this.store = null;
     }

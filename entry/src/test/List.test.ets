@@ -8,6 +8,7 @@ import localModelClientTest from './LocalModelClient.test';
 import openAiRequestJsonTest from './OpenAiRequestJson.test';
 import toolGatewayClientTest from './ToolGatewayClient.test';
 import a2uiHomeStateTest from './A2uiHomeState.test';
+import userManagementPageTest from './UserManagementPage.test';
 import a2uiRenderDataTest from './A2uiRenderData.test';
 import a2uiHomeToolRequestTest from './A2uiHomeToolRequest.test';
 import a2uiBusinessDataTest from './A2uiBusinessData.test';
@@ -65,6 +66,8 @@ import doubanPlaywrightMcpClientTest from './DoubanPlaywrightMcpClient.test';
 import twitchSearchClientTest from './TwitchSearchClient.test';
 import waterfallRankingReplayTest from './WaterfallRankingReplay.test';
 import waterfallPreferencesStoreTest from './WaterfallPreferencesStore.test';
+import discoveryMemoryProjectionTest from './DiscoveryMemoryProjection.test';
+import discoveryMemoryProjectionCoordinatorTest from './DiscoveryMemoryProjectionCoordinator.test';
 import waterfallConversationTest from './WaterfallConversation.test';
 import waterfallInterestRefillTest from './WaterfallInterestRefill.test';
 import waterfallShareServiceTest from './WaterfallShareService.test';
@@ -143,10 +146,15 @@ import travelCalendarActionTest from './TravelCalendarAction.test';
 import conversationMemoryCoreTest from './ConversationMemoryCore.test';
 import phoneLocalMemoryProviderTest from './PhoneLocalMemoryProvider.test';
 import phoneLocalMemoryRuntimeTest from './PhoneLocalMemoryRuntime.test';
+import phoneLocalMemoryProjectionSourceTest from './PhoneLocalMemoryProjectionSource.test';
 import phoneLocalMemoryBlobFallbackTest from './PhoneLocalMemoryBlobFallback.test';
 import phoneLocalMemoryAvailabilityTest from './PhoneLocalMemoryAvailability.test';
 import bertWordPieceTokenizerTest from './BertWordPieceTokenizer.test';
 import bgeMindSporeEmbeddingPortTest from './BgeMindSporeEmbeddingPort.test';
+import accountStorageScopeTest from './AccountStorageScope.test';
+import accountSessionStoreTest from './AccountSessionStore.test';
+import accountProfileStoreTest from './AccountProfileStore.test';
+import legacyAccountMigrationTest from './LegacyAccountMigration.test';
 
 export default function testsuite() {
   movieDemoContractTest();
@@ -217,6 +225,8 @@ export default function testsuite() {
   twitchSearchClientTest();
   waterfallRankingReplayTest();
   waterfallPreferencesStoreTest();
+  discoveryMemoryProjectionTest();
+  discoveryMemoryProjectionCoordinatorTest();
   waterfallConversationTest();
   waterfallInterestRefillTest();
   waterfallShareServiceTest();
@@ -294,8 +304,14 @@ export default function testsuite() {
   conversationMemoryCoreTest();
   phoneLocalMemoryProviderTest();
   phoneLocalMemoryRuntimeTest();
+  phoneLocalMemoryProjectionSourceTest();
   phoneLocalMemoryBlobFallbackTest();
   phoneLocalMemoryAvailabilityTest();
   bertWordPieceTokenizerTest();
   bgeMindSporeEmbeddingPortTest();
+  accountStorageScopeTest();
+  accountSessionStoreTest();
+  accountProfileStoreTest();
+  legacyAccountMigrationTest();
+  userManagementPageTest();
 }

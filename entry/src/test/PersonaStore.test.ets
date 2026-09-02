@@ -44,6 +44,21 @@ export default function personaStoreTest() {
       expect(pack.skillList[1].status).assertEqual('placeholder');
     });
 
+    it('keeps every persona aligned with detached memory mutation semantics', 0, () => {
+      configureDefaultPersonaStoreForTests();
+      const ids = personaManifestIds();
+
+      ids.forEach((id: string) => {
+        const pack = personaPackForId(id);
+        expect(pack.skills.indexOf('memory.remember')).assertLarger(-1);
+        expect(pack.skills.indexOf('memory.update')).assertLarger(-1);
+        expect(pack.skills.indexOf('memory.forget')).assertLarger(-1);
+        expect(pack.skills.indexOf('memory 是副作用')).assertLarger(-1);
+        expect(pack.skills.indexOf('不阻塞或替代主任务')).assertLarger(-1);
+      });
+      expect(personaPackForId('food_companion').soul.indexOf('不在同一轮继续搜索')).assertEqual(-1);
+    });
+
     it('uses fixed shopping research for the shopping persona', 0, () => {
       configureDefaultPersonaStoreForTests();
       const pack = personaPackForId('shopping_companion');

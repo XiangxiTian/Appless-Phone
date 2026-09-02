@@ -40,6 +40,8 @@ import {
 } from '../train/TrainPresaleTaskStore';
 import { COLOR_CARD, COLOR_CARD_EDGE, COLOR_ERROR, COLOR_ERROR_SOFT, COLOR_INK, COLOR_MUTED, COLOR_PAGE } from '../style/A2uiHomeTheme';
 import { isAllowedCtripFlightBookingUrl } from '../travel/TravelBookingProvider';
+import { activeAccountOwnerId } from '../../../account/ActiveAccountOwnerStore';
+import { accountScopedStoreName } from '../../../account/AccountStorageScope';
 import { A2uiButtonView } from './common/A2uiButtonView';
 import { A2uiWebControllerIdentity, A2uiWebSurfaceView } from './common/A2uiWebSurfaceView';
 
@@ -244,7 +246,13 @@ export struct CheckoutWebOverlay {
     }
     try {
       const context = this.getUIContext().getHostContext() as common.Context;
-      return preferences.getPreferencesSync(context, { name: TRAIN_PRESALE_TASK_STORE_NAME });
+      const ownerId: string = activeAccountOwnerId(context);
+      if (ownerId.length === 0) {
+        return null;
+      }
+      return preferences.getPreferencesSync(context, {
+        name: accountScopedStoreName(TRAIN_PRESALE_TASK_STORE_NAME, ownerId)
+      });
     } catch (_error) {
       aiLogError('[AIPhone][TrainWebAssistStore] ok=false');
       return null;

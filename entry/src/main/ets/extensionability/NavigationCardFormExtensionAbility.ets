@@ -3,10 +3,14 @@ import { FormExtensionAbility, formBindingData, formInfo, formProvider } from '@
 import { BusinessError } from '@kit.BasicServicesKit';
 import { aiLogError, aiLogInfo } from '@loop/agent-core';
 import {
+  NAVIGATION_CARD_FORM_REGISTRY_STORE,
+  NAVIGATION_CARD_STORE,
   PreferencesNavigationCardSnapshotStore,
   buildNavigationCardBindingData,
   navigationCardFormEventFromMessage
 } from '@loop/agent-core';
+import { activeAccountOwnerId } from '../account/ActiveAccountOwnerStore';
+import { accountScopedStoreName } from '../account/AccountStorageScope';
 
 function textParam(want: Want, key: string): string {
   if (want.parameters === undefined || want.parameters === null) {
@@ -30,26 +34,36 @@ function errorCodeOf(error: BusinessError): string {
 }
 
 export default class NavigationCardFormExtensionAbility extends FormExtensionAbility {
-  private store(): PreferencesNavigationCardSnapshotStore {
-    return new PreferencesNavigationCardSnapshotStore(this.context);
+  private snapshotStore(): PreferencesNavigationCardSnapshotStore | null {
+    const ownerId: string = activeAccountOwnerId(this.context);
+    return ownerId.length === 0 ? null : new PreferencesNavigationCardSnapshotStore(
+      this.context, accountScopedStoreName(NAVIGATION_CARD_STORE, ownerId), NAVIGATION_CARD_FORM_REGISTRY_STORE
+    );
+  }
+
+  private formRegistryStore(): PreferencesNavigationCardSnapshotStore {
+    return new PreferencesNavigationCardSnapshotStore(
+      this.context, NAVIGATION_CARD_STORE, NAVIGATION_CARD_FORM_REGISTRY_STORE
+    );
   }
 
   private bindingData(): formBindingData.FormBindingData {
-    const snapshot = this.store().getSnapshotSync();
+    const store = this.snapshotStore();
+    const snapshot = store === null ? null : store.getSnapshotSync();
     return formBindingData.createFormBindingData(buildNavigationCardBindingData(snapshot, Date.now()));
   }
 
   onAddForm(want: Want): formBindingData.FormBindingData {
     const formId = textParam(want, formInfo.FormParam.IDENTITY_KEY);
     if (formId.length > 0) {
-      this.store().addFormIdSync(formId);
+      this.formRegistryStore().addFormIdSync(formId);
     }
     aiLogInfo('[AIPhone][NavigationCardFormAdd] formId=' + formId);
     return this.bindingData();
   }
 
   onCastToNormalForm(formId: string): void {
-    this.store().addFormIdSync(formId);
+    this.formRegistryStore().addFormIdSync(formId);
     aiLogInfo('[AIPhone][NavigationCardFormCastNormal] formId=' + formId);
   }
 
@@ -72,7 +86,7 @@ export default class NavigationCardFormExtensionAbility extends FormExtensionAbi
   }
 
   onRemoveForm(formId: string): void {
-    this.store().removeFormIdSync(formId);
+    this.formRegistryStore().removeFormIdSync(formId);
     aiLogInfo('[AIPhone][NavigationCardFormRemove] formId=' + formId);
   }
 

@@ -3,7 +3,7 @@ import { preferences } from '@kit.ArkData';
 import { PersonaEditableSnapshot } from './PersonaTypes';
 import { applyPersonaEditableSnapshots, personaEditableSnapshots } from './PersonaStore';
 
-const PERSONA_STORE_NAME: string = 'aiphone_persona_store';
+export const PERSONA_STORE_NAME: string = 'aiphone_persona_store';
 const PERSONA_STORE_KEY: string = 'editable_personas';
 const PERSONA_STORE_VERSION_KEY: string = 'editable_personas_version';
 const PERSONA_STORE_VERSION: string = 'persona_skill_memory_v2';
@@ -32,16 +32,19 @@ function snapshotsFromJson(raw: string): PersonaEditableSnapshot[] {
 export class PreferencesPersonaPackStore {
   private context: common.Context;
   private injected: preferences.Preferences | null;
+  private storeName: string;
 
-  constructor(context: common.Context, injected: preferences.Preferences | null = null) {
+  constructor(context: common.Context, injected: preferences.Preferences | null = null,
+    storeName: string = PERSONA_STORE_NAME) {
     this.context = context;
     this.injected = injected;
+    this.storeName = storeName;
   }
 
   private preferences(): preferences.Preferences | null {
     if (this.injected !== null) return this.injected;
     try {
-      return preferences.getPreferencesSync(this.context, { name: PERSONA_STORE_NAME });
+      return preferences.getPreferencesSync(this.context, { name: this.storeName });
     } catch (_error) {
       return null;
     }

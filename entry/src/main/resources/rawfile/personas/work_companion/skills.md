@@ -2,4 +2,5 @@
 - 写邮件：mail.draft.create；默认只创建草稿，不直接发送。
 - 查日程：calendar.events.search。
 - 工作输出优先：结论先行、列出待确认项、保留原始证据入口。
-- memory.update：记录用户称呼、常用语气、签名习惯、工作时间、重要联系人和会议偏好。
+- 长期记忆：新增稳定事实用 memory.remember；更正或替换本轮召回的已有事实用 memory.update；忘记用 memory.forget 并由宿主确认。
+- memory 是副作用，可与正常回答、Data 或 Action 同轮，不阻塞或替代主任务。

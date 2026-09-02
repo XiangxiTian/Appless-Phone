@@ -25,6 +25,8 @@ import {
   restoredHotelSearchSurface
 } from './hotel-smoke-evidence.mjs';
 import {
+  accountScopedPublicPersonaStoreName,
+  activeAccountOwnerIdFromPreferences,
   captureCompletionSettled,
   collectExternalAuthJumps,
   composioAuthEvidence,
@@ -1215,16 +1217,33 @@ function cleanBundleData() {
   }
 }
 
-const publicPersonaStorePath = '/data/app/el2/100/base/com.jiuwen.appless/haps/entry/preferences/aiphone_public_persona';
+const appPreferencesPath = '/data/app/el2/100/base/com.jiuwen.appless/haps/entry/preferences';
+const accountDeviceStateStorePath = `${appPreferencesPath}/appless_account_device_state`;
 
-function publicPersonaSnapshotExists() {
+function publicPersonaSnapshotProbe() {
+  const deviceState = hdc(['shell',
+    `if [ -f ${accountDeviceStateStorePath} ]; then cat ${accountDeviceStateStorePath}; else echo __ACCOUNT_DEVICE_STATE_ABSENT__; fi`
+  ]);
+  if (deviceState.includes('__ACCOUNT_DEVICE_STATE_ABSENT__')) {
+    return { status: 'BLOCKED', reason: 'account_device_state_absent', ownerId: '', storePath: '' };
+  }
+  const ownerId = activeAccountOwnerIdFromPreferences(deviceState);
+  if (ownerId.length === 0) {
+    return { status: 'BLOCKED', reason: 'active_account_owner_absent_or_invalid', ownerId: '', storePath: '' };
+  }
+  const storeName = accountScopedPublicPersonaStoreName(ownerId);
+  const storePath = `${appPreferencesPath}/${storeName}`;
   const output = hdc(['shell',
-    `if [ -f ${publicPersonaStorePath} ] && grep -q snapshot_v1 ${publicPersonaStorePath}; then echo PRESENT; else echo ABSENT; fi`
+    `if [ -f ${storePath} ] && grep -q snapshot_v1 ${storePath}; then echo PRESENT; else echo ABSENT; fi`
   ]).trim();
   if (output !== 'PRESENT' && output !== 'ABSENT') {
-    throw new Error(`Could not determine public persona snapshot state: ${output}`);
+    return { status: 'BLOCKED', reason: 'scoped_persona_probe_failed', ownerId, storePath };
   }
-  return output === 'PRESENT';
+  return { status: output, reason: '', ownerId, storePath };
+}
+
+function publicPersonaSnapshotExists(probe) {
+  return probe.status === 'PRESENT';
 }
 
 function probeLocalModel() {
@@ -5098,11 +5117,32 @@ async function runPublicPersonaSmoke() {
       throw new Error('Could not install the verified public persona HAP for admission.');
     }
   }
-  if (publicPersonaSnapshotExists() && !nativeAdmission) {
+  const initialSnapshotProbe = publicPersonaSnapshotProbe();
+  if (initialSnapshotProbe.status === 'BLOCKED') {
+    const reason = initialSnapshotProbe.reason;
+    const summary = {
+      mode: 'public-persona',
+      username: '<redacted>',
+      snapshotState: 'BLOCKED',
+      blocked: reason,
+      cases: publicPersonaCases.map((testCase) => ({
+        id: testCase.id,
+        status: 'BLOCKED',
+        ok: false,
+        manualGate: true,
+        reason
+      })),
+      ok: false
+    };
+    writeFileSync(join(outDir, 'public-persona-summary.json'), JSON.stringify(summary, null, 2));
+    return summary;
+  }
+  if (publicPersonaSnapshotExists(initialSnapshotProbe) && !nativeAdmission) {
     const reason = 'existing_persona_snapshot';
     const summary = {
       mode: 'public-persona',
       username: '<redacted>',
+      snapshotState: 'PRESENT',
       blocked: reason,
       cases: publicPersonaCases.map((testCase) => ({
         id: testCase.id,
@@ -5126,7 +5166,21 @@ async function runPublicPersonaSmoke() {
     moveAppWindowIntoScreenshot();
     const cases = [];
     const manualResume = process.env.AIPHONE_PUBLIC_PERSONA_MANUAL_RESUME === '1' && Boolean(process.stdin.isTTY);
-    const firstLaunch = await enterPublicPersonaFromHome(nativeAdmission && publicPersonaSnapshotExists());
+    const firstLaunchProbe = publicPersonaSnapshotProbe();
+    if (firstLaunchProbe.status === 'BLOCKED') {
+      const reason = firstLaunchProbe.reason;
+      const blockedSummary = {
+        mode: 'public-persona', username: '<redacted>', snapshotState: 'BLOCKED', blocked: reason,
+        cases: publicPersonaCases.map((testCase) => ({
+          id: testCase.id, status: 'BLOCKED', ok: false, manualGate: true, reason
+        })),
+        ok: false
+      };
+      writeFileSync(join(outDir, 'public-persona-summary.json'), JSON.stringify(blockedSummary, null, 2));
+      return blockedSummary;
+    }
+    const firstLaunch = await enterPublicPersonaFromHome(
+      nativeAdmission && publicPersonaSnapshotExists(firstLaunchProbe));
     let p01 = { id: 'P01', status: 'BLOCKED', ok: false, manualGate: true, reason: firstLaunch.reason || '' };
     const p02 = {
       id: 'P02', status: 'BLOCKED', ok: false, manualGate: true,
@@ -5341,7 +5395,8 @@ async function runPublicPersonaSmoke() {
         baselineMismatch
       }, null, 2));
       const completedLayout = terminal.text.includes('你的画像') && !terminal.text.includes('确认这些账号');
-      snapshotCreatedThisRun = completedLayout && publicPersonaSnapshotExists();
+      const createdSnapshotProbe = publicPersonaSnapshotProbe();
+      snapshotCreatedThisRun = completedLayout && publicPersonaSnapshotExists(createdSnapshotProbe);
       const completedText = terminal.text.toLowerCase();
       const selectedHandles = selectedProfileUrls.map((url) => publicPersonaSeedHandle(url).toLowerCase()).filter(Boolean);
       const unselectedHandles = knownUnselectedProfileUrls.map((url) => publicPersonaSeedHandle(url).toLowerCase()).filter(Boolean);
@@ -5430,7 +5485,8 @@ async function runPublicPersonaSmoke() {
     if (manualResume && snapshotCreatedThisRun && await waitForPublicPersonaManualResume(
       '请手动点击“删除画像”并确认删除；返回首页后按 Enter：'
     )) {
-      const localDeleteOk = !publicPersonaSnapshotExists();
+      const deletedSnapshotProbe = publicPersonaSnapshotProbe();
+      const localDeleteOk = deletedSnapshotProbe.status === 'ABSENT';
       snapshotDeleted = localDeleteOk;
       let promptPersonaAbsent = null;
       let promptEvidence = 'not_attempted';
@@ -5457,6 +5513,8 @@ async function runPublicPersonaSmoke() {
       const p05Ok = localDeleteOk && promptPersonaAbsent === true;
       p05Result = {
         id: 'P05', status: p05Ok ? 'PASS' : 'BLOCKED', ok: p05Ok, manualGate: true,
+        reason: deletedSnapshotProbe.status === 'BLOCKED' ? deletedSnapshotProbe.reason : '',
+        snapshotState: deletedSnapshotProbe.status,
         localDeleteOk, promptPersonaAbsent, promptEvidence, promptEvidencePath,
         promptAssemblySafe: publicPersonaPromptAssemblySafe(),
         cleanup_required: !localDeleteOk, screenPath: captureScreen('P05-public-persona.png')

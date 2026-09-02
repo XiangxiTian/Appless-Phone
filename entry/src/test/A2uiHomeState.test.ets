@@ -16,6 +16,7 @@ import {
   runtimeCallbackIsCurrent,
   runtimeOwnerAllowsSurfaceAction,
   runtimeSurfaceIdentityMatches,
+  sessionResetDeletesPersistedConversation,
   shouldShowDeepSearchPendingSurface,
   shouldShowFirecrawlPendingSurface,
   shouldShowWelcome,
@@ -51,6 +52,11 @@ function surface(
 
 export default function a2uiHomeStateTest() {
   describe('a2uiHomeState', () => {
+    it('deletes persisted conversation only for the user reset action', 0, () => {
+      expect(sessionResetDeletesPersistedConversation('account_scope_invalidated')).assertFalse();
+      expect(sessionResetDeletesPersistedConversation('user_requested')).assertTrue();
+    });
+
     it('updates panel state after a successful connection check', 0, () => {
       const initial = createInitialConnectionPanelState();
       const next = updateConnectionPanelState(initial, {

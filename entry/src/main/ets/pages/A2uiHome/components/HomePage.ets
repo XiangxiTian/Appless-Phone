@@ -15,7 +15,7 @@ import {
 } from '@loop/agent-core';
 import { A2uiButtonView } from './common/A2uiButtonView';
 import { HistoryPanelView } from './HistoryPanelView';
-import { HtmlHomeSurfaceView } from './HtmlHomeSurfaceView';
+import { HtmlHomeSurfaceView, isHtmlHomeConversationDocument } from './HtmlHomeSurfaceView';
 import { FoodStoreMapView } from './FoodStoreMapView';
 import { A2uiSurfaceView } from './A2uiSurfaceView';
 import { CheckoutWebKind, CheckoutWebOverlay } from './CheckoutWebOverlay';
@@ -44,6 +44,7 @@ import {
 } from '../style/A2uiHomeMotion';
 import { formatBimCount } from './BimHomePage';
 import { WelcomeCardDeck } from './WelcomeCardDeck';
+import { AiosNowHomeView } from './AiosNowHomeView';
 
 const A2UI_HISTORY_EMPTY_HEIGHT: number = 108;
 const A2UI_HISTORY_ROW_HEIGHT: number = 76;
@@ -60,25 +61,27 @@ const A2UI_VOICE_PULSE_STEPS: number = 12;
 const A2UI_VOICE_HOLD_DELAY_MS: number = 360;
 const A2UI_VOICE_WAVE_CENTER_INDEX: number = 8;
 const A2UI_VOICE_WAVE_INDICES: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-const A2UI_COMPOSER_MIN_HEIGHT: number = 54;
+const A2UI_COMPOSER_MIN_HEIGHT: number = 61;
 const A2UI_COMPOSER_MAX_HEIGHT: number = 122;
 const A2UI_COMPOSER_TEXT_MAX_HEIGHT: number = 110;
 const A2UI_COMPOSER_TEXT_LINE_HEIGHT: number = 24;
 const A2UI_COMPOSER_TEXT_VERTICAL_PADDING: number = 14;
 const A2UI_COMPOSER_TEXT_UNITS_PER_LINE: number = 30;
 const A2UI_COMPOSER_TEXT_MAX_LINES: number = 4;
+// 24vp keeps short composers and bubbles from being clamped into a pill shape.
+const A2UI_CONVERSATION_RADIUS: number = 24;
 const A2UI_COMPOSER_DOCK_EXTRA_HEIGHT: number = 8;
 const A2UI_HOME_COMPOSER_BOTTOM_PADDING: number = 4;
 const A2UI_HOME_COMPOSER_SAFE_AREA_OVERLAP: number = 10;
 const A2UI_HOME_COMPOSER_MIN_SAFE_PADDING: number = 2;
 const A2UI_HOME_CLOCK_INTERVAL_MS: number = 30000;
 const A2UI_HOME_SHELL_BACKGROUND: string = '#FFFDF9';
-const A2UI_HOME_GLASS_BACKGROUND: string = '#B8FFFFFF';
-const A2UI_HOME_GLASS_EDGE: string = '#E9DED5';
-const A2UI_HOME_GLASS_SHADOW: string = '#248C6A53';
+const A2UI_HOME_GLASS_BACKGROUND: string = '#9EE5E8EA';
+const A2UI_HOME_GLASS_EDGE: string = '#9EFFFFFF';
+const A2UI_HOME_GLASS_SHADOW: string = '#26211B25';
 const A2UI_HOME_SEND_INACTIVE_BACKGROUND: string = '#C9C4BF';
-const A2UI_HOME_SEND_ACTIVE_BACKGROUND: string = '#995F4C';
-const A2UI_HOME_SEND_SHADOW: string = '#38995F4C';
+const A2UI_HOME_SEND_ACTIVE_BACKGROUND: string = '#17191D';
+const A2UI_HOME_SEND_SHADOW: string = '#42000000';
 const A2UI_HOME_HEADER_BUTTON_BACKGROUND: string = '#CCFFFFFF';
 const A2UI_HOME_HEADER_BUTTON_EDGE: string = '#B8E7D8CE';
 const A2UI_HOME_HEADER_BUTTON_SHADOW: string = '#188C6A53';
@@ -206,6 +209,25 @@ export function shouldShowHomeChrome(waterfallFullscreen: boolean): boolean {
   return !waterfallFullscreen;
 }
 
+export function isImmersiveResultHtml(html: string): boolean {
+  return html.indexOf('itinerary-shell') >= 0 || html.indexOf('editorial-food-shell') >= 0;
+}
+
+export function shouldShowNativeFirstConversationPending(
+  isAwaitingFirstSurface: boolean,
+  messages: A2uiMessage[]
+): boolean {
+  if (!isAwaitingFirstSurface) return false;
+  let userTurnCount = 0;
+  for (let index = 0; index < messages.length; index++) {
+    if (messages[index].role === 'user' && messages[index].content.trim().length > 0) {
+      userTurnCount++;
+      if (userTurnCount > 1) return false;
+    }
+  }
+  return true;
+}
+
 export function shouldShowDailyBriefReturn(surface: A2uiSurfaceState): boolean {
   return surface.intent !== 'daily-brief' && surface.surfaceId.startsWith('daily-brief-');
 }
@@ -244,7 +266,7 @@ export struct HomePage {
   @Prop inputPlaceholder: string = '告诉 Appless 你想完成什么';
   @Prop isVoiceListening: boolean = false;
   @Prop voiceInputMessage: string = '';
-  @Prop showWelcome: boolean = false;
+  @Prop @Watch('onShowWelcomeChanged') showWelcome: boolean = false;
   @Prop showCheckoutWeb: boolean = false;
   @Prop checkoutWebKind: CheckoutWebKind = 'payment';
   @Prop checkoutWebUrl: string = '';
@@ -268,6 +290,7 @@ export struct HomePage {
   @Prop deepSearchSettingsJson: string = '';
   @Prop deepSearchContextJson: string = '';
   @Prop locationServiceNotice: string = '';
+  @Prop toolResultFullscreen: boolean = false;
   @State sendSpinnerRotation: number = 0;
   @State voicePulseTick: number = 0;
   @State waterfallFullscreen: boolean = false;
@@ -288,6 +311,7 @@ export struct HomePage {
   onToggleHistory: () => void = () => {};
   onSendPrompt: () => void = () => {};
   onSendWelcomePrompt: (prompt: string) => void = (_prompt: string): void => {};
+  onOpenConversation: () => void = (): void => {};
   onOpenWaterfall: () => void = (): void => {};
   onStartVoiceInput: () => void = () => {};
   onStopVoiceInput: () => void = () => {};
@@ -307,11 +331,12 @@ export struct HomePage {
   onReturnDailyBrief: () => void = () => {};
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onWaterfallFullscreenChange: (active: boolean) => void = (_active: boolean) => {};
+  onCloseToolResult: () => void = () => {};
 
   aboutToAppear(): void {
     const uiContext = this.getUIContext();
     this.previousKeyboardAvoidMode = uiContext.getKeyboardAvoidMode();
-    uiContext.setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
+    this.applyKeyboardAvoidMode();
     this.startSendSpinnerTimer();
     this.startHomeClockTimer();
   }
@@ -321,6 +346,16 @@ export struct HomePage {
     this.stopSendSpinnerTimer();
     this.stopHomeClockTimer();
     this.cancelVoiceHoldTimer();
+  }
+
+  private applyKeyboardAvoidMode(): void {
+    this.getUIContext().setKeyboardAvoidMode(
+      this.showWelcome ? KeyboardAvoidMode.NONE : KeyboardAvoidMode.RESIZE
+    );
+  }
+
+  private onShowWelcomeChanged(): void {
+    this.applyKeyboardAvoidMode();
   }
 
   private onDeepSearchQueryChanged(): void {
@@ -402,6 +437,28 @@ export struct HomePage {
     return this.isMultiTaskSurface() ? 2 : A2UI_HOME_SECTION_GAP;
   }
 
+  private useConversationGlassBackdrop(): boolean {
+    if (this.showWelcome || this.showDeepSearch || this.showTrainPresalePanel || this.showCheckoutWeb ||
+      this.foodStoreMapOpen || this.useNativeSurface()) {
+      return false;
+    }
+    return this.isAwaitingFirstSurface || isHtmlHomeConversationDocument(this.htmlHomeHtml);
+  }
+
+  private useImmersiveResultSurface(): boolean {
+    return !this.showWelcome && !this.showDeepSearch && !this.showTrainPresalePanel &&
+      !this.showCheckoutWeb && !this.foodStoreMapOpen && !this.useNativeSurface() &&
+      isImmersiveResultHtml(this.htmlHomeHtml);
+  }
+
+  private useTravelResultBackdrop(): boolean {
+    return this.useImmersiveResultSurface() && this.htmlHomeHtml.indexOf('itinerary-shell') >= 0;
+  }
+
+  private useFoodResultBackdrop(): boolean {
+    return this.useImmersiveResultSurface() && this.htmlHomeHtml.indexOf('editorial-food-shell') >= 0;
+  }
+
   private voiceWaveHeight(index: number): number {
     const phase = (this.voicePulseTick + index * 2) % A2UI_VOICE_PULSE_STEPS;
     const peak = phase <= 6 ? phase : A2UI_VOICE_PULSE_STEPS - phase;
@@ -412,6 +469,22 @@ export struct HomePage {
     const phase = (this.voicePulseTick + index * 2) % A2UI_VOICE_PULSE_STEPS;
     const peak = phase <= 6 ? phase : A2UI_VOICE_PULSE_STEPS - phase;
     return 0.38 + peak * 0.08;
+  }
+
+  private conversationAccentColor(): string {
+    return this.useConversationGlassBackdrop() ? '#17191D' : COLOR_ACCENT;
+  }
+
+  private conversationAccentDeepColor(): string {
+    return this.useConversationGlassBackdrop() ? '#17191D' : COLOR_ACCENT_DEEP;
+  }
+
+  private headerButtonEdgeColor(): string {
+    return this.useConversationGlassBackdrop() ? '#2417191D' : A2UI_HOME_HEADER_BUTTON_EDGE;
+  }
+
+  private headerButtonShadowColor(): string {
+    return this.useConversationGlassBackdrop() ? '#1F17191D' : A2UI_HOME_HEADER_BUTTON_SHADOW;
   }
 
   private voiceRingScale(phaseOffset: number): number {
@@ -505,12 +578,70 @@ export struct HomePage {
 
   @Builder
   private HomeBackdrop() {
-    Image($r('app.media.home_light_aurora_background'))
-      .width('100%')
-      .height('100%')
-      .objectFit(ImageFit.Cover)
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-      .hitTestBehavior(HitTestMode.Transparent)
+    if (this.useTravelResultBackdrop()) {
+      Row()
+        .width('100%')
+        .height('100%')
+        .linearGradient({
+          angle: 180,
+          colors: [
+            ['#B9D3FF', 0],
+            ['#CAE2FF', 0.18],
+            ['#E4F0FB', 0.38],
+            ['#F5F8FB', 0.62],
+            ['#F8FAFC', 1]
+          ]
+        })
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .hitTestBehavior(HitTestMode.None)
+    } else if (this.useFoodResultBackdrop()) {
+      Row()
+        .width('100%')
+        .height('100%')
+        .linearGradient({
+          angle: 180,
+          colors: [
+            ['#FFECD5', 0],
+            ['#FFF5E9', 0.17],
+            ['#F8FAFC', 0.39],
+            ['#F8FAFC', 1]
+          ]
+        })
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .hitTestBehavior(HitTestMode.None)
+    } else if (this.useConversationGlassBackdrop()) {
+      Stack({ alignContent: Alignment.Center }) {
+        Image($rawfile('aios-home/assets/wallpapers/now-blue.png'))
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Cover)
+          .hitTestBehavior(HitTestMode.None)
+
+        Row()
+          .width('100%')
+          .height('100%')
+          .linearGradient({
+            angle: 180,
+            colors: [
+              ['#E0F8FAFD', 0],
+              ['#C2EDF3F9', 0.46],
+              ['#99F2F3FA', 1]
+            ]
+          })
+          .hitTestBehavior(HitTestMode.None)
+      }
+        .width('100%')
+        .height('100%')
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .hitTestBehavior(HitTestMode.None)
+    } else {
+      Image($r('app.media.home_light_aurora_background'))
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Cover)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .hitTestBehavior(HitTestMode.Transparent)
+    }
   }
 
   @Builder
@@ -589,7 +720,8 @@ export struct HomePage {
     Column() {}
       .width(index === A2UI_VOICE_WAVE_CENTER_INDEX ? 4 : 3)
       .height(this.voiceWaveHeight(index))
-      .backgroundColor(index === A2UI_VOICE_WAVE_CENTER_INDEX ? COLOR_ACCENT_DEEP : COLOR_ACCENT)
+      .backgroundColor(index === A2UI_VOICE_WAVE_CENTER_INDEX ?
+        this.conversationAccentDeepColor() : this.conversationAccentColor())
       .borderRadius(4)
       .opacity(this.voiceWaveOpacity(index))
       .animation({ duration: A2UI_MOTION_NORMAL_MS, curve: A2UI_MOTION_MOVE_CURVE })
@@ -600,7 +732,7 @@ export struct HomePage {
     Row() {}
       .width('99%')
       .height(A2UI_VOICE_DOCK_HEIGHT)
-      .borderRadius((A2UI_HOME_FLOATING_RADIUS + 4))
+      .borderRadius(A2UI_CONVERSATION_RADIUS)
       .border({ width: 2, color: color })
       .opacity(this.voiceRingOpacity(phaseOffset))
       .scale({
@@ -646,43 +778,15 @@ export struct HomePage {
   @Builder
   private FirstConversationPendingView() {
     Column() {
-      Column() {
-        Text('和 Appless 聊聊')
-          .width('100%')
-          .fontSize(27)
-          .lineHeight(31)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(COLOR_INK)
-
-        Text('回答优先，历史内容按需展开')
-          .width('100%')
-          .fontSize(15)
-          .lineHeight(22)
-          .fontColor(COLOR_MUTED)
-          .margin({ top: 6 })
-      }
-      .width('100%')
-      .padding({ left: 4, right: 4, bottom: 12 })
-
       Row() {
-        Text('你')
-          .width(24)
-          .height(24)
-          .fontSize(12)
-          .fontColor(COLOR_ACCENT_DEEP)
-          .textAlign(TextAlign.Center)
-          .backgroundColor('#1A995F4C')
-          .borderRadius(8)
-          .margin({ right: 7 })
-
         Text(this.latestUserMessage())
           .layoutWeight(1)
           .fontSize(15)
           .lineHeight(23)
-          .fontColor(COLOR_TEXT)
+          .fontColor('#F4F7FB')
           .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-          .backgroundColor('#F1E6E1')
-          .borderRadius(16)
+          .backgroundColor('#8F202A3A')
+          .borderRadius(A2UI_CONVERSATION_RADIUS)
       }
       .width('84%')
       .alignSelf(ItemAlign.End)
@@ -690,14 +794,12 @@ export struct HomePage {
       .margin({ top: 16 })
 
       Row() {
-        Text('A')
+        Image($rawfile('aios-home/assets/brand/digital-mate-mark-black.png'))
           .width(24)
           .height(24)
-          .fontSize(13)
-          .fontColor(COLOR_ACCENT_DEEP)
-          .textAlign(TextAlign.Center)
-          .backgroundColor('#1A995F4C')
-          .borderRadius(8)
+          .objectFit(ImageFit.Cover)
+          .borderRadius(12)
+          .clip(true)
           .margin({ right: 7 })
 
         Row() {
@@ -705,18 +807,19 @@ export struct HomePage {
             Circle()
               .width(7)
               .height(7)
-              .fill(COLOR_ACCENT_DEEP)
+              .fill('#17191D')
               .opacity(this.pendingDotOpacity(index))
               .margin({ right: index < A2UI_FIRST_PENDING_DOTS.length - 1 ? 7 : 0 })
               .animation({ duration: 160, curve: Curve.EaseInOut })
           }, (index: number) => index.toString())
         }
         .layoutWeight(1)
-        .constraintSize({ minHeight: 82 })
-        .padding({ left: 16, right: 16 })
-        .backgroundColor('#FFFAF7')
-        .border({ width: 1, color: '#EADFD8' })
-        .borderRadius(20)
+        .constraintSize({ minHeight: 60 })
+        .padding({ left: 16, right: 16, top: 16, bottom: 17 })
+        .backgroundColor('#DDE9EEF5')
+        .border({ width: 1, color: '#E0E4EA' })
+        .borderRadius(A2UI_CONVERSATION_RADIUS)
+        .shadow({ radius: 38, color: '#29121C2E', offsetX: 0, offsetY: 18 })
         .alignItems(VerticalAlign.Center)
       }
       .width('100%')
@@ -731,26 +834,79 @@ export struct HomePage {
     .padding({ left: 14, right: 14 })
   }
 
+  @Builder
+  private ToolResultReturnButton() {
+    Row({ space: 6 }) {
+      Image($r('app.media.icon_back'))
+        .width(18)
+        .height(18)
+        .objectFit(ImageFit.Contain)
+        .fillColor('#FFFFFF')
+      Text('返回对话')
+        .fontSize(14)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#FFFFFF')
+    }
+    .height(44)
+    .padding({ left: 13, right: 16 })
+    .backgroundColor('#17191D')
+    .borderRadius(22)
+    .shadow({ radius: 14, color: '#52000000', offsetX: 0, offsetY: 6 })
+    .accessibilityText('退出全屏，返回对话')
+    .onClick((): void => {
+      this.onCloseToolResult();
+    })
+  }
+
   build() {
+    if (this.showWelcome) {
+      AiosNowHomeView({
+        isVoiceListening: this.isVoiceListening,
+        systemTopInsetVp: this.systemTopInsetVp,
+        systemBottomInsetVp: this.systemBottomInsetVp,
+        onSubmitPrompt: (prompt: string): void => {
+          this.chooseWelcomePrompt(prompt);
+        },
+        onOpenWaterfall: (): void => {
+          this.onOpenWaterfall();
+        },
+        onOpenConversation: (): void => {
+          this.onOpenConversation();
+        },
+        onStartVoiceInput: (): void => {
+          this.onStartVoiceInput();
+        },
+        onStopVoiceInput: (): void => {
+          this.onStopVoiceInput();
+        }
+      })
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#0B1018')
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    } else {
     Stack({ alignContent: Alignment.Center }) {
       this.HomeBackdrop()
 
       Column() {
-        if (shouldShowHomeChrome(this.waterfallFullscreen)) {
+        if (shouldShowHomeChrome(this.waterfallFullscreen) && !this.toolResultFullscreen &&
+          !this.useImmersiveResultSurface()) {
         if (this.showWelcome) {
           this.WelcomeToolbar()
         } else {
           Row() {
-            Image($r('app.media.logo_appless'))
-              .width(A2UI_HEADER_LOGO_SIZE)
-              .height(A2UI_HEADER_LOGO_SIZE)
-              .objectFit(ImageFit.Contain)
+            if (!this.useConversationGlassBackdrop()) {
+              Image($r('app.media.logo_appless'))
+                .width(A2UI_HEADER_LOGO_SIZE)
+                .height(A2UI_HEADER_LOGO_SIZE)
+                .objectFit(ImageFit.Contain)
+            }
 
             Blank()
               .layoutWeight(1)
 
             A2uiButtonView({
-              icon: $r('app.media.icon_reset'),
+              icon: $r('app.media.icon_home'),
               hasIcon: true,
               shape: 'circle',
               circleSize: A2UI_HEADER_BUTTON_SIZE,
@@ -758,8 +914,8 @@ export struct HomePage {
               tone: 'secondary',
               isEnabled: this.canResetSession(),
               customBackgroundColor: A2UI_HOME_HEADER_BUTTON_BACKGROUND,
-              customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
-              shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
+              customBorderColor: this.headerButtonEdgeColor(),
+              shadowColor: this.headerButtonShadowColor(),
               shadowRadius: 8,
               shadowOffsetY: 3
             })
@@ -780,8 +936,8 @@ export struct HomePage {
               iconSize: A2UI_HEADER_BUTTON_ICON_SIZE,
               tone: 'secondary',
               customBackgroundColor: A2UI_HOME_HEADER_BUTTON_BACKGROUND,
-              customBorderColor: A2UI_HOME_HEADER_BUTTON_EDGE,
-              shadowColor: A2UI_HOME_HEADER_BUTTON_SHADOW,
+              customBorderColor: this.headerButtonEdgeColor(),
+              shadowColor: this.headerButtonShadowColor(),
               shadowRadius: 8,
               shadowOffsetY: 3
             })
@@ -921,9 +1077,10 @@ export struct HomePage {
             })
             .width('100%')
             .height('100%')
-            .opacity(this.isAwaitingFirstSurface ? 0 : 1)
+            .opacity(shouldShowNativeFirstConversationPending(
+              this.isAwaitingFirstSurface, this.messages) ? 0 : 1)
 
-            if (this.isAwaitingFirstSurface) {
+            if (shouldShowNativeFirstConversationPending(this.isAwaitingFirstSurface, this.messages)) {
               this.FirstConversationPendingView()
             }
           }
@@ -944,7 +1101,7 @@ export struct HomePage {
         }
         .width('100%')
         .layoutWeight(1)
-        .margin({ top: this.waterfallFullscreen ? 0 : this.surfaceTopGap() })
+        .margin({ top: this.waterfallFullscreen || this.toolResultFullscreen ? 0 : this.surfaceTopGap() })
       }
 
       if (shouldShowHomeChrome(this.waterfallFullscreen)) {
@@ -961,13 +1118,14 @@ export struct HomePage {
 
         PageStateIndicator({
           currentPage: 0,
-          reduceMotion: this.reduceMotion
+          reduceMotion: this.reduceMotion,
+          monochrome: this.useConversationGlassBackdrop()
         })
           .margin({ bottom: 2 })
 
         Stack({ alignContent: Alignment.Center }) {
           if (this.isVoiceListening) {
-            this.VoiceWaveRing('#80F39A79', 0)
+            this.VoiceWaveRing(this.useConversationGlassBackdrop() ? '#5217191D' : '#80F39A79', 0)
             this.VoiceWaveRing('#70B68CE8', 4)
             this.VoiceWaveRing('#668EBBF3', 8)
           }
@@ -976,10 +1134,12 @@ export struct HomePage {
             if (this.isVoiceListening) {
               this.VoiceListeningView()
             } else {
-              if (this.inputText.trim().length === 0) {
-                Blank()
-                  .width(44)
-              }
+              Image($rawfile('aios-home/assets/icons/sf-symbols/keyboard.png'))
+                .width(27)
+                .height(27)
+                .objectFit(ImageFit.Contain)
+                .fillColor('#80000000')
+                .hitTestBehavior(HitTestMode.None)
 
               TextArea({
                 placeholder: this.inputPlaceholder,
@@ -988,18 +1148,19 @@ export struct HomePage {
                 .height(homeComposerTextHeight(this.inputText))
                 .constraintSize({ minHeight: 36, maxHeight: A2UI_COMPOSER_TEXT_MAX_HEIGHT })
                 .layoutWeight(1)
-                .fontSize(16)
-                .fontColor(COLOR_TEXT)
+                .fontSize(20)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#CC20242C')
                 .lineHeight(24)
                 .maxLines(A2UI_COMPOSER_TEXT_MAX_LINES)
-                .textAlign(this.inputText.trim().length === 0 ? TextAlign.Center : TextAlign.Start)
+                .textAlign(TextAlign.Center)
                 .enterKeyType(EnterKeyType.Send)
-                .placeholderColor(COLOR_MUTED)
+                .placeholderColor('#80000000')
                 .backgroundColor('#00000000')
                 .borderRadius(0)
                 .border({ width: 0 })
                 .padding({
-                  left: 10,
+                  left: 8,
                   right: 0,
                   top: 6,
                   bottom: 8
@@ -1028,31 +1189,40 @@ export struct HomePage {
                   this.onSendPrompt();
                 })
 
-              A2uiButtonView({
-                icon: this.isBusy ? $r('app.media.icon_wait_spinner') : $r('app.media.arrow_up'),
-                hasIcon: true,
-                shape: 'circle',
-                circleSize: 38,
-                iconSize: this.isBusy ? 21 : 17,
-                isEnabled: this.hasSendableText(),
-                customBackgroundColor: this.sendButtonBackground(),
-                customBorderWidth: 0,
-                shadowColor: this.hasSendableText() ? A2UI_HOME_SEND_SHADOW : '#00000000',
-                shadowRadius: this.hasSendableText() ? 10 : 0,
-                iconRotation: this.sendSpinnerRotation
-              })
-                .animation({
-                  duration: this.isBusy ? A2UI_SEND_SPINNER_INTERVAL_MS : 220,
-                  curve: this.isBusy ? Curve.Linear : A2UI_MOTION_MOVE_CURVE
+              if (this.inputText.trim().length === 0 && !this.isBusy) {
+                Image($rawfile('aios-home/assets/icons/sf-symbols/video.fill.png'))
+                  .width(27)
+                  .height(27)
+                  .objectFit(ImageFit.Contain)
+                  .fillColor('#80000000')
+                  .hitTestBehavior(HitTestMode.None)
+              } else {
+                A2uiButtonView({
+                  icon: this.isBusy ? $r('app.media.icon_wait_spinner') : $r('app.media.arrow_up'),
+                  hasIcon: true,
+                  shape: 'circle',
+                  circleSize: 38,
+                  iconSize: this.isBusy ? 21 : 17,
+                  isEnabled: this.hasSendableText(),
+                  customBackgroundColor: this.sendButtonBackground(),
+                  customBorderWidth: 0,
+                  shadowColor: this.hasSendableText() ? A2UI_HOME_SEND_SHADOW : '#00000000',
+                  shadowRadius: this.hasSendableText() ? 10 : 0,
+                  iconRotation: this.sendSpinnerRotation
                 })
-                .margin({ left: 6 })
-                .enabled(this.hasSendableText())
-                .onClick(() => {
-                  if (!this.hasSendableText()) {
-                    return;
-                  }
-                  this.onSendPrompt();
-                })
+                  .animation({
+                    duration: this.isBusy ? A2UI_SEND_SPINNER_INTERVAL_MS : 220,
+                    curve: this.isBusy ? Curve.Linear : A2UI_MOTION_MOVE_CURVE
+                  })
+                  .margin({ left: 6 })
+                  .enabled(this.hasSendableText())
+                  .onClick(() => {
+                    if (!this.hasSendableText()) {
+                      return;
+                    }
+                    this.onSendPrompt();
+                  })
+              }
             }
           }
           .width('100%')
@@ -1062,23 +1232,24 @@ export struct HomePage {
           })
           .alignItems(VerticalAlign.Center)
           .padding({
-            left: this.isVoiceListening ? 10 : 8,
-            right: this.isVoiceListening ? 14 : 8,
+            left: this.isVoiceListening ? 10 : 12,
+            right: this.isVoiceListening ? 14 : 12,
             top: this.isVoiceListening ? 4 : 5,
             bottom: this.isVoiceListening ? 4 : 5
           })
           .backgroundColor(this.isVoiceListening ? '#A6FFFFFF' : A2UI_HOME_GLASS_BACKGROUND)
-          .borderRadius(this.isVoiceListening ? A2UI_HOME_FLOATING_RADIUS + 4 : 28)
+          .borderRadius(A2UI_CONVERSATION_RADIUS)
           .border({ width: 1, color: this.isVoiceListening ? '#BFD8BCAF' : A2UI_HOME_GLASS_EDGE })
           .shadow({
-            radius: this.isVoiceListening ? 24 : 18,
+            radius: this.isVoiceListening ? 24 : 38,
             color: this.isVoiceListening ? '#32995F4C' : A2UI_HOME_GLASS_SHADOW,
             offsetX: 0,
-            offsetY: this.isVoiceListening ? 8 : 7
+            offsetY: this.isVoiceListening ? 8 : 14
           })
           .animation({ duration: 320, curve: A2UI_MOTION_MOVE_CURVE })
         }
-        .width('100%')
+        .width(this.isVoiceListening ? '93%' : '90%')
+        .alignSelf(ItemAlign.Center)
         .constraintSize({
           minHeight: this.isVoiceListening ?
             A2UI_VOICE_DOCK_HEIGHT + A2UI_COMPOSER_DOCK_EXTRA_HEIGHT :
@@ -1091,14 +1262,16 @@ export struct HomePage {
           this.handleComposerHoldTouch(event);
         })
 
-        Text('内容由 AI 生成')
-          .width('100%')
-          .height(16)
-          .fontSize(11)
-          .fontWeight(FontWeight.Normal)
-          .fontColor(A2UI_HOME_AI_DISCLOSURE_TEXT)
-          .textAlign(TextAlign.Center)
-          .margin({ top: 4 })
+        if (!this.useConversationGlassBackdrop()) {
+          Text('内容由 AI 生成')
+            .width('100%')
+            .height(16)
+            .fontSize(11)
+            .fontWeight(FontWeight.Normal)
+            .fontColor(A2UI_HOME_AI_DISCLOSURE_TEXT)
+            .textAlign(TextAlign.Center)
+            .margin({ top: 4 })
+        }
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
@@ -1106,15 +1279,31 @@ export struct HomePage {
       }
       }
       .width('100%')
-      .constraintSize({ maxWidth: this.waterfallFullscreen ? '100%' : A2UI_HOME_MAX_WIDTH })
+      .constraintSize({
+        maxWidth: this.waterfallFullscreen || this.toolResultFullscreen ? '100%' : A2UI_HOME_MAX_WIDTH
+      })
       .height('100%')
       .padding({
-        left: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_X,
-        right: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_X,
-        top: this.waterfallFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_TOP + this.systemTopInsetVp,
+        left: this.waterfallFullscreen || this.toolResultFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_X,
+        right: this.waterfallFullscreen || this.toolResultFullscreen ? 0 : A2UI_HOME_PAGE_PADDING_X,
+        top: this.waterfallFullscreen || this.toolResultFullscreen ? 0 :
+          A2UI_HOME_PAGE_PADDING_TOP + this.systemTopInsetVp,
         bottom: this.waterfallFullscreen ? 0 : this.composerBottomPadding()
       })
       .backgroundColor('#00000000')
+
+      if (this.toolResultFullscreen) {
+        Row() {
+          this.ToolResultReturnButton()
+        }
+        .width(170)
+        .height(this.systemTopInsetVp + 68)
+        .alignItems(VerticalAlign.Top)
+        .justifyContent(FlexAlign.Start)
+        .padding({ top: this.systemTopInsetVp + 12, left: 14 })
+        .position({ x: 0, y: 0 })
+        .zIndex(20)
+      }
 
     }
     .width('100%')
@@ -1131,6 +1320,7 @@ export struct HomePage {
         this.homeViewportHeight = nextHeight;
       }
     })
+    }
   }
 }
 
@@ -1138,6 +1328,7 @@ export struct HomePage {
 export struct PageStateIndicator {
   @Prop currentPage: number = 0;
   @Prop reduceMotion: boolean = false;
+  @Prop monochrome: boolean = false;
   @State private discoveryHintOffset: number = 0;
   private hintTimerId: number = -1;
 
@@ -1163,13 +1354,17 @@ export struct PageStateIndicator {
         .width(this.currentPage === 0 ? 14 : 3)
         .height(3)
         .borderRadius(2)
-        .backgroundColor(this.currentPage === 0 ? '#8E6558' : '#8A786E')
+        .backgroundColor(this.currentPage === 0 ?
+          (this.monochrome ? '#17191D' : '#8E6558') :
+          (this.monochrome ? '#8B9098' : '#8A786E'))
 
       Row() {}
         .width(this.currentPage === 1 ? 14 : 3)
         .height(3)
         .borderRadius(2)
-        .backgroundColor(this.currentPage === 1 ? '#8E6558' : '#8A786E')
+        .backgroundColor(this.currentPage === 1 ?
+          (this.monochrome ? '#17191D' : '#8E6558') :
+          (this.monochrome ? '#8B9098' : '#8A786E'))
         .translate({ x: this.currentPage === 0 ? this.discoveryHintOffset : 0 })
         .animation({ duration: this.reduceMotion ? 0 : 240, curve: A2UI_MOTION_MOVE_CURVE })
     }

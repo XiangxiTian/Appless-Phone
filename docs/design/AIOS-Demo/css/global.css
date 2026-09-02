@@ -1,0 +1,315 @@
+@font-face {
+  font-family: "HarmonyOS Symbol";
+  src: url("../assets/harmony-symbols/HMSymbol.ttf") format("truetype");
+  font-display: block;
+}
+
+:root {
+  color-scheme: light;
+  --ink: #19191a;
+  --ink-soft: #5f6062;
+  --ink-faint: #8d8e90;
+  --line: rgba(25, 25, 26, 0.1);
+  --surface: #f8f8fa;
+  --screen: #f7f7f9;
+  --calm: #e3e6ea;
+  --journal-cover-top: #dce5ed;
+  --journal-cover-bottom: #c9d5e1;
+  --journal-cover-edge: #aebdcb;
+  --journal-paper: #f7f9fa;
+  --nav-height: 112px;
+  --ease-spatial: cubic-bezier(0.22, 0.78, 0.2, 1);
+  --ease-quiet: cubic-bezier(0.25, 0.75, 0.25, 1);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  color: var(--ink);
+  background: #ffffff;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.keyboard-navigation button:focus-visible,
+input:focus-visible {
+  outline: 2px solid rgba(34, 91, 205, 0.78);
+  outline-offset: 2px;
+}
+
+img {
+  display: block;
+}
+
+.preview-stage {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  padding: 16px 0;
+}
+
+.device-slot {
+  position: relative;
+  width: 432px;
+  height: 932px;
+  flex: 0 0 auto;
+}
+
+.device-wrap {
+  position: relative;
+  width: 432px;
+  height: 932px;
+  transform-origin: top left;
+}
+
+.figma-capture-mode .prototype-navigation-shell,
+.figma-capture-mode .prototype-navigator {
+  display: none;
+}
+
+.figma-capture-mode .preview-stage {
+  width: 432px;
+  height: 932px;
+  min-height: 932px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0;
+}
+
+.figma-capture-mode .device-slot,
+.figma-capture-mode .device-wrap {
+  width: 432px !important;
+  height: 932px !important;
+}
+
+.figma-capture-mode .device-wrap {
+  transform: none !important;
+}
+
+.device-shell {
+  position: relative;
+  width: 432px;
+  height: 932px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d9d9de;
+  border-radius: 50px;
+  background: #ffffff;
+  box-shadow:
+    0 22px 64px rgba(28, 29, 32, 0.09),
+    0 3px 12px rgba(28, 29, 32, 0.05);
+}
+
+.device-shell::before,
+.device-shell::after {
+  display: none;
+}
+
+.device-screen {
+  position: relative;
+  width: 430px;
+  height: 930px;
+  overflow: hidden;
+  overflow: clip;
+  margin: 0;
+  border-radius: 49px;
+  background: var(--screen);
+  isolation: isolate;
+}
+
+.dynamic-island {
+  position: absolute;
+  z-index: 200;
+  top: 12px;
+  left: 50%;
+  width: 112px;
+  height: 34px;
+  transform: translateX(-50%);
+  border-radius: 22px;
+  background: #050505;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.dynamic-island span {
+  position: absolute;
+  top: 13px;
+  right: 17px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #111b20;
+  box-shadow: inset 0 0 0 1px #1a2630;
+}
+
+.status-time {
+  position: absolute;
+  z-index: 200;
+  top: 14px;
+  left: 23px;
+  min-width: 60px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+  letter-spacing: -0.24px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.status-glyphs {
+  position: absolute;
+  z-index: 200;
+  top: 10px;
+  right: 20px;
+  display: flex;
+  height: 34px;
+  align-items: center;
+  gap: 1px;
+  pointer-events: none;
+}
+
+.status-symbol {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.cellular-symbol {
+  width: 27px;
+  height: 27px;
+}
+
+.wifi-symbol {
+  width: 28px;
+  height: 28px;
+  margin-left: -2px;
+}
+
+.battery-symbol {
+  width: 34px;
+  height: 34px;
+  margin-left: -4px;
+}
+
+.icon-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border-radius: 50%;
+  transition: background 180ms ease, transform 160ms ease;
+}
+
+.icon-button:hover {
+  background: rgba(24, 24, 25, 0.06);
+}
+
+.icon-button:active {
+  transform: scale(0.94);
+}
+
+.icon-button img {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #717274;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.65px;
+  text-transform: uppercase;
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 720;
+  line-height: 25px;
+  letter-spacing: -0.45px;
+}
+
+.section-heading > span {
+  color: var(--ink-faint);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.prototype-toast {
+  position: absolute;
+  z-index: 250;
+  right: 50%;
+  bottom: 128px;
+  max-width: 330px;
+  padding: 10px 15px;
+  transform: translate(50%, 12px);
+  border-radius: 14px;
+  opacity: 0;
+  color: white;
+  background: rgba(24, 24, 25, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 19px;
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 240ms var(--ease-quiet);
+  backdrop-filter: blur(18px);
+}
+
+.prototype-toast.visible {
+  transform: translate(50%, 0);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

@@ -847,6 +847,16 @@ const WATERFALL_CSS: string = `
 .waterfall-overlay {
   position: fixed; inset: 0; z-index: 20; display: none; overflow: hidden;
   background: var(--paper); color: var(--ink); opacity: 0;
+  --paper: #ffffff;
+  --panel: rgba(239, 243, 248, 0.92);
+  --panel-strong: #ffffff;
+  --ink: #202939;
+  --ink-soft: #313746;
+  --muted: #6f7783;
+  --line: rgba(49, 55, 70, 0.12);
+  --line-strong: rgba(49, 55, 70, 0.2);
+  --accent: #5f6978;
+  --accent-soft: rgba(95, 105, 120, 0.14);
 }
 .waterfall-overlay.active {
   display: block; opacity: 1; animation: waterfall-overlay-in 180ms var(--ease-out) both;
@@ -855,13 +865,13 @@ const WATERFALL_CSS: string = `
 @keyframes waterfall-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 .waterfall-track {
   height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: none;
-  scroll-snap-type: y mandatory; scrollbar-width: none; background: #eef0f2; touch-action: pan-y;
+  scroll-snap-type: y mandatory; scrollbar-width: none; background: #ffffff; touch-action: pan-y;
   padding: calc(64px + env(safe-area-inset-top) + 12px) 0 calc(96px + env(safe-area-inset-bottom));
   scroll-padding-top: calc(64px + env(safe-area-inset-top) + 12px);
   scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
 }
 body.waterfall-direct .waterfall-overlay,
-body.waterfall-direct .waterfall-track { background: transparent; }
+body.waterfall-direct .waterfall-track { background: #ffffff; }
 .waterfall-track::-webkit-scrollbar { display: none; }
 .waterfall-track.is-pull-returning { transition: transform 160ms var(--ease-out); }
 .waterfall-refresh-indicator {
@@ -1051,7 +1061,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-signal b { overflow: hidden; font-variant-numeric: tabular-nums; font-weight: 720; text-overflow: ellipsis; }
 .waterfall-reader {
   position: fixed; z-index: 10; inset: 0; display: block; overflow: hidden;
-  background: #eef0f2; color: var(--ink); pointer-events: none; visibility: hidden;
+  background: #ffffff; color: var(--ink); pointer-events: none; visibility: hidden;
   opacity: 0; border-radius: 0; transform: translate3d(0, 8px, 0) scale(0.985);
   transform-origin: center;
   transition: opacity 140ms var(--ease-out), transform 180ms var(--ease-out), visibility 0s linear 180ms;
@@ -1074,7 +1084,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   position: fixed; z-index: 10; top: 0; left: 0; right: 0;
   min-height: calc(64px + env(safe-area-inset-top));
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  padding: env(safe-area-inset-top) 12px 0; background: #eef0f2;
+  padding: env(safe-area-inset-top) 12px 0; background: #ffffff;
   border-bottom: 1px solid rgba(56, 65, 72, 0.09);
 }
 .waterfall-reader-head button {
@@ -1099,15 +1109,15 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   min-height: calc(64px + env(safe-area-inset-top));
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   padding: env(safe-area-inset-top) 12px 0;
-  background: linear-gradient(180deg, rgba(245, 242, 238, 0.94) 0%, rgba(245, 242, 238, 0.55) 62%,
-    rgba(245, 242, 238, 0) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.72) 62%,
+    rgba(255, 255, 255, 0) 100%);
   border-bottom: 0;
   pointer-events: auto;
 }
 .waterfall-toolbar button, .waterfall-preferences button {
   display: inline-flex; min-height: 44px; align-items: center; justify-content: center;
   border: 0; border-radius: 14px; background: transparent;
-  color: #20262c; padding: 0 10px; font-size: 13px; font-weight: 720; cursor: pointer;
+  color: #202939; padding: 0 10px; font-size: 13px; font-weight: 720; cursor: pointer;
   pointer-events: auto;
   transition: transform 140ms var(--ease-out), background-color 140ms ease;
 }
@@ -1126,7 +1136,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 }
 .waterfall-toolbar-primary {
   min-width: 76px; box-shadow: none;
-  color: #20262c !important; font-weight: 780 !important;
+  color: #202939 !important; font-weight: 780 !important;
 }
 .waterfall-toolbar-tools {
   display: inline-flex; align-items: center; gap: 8px;
@@ -1161,7 +1171,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   position: fixed; z-index: 32; inset: auto 14px calc(14px + env(safe-area-inset-bottom)) 14px;
   display: block; max-height: min(72dvh, 560px); overflow-y: auto; padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.72); border-radius: 18px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.68), rgba(243, 240, 236, 0.54));
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(239, 243, 248, 0.88));
   -webkit-backdrop-filter: blur(38px) saturate(145%) brightness(1.08);
   backdrop-filter: blur(38px) saturate(145%) brightness(1.08);
   box-shadow: 0 24px 72px rgba(35, 42, 48, 0.17), inset 0 1px 0 rgba(255, 255, 255, 0.84),
@@ -1202,7 +1212,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-preferences label {
   display: grid; min-width: 0; min-height: 54px; grid-template-columns: 30px minmax(0, 1fr) 34px;
   align-items: center; gap: 8px; border: 0; border-bottom: 1px solid rgba(38, 49, 60, 0.08);
-  border-radius: 0; background: transparent; color: #20262c; padding: 7px 2px; font-size: 14px;
+  border-radius: 0; background: transparent; color: #202939; padding: 7px 2px; font-size: 14px;
   transition: opacity 160ms var(--ease-out), color 160ms var(--ease-out);
 }
 .waterfall-preferences label:has(input:checked) {
@@ -1211,10 +1221,10 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-preferences label.is-unavailable { color: #97908a; opacity: 0.58; }
 .waterfall-source-copy { display: grid; min-width: 0; gap: 2px; }
 .waterfall-source-name { min-width: 0; overflow: visible; white-space: normal; font-weight: 720; line-height: 1.25; }
-.waterfall-source-reason { color: #8b817a; font-size: 10px; line-height: 1.25; }
+.waterfall-source-reason { color: #6f7783; font-size: 10px; line-height: 1.25; }
 .waterfall-preferences input {
   position: relative; width: 34px; height: 20px; margin: 0; border: 0; border-radius: 10px;
-  appearance: none; -webkit-appearance: none; background: #d8d4d0; cursor: pointer;
+  appearance: none; -webkit-appearance: none; background: #d5dae1; cursor: pointer;
   transition: background-color 160ms var(--ease-out);
 }
 .waterfall-preferences input::after {
@@ -1224,7 +1234,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 }
 .waterfall-preferences input:checked { background: var(--accent); }
 .waterfall-preferences input:checked::after { transform: translateX(14px); }
-.waterfall-preferences input:disabled { cursor: default; background: #d8d4d0; }
+.waterfall-preferences input:disabled { cursor: default; background: #d5dae1; }
 .waterfall-empty {
   min-height: calc(100dvh - 150px); display: grid; place-items: center; align-content: center; gap: 14px;
   color: var(--muted); font-size: 16px; line-height: 1.5;
@@ -1298,7 +1308,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   display: flex; height: auto; min-height: 0; flex-direction: column; overflow: hidden;
   margin: 0 14px; padding: 12px;
   border: 1px solid rgba(56, 65, 72, 0.07); border-radius: 24px;
-  background: #fbfcfd;
+  background: rgba(239, 243, 248, 0.94);
   color: var(--card-ink);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 12px 30px var(--card-shadow);
   cursor: default; touch-action: pan-y;
@@ -1314,8 +1324,8 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-card:not(.waterfall-card--text) .waterfall-card-shell {
   max-height: calc(100dvh - 176px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 }
-.waterfall-card--video .waterfall-card-shell { background: #fbfcfd; }
-.waterfall-card--text .waterfall-card-shell { background: var(--card-soft); }
+.waterfall-card--video .waterfall-card-shell { background: rgba(239, 243, 248, 0.94); }
+.waterfall-card--text .waterfall-card-shell { background: rgba(239, 243, 248, 0.94); }
 .waterfall-card-shell--interactive:active,
 .waterfall-card-shell--interactive.is-pressed { transform: scale(0.992); }
 .waterfall-card-shell--interactive:focus-visible,
@@ -1464,8 +1474,8 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   top: 0; left: 0; right: 0; min-height: calc(64px + env(safe-area-inset-top));
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   padding: env(safe-area-inset-top) 12px 0;
-  background: linear-gradient(180deg, rgba(245, 242, 238, 0.94) 0%, rgba(245, 242, 238, 0.55) 62%,
-    rgba(245, 242, 238, 0) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.72) 62%,
+    rgba(255, 255, 255, 0) 100%);
   border-bottom: 0;
   opacity: 1; transform: none; visibility: visible; pointer-events: auto;
 }
@@ -1495,9 +1505,9 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 }
 .waterfall-search-form {
   position: absolute; z-index: 2; top: calc(env(safe-area-inset-top) + 10px); right: 12px; left: 82px;
-  height: 44px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(153, 95, 76, 0.2);
+  height: 44px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(95, 105, 120, 0.2);
   border-radius: 15px; background: rgba(255, 255, 255, 0.88); padding: 0 13px;
-  box-shadow: 0 10px 28px rgba(69, 48, 39, 0.08); opacity: 0; visibility: hidden;
+  box-shadow: 0 10px 28px rgba(49, 55, 70, 0.08); opacity: 0; visibility: hidden;
   transform: translate3d(18px, 0, 0) scaleX(0.9); transform-origin: right center; pointer-events: none;
   transition: opacity 160ms var(--ease-out), transform 220ms var(--ease-drawer), visibility 0s linear 220ms;
 }
@@ -1506,7 +1516,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   width: 100%; min-width: 0; height: 40px; border: 0; outline: 0; background: transparent;
   color: var(--ink); padding: 0; font: inherit; font-size: 15px;
 }
-.waterfall-search-form input::placeholder { color: #91847a; }
+.waterfall-search-form input::placeholder { color: #7b8491; }
 .waterfall-toolbar.is-searching .waterfall-toolbar-title,
 .waterfall-toolbar.is-searching .waterfall-toolbar-tools { opacity: 0; transform: translate3d(-8px, 0, 0); pointer-events: none; }
 .waterfall-toolbar.is-searching .waterfall-search-form {
@@ -1515,9 +1525,9 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-search-status {
   position: fixed; z-index: 7; top: calc(64px + env(safe-area-inset-top)); left: 50%;
   display: flex; align-items: center; gap: 7px; max-width: calc(100% - 32px); min-height: 30px;
-  border: 1px solid rgba(153, 95, 76, 0.12); border-radius: 15px;
-  background: rgba(248, 245, 240, 0.9); color: var(--muted); padding: 5px 11px;
-  box-shadow: 0 8px 24px rgba(69, 48, 39, 0.07); font-size: 11px; opacity: 0;
+  border: 1px solid rgba(95, 105, 120, 0.12); border-radius: 15px;
+  background: rgba(239, 243, 248, 0.94); color: var(--muted); padding: 5px 11px;
+  box-shadow: 0 8px 24px rgba(49, 55, 70, 0.07); font-size: 11px; opacity: 0;
   transform: translate3d(-50%, -5px, 0); pointer-events: none;
   transition: opacity 160ms var(--ease-out), transform 180ms var(--ease-out);
 }
@@ -1532,11 +1542,11 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 }
 .waterfall-edge-fade--top {
   top: 0; height: calc(72px + env(safe-area-inset-top));
-  background: linear-gradient(180deg, rgba(245, 242, 238, 0.78) 0%, rgba(245, 242, 238, 0) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0) 100%);
 }
 .waterfall-edge-fade--bottom {
   bottom: 0; height: 18vh;
-  background: linear-gradient(0deg, rgba(245, 242, 238, 0.78) 0%, rgba(245, 242, 238, 0) 100%);
+  background: linear-gradient(0deg, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0) 100%);
 }
 .waterfall-preferences .waterfall-toolbar {
   min-height: 44px; background: transparent; border-bottom: 0;
@@ -1645,7 +1655,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   max-width: 18ch; margin: 0 0 24px; color: var(--ink);
   font-size: clamp(28px, 7.2vw, 38px); line-height: 1.08; letter-spacing: -0.035em;
 }
-.waterfall-reader p { max-width: 34em; margin: 0; color: #423d38; font-size: 17px; line-height: 1.78; overflow-wrap: anywhere; }
+.waterfall-reader p { max-width: 34em; margin: 0; color: #313746; font-size: 17px; line-height: 1.78; overflow-wrap: anywhere; }
 .waterfall-reader p + p { margin-top: 1em; }
 .waterfall-comments { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 13px; }
 .waterfall-comments-head { display: flex; min-height: 24px; align-items: center; justify-content: space-between; }
@@ -1695,7 +1705,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-collection-head {
   position: sticky; z-index: 2; top: 0; display: grid; min-height: calc(64px + env(safe-area-inset-top));
   grid-template-columns: 1fr auto 1fr; align-items: end; padding: env(safe-area-inset-top) 12px 0;
-  border-bottom: 1px solid rgba(56, 65, 72, 0.09); background: rgba(245, 242, 238, 0.96); backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(56, 65, 72, 0.09); background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(14px);
 }
 .waterfall-collection-head button { display: inline-grid; width: 44px; height: 44px; place-items: center; border: 0;
   border-radius: 14px; background: transparent; color: var(--ink); padding: 0; cursor: pointer; }
@@ -1704,13 +1714,13 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-collection-search { padding: 12px 16px 0; }
 .waterfall-collection-search input { width: 100%; height: 42px; border: 1px solid var(--line); border-radius: 13px;
   background: #fff; color: var(--ink); padding: 0 14px; font: inherit; outline: none; }
-.waterfall-collection-search input:focus { border-color: rgba(153, 95, 76, 0.45); }
+.waterfall-collection-search input:focus { border-color: rgba(95, 105, 120, 0.45); }
 .waterfall-collection-filters { display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; }
 .waterfall-collection-sources { display: flex; min-width: 0; flex: 1 1 auto; gap: 7px; overflow-x: auto; scrollbar-width: none; }
 .waterfall-collection-sources::-webkit-scrollbar { display: none; }
 .waterfall-collection-sources button, .waterfall-collection-sort { min-height: 32px; flex: 0 0 auto; border: 1px solid var(--line);
   border-radius: 999px; background: transparent; color: var(--muted); padding: 0 12px; font-size: 12px; font-weight: 700; }
-.waterfall-collection-sources button.is-selected { border-color: rgba(153, 95, 76, 0.24); background: var(--accent-soft); color: var(--accent); }
+.waterfall-collection-sources button.is-selected { border-color: rgba(95, 105, 120, 0.24); background: var(--accent-soft); color: var(--accent); }
 .waterfall-collection-sort { border: 0; padding: 0 6px; color: var(--ink); }
 .waterfall-collection-list { width: min(100%, 680px); margin: 0 auto; padding: 4px 16px calc(32px + env(safe-area-inset-bottom)); }
 .waterfall-collection-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) 44px; align-items: center; gap: 12px;
@@ -1739,7 +1749,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .waterfall-preferences {
-    background: rgba(248, 248, 246, 0.98);
+    background: rgba(247, 249, 252, 0.98);
     -webkit-backdrop-filter: none; backdrop-filter: none;
   }
 }

@@ -1151,6 +1151,387 @@ button:disabled { cursor: default; opacity: 0.52; }
   .journey-mainline { grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr); }
   .journey-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* AIOS Demo travel results: query header -> route -> filters -> flat options. */
+html,
+body {
+  min-height: 100%;
+  background: #f8fafc;
+}
+.itinerary-shell {
+  width: min(100%, 820px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 22px 24px calc(112px + env(safe-area-inset-bottom, 0px));
+  overflow-x: hidden;
+  background: linear-gradient(180deg, #b9d3ff 0%, #cae2ff 18%, #e4f0fb 38%, #f5f8fb 62%, #f8fafc 100%);
+}
+.route-hero {
+  min-height: 0;
+  padding: 0;
+}
+.route-title {
+  padding: 0 8px;
+}
+.route-date {
+  margin: 0 0 7px;
+  color: #697278;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 22px;
+}
+.route-title h1 {
+  max-width: 350px;
+  color: #101215;
+  font-size: 31px;
+  font-weight: 780;
+  line-height: 38px;
+  letter-spacing: -1.15px;
+}
+.route-title p {
+  margin: 7px 0 0;
+  color: #7d858b;
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 20px;
+}
+.route-date-action {
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(84, 92, 100, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  color: #24282c;
+  box-shadow: none;
+}
+.route-map {
+  margin: 27px 8px 0;
+  padding: 0 0 24px;
+  border: 0;
+  border-bottom: 1px solid rgba(63, 70, 77, 0.12);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.route-label {
+  margin: 0 0 20px;
+  color: #6e777d;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 23px;
+}
+.route-cities {
+  grid-template-columns: max-content 56px max-content;
+  justify-content: center;
+  gap: 9px;
+}
+.route-city {
+  display: flex;
+  min-width: 88px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 19px 11px;
+  border-radius: 22px;
+  background: rgba(244, 247, 250, 0.7);
+  backdrop-filter: blur(16px) saturate(122%);
+}
+.route-city b {
+  color: #111317;
+  font-size: 27px;
+  font-weight: 780;
+  line-height: 33px;
+  letter-spacing: -0.85px;
+}
+.route-city span {
+  margin-top: 7px;
+  color: #899095;
+  font-size: 14px;
+  font-weight: 620;
+  line-height: 19px;
+}
+.route-mid {
+  width: 56px;
+  height: 42px;
+}
+.route-mid::before {
+  left: 2px;
+  right: 2px;
+  top: 20px;
+  height: 1px;
+  background: #cbd0d4;
+  clip-path: none;
+}
+.route-mid::after {
+  content: "→";
+  top: 21px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  background: rgba(228, 240, 251, 0.96);
+  background-image: none;
+  color: #202428;
+  font-size: 25px;
+  line-height: 28px;
+  box-shadow: none;
+}
+.travel-controls {
+  position: static;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  margin-top: 19px;
+  overflow-x: auto;
+  padding: 1px 0 4px;
+  background: transparent;
+  scrollbar-width: none;
+}
+.travel-controls::-webkit-scrollbar { display: none; }
+.travel-primary-tabs,
+.travel-tool-row { display: contents; }
+.travel-primary-tabs .travel-control,
+.travel-tool-row .travel-control {
+  display: inline-flex;
+  width: auto;
+  height: 37px;
+  min-height: 37px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid rgba(84, 92, 100, 0.12);
+  border-radius: 19px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #545c62;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 660;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.travel-primary-tabs .travel-control.active,
+.travel-tool-row .travel-control.active {
+  border-color: #24282c;
+  background: #24282c;
+  color: #ffffff;
+  box-shadow: none;
+}
+.travel-control svg { width: 14px; height: 14px; flex-basis: 14px; }
+.journey-board {
+  gap: 11px;
+  margin-top: 14px;
+  padding: 0 0 20px;
+}
+.journey-card,
+.journey-card.compact {
+  position: relative;
+  display: flex;
+  min-height: 104px;
+  flex-direction: column;
+  margin: 0;
+  padding: 18px 19px;
+  border: 1px solid transparent;
+  border-radius: 24px;
+  background: #eef1f3;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.journey-card.selected {
+  border-color: rgba(66, 117, 201, 0.34);
+  background: #e7effa;
+  box-shadow: none;
+}
+.journey-mainline {
+  order: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  padding-right: 74px;
+}
+.time-block b {
+  color: #15181b;
+  font-size: 23px;
+  font-weight: 760;
+  line-height: 29px;
+  letter-spacing: -0.5px;
+}
+.time-block span { display: none; }
+.track {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  align-items: baseline;
+}
+.track::before { display: none; }
+.track::after {
+  content: "→";
+  position: static;
+  display: block;
+  width: auto;
+  height: auto;
+  border: 0;
+  background: none;
+  color: #15181b;
+  font-size: 22px;
+  line-height: 29px;
+  transform: none;
+}
+.track small,
+.track span,
+.track svg { display: none; }
+.journey-top {
+  order: 2;
+  display: flex;
+  align-items: center;
+  margin-top: 7px;
+}
+.journey-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.journey-title h2 {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #555d63;
+  font-size: 15px;
+  font-weight: 690;
+  line-height: 21px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.journey-tag {
+  min-height: 25px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #555d63;
+  font-size: 15px;
+  font-weight: 690;
+  line-height: 21px;
+}
+.journey-tag::before { width: 25px; height: 25px; flex-basis: 25px; }
+.journey-expand {
+  min-width: 44px;
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 0 0 8px;
+  color: #737b81;
+  font-size: 13px;
+  font-weight: 620;
+}
+.journey-trip-meta {
+  position: static;
+  order: 3;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  color: #737b81;
+  font-size: 13px;
+}
+.journey-code { display: none; }
+.journey-trip-meta .journey-price {
+  position: absolute;
+  top: 19px;
+  right: 19px;
+  margin: 0;
+  color: #15181b;
+  font-size: 21px;
+  font-weight: 760;
+  line-height: 27px;
+}
+.journey-conflict { order: 4; }
+.journey-expanded-grid { order: 5; }
+.journey-detail { order: 6; }
+.journey-card.expanded {
+  border-color: rgba(66, 117, 201, 0.34);
+  background: #e7effa;
+}
+.journey-expanded-grid > span,
+.journey-metric { background: rgba(255, 255, 255, 0.62); }
+.journey-action {
+  min-height: 40px;
+  border-radius: 20px;
+  background: #24282c;
+  color: #ffffff;
+}
+.journey-action.secondary {
+  border-color: rgba(84, 92, 100, 0.16);
+  background: rgba(255, 255, 255, 0.88);
+  color: #545c62;
+}
+@media (min-width: 680px) {
+  .itinerary-shell { padding-right: 32px; padding-left: 32px; }
+  .journey-board { grid-template-columns: 1fr; }
+  .journey-card.featured { grid-column: auto; }
+}
+@media (max-width: 380px) {
+  .itinerary-shell { padding-right: 18px; padding-left: 18px; }
+  .route-title h1 { font-size: 29px; line-height: 35px; }
+  .route-cities { grid-template-columns: max-content 42px max-content; gap: 6px; }
+  .route-city { min-width: 78px; padding-right: 14px; padding-left: 14px; }
+  .route-city b { font-size: 24px; }
+  .journey-mainline { padding-right: 68px; }
+  .time-block b { font-size: 21px; }
+}
+/* The native shell owns the full-screen scene gradient in immersive result mode. */
+html,
+body,
+.itinerary-shell { background: transparent; }
+.itinerary-shell {
+  padding-top: 14px;
+  padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+}
+.route-title h1 {
+  max-width: 360px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.route-map { margin-top: 25px; }
+.travel-controls { margin-top: 18px; }
+.travel-primary-tabs .travel-control.has-chevron::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin: 0 1px 4px 0;
+  border-right: 1.7px solid currentColor;
+  border-bottom: 1.7px solid currentColor;
+  transform: rotate(45deg);
+}
+.journey-expand { display: none; }
+.journey-title { gap: 8px; }
+.journey-airline-logo {
+  display: block;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  object-fit: contain;
+}
+.journey-title h2 {
+  color: #737b81;
+  font-size: 15px;
+  font-weight: 580;
+  line-height: 21px;
+}
+.journey-trip-meta .journey-price { font-size: 21px; }
+@media (max-width: 380px) {
+  .itinerary-shell { padding-top: 11px; }
+  .route-map { margin-top: 21px; }
+  .route-city { min-width: 74px; padding-right: 13px; padding-left: 13px; }
+  .route-city b { font-size: 23px; line-height: 29px; }
+}
 `;
 
 const TRAVEL_HOME_JS: string = `
@@ -1246,6 +1627,10 @@ const TRAVEL_HOME_JS: string = `
     var raw = text(value).trim().replace(/^¥+/, '').replace(/起+$/, '').trim();
     return raw.length > 0 ? '¥' + raw + '起' : '';
   }
+  function flightPrice(value) {
+    var raw = text(value).trim().replace(/^¥+/, '').replace(/起+$/, '').trim();
+    return raw.length > 0 ? '¥' + raw : '';
+  }
   function available(value) {
     var raw = text(value);
     if (raw.indexOf('有') >= 0 || raw.toLowerCase().indexOf('available') >= 0) { return true; }
@@ -1295,16 +1680,6 @@ const TRAVEL_HOME_JS: string = `
     });
     return best;
   }
-  function routeDateLabel(value) {
-    var raw = text(value);
-    var match = raw.match(/(\d{1,2})月(\d{1,2})日/);
-    if (!match) { return '出行方案'; }
-    var month = Number(match[1]);
-    var day = Number(match[2]);
-    var date = new Date(new Date().getFullYear(), month - 1, day);
-    var weekdays = '日一二三四五六';
-    return String(month) + '月' + String(day) + '日 · 周' + weekdays[date.getDay()];
-  }
   function firstAction(actions, id) {
     var items = list(actions);
     for (var index = 0; index < items.length; index += 1) {
@@ -1315,6 +1690,15 @@ const TRAVEL_HOME_JS: string = `
   function headlinePlace(value) {
     var raw = text(value).trim().replace(/\s*T\d+$/i, '');
     return raw.replace(/(?:宝安|虹桥|浦东|首都|大兴|南站|北站|东站|西站|机场|火车站|站)$/,'') || raw;
+  }
+  function airlineLogoUrl(block) {
+    var raw = metric(block, ['airline']).toLowerCase();
+    if (raw.indexOf('深圳') >= 0 || raw.indexOf('shenzhen') >= 0) { return 'resource://rawfile/travel/airlines/shenzhen-airlines-symbol.png'; }
+    if (raw.indexOf('南方') >= 0 || raw.indexOf('southern') >= 0) { return 'resource://rawfile/travel/airlines/china-southern.png'; }
+    if (raw.indexOf('吉祥') >= 0 || raw.indexOf('juneyao') >= 0) { return 'resource://rawfile/travel/airlines/juneyao-air-symbol.png'; }
+    if (raw.indexOf('春秋') >= 0 || raw.indexOf('spring') >= 0) { return 'resource://rawfile/travel/airlines/spring-airlines.png'; }
+    if (raw.indexOf('东方') >= 0 || raw.indexOf('eastern') >= 0) { return 'resource://rawfile/travel/airlines/china-eastern.png'; }
+    return '';
   }
   function postAction(action) {
     if (isBusy) { return; }
@@ -1504,7 +1888,13 @@ const TRAVEL_HOME_JS: string = `
   });
   var from = firstMetric(travelBlocks, ['from', 'dep']) || '出发';
   var to = firstMetric(travelBlocks, ['to', 'arr']) || '到达';
+  var trainCount = travelBlocks.filter(function (block) { return sourceKind(block) === 'train'; }).length;
+  var flightCount = travelBlocks.filter(function (block) { return sourceKind(block) === 'flight'; }).length;
+  var queryKind = trainCount > 0 && flightCount === 0 ? '高铁查询' :
+    (flightCount > 0 && trainCount === 0 ? '机票查询' : '出行方案');
   var routeHeadline = from !== '出发' && to !== '到达' ? headlinePlace(from) + ' → ' + headlinePlace(to) : (text(data.title) || '今日出行方案');
+  var queryHeadline = text(data.subtitle).trim();
+  if (queryHeadline.length === 0 || /(?:->|→)/.test(queryHeadline)) { queryHeadline = routeHeadline; }
   var fastest = shortest(travelBlocks);
   var routeSummary = travelBlocks.length > 0 ?
     String(travelBlocks.length) + ' 个方案 · 最快 ' + (fastest || '待确认') :
@@ -1513,9 +1903,9 @@ const TRAVEL_HOME_JS: string = `
   var hero = add(shell, 'header', 'route-hero');
   var titleRow = add(hero, 'div', 'route-title');
   var titleCopy = add(titleRow, 'div');
-  add(titleCopy, 'small', 'route-date', routeDateLabel(text(data.subtitle) || firstMetric(travelBlocks, ['date', 'travelDate', 'departureDate'])));
-  add(titleCopy, 'h1', '', routeHeadline);
-  add(titleCopy, 'p', '', routeSummary);
+  add(titleCopy, 'small', 'route-date', queryKind);
+  add(titleCopy, 'h1', '', queryHeadline);
+  add(titleCopy, 'p', '', '内容由 AI 生成');
   var dateAction = firstAction(data.actions, 'travel_change_date');
   if (dateAction !== null) {
     var dateButton = add(titleRow, 'button', 'route-date-action');
@@ -1527,41 +1917,26 @@ const TRAVEL_HOME_JS: string = `
   }
   renderPersonaBanner(hero);
   var map = add(hero, 'section', 'route-map');
+  add(map, 'p', 'route-label', '行程');
   var cities = add(map, 'div', 'route-cities');
   var fromNode = add(cities, 'div', 'route-city');
-  add(fromNode, 'b', '', from);
+  add(fromNode, 'b', '', headlinePlace(from));
   add(fromNode, 'span', '', '出发');
   add(cities, 'div', 'route-mid');
   var toNode = add(cities, 'div', 'route-city');
-  add(toNode, 'b', '', to);
+  add(toNode, 'b', '', headlinePlace(to));
   add(toNode, 'span', '', '到达');
-  var stats = add(map, 'div', 'route-stats');
-  var trainCount = travelBlocks.filter(function (block) { return sourceKind(block) === 'train'; }).length;
-  var flightCount = travelBlocks.filter(function (block) { return sourceKind(block) === 'flight'; }).length;
-  var conflictCount = travelBlocks.filter(function (block) { return block && block.calendarConflict === true; }).length;
-  [
-    ['高铁 / 航班', String(trainCount) + ' / ' + String(flightCount)],
-    ['当前显示', String(travelBlocks.length) + ' / ' + String(travelBlocks.length)],
-    ['日历冲突', String(conflictCount) + ' 个']
-  ].forEach(function (item, index) {
-    var stat = add(stats, 'div', 'route-stat');
-    add(stat, 'span', '', item[0]);
-    var value = add(stat, 'b', '', item[1]);
-    if (index === 1) { value.id = 'travel-current-count'; }
-  });
   var controls = add(shell, 'nav', 'travel-controls');
   var primaryControls = add(controls, 'div', 'travel-primary-tabs');
   var toolControls = add(controls, 'div', 'travel-tool-row');
   var localControls = [
     { id: 'travel_show_all', label: '全部', prompt: 'travel_show_all', variant: 'secondary', kind: 'client' },
     { id: 'travel_filter_train', label: '高铁', prompt: 'travel_filter_train', variant: 'secondary', kind: 'client' },
-    { id: 'travel_filter_flight', label: '飞机', prompt: 'travel_filter_flight', variant: 'secondary', kind: 'client' }
-  ];
-  localControls.push(
+    { id: 'travel_filter_flight', label: '飞机', prompt: 'travel_filter_flight', variant: 'secondary', kind: 'client' },
     { id: 'client_sort_fastest', label: '最快', prompt: 'client_sort_fastest', variant: 'secondary', kind: 'client' },
     { id: 'client_filter_available', label: '有票', prompt: 'client_filter_available', variant: 'secondary', kind: 'client' },
     { id: 'client_show_more', label: '更多', prompt: 'client_show_more', variant: 'secondary', kind: 'client' }
-  );
+  ];
   var seen = {};
   var controlActions = localControls.concat(list(data.actions));
   controlActions.forEach(function (action) {
@@ -1609,8 +1984,19 @@ const TRAVEL_HOME_JS: string = `
     card.setAttribute('aria-expanded', 'false');
     var top = add(card, 'div', 'journey-top');
     var title = add(top, 'div', 'journey-title');
-    add(title, 'div', 'journey-tag ' + source, sourceLabel(block));
-    add(title, 'h2', '', text(block.title) || text(block.kind) || '出行结果');
+    if (source === 'flight') {
+      var airlineLogoSrc = airlineLogoUrl(block);
+      if (airlineLogoSrc.length > 0) {
+        var airlineLogo = add(title, 'img', 'journey-airline-logo');
+        airlineLogo.src = airlineLogoSrc;
+        airlineLogo.alt = '';
+        airlineLogo.setAttribute('aria-hidden', 'true');
+      }
+      add(title, 'h2', '', [metric(block, ['airline']) || text(block.title), from + ' → ' + to].filter(Boolean).join(' · '));
+    } else {
+      add(title, 'div', 'journey-tag ' + source, sourceLabel(block));
+      add(title, 'h2', '', text(block.title) || text(block.kind) || '出行结果');
+    }
     if (selected) { add(title, 'div', 'journey-selected', '已选择'); }
     var expand = add(top, 'button', 'journey-expand', '展开');
     expand.type = 'button';
@@ -1635,7 +2021,7 @@ const TRAVEL_HOME_JS: string = `
       add(tripMeta, 'span', 'journey-availability', availabilityText);
     }
     var price = metric(block, ['price']);
-    var displayPrice = trainPrice(price);
+    var displayPrice = source === 'flight' ? flightPrice(price) : trainPrice(price);
     if (displayPrice.length > 0) {
       add(tripMeta, 'strong', 'journey-price', displayPrice);
     }
@@ -1683,9 +2069,6 @@ const TRAVEL_HOME_JS: string = `
     });
     addActionButtons(card, list(block.actions), false);
   });
-  if (cardBlocks.length > 0) {
-    setExpanded(text(cardBlocks[0].id) || '0');
-  }
   applyView();
 })();
 `;

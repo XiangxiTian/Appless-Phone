@@ -39,6 +39,11 @@ export interface HtmlHomeAction {
   args?: Object;
 }
 
+export interface HtmlHomeToolResultEntry {
+  title: string;
+  action: HtmlHomeAction;
+}
+
 export interface HtmlHomeMediaEmbed {
   provider: string;
   title: string;
@@ -95,6 +100,7 @@ export interface HtmlHomeHistoryItem {
   id: string;
   role: string;
   content: string;
+  toolResultEntry?: HtmlHomeToolResultEntry;
 }
 
 export interface HtmlHomePersona {
@@ -179,6 +185,7 @@ export interface HtmlHomeDocument {
   activeSectionId?: string;
   executionMode?: 'parallel' | 'serial';
   foodSearchContext?: A2uiFoodSearchContext;
+  toolResultEntry?: HtmlHomeToolResultEntry;
   deepSearch?: boolean;
   generatedAt: string;
 }

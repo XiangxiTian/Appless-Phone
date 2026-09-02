@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <meta name="theme-color" content="#faf9f6">
+  <title>Appless · 中文发现流设计原型</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15.5 5 8.5 12l7 7"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.2"/><path d="m15.3 15.3 4.5 4.5"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h3M11 17h9M14 4v6M8 14v6"/></symbol>
+    <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4.5 13v-1a7.5 7.5 0 0 1 15 0v1M4.5 13h3v6h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1ZM19.5 13h-3v6h3a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1Z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4M6 11H4.8A1.8 1.8 0 0 0 3 12.8v6.4A1.8 1.8 0 0 0 4.8 21h14.4a1.8 1.8 0 0 0 1.8-1.8v-6.4a1.8 1.8 0 0 0-1.8-1.8H18"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.45" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.45" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.45" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-like" viewBox="0 0 24 24"><path d="M8.5 21H5.3A1.3 1.3 0 0 1 4 19.7v-7.4A1.3 1.3 0 0 1 5.3 11h3.2M8.5 21V11l3.2-7a1.9 1.9 0 0 1 3.4 1.7L14.2 9H19a2 2 0 0 1 1.9 2.6l-2.1 7.1A3.2 3.2 0 0 1 15.7 21H8.5Z"/></symbol>
+    <symbol id="i-dislike" viewBox="0 0 24 24"><path d="M8.5 3H5.3A1.3 1.3 0 0 0 4 4.3v7.4A1.3 1.3 0 0 0 5.3 13h3.2M8.5 3v10l3.2 7a1.9 1.9 0 0 0 3.4-1.7l-.9-3.3H19a2 2 0 0 0 1.9-2.6l-2.1-7.1A3.2 3.2 0 0 0 15.7 3H8.5Z"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  </svg>
+
+  <div class="presentation-stage">
+    <main id="phone" class="phone-shell" aria-label="中文发现流交互原型">
+      <div class="status-bar" aria-label="状态栏">
+        <span class="status-time">09:43</span>
+        <span class="silent-indicator" aria-hidden="true"></span>
+        <span class="dynamic-island" aria-hidden="true"></span>
+        <div class="status-signals" aria-hidden="true">
+          <span class="cellular"><i></i><i></i><i></i><i></i></span>
+          <span class="wifi"><i></i></span>
+          <span class="battery"><b>39</b><i></i></span>
+        </div>
+      </div>
+
+      <section id="discover-view" class="discover-view" aria-label="发现">
+        <header class="discover-header">
+          <div class="title-row">
+            <div class="appless-brand" aria-label="Appless 主屏">
+              <img src="./assets/logo-appless.svg" alt="Appless">
+            </div>
+            <h1>发现</h1>
+            <div class="header-actions">
+              <button id="search-button" class="round-button" type="button" aria-label="搜索"><svg><use href="#i-search"></use></svg></button>
+              <button id="preferences-button" class="round-button" type="button" aria-label="调整发现流"><svg><use href="#i-sliders"></use></svg></button>
+            </div>
+          </div>
+          <nav id="channel-tabs" class="channel-tabs" aria-label="发现频道"></nav>
+          <div id="search-panel" class="search-panel" aria-hidden="true">
+            <svg><use href="#i-search"></use></svg>
+            <input id="search-input" type="search" placeholder="搜索你感兴趣的内容" autocomplete="off">
+            <button id="search-cancel" type="button">取消</button>
+          </div>
+        </header>
+
+        <div id="feed-scroll" class="feed-scroll">
+          <article id="lead-story" class="lead-story" aria-labelledby="lead-title" tabindex="0">
+            <img id="lead-image" class="lead-image" alt="" draggable="false">
+            <p id="lead-kicker" class="story-kicker"></p>
+            <h2 id="lead-title" class="lead-title"></h2>
+            <p class="lead-summary"><span id="lead-summary"></span><button id="see-more-button" type="button">阅读全文</button></p>
+            <div class="story-meta-row">
+              <time id="lead-time"></time>
+              <div class="story-actions-wrap">
+                <div class="story-actions">
+                  <button id="listen-button" type="button"><svg><use href="#i-headphones"></use></svg><span>听报道</span></button>
+                  <span class="action-divider" aria-hidden="true"></span>
+                  <button id="share-button" class="icon-action" type="button" aria-label="分享"><svg><use href="#i-share"></use></svg></button>
+                  <button id="more-button" class="icon-action" type="button" aria-label="更多选项" aria-expanded="false"><svg><use href="#i-more"></use></svg></button>
+                </div>
+                <div id="reaction-menu" class="reaction-menu" role="menu" aria-hidden="true">
+                  <button type="button" role="menuitem" data-reaction="like"><svg><use href="#i-like"></use></svg><span>喜欢</span></button>
+                  <button type="button" role="menuitem" data-reaction="dislike"><svg><use href="#i-dislike"></use></svg><span>不喜欢</span></button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article id="secondary-card" class="secondary-card" tabindex="0" aria-label="下一篇推荐">
+            <img id="secondary-image" alt="" draggable="false">
+            <p id="secondary-kicker" class="story-kicker"></p>
+            <h2 id="secondary-title"></h2>
+            <p id="secondary-summary" class="feed-story-summary"></p>
+            <div id="secondary-actions"></div>
+          </article>
+          <section id="more-stories" class="more-stories" aria-label="更多推荐内容"></section>
+          <p id="feed-end" class="feed-end" aria-live="polite">继续上滑，加载更多内容</p>
+        </div>
+      </section>
+
+      <aside id="agent-result-dock" class="agent-result-dock" aria-label="Agent 执行结果" aria-hidden="true">
+        <button id="agent-result-card" class="agent-result-card" type="button" aria-label="打开 Agent 执行结果">
+          <span class="agent-result-heading">
+            <img src="./assets/logo-appless.svg" alt="">
+            <span>
+              <span class="agent-result-label-row">
+                <b id="agent-result-label">Agent 已完成</b>
+                <em class="ai-generated-badge"><i aria-hidden="true">✦</i>AI 生成</em>
+              </span>
+              <small id="agent-result-tool">工具结果</small>
+            </span>
+            <i aria-hidden="true">↗</i>
+          </span>
+          <span class="agent-result-preview">
+            <small id="agent-result-question" class="agent-result-question"></small>
+            <strong id="agent-result-title"></strong>
+            <span id="agent-result-summary"></span>
+          </span>
+        </button>
+        <button id="agent-result-handle" class="agent-result-handle" type="button" aria-label="展开 Agent 结果卡"></button>
+      </aside>
+
+      <div id="voice-transcript-bubble" class="voice-transcript-bubble" aria-hidden="true" aria-live="polite">
+        <span class="voice-live-dot" aria-hidden="true"></span>
+        <p id="voice-transcript">我在听…</p>
+      </div>
+      <div id="voice-dock" class="voice-dock">
+        <button id="voice-orb" class="voice-orb" type="button" aria-label="按住说话">
+          <span class="voice-ring ring-one" aria-hidden="true"></span>
+          <span class="voice-ring ring-two" aria-hidden="true"></span>
+          <span class="agent-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="voice-core">
+            <img class="voice-mic" src="./assets/icon-microphone.svg" alt="">
+            <img class="voice-agent-logo" src="./assets/logo-appless.svg" alt="">
+            <span class="voice-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </span>
+        </button>
+        <span id="voice-status" class="voice-status">按住说话</span>
+      </div>
+
+      <section id="preferences-view" class="preferences-view" aria-label="调整发现流" aria-hidden="true">
+        <div class="preferences-sheet">
+          <div class="preferences-scroll">
+            <button id="preferences-close" class="round-button preferences-close" type="button" aria-label="关闭"><svg><use href="#i-close"></use></svg></button>
+            <header class="preferences-intro">
+              <h2>帮我们调校你的发现流</h2>
+              <p>轻点一次查看更多，再点一次减少推荐。</p>
+            </header>
+            <section class="customize-section" aria-labelledby="customize-title">
+              <h3 id="customize-title">自定义</h3>
+              <div class="custom-topic-input">
+                <input id="custom-topic" type="text" maxlength="16" placeholder="告诉我们你想看什么…">
+                <button id="add-topic" type="button" aria-label="添加兴趣"><svg><use href="#i-plus"></use></svg></button>
+              </div>
+              <div id="custom-topic-list" class="topic-cloud custom-topic-list"></div>
+            </section>
+            <div id="preference-groups" class="preference-groups"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="content-fullscreen" class="content-fullscreen" aria-label="内容详情" aria-hidden="true">
+        <header class="content-fullscreen-header">
+          <button id="content-back" class="round-button" type="button" aria-label="返回发现流"><svg><use href="#i-back"></use></svg></button>
+          <h2 id="content-fullscreen-heading">阅读</h2>
+          <img src="./assets/logo-appless.svg" alt="Appless">
+        </header>
+        <div id="content-fullscreen-scroll" class="content-fullscreen-scroll">
+          <article class="content-detail">
+            <div id="content-media" class="content-media">
+              <img id="content-image" alt="" draggable="false">
+              <button id="content-video-play" class="content-video-play" type="button" aria-label="播放视频"><span aria-hidden="true"></span></button>
+              <span id="content-video-duration" class="content-video-duration"></span>
+              <span class="content-video-progress" aria-hidden="true"><i></i></span>
+            </div>
+            <p id="content-kicker" class="story-kicker"></p>
+            <h1 id="content-title"></h1>
+            <p id="content-summary" class="content-summary"></p>
+            <div id="content-body" class="content-body"></div>
+          </article>
+        </div>
+        <div class="content-action-layer">
+          <div class="content-floating-actions">
+            <div class="content-action-group content-action-group--listen">
+              <button id="content-listen" type="button" aria-label="听报道"><svg><use href="#i-headphones"></use></svg><span>听报道</span></button>
+            </div>
+            <div class="content-action-group content-action-group--utility">
+              <button id="content-share" type="button" aria-label="分享"><svg><use href="#i-share"></use></svg></button>
+              <button id="content-more" type="button" aria-label="反馈" aria-expanded="false"><svg><use href="#i-more"></use></svg></button>
+            </div>
+          </div>
+          <div id="content-feedback-menu" class="content-feedback-menu" role="menu" aria-hidden="true">
+            <button type="button" role="menuitem" data-content-reaction="like"><svg><use href="#i-like"></use></svg><span>喜欢</span></button>
+            <button type="button" role="menuitem" data-content-reaction="dislike"><svg><use href="#i-dislike"></use></svg><span>不喜欢</span></button>
+          </div>
+        </div>
+      </section>
+
+      <section id="agent-result-fullscreen" class="agent-result-fullscreen" aria-label="Agent 执行结果详情" aria-hidden="true">
+        <header class="agent-fullscreen-header">
+          <button id="agent-result-back" class="round-button" type="button" aria-label="返回发现流"><svg><use href="#i-back"></use></svg></button>
+          <h2 id="agent-fullscreen-heading">Agent 结果</h2>
+          <img src="./assets/logo-appless.svg" alt="Appless">
+        </header>
+        <div class="agent-fullscreen-scroll">
+          <article class="agent-result-page">
+            <div class="agent-page-meta">
+              <p id="agent-full-tool" class="agent-page-kicker"></p>
+              <span class="ai-generated-badge ai-generated-badge--large"><i aria-hidden="true">✦</i>AI 生成</span>
+            </div>
+            <p id="agent-full-question" class="agent-full-question"></p>
+            <h1 id="agent-full-title"></h1>
+            <p id="agent-full-summary" class="agent-page-summary"></p>
+            <div id="agent-full-rows" class="agent-result-rows"></div>
+          </article>
+        </div>
+      </section>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <script id="surface-data" type="application/json">
+    {
+      "channels": [
+        {"id":"for-you","label":"推荐"},
+        {"id":"top-stories","label":"热点"},
+        {"id":"technology","label":"科技与科学"},
+        {"id":"business","label":"商业"}
+      ],
+      "articles": [
+        {"id":"city-renewal","type":"article","source":"城市观察","channel":"for-you","kicker":"正在热议","title":"城市更新有了新答案：老街区正在长出年轻生活","summary":"从菜市场、旧厂房到社区公园，越来越多城市开始用细小而持续的改变，让熟悉的街区重新回到日常生活里。","time":"1小时前","image":"./assets/hero-city.svg","alt":"阳光下焕新的城市街区与步行人群"},
+        {"id":"museum-night","type":"article","source":"文化现场","channel":"top-stories","kicker":"今日热点","title":"博物馆夜游持续升温，年轻人正在重新发现城市文化","summary":"延长开放时间、沉浸式导览与城市漫步串联起来，公共文化空间正成为夜生活的新去处。","time":"38分钟前","image":"./assets/hero-culture.svg","alt":"夜色中的现代博物馆与参观人群"},
+        {"id":"ai-device","type":"article","source":"科技前沿","channel":"technology","kicker":"科技前沿","title":"端侧智能加速落地，下一代设备开始真正理解用户","summary":"更小的模型、更高效的芯片和更自然的交互，正在让人工智能从云端走进手机、汽车与家庭。","time":"2小时前","image":"./assets/hero-technology.svg","alt":"蓝色光线连接芯片与智能设备"},
+        {"id":"new-consumption","type":"article","source":"商业观察","channel":"business","kicker":"商业观察","title":"新消费回到真实需求，线下小店迎来更稳健的增长","summary":"不再只追逐流量和速度，品牌开始重新关注产品、社区与复购，一批小而美的生意走向长期经营。","time":"3小时前","image":"./assets/hero-business.svg","alt":"社区商业街中的咖啡店与往来顾客"}
+      ],
+      "secondary":{"id":"asset-change","type":"article","source":"财经新知","kicker":"财经新知","title":"普通人的资产配置，正在发生哪些变化？","summary":"从追逐短期收益到重新重视现金流与风险，更多家庭开始用长期目标安排自己的资产。","time":"1小时前","image":"./assets/secondary-finance.svg","alt":"抽象的人民币与市场走势插画"},
+      "moreStories":[
+        {"id":"weekend-rail","kicker":"城市生活","title":"周末短途铁路持续升温，两小时生活圈正在形成","summary":"更密集的城际交通，让一场展览、一顿晚餐或一次山野散步都可以成为当天往返的小旅行。","time":"2小时前","image":"./assets/hero-culture.svg","alt":"夜色中的现代文化建筑"},
+        {"id":"home-ai","type":"video","source":"哔哩哔哩","duration":"08:24","kicker":"科技视频","title":"人工智能开始进入家庭，真正有用的交互是什么样？","summary":"比起增加更多按钮，新一代设备更关注理解上下文，并在合适的时机给出恰到好处的帮助。","time":"3小时前","image":"./assets/hero-technology.svg","alt":"发光芯片与智能设备相连"},
+        {"id":"small-shop","kicker":"商业观察","title":"社区小店正在回归，年轻人重新定义附近的生活","summary":"稳定的熟客关系、在地供应和更松弛的空间体验，让小规模经营找到自己的长期价值。","time":"4小时前","image":"./assets/hero-business.svg","alt":"温暖街区中的社区小店"},
+        {"id":"green-city","kicker":"绿色城市","title":"公园不只用来散步，它正在成为城市新的公共客厅","summary":"草地、市集、运动与文化活动被重新组织，开放空间开始承载更多真实而日常的相遇。","time":"5小时前","image":"./assets/hero-city.svg","alt":"绿意步道与城市居民"},
+        {"id":"long-term-money","kicker":"财经新知","title":"从追逐热点到长期配置，年轻人的理财观念正在改变","summary":"更多人开始把应急储备、稳定现金流和长期目标放在收益排名之前。","time":"6小时前","image":"./assets/secondary-finance.svg","alt":"抽象的资产配置与市场走势"},
+        {"id":"museum-city","kicker":"文化现场","title":"一座博物馆如何改变一片街区的夜晚","summary":"当展览、书店、餐饮与公共交通形成连接，文化空间也能成为城市更新的重要支点。","time":"昨天","image":"./assets/hero-culture.svg","alt":"夜晚开放的博物馆"},
+        {"id":"device-future","type":"video","source":"科技频道","duration":"12:06","kicker":"趋势视频","title":"下一代个人设备，可能不再从应用图标开始","summary":"意图、上下文和服务结果逐渐汇入同一个界面，软件的边界正在变得更轻。","time":"昨天","image":"./assets/hero-technology.svg","alt":"代表未来设备的蓝色芯片"},
+        {"id":"local-business","kicker":"消费趋势","title":"为什么越来越多品牌愿意把第一家店开进社区","summary":"真实需求、稳定复购和人与人之间的连接，正取代单纯追逐客流成为新的增长线索。","time":"2天前","image":"./assets/hero-business.svg","alt":"社区商业街与往来顾客"}
+      ],
+      "agentPrototype":{
+        "action":{"id":"discovery.agent.submit","label":"语音请求","kind":"prompt","variant":"primary"},
+        "demoMode":"answer",
+        "demoTranscript":"为什么有时候睡得越久反而越累",
+        "demoAnswerResult":{
+          "type":"answer",
+          "question":"为什么有时候睡得越久反而越累？",
+          "title":"睡眠质量不只由时长决定",
+          "answer":"睡得更久不一定代表休息得更好。睡眠被频繁打断、起床时间不稳定，或者在深睡阶段被叫醒，都可能让人醒来后更加疲惫。比强迫自己延长睡眠更有效的起点，通常是保持固定的起床时间，并观察醒来后的精神状态。"
+        },
+        "demoToolResult":{
+          "type":"tool",
+          "tool":"地图 · 餐厅搜索",
+          "title":"附近有 3 家适合安静晚餐的餐厅",
+          "summary":"综合当前距离、营业状态、环境和双人用餐体验整理。",
+          "rows":[
+            {"title":"野枝小馆","meta":"创意家常菜 · 步行 8 分钟","detail":"靠窗双人位充足，环境安静，营业至 21:30。"},
+            {"title":"山止食堂","meta":"日式定食 · 步行 12 分钟","detail":"吧台与双人桌都有余位，出餐稳定，营业至 22:00。"},
+            {"title":"小满厨房","meta":"时令小菜 · 骑行 7 分钟","detail":"空间温暖，菜品随季节更新，建议避开 19:00 高峰。"}
+          ]
+        }
+      },
+      "preferenceGroups":[
+        {"title":"时政","topics":["国际动态","国内时政","欧洲","亚洲","中东","拉丁美洲","非洲","选举","政府治理","军事","地缘政治"]},
+        {"title":"科技与科学","topics":["科技","科学","互联网","人工智能","初创公司","机器人","医疗","电子产品","能源","农业","气候","环境","核能","航天","编程","生物科技","生物学","物理","化学"]},
+        {"title":"商业与财经","topics":["财经","银行","股票","基金","房地产","消费","制造业","创业","零售","汽车"]}
+      ]
+    }
+  </script>
+  <script src="./app.js" defer></script>
+</body>
+</html>

@@ -756,14 +756,6 @@ function appendTravelBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
       htmlCalendarAction.variant = calendarAction.variant;
       block.actions.push(htmlCalendarAction);
     }
-    block.actions.push(clientAction('html_pin_travel', '固定到桌面', JSON.stringify({
-      index: index,
-      id: textOf(item.id),
-      source: textOf(item.source),
-      depart: textOf(item.depart),
-      from: textOf(item.from),
-      to: textOf(item.to)
-    }), component.id));
     document.blocks.push(block);
   });
 }
@@ -814,13 +806,6 @@ function appendTrainBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState
     );
     htmlCalendarAction.variant = calendarAction.variant;
     block.actions.push(htmlCalendarAction);
-    block.actions.push(clientAction('html_pin_train', '固定到桌面', JSON.stringify({
-      index: index,
-      trainCode: textOf(item.trainCode),
-      depart: textOf(item.depart),
-      from: textOf(item.from),
-      to: textOf(item.to)
-    }), component.id));
     document.blocks.push(block);
   });
 }
@@ -853,6 +838,7 @@ function appendFlightBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
     appendMetric(block.metrics, 'depTime', item.depTime);
     appendMetric(block.metrics, 'arrTime', item.arrTime);
     appendMetric(block.metrics, 'price', item.price);
+    appendMetric(block.metrics, 'travelDate', item.travelDate);
     const actionPayload = JSON.stringify({
       index: index,
       flightNo: textOf(item.flightNo),
@@ -872,7 +858,6 @@ function appendFlightBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
     );
     htmlCalendarAction.variant = calendarAction.variant;
     block.actions.push(htmlCalendarAction);
-    block.actions.push(clientAction('html_pin_flight', '固定到桌面', actionPayload, component.id));
     document.blocks.push(block);
   });
 }

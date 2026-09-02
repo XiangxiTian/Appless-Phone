@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 912" role="img" aria-labelledby="t d">
+  <title id="t">社区小店</title><desc id="d">温暖街区中的咖啡店与往来顾客</desc>
+  <defs><linearGradient id="s" y2="1"><stop stop-color="#f3d7b4"/><stop offset="1" stop-color="#9eb9b3"/></linearGradient><linearGradient id="h" x2="1" y2="1"><stop stop-color="#b95f45"/><stop offset="1" stop-color="#6f362d"/></linearGradient></defs>
+  <rect width="1200" height="912" fill="url(#s)"/><rect y="658" width="1200" height="254" fill="#8d8071"/><path d="M0 712c278-83 508-83 716-15 175 57 336 58 484 12v203H0Z" fill="#aa9b88"/>
+  <path d="M77 186h636v515H77Z" fill="url(#h)"/><path d="M58 218h674l-72 137H130Z" fill="#f2e0c1"/><path d="M69 218h91l-30 137H38ZM251 218h91l-7 137h-91ZM433 218h91l17 137h-91ZM615 218h91l42 137h-91Z" fill="#2d6c6d"/>
+  <rect x="147" y="389" width="259" height="238" rx="7" fill="#b8d8d1"/><rect x="449" y="389" width="190" height="312" rx="7" fill="#352f2c"/><rect x="474" y="416" width="140" height="184" fill="#96b9b2"/>
+  <g fill="#f7d18c"><circle cx="220" cy="475" r="42"/><circle cx="338" cy="515" r="32"/><rect x="207" y="565" width="149" height="17" rx="8"/></g><path d="M786 307h336v404H786Z" fill="#d1c4aa"/><g fill="#506d68"><rect x="835" y="355" width="94" height="128"/><rect x="971" y="355" width="94" height="128"/></g>
+  <g transform="translate(688 518)"><circle cx="70" cy="45" r="34" fill="#c78964"/><path d="M34 89c27-27 76-25 98 8l26 151H6Z" fill="#243f4d"/><path d="m44 245-12 137M123 245l33 137" stroke="#2e3132" stroke-width="26" stroke-linecap="round"/></g>
+  <g transform="translate(921 571) scale(.78)"><circle cx="70" cy="45" r="34" fill="#d8a47d"/><path d="M34 89c27-27 76-25 98 8l26 151H6Z" fill="#d0aa5a"/><path d="m44 245-12 137M123 245l33 137" stroke="#45413e" stroke-width="26" stroke-linecap="round"/></g>
+</svg>

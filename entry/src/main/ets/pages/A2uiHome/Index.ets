@@ -397,6 +397,8 @@ import {
   HtmlHomeAction,
   HtmlHomeBlock,
   HtmlHomeDocument,
+  HtmlHomeHistoryItem,
+  HtmlHomeToolResultEntry,
   WaterfallBehaviorActionArgs,
   WaterfallCardActionArgs
 } from './html/HtmlHomeTypes';
@@ -506,7 +508,18 @@ interface FoodStoreMapLocationActionArgs {
   searchArea: A2uiFoodSearchArea;
 }
 
+interface ConversationToolResultRecord {
+  messageId: string;
+  surface: A2uiSurfaceState;
+}
+
+interface ConversationToolResultActionArgs {
+  surfaceId: string;
+  sequence: number;
+}
+
 const CONNECTION_TEST_PROMPT: string = '连接检查：请返回 A2UI v0.9.1 setup surface，说明 Local API 已可用。';
+const DEFERRED_TOOL_RESULT_ACTION_ID: string = 'conversation.tool_result.open';
 const TRAVEL_STAGE55_DEVICE_FIXTURE_PURPOSE: string = '阶段5.5恢复验收样例';
 const TRAVEL_STAGE55_DEVICE_FIXTURE_RESTORE_COMMAND: string = 'travel-stage55-restore-original';
 const ENABLE_MULTI_AGENT_UI_LAYOUT_LLM: boolean = false;
@@ -1075,6 +1088,10 @@ struct Index {
   @State currentSurface: A2uiSurfaceState = initialSurface;
   @State surfaceRenderTick: number = 0;
   @State isAwaitingFirstSurface: boolean = false;
+  @State deferredToolResultSurface: A2uiSurfaceState | null = null;
+  @State deferredToolResultReady: boolean = false;
+  @State toolResultFullscreen: boolean = false;
+  @State conversationToolResultTick: number = 0;
   @State pendingFirecrawlToolId: string = '';
   @State inputText: string = '';
   @State bimRootIndex: number = 0;
@@ -1148,6 +1165,8 @@ struct Index {
   private htmlHomeCacheKey: string = '';
   private htmlHomeCacheHtml: string = '';
   private promptSubmitMotionGeneration: number = 0;
+  private toolResultReturnSurface: A2uiSurfaceState | null = null;
+  private conversationToolResults: ConversationToolResultRecord[] = [];
   private renderedPromptSubmitMotionGeneration: number = 0;
   private streamingAssistantMessageId: string = '';
   private streamingAssistantGeneration: number = 0;
@@ -4479,8 +4498,9 @@ struct Index {
         onPartial
       ),
       onSurface: (surface: A2uiSurfaceState, generation: number): boolean => {
+        const deferred = this.shouldDeferRuntimeToolSurface(surface, 'multi_agent');
         const accepted = this.applyRuntimeSurface(surface, 'multi_agent', generation);
-        if (accepted) {
+        if (accepted && !deferred) {
           this.isAwaitingFirstSurface = false;
         }
         return accepted;
@@ -4679,6 +4699,149 @@ struct Index {
     return this.surfaceSnapshot(this.currentSurface);
   }
 
+  private isConversationTurnSurface(surface: A2uiSurfaceState): boolean {
+    return surface.surfaceId.startsWith('surface_turn_conversation_') ||
+      surface.surfaceId.startsWith('surface_turn_error_');
+  }
+
+  private shouldDeferRuntimeToolSurface(
+    surface: A2uiSurfaceState,
+    owner: RuntimeOwner
+  ): boolean {
+    return owner === 'multi_agent' && this.isBusy && !this.isConversationTurnSurface(surface);
+  }
+
+  private stageRuntimeToolSurface(
+    surface: A2uiSurfaceState,
+    owner: RuntimeOwner,
+    generation: number
+  ): boolean {
+    if (!runtimeCallbackIsCurrent(
+      this.activeRuntimeOwner,
+      this.runtimeGeneration,
+      owner,
+      generation
+    )) {
+      return false;
+    }
+    const next = this.ownedSurface(surface, owner, generation);
+    const previous = this.deferredToolResultSurface;
+    if (previous !== null && previous.runtimeOwner === owner &&
+      previous.runtimeGeneration === generation) {
+      if (previous.surfaceId === next.surfaceId && previous.sequence === next.sequence) {
+        return true;
+      }
+      if (!shouldApplySurfaceUpdate(previous, next)) {
+        return false;
+      }
+    }
+    this.deferredToolResultSurface = next;
+    this.deferredToolResultReady = false;
+    aiLogInfo('[AIPhone][ToolResultDeferred] surfaceId=' + next.surfaceId +
+      ' intent=' + next.intent +
+      ' status=' + next.status +
+      ' sequence=' + next.sequence.toString());
+    return true;
+  }
+
+  private clearDeferredToolResult(): void {
+    this.deferredToolResultSurface = null;
+    this.deferredToolResultReady = false;
+    this.toolResultFullscreen = false;
+    this.toolResultReturnSurface = null;
+  }
+
+  private revealDeferredToolResultEntry(generation: number, messageId: string): void {
+    const surface = this.deferredToolResultSurface;
+    if (surface === null || messageId.length === 0 || surface.runtimeGeneration !== generation ||
+      surface.runtimeOwner !== 'multi_agent') {
+      return;
+    }
+    const next: ConversationToolResultRecord[] = [];
+    for (let index = 0; index < this.conversationToolResults.length; index++) {
+      if (this.conversationToolResults[index].messageId !== messageId) {
+        next.push(this.conversationToolResults[index]);
+      }
+    }
+    next.push({
+      messageId: messageId,
+      surface: this.surfaceSnapshot(surface)
+    });
+    this.conversationToolResults = next;
+    this.conversationToolResultTick = this.conversationToolResultTick + 1;
+    this.deferredToolResultReady = true;
+    aiLogInfo('[AIPhone][ToolResultEntryReady] surfaceId=' + surface.surfaceId);
+  }
+
+  private isToolExecutionPlaceholder(message: string): boolean {
+    return message.trim().toLowerCase() === 'showing the available tool results.';
+  }
+
+  private finalToolResultReply(message: string): string {
+    if (!this.isToolExecutionPlaceholder(message)) {
+      return message;
+    }
+    const surface = this.deferredToolResultSurface;
+    if (surface === null) {
+      return '工具已经执行完成，结果已整理好。';
+    }
+    if (surface.intent === 'travel') {
+      return '已为你查询并整理好可用的出行方案。点击下方入口，可以查看完整的车次、航班和时间信息。';
+    }
+    if (surface.intent === 'food') {
+      return '已为你整理好相关餐饮结果。点击下方入口，可以查看完整推荐和详细信息。';
+    }
+    const title = surface.title.trim().length > 0 ? surface.title.trim() : '工具结果';
+    return title + '已经整理完成。点击下方入口，可以查看完整结果。';
+  }
+
+  private openDeferredToolResult(): void {
+    const surface = this.deferredToolResultSurface;
+    if (surface === null || !this.deferredToolResultReady || this.isBusy) {
+      return;
+    }
+    this.toolResultReturnSurface = this.surfaceSnapshot(this.currentSurface);
+    this.toolResultFullscreen = true;
+    this.forceApplySurface(surface, 'open_deferred_tool_result');
+  }
+
+  private openConversationToolResult(action: A2uiAction): void {
+    const args = action.args as Record<string, Object | string | number | boolean | null | undefined> | undefined;
+    const surfaceId = args === undefined ? '' : this.actionText(args['surfaceId']);
+    const sequenceText = args === undefined ? '' : this.actionText(args['sequence']);
+    for (let index = this.conversationToolResults.length - 1; index >= 0; index--) {
+      const record = this.conversationToolResults[index];
+      if (record.surface.surfaceId !== surfaceId || record.surface.sequence.toString() !== sequenceText) {
+        continue;
+      }
+      this.toolResultReturnSurface = this.surfaceSnapshot(this.currentSurface);
+      this.toolResultFullscreen = true;
+      this.forceApplySurface(
+        this.ownedSurface(
+          this.surfaceSnapshot(record.surface),
+          this.activeRuntimeOwner,
+          this.runtimeGeneration
+        ),
+        'open_conversation_tool_result'
+      );
+      return;
+    }
+    this.openDeferredToolResult();
+  }
+
+  private closeDeferredToolResult(): void {
+    if (!this.toolResultFullscreen) {
+      return;
+    }
+    const returnSurface = this.toolResultReturnSurface === null ?
+      createTurnConversationSurface(this.runtimeGeneration) : this.toolResultReturnSurface;
+    this.toolResultFullscreen = false;
+    this.forceApplySurface(
+      this.ownedSurface(returnSurface, this.activeRuntimeOwner, this.runtimeGeneration),
+      'close_deferred_tool_result'
+    );
+  }
+
   private applyRuntimeSurface(
     surface: A2uiSurfaceState,
     owner: RuntimeOwner,
@@ -4691,6 +4854,9 @@ struct Index {
       generation
     )) {
       return false;
+    }
+    if (this.shouldDeferRuntimeToolSurface(surface, owner)) {
+      return this.stageRuntimeToolSurface(surface, owner, generation);
     }
     return this.applySurface(this.ownedSurface(surface, owner, generation));
   }
@@ -4752,6 +4918,41 @@ struct Index {
     }
   }
 
+  private withDeferredToolResultEntry(document: HtmlHomeDocument): HtmlHomeDocument {
+    if (this.toolResultFullscreen || document.kind !== 'generic' || document.source !== 'model') {
+      return document;
+    }
+    for (let historyIndex = 0; historyIndex < document.history.length; historyIndex++) {
+      const item: HtmlHomeHistoryItem = document.history[historyIndex];
+      for (let resultIndex = this.conversationToolResults.length - 1; resultIndex >= 0; resultIndex--) {
+        const record = this.conversationToolResults[resultIndex];
+        if (record.messageId !== item.id) {
+          continue;
+        }
+        const actionArgs: ConversationToolResultActionArgs = {
+          surfaceId: record.surface.surfaceId,
+          sequence: record.surface.sequence
+        };
+        const action: HtmlHomeAction = {
+          id: DEFERRED_TOOL_RESULT_ACTION_ID,
+          label: '展开完整结果',
+          prompt: '',
+          variant: 'primary',
+          kind: 'client',
+          args: actionArgs
+        };
+        const entry: HtmlHomeToolResultEntry = {
+          title: record.surface.title.trim().length > 0 ? record.surface.title.trim() : '查看完整结果',
+          action: action
+        };
+        item.toolResultEntry = entry;
+        document.actions.push(action);
+        break;
+      }
+    }
+    return document;
+  }
+
   private currentHtmlHomeDocument(): HtmlHomeDocument {
     if (shouldShowDeepSearchPendingSurface(this.showDeepSearch, this.isBusy)) {
       const document = createHtmlHomeDocument({
@@ -4797,14 +4998,14 @@ struct Index {
       isAwaitingFirstSurface: this.isAwaitingFirstSurface
     });
     if (document.kind !== 'aggregate-search') {
-      return document;
+      return this.withDeferredToolResultEntry(document);
     }
-    return createHtmlHomeDocument({
+    return this.withDeferredToolResultEntry(createHtmlHomeDocument({
       messages: this.messages,
       isBusy: this.isBusy,
       isAwaitingFirstSurface: this.isAwaitingFirstSurface,
       inputText: this.inputText
-    });
+    }));
   }
 
   private withMultiTaskActiveSection(document: HtmlHomeDocument): HtmlHomeDocument {
@@ -4835,6 +5036,12 @@ struct Index {
       this.isAwaitingFirstSurface ? 'awaiting' : 'ready',
       this.pendingFirecrawlToolId,
       this.showDeepSearch ? 'deepsearch' : 'surface',
+      this.deferredToolResultReady ? 'tool-result-ready' : 'tool-result-hidden',
+      this.toolResultFullscreen ? 'tool-result-fullscreen' : 'conversation-surface',
+      this.deferredToolResultSurface === null ? '' : this.deferredToolResultSurface.surfaceId,
+      this.deferredToolResultSurface === null ? '' : this.deferredToolResultSurface.sequence.toString(),
+      this.deferredToolResultSurface === null ? '' : this.deferredToolResultSurface.title,
+      this.conversationToolResultTick.toString(),
       this.messages.length.toString(),
       this.multiTaskActiveSectionId,
       this.foodLocationOwnerSurfaceId,
@@ -5392,6 +5599,9 @@ struct Index {
   private resetCurrentSession(): void {
     this.disposeHotelRuntime();
     this.closeDeepSearch();
+    this.clearDeferredToolResult();
+    this.conversationToolResults = [];
+    this.conversationToolResultTick = this.conversationToolResultTick + 1;
     this.showHistory = false;
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;
@@ -5428,6 +5638,25 @@ struct Index {
     this.inputText = '';
     this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
     this.resetPanelState();
+  }
+
+  private openBasicConversation(): void {
+    this.showHistory = false;
+    this.isBusy = false;
+    this.isAwaitingFirstSurface = false;
+    this.clearDeferredToolResult();
+    if (this.messages.length === 0) {
+      this.appendMessage('assistant', '你好，有什么我可以帮你的吗？');
+    }
+    this.forceApplySurface(
+      this.ownedSurface(
+        createTurnConversationSurface(this.runtimeGeneration),
+        this.activeRuntimeOwner,
+        this.runtimeGeneration
+      ),
+      'open_basic_conversation'
+    );
+    this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
   }
 
   private markChecking(message: string): void {
@@ -5513,7 +5742,7 @@ struct Index {
     answer: string,
     generation: number,
     finalReceived: boolean
-  ): void {
+  ): string {
     this.finishStreamingAssistantRevealState();
     this.streamingAssistantGeneration = generation;
     this.streamingAssistantMessageId = this.appendMessage(
@@ -5522,6 +5751,7 @@ struct Index {
     this.publishStreamingAssistantDomText(answer);
     this.isAwaitingFirstSurface = false;
     if (finalReceived) this.finishStreamingAssistantRevealState();
+    return this.messages.length === 0 ? '' : this.messages[this.messages.length - 1].id;
   }
 
   private queueStreamingAssistantAnswer(
@@ -5540,7 +5770,8 @@ struct Index {
   }
 
   private updateStreamingAssistantAnswer(answer: string, generation: number): void {
-    if (answer.length === 0 || !this.isBusy || !runtimeCallbackIsCurrent(
+    if (answer.length === 0 || this.isToolExecutionPlaceholder(answer) || !this.isBusy ||
+      !runtimeCallbackIsCurrent(
       this.activeRuntimeOwner,
       this.runtimeGeneration,
       'multi_agent',
@@ -5551,13 +5782,14 @@ struct Index {
     this.queueStreamingAssistantAnswer(answer, generation, false);
   }
 
-  private completeStreamingAssistantMessage(answer: string, generation: number): void {
+  private completeStreamingAssistantMessage(answer: string, generation: number): string {
     if (this.streamingAssistantGeneration === generation &&
       this.streamingAssistantMessageId.length > 0) {
+      const messageId = this.streamingAssistantMessageId;
       this.queueStreamingAssistantAnswer(answer, generation, true);
-      return;
+      return messageId;
     }
-    this.startStreamingAssistantReveal(answer, generation, true);
+    return this.startStreamingAssistantReveal(answer, generation, true);
   }
 
   private clearStreamingAssistantMessage(): void {
@@ -6079,6 +6311,7 @@ struct Index {
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
+    this.clearDeferredToolResult();
     this.clearStreamingAssistantMessage();
     const currentUserMessageId: string = this.appendMessage('user', visibleText);
     this.inputText = inputTextAfterPromptSubmit(this.inputText);
@@ -6193,10 +6426,10 @@ struct Index {
           turnGeneration
         );
       }
-      const readyMessage: string = result.message.length > 0 ?
-        result.message : this.currentSurface.title;
+      const readyMessage: string = this.finalToolResultReply(result.message.length > 0 ?
+        result.message : this.currentSurface.title);
       this.showMemoryResultToast(readyMessage);
-      this.completeStreamingAssistantMessage(readyMessage, turnGeneration);
+      const assistantMessageId = this.completeStreamingAssistantMessage(readyMessage, turnGeneration);
       const hasCurrentTurnSurface = this.currentSurface.runtimeOwner === 'multi_agent' &&
         this.currentSurface.runtimeGeneration === turnGeneration;
       if (!hasCurrentTurnSurface) {
@@ -6206,6 +6439,7 @@ struct Index {
           turnGeneration
         );
       }
+      this.revealDeferredToolResultEntry(turnGeneration, assistantMessageId);
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
         ok: true,
         status: 'ready',
@@ -6222,6 +6456,7 @@ struct Index {
       const message = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][A2uiHomeModelException] ' + logSnippet(message));
       const visibleError = visibleTurnFailureMessage(message);
+      this.clearDeferredToolResult();
       this.completeStreamingAssistantMessage(visibleError, turnGeneration);
       this.applyRuntimeSurface(
         createTurnFailureSurface(visibleError, turnGeneration),
@@ -9622,6 +9857,10 @@ struct Index {
       await this.handleMemoryCandidateClientAction(action);
       return;
     }
+    if (action.id === DEFERRED_TOOL_RESULT_ACTION_ID && action.kind === 'client') {
+      this.openConversationToolResult(action);
+      return;
+    }
     if (this.isLuckinPaymentActionId(action.id)) {
       this.logLuckinPaymentAction(action, 'dispatch');
     }
@@ -9810,24 +10049,35 @@ struct Index {
     await this.submitPrompt(action.prompt, action.label, action.id, action.args === undefined ? null : action.args);
   }
 
+  private activeToolSurface(): A2uiSurfaceState {
+    const deferred = this.deferredToolResultSurface;
+    if (this.activeRuntimeOwner === 'multi_agent' && this.isBusy && deferred !== null &&
+      deferred.runtimeOwner === 'multi_agent' && deferred.runtimeGeneration === this.runtimeGeneration) {
+      return deferred;
+    }
+    return this.currentSurface;
+  }
+
   private toolSurfaceId(): string {
-    if (this.currentSurface.surfaceId.length === 0 || this.currentSurface.status === 'error') {
+    const surface = this.activeToolSurface();
+    if (surface.surfaceId.length === 0 || surface.status === 'error') {
       return 'surface_model';
     }
-    return this.currentSurface.surfaceId;
+    return surface.surfaceId;
   }
 
   private multiTaskToolCallContext(toolId: string): MultiTaskToolCallContext | null {
-    if (!isMultiTaskSurface(this.currentSurface)) {
+    const surface = this.activeToolSurface();
+    if (!isMultiTaskSurface(surface)) {
       return null;
     }
-    const slotId = resolveMultiTaskSlotId(this.currentSurface, toolId);
+    const slotId = resolveMultiTaskSlotId(surface, toolId);
     if (slotId.length === 0) {
       return null;
     }
     const context: MultiTaskToolCallContext = {
       slotId: slotId,
-      childSurfaceId: childSurfaceIdForMultiTaskSlot(this.currentSurface.surfaceId, slotId)
+      childSurfaceId: childSurfaceIdForMultiTaskSlot(surface.surfaceId, slotId)
     };
     return context;
   }
@@ -10099,7 +10349,7 @@ struct Index {
       foodProviderDelayMs: normalizeFoodProviderDelayMs(this.foodProviderDelayMs),
       foodPartialThrottleMs: normalizeFoodPartialThrottleMs(this.foodPartialThrottleMs)
     });
-    const personaSourceSurface = directDetailBimAction ? this.canaryHostSurface() : this.currentSurface;
+    const personaSourceSurface = directDetailBimAction ? this.canaryHostSurface() : this.activeToolSurface();
     const multiTaskCtx = directDetailBimAction ? null : this.multiTaskToolCallContext(toolId);
     const inlineLuckinSwitch = !directDetailBimAction &&
       toolId === 'luckin.order.preview' && this.isLuckinOptionSwitchArgs(args) && multiTaskCtx === null;
@@ -10164,15 +10414,16 @@ struct Index {
           return;
         }
         if (multiTaskCtx !== null) {
+          const activeToolSurface = this.activeToolSurface();
           const nextSurface = this.applyMultiTaskSlotObservation(
-            this.currentSurface.intent === 'multi-task' &&
-              this.currentSurface.surfaceId === personaSourceSurface.surfaceId ?
-              this.currentSurface : personaSourceSurface,
+            activeToolSurface.intent === 'multi-task' &&
+              activeToolSurface.surfaceId === personaSourceSurface.surfaceId ?
+              activeToolSurface : personaSourceSurface,
             multiTaskCtx.slotId,
             toolId,
             raw
           );
-          this.applySurface(nextSurface);
+          this.applyRuntimeSurface(nextSurface, runtimeOwner, toolGeneration);
           this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
             ok: true,
             status: 'checking',
@@ -10222,9 +10473,10 @@ struct Index {
       resultObserver(result);
     }
     if (multiTaskCtx !== null) {
-      const mergeBase = this.currentSurface.intent === 'multi-task' &&
-        this.currentSurface.surfaceId === personaSourceSurface.surfaceId ?
-        this.currentSurface : personaSourceSurface;
+      const activeToolSurface = this.activeToolSurface();
+      const mergeBase = activeToolSurface.intent === 'multi-task' &&
+        activeToolSurface.surfaceId === personaSourceSurface.surfaceId ?
+        activeToolSurface : personaSourceSurface;
       if (inlinePaymentStatusPlan !== null && inlinePaymentStatusPlan.mode === 'multi-task') {
         const statusSurface = this.ownedSurface(
           copyPersonaData(personaSourceSurface, result.surface), runtimeOwner, toolGeneration
@@ -10247,7 +10499,9 @@ struct Index {
       const nextSurface = result.ok ?
         this.applyMultiTaskSlotObservation(mergeBase, multiTaskCtx.slotId, toolId, result.raw) :
         this.ownedSurface(copyPersonaData(personaSourceSurface, result.surface), runtimeOwner, toolGeneration);
-      this.applySurface(nextSurface);
+      if (!this.applyRuntimeSurface(nextSurface, runtimeOwner, toolGeneration)) {
+        return false;
+      }
       if (toolId === 'payment.account.setup') {
         await this.saveStripeReceivingProfile(result.surface);
       }
@@ -10336,7 +10590,7 @@ struct Index {
       this.appendMessage('assistant', '工具返回异常：' + result.error);
       return false;
     }
-    if (!inlineLuckinSwitch && !inlineLuckinPaymentStatus) {
+    if (runtimeOwner !== 'multi_agent' && !inlineLuckinSwitch && !inlineLuckinPaymentStatus) {
       this.appendMessage('assistant', resultSurface.title + ' 已返回 A2UI 结果。');
     }
     if (toolId === 'gmail.open.web') {
@@ -10711,6 +10965,7 @@ struct Index {
         deepSearchSettingsJson: this.deepSearchSettingsJson,
         deepSearchContextJson: this.deepSearchContextJson,
         locationServiceNotice: this.locationServiceNotice,
+        toolResultFullscreen: this.toolResultFullscreen,
         trainPresaleTrip: this.trainPresaleTrip,
         trainPresaleTask: this.trainPresaleTask,
         trainPresaleTaskState: this.trainPresaleTaskState,
@@ -10770,6 +11025,9 @@ struct Index {
         },
         onSendWelcomePrompt: (prompt: string): void => {
           void this.submitPrompt(prompt, prompt);
+        },
+        onOpenConversation: (): void => {
+          this.openBasicConversation();
         },
         onOpenWaterfall: (): void => {
           this.ensureInterestWaterfall();
@@ -10835,6 +11093,9 @@ struct Index {
         },
         onWaterfallFullscreenChange: (active: boolean): void => {
           this.waterfallFullscreen = active;
+        },
+        onCloseToolResult: (): void => {
+          this.closeDeferredToolResult();
         }
       })
 

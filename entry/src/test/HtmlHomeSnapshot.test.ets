@@ -375,20 +375,14 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.blocks[0].title).assertEqual('G1');
       expect(doc.blocks[0].source).assertEqual('12306');
       expect(doc.actions[0].id).assertEqual('travel_filter_train');
-      expect(JSON.stringify(doc.blocks[0].actions).indexOf('html_pin_travel')).assertLarger(-1);
-      expect(doc.blocks[0].actions.length).assertEqual(2);
+      expect(JSON.stringify(doc.blocks[0].actions).indexOf('html_pin_travel')).assertEqual(-1);
+      expect(doc.blocks[0].actions.length).assertEqual(1);
       expect(doc.blocks[0].actions[0].id).assertEqual('travel.calendar.add');
       expect(doc.blocks[0].actions[0].label).assertEqual('时间冲突');
       expect(doc.blocks[0].actions[0].variant).assertEqual('danger');
       expect(doc.blocks[0].calendarConflict).assertTrue();
       expect(doc.blocks[0].calendarConflictTitle).assertEqual('客户会议');
       expect(doc.blocks[0].actions[0].prompt.indexOf('"calendarCollection":"travel"')).assertLarger(-1);
-      expect(doc.blocks[0].actions[1].prompt.indexOf('"index":0')).assertLarger(-1);
-      expect(doc.blocks[0].actions[1].prompt.indexOf('"id":"train-G1"')).assertLarger(-1);
-      expect(doc.blocks[0].actions[1].prompt.indexOf('"source":"train"')).assertLarger(-1);
-      expect(doc.blocks[0].actions[1].prompt.indexOf('"depart":"09:00"')).assertLarger(-1);
-      expect(doc.blocks[0].actions[1].prompt.indexOf('"from":"SZ"')).assertLarger(-1);
-      expect(doc.blocks[0].actions[1].prompt.indexOf('"to":"SH"')).assertLarger(-1);
     });
 
     it('keeps the real 12306 booking action on mixed travel train cards', 0, () => {
@@ -419,7 +413,7 @@ export default function htmlHomeSnapshotTest() {
       expect(trainAction.label).assertEqual('去购票');
       expect(JSON.stringify(trainAction.args).indexOf('"bookingUrl":"' + bookingUrl + '"')).assertLarger(-1);
       expect(JSON.stringify(doc.blocks[1].actions).indexOf('train.booking.open')).assertEqual(-1);
-      expect(doc.blocks[1].actions.length).assertEqual(3);
+      expect(doc.blocks[1].actions.length).assertEqual(2);
       expect(doc.blocks[1].actions[0].id).assertEqual('flight.booking.ctrip.open');
       expect(doc.blocks[1].actions[0].label).assertEqual('去携程订票');
       expect(doc.blocks[1].actions[0].variant).assertEqual('primary');
@@ -430,7 +424,7 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.blocks[1].actions[0].prompt.indexOf('"travelDate":"2026-08-28"')).assertLarger(-1);
       expect(doc.blocks[1].actions[1].id).assertEqual('travel.calendar.add');
       expect(doc.blocks[1].actions[1].label).assertEqual('加入日历');
-      expect(doc.blocks[1].actions[2].id).assertEqual('html_pin_travel');
+      expect(JSON.stringify(doc.blocks[1].actions).indexOf('html_pin_travel')).assertEqual(-1);
       expect(isHtmlHomeActionAllowed(doc, doc.blocks[1].actions[0] as A2uiAction)).assertTrue();
     });
 
@@ -508,7 +502,7 @@ export default function htmlHomeSnapshotTest() {
       expect(serialized.indexOf('CZ8888')).assertLarger(-1);
       expect(serialized.indexOf('680')).assertLarger(-1);
       expect(doc.actions[0].id).assertEqual('travel_open');
-      expect(doc.blocks[0].actions.length).assertEqual(4);
+      expect(doc.blocks[0].actions.length).assertEqual(3);
       expect(doc.blocks[0].actions[0].id).assertEqual('train.booking.open');
       expect(doc.blocks[0].actions[0].label).assertEqual('去购票');
       expect(doc.blocks[0].actions[0].variant).assertEqual('primary');
@@ -518,20 +512,15 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.blocks[0].actions[1].prompt).assertEqual('alipays://platformapi/startapp?appId=20000135');
       expect(doc.blocks[0].actions[2].id).assertEqual('travel.calendar.add');
       expect(doc.blocks[0].actions[2].label).assertEqual('加入日历');
-      expect(doc.blocks[0].actions[3].id).assertEqual('html_pin_train');
-      expect(doc.blocks[1].actions.length).assertEqual(3);
+      expect(doc.blocks[1].actions.length).assertEqual(2);
       expect(doc.blocks[1].actions[0].id).assertEqual('flight.booking.ctrip.open');
       expect(doc.blocks[1].actions[0].label).assertEqual('去携程订票');
       expect(doc.blocks[1].actions[0].variant).assertEqual('primary');
       expect(doc.blocks[1].actions[1].id).assertEqual('travel.calendar.add');
       expect(doc.blocks[1].actions[1].label).assertEqual('加入日历');
-      expect(doc.blocks[1].actions[2].id).assertEqual('html_pin_flight');
       expect(JSON.stringify(doc.blocks[0].actions).indexOf('train.booking.open')).assertLarger(-1);
-      expect(JSON.stringify(doc.blocks[1].actions).indexOf('html_pin_flight')).assertLarger(-1);
-      expect(doc.blocks[0].actions[3].prompt.indexOf('"trainCode":"G123"')).assertLarger(-1);
-      expect(doc.blocks[0].actions[3].prompt.indexOf('"depart":"09:00"')).assertLarger(-1);
-      expect(doc.blocks[0].actions[3].prompt.indexOf('"from":"深圳北"')).assertLarger(-1);
-      expect(doc.blocks[0].actions[3].prompt.indexOf('"to":"上海虹桥"')).assertLarger(-1);
+      expect(JSON.stringify(doc.blocks[0].actions).indexOf('html_pin_train')).assertEqual(-1);
+      expect(JSON.stringify(doc.blocks[1].actions).indexOf('html_pin_flight')).assertEqual(-1);
       expect(doc.blocks[1].actions[0].prompt.indexOf('"flightNo":"CZ8888"')).assertLarger(-1);
       expect(doc.blocks[1].actions[0].prompt.indexOf('"depTime":"10:20"')).assertLarger(-1);
       expect(doc.blocks[1].actions[0].prompt.indexOf('"fromCode":"SZX"')).assertLarger(-1);
@@ -562,9 +551,9 @@ export default function htmlHomeSnapshotTest() {
       });
 
       expect(JSON.stringify(doc.blocks[0].metrics).indexOf('"label":"price"')).assertEqual(-1);
-      expect(doc.blocks[0].actions.length).assertEqual(2);
+      expect(doc.blocks[0].actions.length).assertEqual(1);
       expect(doc.blocks[0].actions[0].id).assertEqual('travel.calendar.add');
-      expect(doc.blocks[0].actions[1].id).assertEqual('html_pin_train');
+      expect(JSON.stringify(doc.blocks[0].actions).indexOf('html_pin_train')).assertEqual(-1);
     });
 
     it('drops completed thinking blocks after real results arrive', 0, () => {

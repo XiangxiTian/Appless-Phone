@@ -1,21 +1,4 @@
-import {
-  COLOR_ACCENT,
-  COLOR_ACCENT_DEEP,
-  COLOR_BUTTON_TEXT,
-  COLOR_CARD_EDGE,
-  COLOR_CARD_RAISED,
-  COLOR_ERROR,
-  COLOR_ERROR_LINE,
-  COLOR_ERROR_SOFT,
-  COLOR_FIELD,
-  COLOR_GLASS,
-  COLOR_INK,
-  COLOR_LINE,
-  COLOR_MUTED,
-  COLOR_TEXT,
-  statusBackground,
-  statusColor
-} from '../style/A2uiHomeTheme';
+import { statusBackground, statusColor } from '../style/A2uiHomeTheme';
 import {
   ComposioAuthConfigItem,
   CLOUD_CHAT_MODEL_DSV4,
@@ -35,12 +18,30 @@ import {
 } from './ComposioAuthViewData';
 import { composioToolkitLogoResource } from './ComposioLogoResource';
 
-const CONFIG_GUIDE_CARD_BACKGROUND: string = '#FAFFFFFF';
-const CONFIG_GUIDE_CARD_EDGE: string = '#7AFFFFFF';
-const CONFIG_GUIDE_CARD_SHADOW: string = '#21000000';
-const CONFIG_GUIDE_CARD_RADIUS: number = 30;
-const CONNECTION_BADGE_IDLE_BACKGROUND: string = '#F1EEEA';
-const CONNECTION_BADGE_CHECKING_BACKGROUND: string = '#F4E9E3';
+// Keep the configuration palette local so other A2UI scenes retain their own semantic colors.
+const COLOR_ACCENT: string = '#707A89';
+const COLOR_ACCENT_DEEP: string = '#5F6978';
+const COLOR_BUTTON_TEXT: string = '#F5F8FC';
+const COLOR_CARD_EDGE: string = '#D9FFFFFF';
+const COLOR_CARD_RAISED: string = '#CCFFFFFF';
+const COLOR_ERROR: string = '#A44D55';
+const COLOR_ERROR_LINE: string = '#BFD8AFB4';
+const COLOR_ERROR_SOFT: string = '#B8F7EBED';
+const COLOR_FIELD: string = '#DDE9EEF5';
+const COLOR_GLASS: string = '#B8FFFFFF';
+const COLOR_INK: string = '#202939';
+const COLOR_LINE: string = '#406D7783';
+const COLOR_MUTED: string = '#6F7783';
+const COLOR_TEXT: string = '#313746';
+const CONFIG_GUIDE_CARD_BACKGROUND: string = '#A6FFFFFF';
+const CONFIG_GUIDE_CARD_EDGE: string = '#D9FFFFFF';
+const CONFIG_GUIDE_CARD_SHADOW: string = '#24313E50';
+const CONFIG_GUIDE_CARD_RADIUS: number = 32;
+const CONFIG_HEADER_BUTTON_BACKGROUND: string = '#CCFFFFFF';
+const CONFIG_HEADER_BUTTON_EDGE: string = '#BFFFFFFF';
+const CONFIG_HEADER_BUTTON_SHADOW: string = '#18313E50';
+const CONNECTION_BADGE_IDLE_BACKGROUND: string = '#DDE9EEF5';
+const CONNECTION_BADGE_CHECKING_BACKGROUND: string = '#DDE9EEF5';
 const CONNECTION_BADGE_READY_BACKGROUND: string = '#E8F2EC';
 const CONNECTION_BADGE_ERROR_BACKGROUND: string = '#F7E9E7';
 const CONNECTION_BADGE_READY_COLOR: string = '#397154';
@@ -126,6 +127,30 @@ export struct ConfigPage {
     .padding({ left: 11, right: 12 })
     .backgroundColor(this.connectionBadgeBackground())
     .borderRadius(14)
+  }
+
+  @Builder
+  ConfigBackdrop() {
+    Stack({ alignContent: Alignment.Center }) {
+      Row()
+        .width('100%')
+        .height('100%')
+        .linearGradient({
+          angle: 145,
+          colors: [['#F8FAFD', 0], ['#E9EEF5', 0.52], ['#F4F0F7', 1]]
+        })
+      Row()
+        .width('92%')
+        .height('88%')
+        .borderRadius(42)
+        .backgroundColor('#52FFFFFF')
+        .border({ width: 1, color: '#99FFFFFF' })
+        .shadow({ radius: 42, color: '#152C3D58', offsetX: 0, offsetY: 18 })
+    }
+    .width('100%')
+    .height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .hitTestBehavior(HitTestMode.None)
   }
 
   private connectionBadgeColor(): string {
@@ -754,24 +779,20 @@ export struct ConfigPage {
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
-      Image($r('app.media.home_light_aurora_background'))
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-        .hitTestBehavior(HitTestMode.Transparent)
+      this.ConfigBackdrop()
 
       Scroll() {
         Column() {
         Row() {
           Button('返回')
-            .height(40)
-            .width(76)
-            .fontSize(13)
+            .height(44)
+            .width(82)
+            .fontSize(15)
             .fontColor(COLOR_INK)
-            .backgroundColor(COLOR_CARD_RAISED)
-            .borderRadius(10)
-            .border({ width: 1, color: COLOR_CARD_EDGE })
+            .backgroundColor(CONFIG_HEADER_BUTTON_BACKGROUND)
+            .borderRadius(22)
+            .border({ width: 1, color: CONFIG_HEADER_BUTTON_EDGE })
+            .shadow({ radius: 10, color: CONFIG_HEADER_BUTTON_SHADOW, offsetX: 0, offsetY: 4 })
             .onClick(() => {
               this.onBack();
             })
@@ -831,13 +852,13 @@ export struct ConfigPage {
           Column() {
             Row() {
               Button('DSV4')
-                .height(36)
+                .height(40)
                 .layoutWeight(1)
                 .fontSize(11)
                 .fontColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_DSV4) ? COLOR_BUTTON_TEXT : COLOR_INK)
                 .backgroundColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_DSV4) ?
                   COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
-                .borderRadius(9)
+                .borderRadius(20)
                 .border({
                   width: 1,
                   color: this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_DSV4) ? COLOR_ACCENT : COLOR_CARD_EDGE
@@ -848,13 +869,13 @@ export struct ConfigPage {
                   this.onSelectModelPreset(CLOUD_CHAT_MODEL_DSV4);
                 })
               Button(CLOUD_CHAT_MODEL_GLM52)
-                .height(36)
+                .height(40)
                 .layoutWeight(1)
                 .fontSize(11)
                 .fontColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_GLM52) ? COLOR_BUTTON_TEXT : COLOR_INK)
                 .backgroundColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_GLM52) ?
                   COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
-                .borderRadius(9)
+                .borderRadius(20)
                 .border({
                   width: 1,
                   color: this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_GLM52) ? COLOR_ACCENT : COLOR_CARD_EDGE
@@ -867,14 +888,14 @@ export struct ConfigPage {
             .width('100%')
             Row() {
               Button(CLOUD_CHAT_MODEL_QWEN37_PLUS)
-                .height(36)
+                .height(40)
                 .layoutWeight(1)
                 .fontSize(11)
                 .fontColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_PLUS) ?
                   COLOR_BUTTON_TEXT : COLOR_INK)
                 .backgroundColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_PLUS) ?
                   COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
-                .borderRadius(9)
+                .borderRadius(20)
                 .border({
                   width: 1,
                   color: this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_PLUS) ? COLOR_ACCENT : COLOR_CARD_EDGE
@@ -885,14 +906,14 @@ export struct ConfigPage {
                   this.onSelectModelPreset(CLOUD_CHAT_MODEL_QWEN37_PLUS);
                 })
               Button(CLOUD_CHAT_MODEL_QWEN37_MAX)
-                .height(36)
+                .height(40)
                 .layoutWeight(1)
                 .fontSize(11)
                 .fontColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_MAX) ?
                   COLOR_BUTTON_TEXT : COLOR_INK)
                 .backgroundColor(this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_MAX) ?
                   COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
-                .borderRadius(9)
+                .borderRadius(20)
                 .border({
                   width: 1,
                   color: this.isCloudChatModelSelected(CLOUD_CHAT_MODEL_QWEN37_MAX) ? COLOR_ACCENT : COLOR_CARD_EDGE
@@ -915,7 +936,7 @@ export struct ConfigPage {
             .fontColor(COLOR_TEXT)
             .placeholderColor(COLOR_MUTED)
             .backgroundColor(COLOR_FIELD)
-            .borderRadius(9)
+            .borderRadius(14)
             .border({ width: 1, color: COLOR_CARD_EDGE })
             .padding({ left: 10, right: 10 })
             .onChange((value: string) => {
@@ -1002,7 +1023,7 @@ export struct ConfigPage {
               .fontColor(COLOR_TEXT)
               .placeholderColor(COLOR_MUTED)
               .backgroundColor(COLOR_FIELD)
-              .borderRadius(9)
+              .borderRadius(14)
               .border({ width: 1, color: COLOR_CARD_EDGE })
               .padding({ left: 10, right: 10 })
               .onChange((value: string) => {
@@ -1016,7 +1037,7 @@ export struct ConfigPage {
               .fontColor(COLOR_TEXT)
               .placeholderColor(COLOR_MUTED)
               .backgroundColor(COLOR_FIELD)
-              .borderRadius(9)
+              .borderRadius(14)
               .border({ width: 1, color: COLOR_CARD_EDGE })
               .padding({ left: 10, right: 10 })
               .type(InputType.Password)
@@ -1032,7 +1053,7 @@ export struct ConfigPage {
               .fontColor(COLOR_TEXT)
               .placeholderColor(COLOR_MUTED)
               .backgroundColor(COLOR_FIELD)
-              .borderRadius(9)
+              .borderRadius(14)
               .border({ width: 1, color: COLOR_CARD_EDGE })
               .padding({ left: 10, right: 10 })
               .onChange((value: string) => {
@@ -1079,7 +1100,7 @@ export struct ConfigPage {
             .fontSize(15)
             .fontColor(COLOR_BUTTON_TEXT)
             .backgroundColor(COLOR_ACCENT_DEEP)
-            .borderRadius(11)
+            .borderRadius(22)
             .border({ width: 1, color: COLOR_ACCENT })
             .margin({ top: 16 })
             .onClick(() => {
@@ -1103,7 +1124,7 @@ export struct ConfigPage {
         .shadow({ radius: 22, color: CONFIG_GUIDE_CARD_SHADOW, offsetX: 0, offsetY: 12 })
         }
         .width('100%')
-        .padding(16)
+        .padding({ left: 16, right: 16, top: 16, bottom: 32 })
       }
       .width('100%')
       .height('100%')
@@ -1111,7 +1132,6 @@ export struct ConfigPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#FFFDF9')
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .backgroundColor('#F4F6FA')
   }
 }

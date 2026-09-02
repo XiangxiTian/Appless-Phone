@@ -3,6 +3,7 @@
     "products": [
       {
         "name": "default",
+        "signingConfig": "default",
         "targetSdkVersion": "6.1.0(23)",
         "compatibleSdkVersion": "6.0.2(22)",
         "runtimeOS": "HarmonyOS",
@@ -21,6 +22,21 @@
       },
       {
         "name": "release"
+      }
+    ],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/txx1220/.ohos/config/default_Appless-Phone-home-v7-light-minimal_EIv0uy73ebzSZWYUdfVveKAZrr9M06IeuLOgBLXL9F8=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BB1162153A6C95546A0F40184F3B4AFAD1E8B9E39E361D801C2F5BD23E9E0352D5224E35CE1189D",
+          "profile": "/Users/txx1220/.ohos/config/default_Appless-Phone-home-v7-light-minimal_EIv0uy73ebzSZWYUdfVveKAZrr9M06IeuLOgBLXL9F8=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/txx1220/.ohos/config/default_Appless-Phone-home-v7-light-minimal_EIv0uy73ebzSZWYUdfVveKAZrr9M06IeuLOgBLXL9F8=.p12",
+          "storePassword": "0000001B9152F0A996F302E0DDA4562C3AF5AEA5944EA5B6E3ACE9FCBCB9ACECCFB77C1712EA99F9C6D072"
+        }
       }
     ]
   },

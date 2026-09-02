@@ -1,0 +1,198 @@
+/* Full-screen AI Live conversation */
+.ai-live-view {
+  position: absolute;
+  z-index: 185;
+  inset: 0;
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  background: linear-gradient(156deg, #0b4d99 0%, #126bc6 48%, #064a9d 100%);
+  color: #ffffff;
+  pointer-events: none;
+  transition: opacity 320ms ease, visibility 0s linear 320ms;
+}
+
+.ai-live-view.visible {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
+.ai-live-character {
+  position: absolute;
+  z-index: 3;
+  top: 132px;
+  left: 50%;
+  display: grid;
+  width: 470px;
+  height: 410px;
+  transform: translateX(-50%);
+  place-items: center;
+  pointer-events: none;
+  transition: opacity 360ms ease, transform 620ms cubic-bezier(0.2, 0.78, 0.2, 1);
+}
+
+.ai-live-character img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 26px 45px rgba(0, 40, 100, 0.24));
+  animation: live-character-breathe 5.6s ease-in-out infinite alternate;
+}
+
+.ai-live-self-view {
+  position: absolute;
+  z-index: 4;
+  top: 102px;
+  right: 22px;
+  width: 96px;
+  height: 128px;
+  overflow: hidden;
+  visibility: hidden;
+  transform: translateY(-8px) scale(0.96);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 24px;
+  opacity: 0;
+  background: #5d7590;
+  box-shadow: 0 16px 38px rgba(0, 27, 66, 0.24);
+  transition: opacity 220ms ease, transform 280ms ease, visibility 0s linear 280ms;
+}
+
+.ai-live-self-view > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ai-live-self-view small {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ai-live-view[data-video-off="false"] .ai-live-self-view {
+  visibility: visible;
+  transform: none;
+  opacity: 1;
+  transition-delay: 0s;
+}
+
+.ai-live-controls {
+  position: absolute;
+  z-index: 5;
+  right: 31px;
+  bottom: 35px;
+  left: 31px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: opacity 300ms ease, transform 420ms cubic-bezier(0.2, 0.78, 0.2, 1);
+}
+
+.ai-live-control {
+  display: grid;
+  width: 70px;
+  height: 70px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  color: #ffffff;
+  box-shadow: 0 10px 28px rgba(0, 24, 61, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.13);
+  transition: transform 160ms ease, background 200ms ease, box-shadow 200ms ease;
+}
+
+.ai-live-control:active {
+  transform: scale(0.94);
+}
+
+.microphone-control {
+  background: rgba(43, 82, 132, 0.88);
+}
+
+.microphone-control[aria-pressed="false"] {
+  background: rgba(27, 108, 206, 0.96);
+  box-shadow: 0 0 0 1px rgba(131, 192, 255, 0.36), 0 11px 30px rgba(0, 37, 86, 0.25);
+}
+
+.video-control {
+  background: rgba(112, 116, 123, 0.82);
+}
+
+.video-control[aria-pressed="false"] {
+  background: rgba(43, 82, 132, 0.88);
+}
+
+.end-control {
+  border-color: rgba(255, 255, 255, 0.17);
+  background: #ff3b47;
+  box-shadow: 0 12px 30px rgba(99, 0, 10, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.live-control-icon {
+  display: block;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  opacity: 0.98;
+  filter: invert(1);
+}
+
+.video-control .live-control-icon {
+  width: 39px;
+  height: 39px;
+}
+
+.end-control .live-control-icon {
+  width: 35px;
+  height: 35px;
+}
+
+.device-screen.ai-live-active .status-time {
+  color: #ffffff;
+}
+
+.device-screen.ai-live-active .status-glyphs img {
+  filter: invert(1);
+}
+
+.ai-live-view.is-ending .ai-live-character {
+  transform: translateX(-50%) translateY(52px) scale(0.7);
+  opacity: 0;
+}
+
+.ai-live-view.is-ending .ai-live-character img {
+  animation-play-state: paused;
+}
+
+.ai-live-view.is-ending .ai-live-controls,
+.ai-live-view.is-ending .ai-live-self-view {
+  transform: translateY(24px) scale(0.94);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.device-screen.memory-flow-active .status-time {
+  color: #252a30;
+  transition: color 320ms ease;
+}
+
+.device-screen.memory-flow-active .status-glyphs img {
+  filter: none;
+  transition: filter 320ms ease;
+}
+
+@keyframes live-character-breathe {
+  from { transform: translateY(3px) scale(0.985); }
+  to { transform: translateY(-5px) scale(1.015); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-live-character img {
+    animation: none;
+  }
+}

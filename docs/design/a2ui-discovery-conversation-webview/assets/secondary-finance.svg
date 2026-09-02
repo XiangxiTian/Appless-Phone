@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 828" role="img" aria-labelledby="t d">
+  <title id="t">资产配置</title><desc id="d">人民币纸张与上升的市场走势抽象插画</desc>
+  <defs><linearGradient id="b" x2="1" y2="1"><stop stop-color="#c5d2c6"/><stop offset=".5" stop-color="#8ca79c"/><stop offset="1" stop-color="#586d66"/></linearGradient><linearGradient id="p" x2="1" y2="1"><stop stop-color="#efe8c9"/><stop offset="1" stop-color="#b8c9a6"/></linearGradient></defs>
+  <rect width="1200" height="828" fill="url(#b)"/><g opacity=".45" stroke="#dbe7df" stroke-width="3"><path d="M0 118h1200M0 260h1200M0 402h1200M0 544h1200M0 686h1200M155 0v828M355 0v828M555 0v828M755 0v828M955 0v828"/></g>
+  <g transform="rotate(-12 528 438)"><rect x="110" y="213" width="837" height="411" rx="28" fill="url(#p)" stroke="#677f70" stroke-width="13"/><rect x="150" y="253" width="757" height="331" rx="18" fill="none" stroke="#7b9480" stroke-width="8"/><circle cx="529" cy="419" r="112" fill="#d5d9b7" stroke="#80957b" stroke-width="9"/><path d="M477 447c36-81 67-81 104 0M529 343v151M483 391h95" fill="none" stroke="#718872" stroke-width="17" stroke-linecap="round"/></g>
+  <path d="M88 698 301 548l155 67 231-223 174 81 241-274" fill="none" stroke="#f8d680" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/><path d="m1018 192 101-11-29 97" fill="none" stroke="#f8d680" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,1736 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>AIOS — Activity First</title>
+    <link rel="stylesheet" href="css/global.css" />
+    <link rel="stylesheet" href="css/home.css" />
+    <link rel="stylesheet" href="css/library.css" />
+    <link rel="stylesheet" href="css/live.css" />
+    <link rel="stylesheet" href="css/journal.css" />
+    <link rel="stylesheet" href="css/reader.css" />
+    <link rel="stylesheet" href="css/music.css" />
+    <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+  </head>
+  <body>
+    <main class="preview-stage" aria-label="AIOS concept prototype">
+      <div class="prototype-navigation-shell" id="prototypeNavigationShell">
+        <nav class="prototype-navigator" id="prototypeNavigator" aria-label="Prototype Navigator">
+          <span class="prototype-label">Prototype</span>
+          <div class="prototype-pills">
+            <button class="active" id="prototypeNowButton" data-prototype="now" aria-current="page" aria-haspopup="menu" aria-expanded="false" aria-controls="prototypeNowMenu">Now</button>
+            <button data-prototype="library">库</button>
+            <button data-prototype="spaces">Spaces</button>
+            <button data-prototype="activity" aria-haspopup="menu" aria-expanded="false" aria-controls="prototypeActivityMenu">Activity</button>
+            <button data-prototype="object">Object</button>
+            <button data-prototype="gallery">合集</button>
+            <button data-prototype="music">Music</button>
+            <button data-prototype="ai-command">AI Command</button>
+            <button data-prototype="live">Live</button>
+            <button data-prototype="generating">Generating</button>
+            <button data-prototype="journal">Journal</button>
+            <button data-prototype="journal-open">Journal Open</button>
+            <button data-prototype="journal-search">Journal Search</button>
+            <button data-prototype="journal-filing">Journal Filing</button>
+          </div>
+        </nav>
+        <div class="prototype-activity-menu prototype-now-menu" id="prototypeNowMenu" role="menu" aria-label="选择 Now 场景" aria-hidden="true">
+          <button type="button" role="menuitemradio" data-now-scene="home" aria-checked="true">
+            <img src="assets/icons/sf-symbols/checkmark.png" alt="" />
+            <span>主屏幕</span>
+          </button>
+          <button type="button" role="menuitemradio" data-now-scene="dining" aria-checked="false">
+            <img src="assets/icons/sf-symbols/checkmark.png" alt="" />
+            <span>点餐场景</span>
+          </button>
+          <button type="button" role="menuitemradio" data-now-scene="travel" aria-checked="false">
+            <img src="assets/icons/sf-symbols/checkmark.png" alt="" />
+            <span>上海出差</span>
+          </button>
+        </div>
+        <div class="prototype-activity-menu" id="prototypeActivityMenu" role="menu" aria-label="选择 Activity" aria-hidden="true">
+          <button type="button" role="menuitemradio" data-activity-page="aios" aria-checked="true">
+            <img src="assets/icons/sf-symbols/checkmark.png" alt="" />
+            <span>AIOS 概念设计</span>
+          </button>
+          <button type="button" role="menuitemradio" data-activity-page="shanghai" aria-checked="false">
+            <img src="assets/icons/sf-symbols/checkmark.png" alt="" />
+            <span>上海出差</span>
+          </button>
+          <button type="button" role="menuitemradio" data-activity-page="dinner" aria-checked="false">
+            <img src="assets/icons/sf-symbols/checkmark.png" alt="" />
+            <span>周末聚餐</span>
+          </button>
+        </div>
+      </div>
+      <div class="device-slot" id="deviceSlot">
+        <div class="device-wrap" id="deviceWrap">
+        <div class="device-shell">
+          <div class="device-screen now-home" id="deviceScreen">
+            <div class="dynamic-island" aria-hidden="true"><span></span></div>
+            <div class="status-time" id="statusTime">9:41</div>
+            <div class="status-glyphs" aria-hidden="true">
+              <img class="status-symbol cellular-symbol" src="assets/icons/sf-symbols/cellularbars.png" alt="" />
+              <img class="status-symbol wifi-symbol" src="assets/icons/sf-symbols/wifi.png" alt="" />
+              <img class="status-symbol battery-symbol" src="assets/icons/sf-symbols/battery.100percent.png" alt="" />
+            </div>
+
+            <div class="home-view" id="homeView">
+              <header class="home-header">
+                <div class="home-time-block">
+                  <h1 id="homeClock">22:07</h1>
+                  <button class="home-date-trigger" id="homeDateTrigger" type="button" aria-expanded="false" aria-controls="calendarLaunchPill">8 月 24 日 · 周一</button>
+                </div>
+              </header>
+
+              <div class="home-content" id="homeContent">
+                <section class="current-section" aria-label="当前活动">
+                  <div class="current-activity" id="currentActivity" role="region" aria-roledescription="轮播" aria-label="当前活动，左右滑动切换">
+                    <button class="current-activity-card current-activity-main current-activity-aios is-active" type="button" data-home-activity-card data-activity-page="aios" data-activity-name="AIOS 概念设计" aria-label="继续 AIOS 概念设计" aria-current="true">
+                      <span class="activity-heading">
+                        <span class="activity-title">AIOS 概念设计</span>
+                      </span>
+
+                      <span class="object-stack" aria-label="项目中的界面、架构与语音内容预览">
+                        <span class="object-preview preview-interface">
+                          <img src="assets/activity/core-screens-cutout.png" alt="AIOS 界面草图" />
+                        </span>
+                        <span class="object-preview preview-model">
+                          <img src="assets/activity/workflow-sketch.png" alt="AIOS 架构图" />
+                        </span>
+                        <span class="home-waveform" aria-label="语音纪要">
+                          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                        </span>
+                      </span>
+
+                    </button>
+
+                    <button class="current-activity-card current-activity-main current-activity-shanghai is-next" type="button" data-home-activity-card data-activity-page="shanghai" data-activity-name="上海出差" aria-label="继续上海出差" aria-hidden="true" tabindex="-1">
+                      <span class="activity-heading">
+                        <span class="activity-title">上海出差</span>
+                      </span>
+
+                      <span class="object-stack home-shanghai-stack" aria-label="报告、行程与票据预览">
+                        <span class="object-preview home-report-preview">
+                          <img src="assets/activity/shanghai/agent-report-cover.png" alt="洞察报告封面" />
+                        </span>
+                        <span class="object-preview home-itinerary-preview">
+                          <img src="assets/activity/shanghai/travel-itinerary.png" alt="行程信息" />
+                        </span>
+                        <span class="object-preview home-invoice-preview">
+                          <img src="assets/activity/shanghai/flight-itinerary.png" alt="报销票据" />
+                        </span>
+                      </span>
+
+                    </button>
+
+                    <button class="current-activity-card current-activity-main current-activity-dinner is-previous" type="button" data-home-activity-card data-activity-page="dinner" data-activity-name="周末聚餐" aria-label="继续周末聚餐" aria-hidden="true" tabindex="-1">
+                      <span class="activity-heading">
+                        <span class="activity-title">周末聚餐</span>
+                      </span>
+
+                      <span class="object-stack home-dinner-stack" aria-label="餐厅、路线与菜品预览">
+                        <span class="object-preview home-restaurant-preview">
+                          <img src="assets/activity/weekend-dinner/restaurant.png" alt="餐厅" />
+                        </span>
+                        <span class="object-preview home-route-preview">
+                          <img src="assets/activity/weekend-dinner/route-map.png" alt="路线" />
+                        </span>
+                        <span class="object-preview home-dishes-preview">
+                          <img src="assets/activity/weekend-dinner/dishes.png" alt="想吃的菜品" />
+                        </span>
+                      </span>
+
+                    </button>
+                  </div>
+                </section>
+
+                <section class="attention-section" aria-labelledby="attentionTitle">
+                  <div class="section-heading">
+                    <h2 id="attentionTitle">需要处理</h2>
+                  </div>
+
+                  <div class="attention-list">
+                    <article class="attention-item attention-trip" data-attention="trip">
+                      <button class="attention-summary" aria-expanded="false">
+                        <span class="attention-card-icon"><img src="assets/icons/sf-symbols/calendar.png" alt="" /></span>
+                        <span class="attention-copy">
+                          <strong>上海出差</strong>
+                          <span>确认机票</span>
+                        </span>
+                        <img src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                      </button>
+                      <div class="attention-detail" aria-hidden="true">
+                        <p>Air China · 10:30–12:45 · ¥1,240</p>
+                        <div class="inline-actions">
+                          <button class="filled-action" data-action="review">查看</button>
+                          <button data-action="later">稍后</button>
+                        </div>
+                      </div>
+                    </article>
+
+                    <article class="attention-item attention-collaboration" data-attention="collaboration">
+                      <button class="attention-summary" aria-expanded="false">
+                        <span class="actor-avatar" aria-label="Lin"><img src="assets/profile/lin-crocodile.png" alt="Lin" /></span>
+                        <span class="attention-copy">
+                          <strong>AIOS 协作</strong>
+                          <span>Lin 分享了架构笔记</span>
+                        </span>
+                        <img src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                      </button>
+                      <div class="attention-detail" aria-hidden="true">
+                        <p>Activity continuity and return paths</p>
+                        <div class="inline-actions">
+                          <button class="filled-action" data-action="review">查看</button>
+                          <button data-action="later">稍后</button>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <section class="activity-space" id="activitySpace" aria-hidden="true">
+              <div class="space-scroll">
+                <header class="space-header">
+                  <button class="space-back icon-button" id="spaceBack" aria-label="返回现在">
+                    <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+                  </button>
+                  <div class="space-actions">
+                    <button class="icon-button" aria-label="更多活动选项"><img src="assets/icons/sf-symbols/ellipsis.png" alt="" /></button>
+                  </div>
+                </header>
+
+                <div class="activity-page active" data-activity-page-view="aios">
+                  <div class="space-intro">
+                    <h1 id="activitySpaceTitle" tabindex="-1">AIOS 概念设计</h1>
+                    <nav class="activity-filters" aria-label="筛选项目内容">
+                      <button class="active" type="button" data-activity-filter="all" aria-pressed="true">全部</button>
+                      <button type="button" data-activity-filter="plan" aria-pressed="false">方案</button>
+                      <button type="button" data-activity-filter="sketch" aria-pressed="false">草图</button>
+                      <button type="button" data-activity-filter="note" aria-pressed="false">纪要</button>
+                      <button type="button" data-activity-filter="reference" aria-pressed="false">参考</button>
+                    </nav>
+                  </div>
+
+                  <section class="activity-board" aria-label="AIOS 概念设计项目内容">
+                  <button class="activity-board-card activity-feature-card primary-object" type="button" data-activity-card data-activity-kind="plan" data-activity-toast="已打开当前核心方案。">
+                    <span class="activity-feature-copy">
+                      <small>当前核心方案</small>
+                      <strong>AIOS<br />概念设计</strong>
+                      <span>Activity · Object · Capability</span>
+                    </span>
+                    <span class="activity-feature-preview">
+                      <img src="assets/activity/core-screens-cutout.png" alt="AIOS 当前核心方案界面" />
+                    </span>
+                  </button>
+
+                  <button class="activity-board-card activity-diagram-card" type="button" data-activity-card data-activity-kind="sketch" data-activity-toast="已打开架构关系草图。">
+                    <span class="activity-card-label">结构草图</span>
+                    <span class="activity-diagram-preview">
+                      <img src="assets/activity/workflow-sketch.png" alt="自动化工作流结构草图" />
+                    </span>
+                  </button>
+
+                  <button class="activity-board-card activity-idea-card" type="button" data-activity-card data-activity-kind="note" data-activity-toast="已打开关键想法。">
+                    <span class="activity-card-label">关键想法</span>
+                    <strong>界面不再围绕 App，<br />而围绕正在进行的 Activity。</strong>
+                  </button>
+
+                  <button class="activity-board-card activity-audio-card" type="button" data-activity-card data-activity-kind="note" data-activity-toast="正在打开语音纪要。">
+                    <span class="activity-audio-copy"><strong>语音纪要</strong></span>
+                    <span class="activity-audio-track">
+                      <span class="activity-audio-play" aria-hidden="true"><img src="assets/icons/sf-symbols/play.fill.png" alt="" /></span>
+                      <span class="activity-waveform" aria-hidden="true">
+                        <i class="played" style="--wave: 6px"></i><i class="played" style="--wave: 7px"></i><i class="played" style="--wave: 8px"></i><i class="played" style="--wave: 18px"></i>
+                        <i class="played" style="--wave: 30px"></i><i class="played" style="--wave: 22px"></i><i class="played" style="--wave: 13px"></i><i class="played" style="--wave: 7px"></i>
+                        <i class="played" style="--wave: 5px"></i><i class="played" style="--wave: 5px"></i><i class="played" style="--wave: 8px"></i><i class="played" style="--wave: 14px"></i>
+                        <i class="played" style="--wave: 22px"></i><i class="played" style="--wave: 18px"></i><i class="played" style="--wave: 10px"></i><i class="played" style="--wave: 6px"></i>
+                        <i class="played" style="--wave: 7px"></i><i class="played" style="--wave: 16px"></i><i class="played" style="--wave: 28px"></i><i class="played" style="--wave: 30px"></i>
+                        <i style="--wave: 21px"></i><i style="--wave: 12px"></i><i style="--wave: 8px"></i><i style="--wave: 6px"></i>
+                        <i style="--wave: 8px"></i><i style="--wave: 12px"></i><i style="--wave: 18px"></i><i style="--wave: 24px"></i>
+                        <i style="--wave: 29px"></i><i style="--wave: 30px"></i><i style="--wave: 28px"></i><i style="--wave: 26px"></i>
+                        <i style="--wave: 18px"></i><i style="--wave: 12px"></i><i style="--wave: 7px"></i><i style="--wave: 5px"></i>
+                        <i style="--wave: 6px"></i><i style="--wave: 14px"></i><i style="--wave: 27px"></i><i style="--wave: 16px"></i>
+                        <i style="--wave: 8px"></i><i style="--wave: 10px"></i><i style="--wave: 18px"></i><i style="--wave: 25px"></i>
+                        <i style="--wave: 22px"></i><i style="--wave: 15px"></i><i style="--wave: 9px"></i><i style="--wave: 6px"></i>
+                        <i style="--wave: 5px"></i><i style="--wave: 5px"></i><i style="--wave: 24px"></i><i style="--wave: 11px"></i>
+                      </span>
+                      <span class="activity-audio-duration">46:12</span>
+                    </span>
+                  </button>
+
+                  <button class="activity-board-card activity-reference-card" type="button" data-activity-card data-activity-kind="reference" data-activity-toast="已打开材质与空间参考。">
+                    <span class="activity-card-label">参考视觉</span>
+                    <img src="assets/activity/reference-phone-cutout.png" alt="参考界面视觉" />
+                    <strong>材质与空间</strong>
+                  </button>
+
+                  <button class="activity-board-card activity-result-card" type="button" data-activity-card data-activity-kind="plan" data-activity-toast="已打开最近生成结果。">
+                    <span class="activity-card-label">最近生成</span>
+                    <img src="assets/journal/my-journal-closed.png" alt="日记合集视觉" />
+                    <strong>库 · 合集 · 日记</strong>
+                  </button>
+
+                    <article class="activity-board-card next-step activity-next-card" data-activity-kind="plan">
+                      <span class="activity-card-label">待推进</span>
+                      <h2>统一合集与 Activity 的返回路径</h2>
+                      <button class="dark-button" type="button">继续推进 <img src="assets/icons/sf-symbols/arrow.right.png" alt="" /></button>
+                    </article>
+                  </section>
+                </div>
+
+                <div class="activity-page shanghai-activity-page" data-activity-page-view="shanghai" hidden>
+                  <div class="space-intro shanghai-activity-intro">
+                    <h1 id="shanghaiActivityTitle" tabindex="-1">上海出差</h1>
+                    <nav class="activity-filters" aria-label="筛选出差内容">
+                      <button class="active" type="button" data-activity-filter="all" aria-pressed="true">全部</button>
+                      <button type="button" data-activity-filter="itinerary" aria-pressed="false">行程</button>
+                      <button type="button" data-activity-filter="receipt" aria-pressed="false">凭证</button>
+                      <button type="button" data-activity-filter="meeting" aria-pressed="false">会议</button>
+                      <button type="button" data-activity-filter="task" aria-pressed="false">待办</button>
+                    </nav>
+                  </div>
+                  <section class="shanghai-activity-board" aria-label="上海出差活动模块">
+                    <section class="shanghai-activity-module shanghai-insights" data-activity-kind="meeting">
+                      <h2>洞察报告</h2>
+                      <img src="assets/activity/shanghai/agent-report-cover.png" alt="Intelligent Agents in Conference and Course Settings，作者 Xuan Liu" />
+                    </section>
+                    <section class="shanghai-activity-module shanghai-invoices" data-activity-kind="receipt">
+                      <h2>报销用发票</h2>
+                      <div class="shanghai-invoice-stack" aria-label="出租车票、酒店发票和航班行程单">
+                        <img class="invoice-flight" src="assets/activity/shanghai/flight-itinerary.png" alt="航班行程单" />
+                        <img class="invoice-hotel" src="assets/activity/shanghai/hotel-invoice.png" alt="酒店发票" />
+                        <img class="invoice-taxi" src="assets/activity/shanghai/taxi-receipt.png" alt="出租车票" />
+                      </div>
+                    </section>
+                    <section class="shanghai-activity-module shanghai-entry-code" data-activity-kind="meeting">
+                      <h2>会议入场二维码</h2>
+                      <img class="shanghai-entry-qr" src="assets/activity/shanghai/meeting-entry-qr.png" alt="会议入场二维码" />
+                    </section>
+                    <section class="shanghai-activity-module shanghai-agenda" data-activity-kind="itinerary">
+                      <h2>行程信息</h2>
+                      <div class="shanghai-itinerary-crop">
+                        <img class="shanghai-itinerary-visual" src="assets/activity/shanghai/travel-itinerary.png" alt="Sat, 3 Aug 2024 行程信息" />
+                      </div>
+                    </section>
+                    <section class="shanghai-activity-module shanghai-tasks" data-activity-kind="task">
+                      <h2>待办清单</h2>
+                      <ul class="shanghai-task-list">
+                        <li><span class="task-status" aria-hidden="true"></span><span>跟酒店确认开票</span></li>
+                        <li><span class="task-status" aria-hidden="true"></span><span>把报告发给陈老师</span></li>
+                        <li class="completed"><span class="task-status" aria-hidden="true"><img src="assets/icons/sf-symbols/checkmark.png" alt="" /></span><span>会议资料已下载</span></li>
+                      </ul>
+                    </section>
+                  </section>
+                </div>
+
+                <div class="activity-page dinner-activity-page" data-activity-page-view="dinner" hidden>
+                  <div class="space-intro dinner-activity-intro">
+                    <h1 id="dinnerActivityTitle" tabindex="-1">周末聚餐</h1>
+                    <nav class="activity-filters" aria-label="筛选聚餐内容">
+                      <button class="active" type="button" data-activity-filter="all" aria-pressed="true">全部</button>
+                      <button type="button" data-activity-filter="arrangement" aria-pressed="false">安排</button>
+                      <button type="button" data-activity-filter="people" aria-pressed="false">同行</button>
+                      <button type="button" data-activity-filter="food" aria-pressed="false">想吃</button>
+                      <button type="button" data-activity-filter="expense" aria-pressed="false">花费</button>
+                    </nav>
+                  </div>
+
+                  <section class="dinner-activity-board" aria-label="周末聚餐活动模块">
+                    <article class="dinner-activity-module dinner-restaurant" data-activity-kind="arrangement">
+                      <img src="assets/activity/weekend-dinner/restaurant.png" alt="周末聚餐餐厅环境" />
+                      <div class="dinner-photo-heading"><h2>餐厅</h2><span>已选地点</span></div>
+                    </article>
+
+                    <article class="dinner-activity-module dinner-reservation" data-activity-kind="arrangement">
+                      <h2>预订</h2>
+                      <div class="reservation-object">
+                        <span class="reservation-day">周六晚</span>
+                        <span class="reservation-party"><img src="assets/icons/sf-symbols/person.2.png" alt="" />4 人</span>
+                        <strong>已预留</strong>
+                      </div>
+                    </article>
+
+                    <article class="dinner-activity-module dinner-people" data-activity-kind="people">
+                      <div class="dinner-people-heading">
+                        <h2>一起去的人</h2>
+                        <span aria-label="4 人">4</span>
+                      </div>
+                      <div class="dinner-avatar-stack" aria-label="一起去的四位联系人">
+                        <img src="assets/activity/weekend-dinner/avatars/person-1.png" alt="联系人头像" />
+                        <img src="assets/activity/weekend-dinner/avatars/person-2.png" alt="联系人头像" />
+                        <img src="assets/activity/weekend-dinner/avatars/person-3.png" alt="联系人头像" />
+                        <img src="assets/activity/weekend-dinner/avatars/person-4.png" alt="联系人头像" />
+                      </div>
+                    </article>
+
+                    <article class="dinner-activity-module dinner-route" data-activity-kind="arrangement">
+                      <h2>路线</h2>
+                      <img src="assets/activity/weekend-dinner/route-map.png" alt="前往餐厅的路线" />
+                    </article>
+
+                    <article class="dinner-activity-module dinner-dishes" data-activity-kind="food">
+                      <img src="assets/activity/weekend-dinner/dishes.png" alt="聚餐想吃的菜品" />
+                      <h2>想吃的</h2>
+                    </article>
+
+                    <article class="dinner-activity-module dinner-expense" data-activity-kind="expense">
+                      <div class="dinner-expense-copy"><h2>花费</h2><span>晚餐账单</span><strong>待结算</strong></div>
+                      <img src="assets/activity/weekend-dinner/receipt.png" alt="聚餐账单" />
+                    </article>
+                  </section>
+                </div>
+              </div>
+            </section>
+
+            <section class="secondary-view" id="secondaryView" aria-hidden="true">
+              <div class="secondary-view-scroll">
+                <header>
+                  <div>
+                    <h1 id="secondaryTitle">空间</h1>
+                  </div>
+                  <div class="library-top-actions" id="libraryTopActions" hidden>
+                    <button id="libraryCreateButton" type="button" aria-label="创建合集">
+                      <img src="assets/icons/sf-symbols/plus.png" alt="" />
+                    </button>
+                    <button id="librarySearchButton" type="button" aria-label="搜索库">
+                      <img src="assets/icons/sf-symbols/magnifyingglass.png" alt="" />
+                    </button>
+                    <button id="libraryMoreButton" type="button" aria-label="查看更多合集">
+                      <img src="assets/icons/sf-symbols/ellipsis.png" alt="" />
+                    </button>
+                  </div>
+                </header>
+                <div id="spacesContent" class="route-content spaces-content">
+                  <p class="route-intro">长期存在，并始终保留在原位。</p>
+                  <button><span><strong>工作</strong><small>12 个活跃活动 · 286 个对象</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                  <button><span><strong>AIOS</strong><small>4 个活跃活动 · 93 个对象</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                  <button><span><strong>摄影</strong><small>1 个活跃活动 · 2,481 个对象</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                  <button><span><strong>个人</strong><small>7 个活跃活动 · 611 个对象</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                </div>
+                <div id="libraryContent" class="route-content library-content" hidden>
+                  <section class="gallery-home" aria-labelledby="galleryHomeTitle">
+                    <div class="library-section-heading">
+                      <div><h2 id="galleryHomeTitle">合集</h2></div>
+                      <button class="frame-button" id="collectionsMoreButton">更多<img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                    </div>
+                    <div class="gallery-rail" id="galleryRail">
+                      <button class="gallery-card journal-card" id="myJournalGalleryCard" data-gallery="journal">
+                        <span class="gallery-visual journal-gallery-visual">
+                          <img class="my-journal-closed" id="myJournalGalleryObject" src="assets/journal/my-journal-closed.png" alt="" />
+                        </span>
+                        <span class="gallery-card-copy"><strong>日记 <span class="collection-count">28</span></strong></span>
+                      </button>
+                      <button class="gallery-card wardrobe-card" data-gallery="wardrobe">
+                        <span class="gallery-visual wardrobe-cover-visual">
+                          <img class="outfit-cover-model" src="assets/gallery/outfit-cover-model.png" alt="穿搭" />
+                        </span>
+                        <span class="gallery-card-copy"><strong>穿搭 <span class="collection-count">46</span></strong></span>
+                      </button>
+                      <button class="gallery-card music-card" id="openMusicCollection" type="button">
+                        <span class="gallery-visual music-gallery-visual">
+                          <span class="music-card-record"><img src="assets/music/vinyl-disc.png" alt="音乐" /></span>
+                          <img class="music-card-tonearm" src="assets/music/tonearm.png" alt="" />
+                        </span>
+                        <span class="gallery-card-copy"><strong>音乐 <span class="collection-count">12</span></strong></span>
+                      </button>
+                      <button class="gallery-card tokyo-card" data-gallery="tokyo">
+                        <span class="gallery-visual"><img src="assets/gallery/tokyo-memories.png" alt="旅行手账" /></span>
+                        <span class="gallery-card-copy"><strong>旅行手账 <span class="collection-count">84</span></strong></span>
+                      </button>
+                      <button class="gallery-card archive-card" data-gallery="archive">
+                        <span class="gallery-visual"><img src="assets/gallery/aios-archive.png" alt="票据夹" /></span>
+                        <span class="gallery-card-copy"><strong>票据夹 <span class="collection-count">63</span></strong></span>
+                      </button>
+                    </div>
+                  </section>
+
+                  <section class="recent-library" aria-labelledby="recentLibraryTitle">
+                    <div class="library-section-heading compact"><div><h2 id="recentLibraryTitle">最近</h2></div></div>
+                    <div class="recent-object-list">
+                      <button class="recent-object" id="recentJournal" type="button">
+                        <span class="recent-object-preview journal-recent-preview"><img src="assets/journal/my-journal-closed.png" alt="日记" /></span>
+                        <span class="recent-object-copy"><strong>日记</strong><small>合集</small><em>刚刚编辑</em></span>
+                        <img class="row-chevron" src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                      </button>
+                      <button class="recent-object" data-object-open="architecture-notes">
+                        <span class="recent-object-preview diagram-preview"><img src="assets/previews/object-model.svg" alt="Architecture Notes 预览" /></span>
+                        <span class="recent-object-copy"><strong>Architecture Notes</strong><small>AIOS 概念设计</small><em>今天</em></span>
+                        <img class="row-chevron" src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                      </button>
+                      <button class="recent-object" data-object-open="tokyo-photo">
+                        <span class="recent-object-preview photo-preview"><img src="assets/gallery/tokyo-memories.png" alt="东京照片预览" /></span>
+                        <span class="recent-object-copy"><strong>IMG_5821</strong><small>旅行手账</small><em>今天收到</em></span>
+                        <img class="row-chevron" src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                      </button>
+                    </div>
+                  </section>
+
+                  <section class="browse-library" aria-labelledby="browseLibraryTitle">
+                    <div class="library-section-heading compact"><div><h2 id="browseLibraryTitle">浏览</h2></div></div>
+                    <div class="browse-lenses">
+                      <button data-lens="context"><img src="assets/icons/sf-symbols/rectangle.3.group.png" alt="" /><span><strong>情境</strong></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                      <button data-lens="time"><img src="assets/icons/sf-symbols/clock.png" alt="" /><span><strong>时间</strong></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                      <button data-lens="type"><img src="assets/icons/sf-symbols/square.grid.2x2.png" alt="" /><span><strong>类型</strong></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                      <button data-lens="people"><img src="assets/icons/sf-symbols/person.2.png" alt="" /><span><strong>人物</strong></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </section>
+
+            <section class="collections-view" id="collectionsView" aria-hidden="true" lang="zh-CN">
+              <header class="collections-view-header">
+                <button class="collections-back icon-button" id="collectionsBack" type="button" aria-label="返回库">
+                  <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+                </button>
+                <h1>所有合集</h1>
+                <button class="collections-search icon-button" id="collectionsSearch" type="button" aria-label="搜索合集">
+                  <img src="assets/icons/sf-symbols/magnifyingglass.png" alt="" />
+                </button>
+              </header>
+
+              <div class="collections-view-scroll" id="collectionsViewScroll">
+                <div class="collections-grid">
+                  <button class="collection-grid-item journal-grid-item" type="button" data-collection-open="journal">
+                    <span class="collection-grid-visual">
+                      <img src="assets/journal/my-journal-closed.png" alt="日记" />
+                    </span>
+                    <strong>日记 <span class="collection-count">28</span></strong>
+                  </button>
+                  <button class="collection-grid-item wardrobe-grid-item" type="button" data-collection-open="wardrobe">
+                    <span class="collection-grid-visual">
+                      <img src="assets/gallery/outfit-cover-model.png" alt="穿搭" />
+                    </span>
+                    <strong>穿搭 <span class="collection-count">46</span></strong>
+                  </button>
+                  <button class="collection-grid-item music-grid-item" type="button" data-collection-open="music">
+                    <span class="collection-grid-visual">
+                      <span class="collection-grid-record"><img src="assets/music/vinyl-disc.png" alt="音乐" /></span>
+                      <img class="collection-grid-tonearm" src="assets/music/tonearm.png" alt="" />
+                    </span>
+                    <strong>音乐 <span class="collection-count">12</span></strong>
+                  </button>
+                  <button class="collection-grid-item tokyo-grid-item" type="button" data-collection-open="tokyo">
+                    <span class="collection-grid-visual">
+                      <img src="assets/gallery/tokyo-memories.png" alt="旅行手账" />
+                    </span>
+                    <strong>旅行手账 <span class="collection-count">84</span></strong>
+                  </button>
+                  <button class="collection-grid-item archive-grid-item" type="button" data-collection-open="archive">
+                    <span class="collection-grid-visual">
+                      <img src="assets/gallery/aios-archive.png" alt="票据夹" />
+                    </span>
+                    <strong>票据夹 <span class="collection-count">63</span></strong>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section class="music-library-view" id="musicLibraryView" aria-hidden="true" lang="zh-CN">
+              <header class="music-library-header">
+                <button class="music-back" id="musicBack" type="button" aria-label="返回库">
+                  <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+                </button>
+                <h1>音乐</h1>
+              </header>
+
+              <div class="music-library-scroll" id="musicLibraryScroll">
+                <section class="music-turntable-section" aria-label="黑胶唱片播放器">
+                  <div class="music-turntable">
+                    <div class="music-record is-playing" id="musicRecord" aria-hidden="true">
+                      <img class="music-vinyl-disc" src="assets/music/vinyl-disc.png" alt="" />
+                      <img class="music-record-cover" id="musicRecordCover" src="assets/music/covers/hit-me-hard-and-soft.jpg" alt="" />
+                    </div>
+                    <img class="music-tonearm" src="assets/music/tonearm.png" alt="" aria-hidden="true" />
+                  </div>
+                </section>
+
+                <section class="music-now-playing" aria-labelledby="musicTrackTitle">
+                  <h2 id="musicTrackTitle">BIRDS OF A FEATHER</h2>
+                  <p id="musicTrackArtist">Billie Eilish</p>
+                  <div class="music-controls" role="group" aria-label="播放控制">
+                    <button id="musicPrevious" type="button" aria-label="上一首">
+                      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 7.6a1.7 1.7 0 0 1 3.4 0v6.05l11.1-6.42c1.55-.9 3.5.22 3.5 2.02v13.5c0 1.8-1.95 2.92-3.5 2.02L10.4 18.35v6.05A1.7 1.7 0 0 1 7 24.4Z" /></svg>
+                    </button>
+                    <button class="music-play" id="musicPlay" type="button" aria-label="暂停" aria-pressed="true">
+                      <svg class="music-pause-icon" viewBox="0 0 32 32" aria-hidden="true"><rect x="8" y="6" width="6" height="20" rx="2" /><rect x="18" y="6" width="6" height="20" rx="2" /></svg>
+                      <svg class="music-play-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M10.1 6.75c0-1.52 1.67-2.45 2.96-1.65l16 9.93a1.94 1.94 0 0 1 0 3.3l-16 9.57c-1.3.78-2.96-.16-2.96-1.67Z" /></svg>
+                    </button>
+                    <button id="musicNext" type="button" aria-label="下一首">
+                      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M25 7.6a1.7 1.7 0 0 0-3.4 0v6.05L10.5 7.23C8.95 6.33 7 7.45 7 9.25v13.5c0 1.8 1.95 2.92 3.5 2.02l11.1-6.42v6.05a1.7 1.7 0 0 0 3.4 0Z" /></svg>
+                    </button>
+                  </div>
+                </section>
+
+                <section class="music-collections" aria-labelledby="musicCollectionsTitle">
+                  <h2 id="musicCollectionsTitle">我的合集</h2>
+                  <div class="music-collections-rail">
+                    <button class="music-collection" type="button">
+                      <img src="assets/music/covers/after-hours.jpg" alt="After Hours 唱片封面" />
+                      <strong>夜里回家的歌</strong>
+                    </button>
+                    <button class="music-collection" type="button">
+                      <img src="assets/music/covers/hit-me-hard-and-soft.jpg" alt="HIT ME HARD AND SOFT 唱片封面" />
+                      <strong>最近循环</strong>
+                    </button>
+                    <button class="music-collection" type="button">
+                      <img src="assets/music/covers/bewitched.jpg" alt="Bewitched 唱片封面" />
+                      <strong>下雨天</strong>
+                    </button>
+                    <button class="music-collection" type="button">
+                      <img src="assets/music/covers/espresso.jpg" alt="Espresso 唱片封面" />
+                      <strong>2026 夏天</strong>
+                    </button>
+                  </div>
+                </section>
+              </div>
+            </section>
+
+            <section class="journal-reader-view" id="journalReaderView" aria-hidden="true" data-entry="0">
+              <header class="journal-reader-chrome">
+                <button class="icon-button" id="journalReaderBack" type="button" aria-label="返回库">
+                  <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+                </button>
+                <div>
+                  <button class="icon-button" id="journalReaderSearch" type="button" aria-label="搜索日记">
+                    <img src="assets/icons/sf-symbols/magnifyingglass.png" alt="" />
+                  </button>
+                  <button class="icon-button" id="journalReaderEdit" type="button" aria-label="编辑当前日记" aria-pressed="false">
+                    <img src="assets/icons/sf-symbols/pencil.png" alt="" />
+                  </button>
+                  <button class="icon-button" type="button" aria-label="更多日记选项">
+                    <img src="assets/icons/sf-symbols/ellipsis.png" alt="" />
+                  </button>
+                </div>
+              </header>
+
+              <div class="journal-reader-book" aria-hidden="true">
+                <span></span><span></span><span></span><span></span>
+                <i></i>
+              </div>
+
+              <div class="journal-readable-page" id="journalReadablePage">
+                <div class="journal-reader-scroll" id="journalReaderScroll">
+                  <article class="reader-entry-panel reader-current-entry" data-reader-entry="0" lang="zh-CN">
+                    <header>
+                      <div class="reader-entry-meta">
+                        <time datetime="2026-08-24">8 月 24 日 · 周一</time>
+                        <svg viewBox="0 0 32 22" aria-hidden="true">
+                          <path d="M8.2 15.3h14.3c3 0 5-1.8 5-4.3 0-2.3-1.8-4.1-4.3-4.3C22.3 3.8 19.8 2 16.8 2c-3.6 0-6.4 2.6-6.7 6.1-.5-.2-1-.3-1.6-.3-2.4 0-4.3 1.7-4.3 3.8 0 2 1.7 3.7 4 3.7Z" />
+                          <path d="m10.7 18.1-1 2.1m6.3-2.1-1 2.1m6.4-2.1-1 2.1" />
+                        </svg>
+                      </div>
+                      <h1>今天终于把方案讲完了</h1>
+                    </header>
+
+                    <div class="reader-entry-copy" id="readerEntryCopy" contenteditable="false">
+                      <p>今天终于把那个方案讲完了。</p>
+                      <p>上台之前还是有点紧张，坐在位置上又把那本浅蓝灰封面的方案册翻了几遍，前一晚改过的开头夹在最前面。真正开始以后反而没想那么多，顺着熟悉的部分一路讲下去。中间有人追问为什么一定要把“事情”放在 App 前面，我停了一下，发现这个问题反而把前面的逻辑串起来了。</p>
+                    </div>
+
+                    <button class="reader-editable-visual reader-notebook" type="button" data-edit-visual aria-label="选择方案册">
+                      <img src="assets/journal/notebook-cutout.png" alt="" />
+                    </button>
+
+                    <div class="reader-entry-copy" contenteditable="false">
+                      <p>结束以后没有想象中那么兴奋。把方案册合上塞进包里，下楼时雨刚停。折叠伞还湿着，我就一直拎在手里，在楼下站了一会儿。路边还有一点积水，风吹过来的时候挺凉的。</p>
+                    </div>
+
+                    <button class="reader-editable-visual reader-scene" type="button" data-edit-visual aria-label="选择雨后街景">
+                      <img src="assets/journal/rainy-street.png" alt="" />
+                    </button>
+                    <button class="reader-editable-visual reader-umbrella" type="button" data-edit-visual aria-label="选择折叠伞">
+                      <img src="assets/journal/umbrella-cutout.png" alt="" />
+                    </button>
+
+                    <div class="reader-entry-copy" contenteditable="false">
+                      <p>回去的路上又翻了一遍今天的页面，还是能看到不少想改的地方。不过至少现在它已经不是脑子里模模糊糊的一团东西了。</p>
+                      <p>今天先到这里。</p>
+                    </div>
+
+                    <div class="reader-voice-trace" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                  </article>
+
+                  <article class="reader-entry-panel reader-disney-entry" data-reader-entry="1" lang="zh-CN" hidden>
+                    <header>
+                      <div class="reader-entry-meta">
+                        <time datetime="2026-08-17">8 月 17 日 · 周一</time>
+                      </div>
+                      <h1>去迪士尼玩了一整天</h1>
+                    </header>
+
+                    <div class="reader-entry-copy" contenteditable="false">
+                      <p>今天基本一整天都待在迪士尼。</p>
+                    </div>
+
+                    <button class="reader-editable-visual reader-disney-day" type="button" data-edit-visual aria-label="选择白天城堡照片">
+                      <img src="assets/journal/disney/day-castle.png" alt="晴天里从游客视角拍摄的城堡" />
+                    </button>
+
+                    <div class="reader-entry-copy disney-rest-copy" contenteditable="false">
+                      <button class="reader-editable-visual reader-disney-drink" type="button" data-edit-visual contenteditable="false" aria-label="选择冰饮对象">
+                        <img src="assets/journal/disney/iced-drink.png" alt="从照片中识别并抠出的冰饮" />
+                      </button>
+                      <p>上午进去的时候人还没有想象中那么多，第一件事就是往里面走，路过城堡的时候还是停下来拍了好几张。太阳挺晒的，中午开始明显有点累，买了杯冰饮坐在路边休息，看着人一拨一拨从面前过去。</p>
+                    </div>
+
+                    <div class="reader-entry-copy" contenteditable="false">
+                      <p>下午玩了几个项目，排队的时候反而聊了很多乱七八糟的东西。后来碰上花车巡游，原本只是站在边上随便看看，结果音乐一响，周围的人一下全兴奋起来了。</p>
+                      <p>晚上一直待到天黑。城堡亮起来以后和白天完全是两个感觉，最后看完烟花才往外走。回去的时候脚已经很酸了，手机里也多了一堆照片。</p>
+                    </div>
+
+                    <button class="reader-editable-visual reader-disney-night" type="button" data-edit-visual aria-label="选择夜晚城堡烟花照片">
+                      <img src="assets/journal/disney/night-fireworks.png" alt="游客人群前拍摄的夜晚城堡与烟花" />
+                    </button>
+
+                    <div class="reader-entry-copy disney-closing-copy" contenteditable="false">
+                      <p>虽然累，但今天确实玩得很开心。</p>
+                    </div>
+                  </article>
+
+                  <article class="reader-entry-panel reader-archive-entry" data-reader-entry="2" lang="zh-CN" hidden>
+                    <time datetime="2026-08-12">8 月 12 日</time>
+                    <img src="assets/gallery/tokyo-memories.png" alt="" />
+                  </article>
+
+                  <article class="reader-entry-panel reader-archive-entry" data-reader-entry="3" lang="zh-CN" hidden>
+                    <time datetime="2026-07-28">7 月 28 日</time>
+                    <img src="assets/gallery/outfit-cabinet.png" alt="" />
+                  </article>
+
+                  <div class="reader-edit-controls">
+                    <button class="reader-delete-selection" id="readerDeleteSelection" type="button" aria-label="删除所选内容" disabled>
+                      <img src="assets/icons/sf-symbols/trash.png" alt="" />
+                    </button>
+                    <button class="reader-add-content" id="readerAddContent" type="button" aria-label="添加内容">
+                      <img src="assets/icons/sf-symbols/plus.png" alt="" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <nav class="journal-entry-nav" aria-label="日记翻阅">
+                <button id="journalPrevious" type="button" aria-label="上一篇">
+                  <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+                </button>
+                <button class="journal-position" id="journalPosition" type="button" aria-expanded="false">8 月 24 日</button>
+                <button id="journalNext" type="button" aria-label="下一篇" disabled>
+                  <img src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                </button>
+              </nav>
+
+              <div class="journal-jump-panel" id="journalJumpPanel" aria-hidden="true" lang="zh-CN">
+                <button type="button" data-jump-entry="0"><img src="assets/journal/rainy-street.png" alt="" /><span><strong>8 月 24 日</strong><small>今天终于把方案讲完了</small></span></button>
+                <button type="button" data-jump-entry="1"><img src="assets/journal/disney/day-castle.png" alt="" /><span><strong>8 月 17 日</strong><small>去迪士尼玩了一整天</small></span></button>
+                <button type="button" data-jump-entry="2"><img src="assets/gallery/tokyo-memories.png" alt="" /><span>8 月 12 日</span></button>
+                <button type="button" data-jump-entry="3"><img src="assets/gallery/outfit-cabinet.png" alt="" /><span>7 月 28 日</span></button>
+              </div>
+
+              <section class="journal-search-layer" id="journalSearchLayer" aria-hidden="true" lang="zh-CN">
+                <header>
+                  <div class="journal-search-field">
+                    <img src="assets/icons/sf-symbols/magnifyingglass.png" alt="" />
+                    <input id="journalSearchInput" type="search" placeholder="搜索日记中的内容" autocomplete="off" />
+                  </div>
+                  <button id="journalSearchCancel" type="button">取消</button>
+                </header>
+                <div class="journal-search-results" id="journalSearchResults">
+                  <button type="button" data-search-result="0"><img src="assets/journal/rainy-street.png" alt="" /><span><strong>今天终于把方案讲完了</strong><small>8 月 24 日</small></span></button>
+                  <button type="button" data-search-result="0"><img src="assets/journal/notebook-cutout.png" alt="" /><span><strong>浅蓝灰方案册</strong><small>8 月 24 日</small></span></button>
+                  <button type="button" data-search-result="0"><img src="assets/journal/umbrella-cutout.png" alt="" /><span><strong>折叠伞</strong><small>8 月 24 日</small></span></button>
+                  <button type="button" data-search-result="1"><img src="assets/journal/disney/day-castle.png" alt="" /><span><strong>去迪士尼玩了一整天</strong><small>8 月 17 日</small></span></button>
+                  <button type="button" data-search-result="1"><img class="search-object-preview" src="assets/journal/disney/iced-drink.png" alt="" /><span><strong>冰饮</strong><small>8 月 17 日</small></span></button>
+                  <button type="button" data-search-result="1"><img src="assets/journal/disney/night-fireworks.png" alt="" /><span><strong>城堡与烟花</strong><small>8 月 17 日</small></span></button>
+                </div>
+              </section>
+
+              <img class="journal-open-shared" id="journalOpenShared" src="assets/journal/my-journal-closed.png" alt="" aria-hidden="true" />
+            </section>
+
+            <section class="object-detail-view library-detail-surface" id="objectDetailView" aria-hidden="true">
+              <div class="detail-scroll">
+                <header class="detail-chrome">
+                  <button class="icon-button" id="objectBack" aria-label="返回"><img src="assets/icons/sf-symbols/chevron.left.png" alt="" /></button>
+                  <div>
+                    <button class="icon-button" aria-label="分享对象"><img src="assets/icons/sf-symbols/square.and.arrow.up.png" alt="" /></button>
+                    <button class="icon-button" aria-label="更多对象选项"><img src="assets/icons/sf-symbols/ellipsis.png" alt="" /></button>
+                  </div>
+                </header>
+
+                <div class="object-intro">
+                  <p class="eyebrow">设计对象</p>
+                  <h1 id="objectDetailTitle">AIOS Interface Sketch</h1>
+                  <p class="object-state"><span class="presence-dot"></span>今天 16:31 编辑</p>
+                </div>
+
+                <figure class="object-canvas">
+                  <img id="objectDetailPreview" src="assets/previews/interface-architecture.svg" alt="AIOS 界面草图" />
+                  <figcaption>界面架构 · 画板 04</figcaption>
+                </figure>
+
+                <section class="object-capabilities" aria-labelledby="capabilityTitle">
+                  <h2 id="capabilityTitle">可用操作</h2>
+                  <div>
+                    <button><img src="assets/icons/sf-symbols/square.and.arrow.up.png" alt="" /><span>分享</span></button>
+                    <button><img src="assets/icons/sf-symbols/pencil.png" alt="" /><span>编辑</span></button>
+                    <button><img src="assets/icons/sf-symbols/pin.png" alt="" /><span>固定</span></button>
+                    <button><img src="assets/icons/sf-symbols/ellipsis.png" alt="" /><span>更多</span></button>
+                  </div>
+                </section>
+
+                <section class="object-relations" aria-labelledby="relationsTitle">
+                  <div class="detail-section-heading"><h2 id="relationsTitle">所属</h2><button><img src="assets/icons/sf-symbols/plus.png" alt="" />添加关联</button></div>
+                  <button class="relation-path">
+                    <span class="relation-mark"><img src="assets/icons/sf-symbols/rectangle.3.group.png" alt="" /></span>
+                    <span><strong>AIOS</strong><small>AIOS 概念设计 · 12 个对象</small></span>
+                    <img src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                  </button>
+                  <p class="relation-explanation">此对象显示在这里，因为它创建于 AIOS 概念设计活动。</p>
+                </section>
+
+                <section class="related-objects" aria-labelledby="relatedObjectsTitle">
+                  <div class="detail-section-heading"><h2 id="relatedObjectsTitle">相关</h2><span>2</span></div>
+                  <button><span class="actor-avatar large">L</span><span><strong>Lin</strong><small>Interface Discussion</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                  <button><span class="mini-related-preview"><img src="assets/previews/object-model.svg" alt="" /></span><span><strong>Object Model</strong><small>Architecture Notes</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                </section>
+              </div>
+            </section>
+
+            <section class="gallery-detail-view library-detail-surface" id="galleryDetailView" aria-hidden="true">
+              <div class="detail-scroll">
+                <header class="detail-chrome">
+                  <button class="icon-button" id="galleryBack" aria-label="返回合集"><img src="assets/icons/sf-symbols/chevron.left.png" alt="" /></button>
+                  <div>
+                    <button class="icon-button" aria-label="分享合集"><img src="assets/icons/sf-symbols/square.and.arrow.up.png" alt="" /></button>
+                    <button class="icon-button" id="galleryMore" aria-label="更多合集选项"><img src="assets/icons/sf-symbols/ellipsis.png" alt="" /></button>
+                  </div>
+                </header>
+
+                <div class="collection-hero" id="collectionHero">
+                  <img id="collectionAsset" src="assets/gallery/outfit-cabinet.png" alt="穿搭合集" />
+                </div>
+                <div class="collection-intro">
+                  <p class="eyebrow">已固定合集</p>
+                  <h1 id="collectionTitle">穿搭</h1>
+                  <p id="collectionSummary">46 套穿搭 · 68 个来源对象</p>
+                </div>
+
+                <div class="collection-controls" aria-label="合集管理">
+                  <button data-collection-action="rename"><img src="assets/icons/sf-symbols/pencil.png" alt="" /><span>重命名</span></button>
+                  <button data-collection-action="adjust"><img src="assets/icons/sf-symbols/slider.horizontal.3.png" alt="" /><span>调整</span></button>
+                  <button data-collection-action="unpin"><img src="assets/icons/sf-symbols/pin.fill.png" alt="" /><span>取消固定</span></button>
+                  <button data-collection-action="objects"><img src="assets/icons/sf-symbols/rectangle.stack.png" alt="" /><span>对象</span></button>
+                </div>
+
+                <section class="collection-transparency" aria-labelledby="collectionContentsTitle">
+                  <div class="detail-section-heading"><h2 id="collectionContentsTitle">收录依据</h2><span id="collectionCount">68 个对象</span></div>
+                  <p id="collectionReason">根据完整穿搭组合，整理自你确认保留的照片与购买记录。</p>
+                  <div class="source-list" id="collectionSources">
+                    <div><img src="assets/icons/sf-symbols/photo.png" alt="" /><span><strong>穿搭照片</strong><small>已收录 46 项</small></span><b>已收录</b></div>
+                    <div><img src="assets/icons/sf-symbols/doc.text.png" alt="" /><span><strong>购买记录</strong><small>已收录 17 项</small></span><b>已收录</b></div>
+                    <div><img src="assets/icons/sf-symbols/sparkles.png" alt="" /><span><strong>搭配笔记</strong><small>AI 建议 5 项</small></span><b class="suggested">建议</b></div>
+                  </div>
+                  <button class="review-inclusion">查看已收录和未收录对象 <img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                </section>
+
+                <button class="delete-collection" id="deleteCollection"><img src="assets/icons/sf-symbols/trash.png" alt="" /><span><strong>删除合集</strong><small>原始对象仍会保留在库中</small></span></button>
+              </div>
+            </section>
+
+            <section class="library-lens-view library-detail-surface" id="libraryLensView" aria-hidden="true">
+              <div class="detail-scroll">
+                <header class="detail-chrome">
+                  <button class="icon-button" id="lensBack" aria-label="返回库"><img src="assets/icons/sf-symbols/chevron.left.png" alt="" /></button>
+                  <button class="icon-button" aria-label="更多浏览选项"><img src="assets/icons/sf-symbols/ellipsis.png" alt="" /></button>
+                </header>
+                <div class="lens-intro"><p class="eyebrow">库视图</p><h1 id="lensTitle">情境</h1><p id="lensDescription">通过对象所在的空间和活动找到它们。</p></div>
+
+                <div class="lens-panel" data-lens-panel="context">
+                  <section><p class="eyebrow">空间</p><h2>AIOS</h2><button><span><strong>AIOS 概念设计</strong><small>12 个对象 · 今天活跃</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button><button><span><strong>Multimodal Recall</strong><small>27 个对象 · 上周</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button></section>
+                  <section><p class="eyebrow">空间</p><h2>个人</h2><button><span><strong>Photography</strong><small>1,204 个对象</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button></section>
+                </div>
+                <div class="lens-panel" data-lens-panel="time" hidden>
+                  <div class="timeline-row"><time>今天</time><span><strong>7 个对象</strong><small>设计、笔记和一段对话</small></span></div>
+                  <div class="timeline-row"><time>昨天</time><span><strong>12 个对象</strong><small>东京照片和两份文档</small></span></div>
+                  <div class="timeline-row"><time>本周</time><span><strong>46 个对象</strong><small>来自 4 个活动</small></span></div>
+                  <div class="timeline-row"><time>8 月</time><span><strong>218 个对象</strong><small>浏览整个月</small></span></div>
+                </div>
+                <div class="lens-panel semantic-types" data-lens-panel="type" hidden>
+                  <button><img src="assets/icons/sf-symbols/photo.png" alt="" /><span><strong>照片</strong><small>2,481</small></span></button><button><img src="assets/icons/sf-symbols/doc.text.png" alt="" /><span><strong>文档</strong><small>386</small></span></button><button><img src="assets/icons/sf-symbols/square.grid.2x2.png" alt="" /><span><strong>设计</strong><small>94</small></span></button><button><img src="assets/icons/sf-symbols/person.2.png" alt="" /><span><strong>对话</strong><small>172</small></span></button><button><img src="assets/icons/sf-symbols/sparkles.png" alt="" /><span><strong>生成内容</strong><small>68</small></span></button>
+                </div>
+                <div class="lens-panel people-lens" data-lens-panel="people" hidden>
+                  <p>对象按关联关系呈现，而不是通讯录列表。</p>
+                  <button><span class="actor-avatar large">L</span><span><strong>Lin</strong><small>共享 24 项 · 共同创建 11 项</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                  <button><span class="actor-avatar large">M</span><span><strong>Ming</strong><small>共享 18 项 · 相关活动 3 个</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                  <button><span class="actor-avatar large">Z</span><span><strong>Zhang San</strong><small>共享 9 项 · 来自我 7 项</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                </div>
+              </div>
+            </section>
+
+            <section class="search-layer" id="searchLayer" aria-hidden="true">
+              <header class="search-header">
+                <div class="search-field">
+                  <img src="assets/icons/sf-symbols/magnifyingglass.png" alt="" />
+                  <input id="searchInput" type="search" placeholder="搜索活动和对象" autocomplete="off" />
+                  <button id="clearSearch" aria-label="清除搜索"><img src="assets/icons/sf-symbols/xmark.png" alt="" /></button>
+                </div>
+                <button class="search-cancel" id="searchCancel">取消</button>
+              </header>
+              <div class="search-content">
+                <div class="semantic-search-example"><span>语义搜索</span><p>试试“来自两个月前某次会议的蓝色汽车图片”。</p></div>
+                <p class="eyebrow">继续浏览</p>
+                <button><span><strong>AIOS 概念设计</strong><small>活动 · 3 分钟前活跃</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                <button><span><strong>Activity-first principles</strong><small>文档 · AIOS 概念设计</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+                <button><span><strong>旅行手账</strong><small>合集 · 84 个对象</small></span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+              </div>
+            </section>
+
+            <aside class="profile-popover" id="profilePopover" aria-hidden="true">
+              <div class="profile-identity"><span>X</span><p><strong>Xuan</strong><small>个人系统</small></p></div>
+              <button><span>系统设置</span><img src="assets/icons/sf-symbols/chevron.right.png" alt="" /></button>
+              <button><span>专注：可用</span><i class="presence-dot"></i></button>
+            </aside>
+
+            <button class="layer-scrim" id="layerScrim" aria-label="关闭浮层"></button>
+
+            <section class="command-layer" id="commandLayer" aria-hidden="true">
+              <div class="layer-handle"></div>
+              <header>
+                <div><p class="eyebrow">整个 AIOS</p><h2>AI 指令</h2></div>
+                <button class="icon-button" id="closeCommand" aria-label="关闭 AI 指令"><img src="assets/icons/sf-symbols/xmark.png" alt="" /></button>
+              </header>
+              <form class="command-field" id="commandForm">
+                <input id="commandInput" placeholder="询问或执行任何操作…" autocomplete="off" />
+                <button aria-label="运行指令"><img src="assets/icons/sf-symbols/arrow.up.png" alt="" /></button>
+              </form>
+              <div class="command-suggestions" id="commandSuggestions">
+                <button>查找相关文件</button>
+                <button>总结进展</button>
+                <button>创建演示文稿</button>
+              </div>
+              <div class="command-result" id="commandResult" aria-live="polite"></div>
+            </section>
+
+            <section class="proposal-layer" id="proposalLayer" aria-hidden="true">
+              <div class="layer-handle"></div>
+              <header>
+                <div><p class="eyebrow">整理这些内容</p><h2>合集建议</h2></div>
+                <button class="icon-button" id="closeProposal" aria-label="关闭合集建议"><img src="assets/icons/sf-symbols/xmark.png" alt="" /></button>
+              </header>
+              <div class="proposal-request">“把我最近的日记整理成可以随时回看的合集。”</div>
+              <div class="proposal-card">
+                <img src="assets/journal/my-journal-closed.png" alt="建议的日记封面" />
+                <div><p class="eyebrow">建议形式</p><h3>日记</h3><p>28 篇日记 · 5–8 月</p></div>
+              </div>
+              <dl class="proposal-details"><div><dt>顺序</dt><dd>按时间排列</dd></div><div><dt>包含</dt><dd>日记、笔记、语音回顾</dd></div><div><dt>视觉形式</dt><dd>布面日记本</dd></div></dl>
+              <div class="proposal-actions"><button data-proposal-action="preview">预览</button><button data-proposal-action="customize">自定义</button><button class="filled-action" data-proposal-action="create">创建并固定</button></div>
+            </section>
+
+            <section class="ai-live-view" id="aiLiveView" aria-hidden="true" data-muted="true" data-video-off="true">
+              <div class="ai-live-self-view" id="aiLiveSelfView" aria-hidden="true">
+                <img src="assets/profile/user-avatar.jpg" alt="你的视频预览" />
+                <small>你</small>
+              </div>
+              <div class="ai-live-character" aria-label="AI Live 助手">
+                <img src="assets/ai-live/ai-avatar.png" alt="闭着眼睛的浅蓝色 AI 助手" />
+              </div>
+              <div class="ai-live-controls" aria-label="AI Live 通话控制">
+                <button class="ai-live-control microphone-control" id="liveMuteButton" type="button" aria-label="取消麦克风静音" aria-pressed="true">
+                  <img class="live-control-icon" id="liveMuteSymbol" src="assets/icons/sf-symbols/mic.fill.png" alt="" />
+                </button>
+                <button class="ai-live-control video-control" id="liveVideoButton" type="button" aria-label="开启视频" aria-pressed="true">
+                  <img class="live-control-icon" id="liveVideoSymbol" src="assets/icons/sf-symbols/video.slash.fill.png" alt="" />
+                </button>
+                <button class="ai-live-control end-control" id="liveEndButton" type="button" aria-label="结束 AI Live 通话">
+                  <img class="live-control-icon" src="assets/icons/sf-symbols/xmark.png" alt="" />
+                </button>
+              </div>
+            </section>
+
+            <section class="memory-flow" id="memoryFlow" aria-hidden="true" data-state="idle">
+              <div class="memory-flow-wash" aria-hidden="true"></div>
+
+              <article class="memory-card" id="memoryCard">
+                <div class="memory-generating" id="memoryGenerating" aria-hidden="true">
+                  <div class="memory-lines" id="memoryLines" aria-live="polite"></div>
+                </div>
+
+                <div class="journal-document" id="journalDocument" aria-hidden="true" lang="zh-CN">
+                  <div class="journal-scroll" id="journalScroll" tabindex="0">
+                    <header class="journal-entry-header">
+                      <div class="journal-meta">
+                        <time datetime="2026-08-24">8 月 24 日 · 周一</time>
+                        <svg class="journal-weather" viewBox="0 0 32 22" aria-hidden="true">
+                          <path d="M8.2 15.3h14.3c3 0 5-1.8 5-4.3 0-2.3-1.8-4.1-4.3-4.3C22.3 3.8 19.8 2 16.8 2c-3.6 0-6.4 2.6-6.7 6.1-.5-.2-1-.3-1.6-.3-2.4 0-4.3 1.7-4.3 3.8 0 2 1.7 3.7 4 3.7Z" />
+                          <path d="m10.7 18.1-1 2.1m6.3-2.1-1 2.1m6.4-2.1-1 2.1" />
+                        </svg>
+                      </div>
+                      <h1>今天终于把方案讲完了</h1>
+                    </header>
+
+                    <p>今天终于把那个方案讲完了。</p>
+
+                    <p>上台之前还是有点紧张，坐在位置上又把那本浅蓝灰封面的方案册翻了几遍，前一晚改过的开头夹在最前面。真正开始以后反而没想那么多，顺着熟悉的部分一路讲下去。中间有人追问为什么一定要把“事情”放在 App 前面，我停了一下，发现这个问题反而把前面的逻辑串起来了。</p>
+
+                    <div class="journal-object notebook-object" aria-hidden="true">
+                      <img src="assets/journal/notebook-cutout.png" alt="" />
+                    </div>
+
+                    <p>结束以后没有想象中那么兴奋。把方案册合上塞进包里，下楼时雨刚停。折叠伞还湿着，我就一直拎在手里，在楼下站了一会儿。路边还有一点积水，风吹过来的时候挺凉的。</p>
+
+                    <div class="journal-street" aria-hidden="true">
+                      <img src="assets/journal/rainy-street.png" alt="" />
+                    </div>
+
+                    <div class="journal-object umbrella-object" aria-hidden="true">
+                      <img src="assets/journal/umbrella-cutout.png" alt="" />
+                    </div>
+
+                    <p>回去的路上又翻了一遍今天的页面，还是能看到不少想改的地方。不过至少现在它已经不是脑子里模模糊糊的一团东西了。</p>
+
+                    <p>今天先到这里。</p>
+
+                    <div class="journal-voice-trace" aria-hidden="true">
+                      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="filing-entry-abstract" aria-hidden="true" lang="zh-CN">
+                  <time datetime="2026-08-24">8 月 24 日 · 周一</time>
+                  <h2>今天终于把方案讲完了</h2>
+                  <img class="filing-scene" src="assets/journal/rainy-street.png" alt="" />
+                  <img class="filing-notebook" src="assets/journal/notebook-cutout.png" alt="" />
+                </div>
+              </article>
+
+              <div class="filing-book-flight" id="filingBookFlight" aria-hidden="true">
+                <div class="filing-book-stage" id="filingBookStage">
+                  <span class="filing-book-back"></span>
+                  <span class="filing-paper-layer layer-one"></span>
+                  <span class="filing-paper-layer layer-two"></span>
+                  <span class="filing-paper-layer layer-three"></span>
+                  <span class="filing-paper-layer layer-four"></span>
+                  <span class="filing-left-page" aria-hidden="true"></span>
+                  <span class="filing-right-page"></span>
+                  <span class="filing-book-spine"></span>
+                </div>
+                <img class="filing-closed-asset" id="filingClosedAsset" src="assets/journal/my-journal-closed.png" alt="" />
+              </div>
+
+              <button class="memory-stop" id="memoryStop" type="button" aria-label="停止生成">
+                <span aria-hidden="true"></span>
+              </button>
+
+              <div class="journal-actions" id="journalActions" aria-hidden="true">
+                <button class="journal-save" id="journalSave" type="button">加入日记</button>
+                <button class="journal-delete" id="journalDelete" type="button" aria-label="删除日记">
+                  <span aria-hidden="true"></span>
+                </button>
+              </div>
+
+              <div class="journal-delete-confirm" id="journalDeleteConfirm" role="dialog" aria-modal="true" aria-hidden="true" lang="zh-CN">
+                <p>删除这篇日记？</p>
+                <div>
+                  <button id="journalDeleteCancel" type="button">取消</button>
+                  <button class="destructive" id="journalDeleteConfirmButton" type="button">删除</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="dining-scene" id="diningScene" data-dining-state="idle" aria-label="点餐场景" aria-hidden="true">
+              <div class="dining-processing dining-query-processing" id="diningQueryProcessing" role="status" aria-live="polite" aria-hidden="true">
+                <div class="dining-processing-flow" id="diningQuerySteps">
+                  <p>识别附近餐饮需求</p>
+                  <p>确认当前位置</p>
+                  <p>比较步行范围内餐厅</p>
+                  <p>核对营业与人均信息</p>
+                  <p>整理推荐餐厅</p>
+                </div>
+              </div>
+
+              <section class="dining-results" id="diningResults" aria-label="周边餐厅推荐" aria-hidden="true">
+                <div class="dining-scroll" id="diningResultsScroll" tabindex="0" aria-label="推荐餐厅，可上下滑动">
+                  <header class="dining-results-header">
+                    <p class="dining-results-summary">附近餐饮，24条结果</p>
+                    <h1>周边有什么好吃的？</h1>
+                    <p class="dining-ai-note">内容由 AI 生成</p>
+                    <div class="dining-location" aria-label="当前位置：深圳华为坂田基地">
+                      <span class="dining-location-symbol" aria-hidden="true">&#xF01B8;</span>
+                      <span>深圳华为坂田基地</span>
+                    </div>
+                    <div class="dining-filter-row dining-category-filters" aria-label="餐厅类别筛选">
+                      <button class="dining-filter is-active" type="button" aria-pressed="true">全部</button>
+                      <button class="dining-filter" type="button" aria-pressed="false">精选</button>
+                      <button class="dining-filter" type="button" aria-pressed="false">1公里内</button>
+                      <button class="dining-filter" type="button" aria-pressed="false">咖啡</button>
+                      <button class="dining-filter" type="button" aria-pressed="false">深夜</button>
+                    </div>
+                    <div class="dining-filter-row dining-option-filters" aria-label="更多筛选">
+                      <button class="dining-option-filter" type="button" aria-expanded="false"><span>价格</span><i aria-hidden="true"></i></button>
+                      <button class="dining-option-filter" type="button" aria-expanded="false"><span>评分</span><i aria-hidden="true"></i></button>
+                      <button class="dining-option-filter" type="button" aria-expanded="false"><span>营业</span><i aria-hidden="true"></i></button>
+                    </div>
+                  </header>
+
+                  <div class="dining-restaurant-list">
+                    <button class="dining-restaurant dining-restaurant-featured" id="diningFeaturedRestaurant" type="button" aria-label="打开八合里潮汕鲜牛肉火锅招牌菜">
+                      <img src="assets/food-v2/baheli-restaurant.jpg" alt="八合里潮汕鲜牛肉火锅门店" draggable="false" />
+                      <span class="dining-restaurant-copy">
+                        <span class="dining-recommendation-label">为你推荐</span>
+                        <strong>八合里潮汕鲜牛肉火锅</strong>
+                        <span class="dining-restaurant-meta"><b>4.9</b> · 潮汕牛肉火锅 · 420 m</span>
+                        <span class="dining-restaurant-price">约 ¥95 / 人</span>
+                      </span>
+                    </button>
+
+                    <article class="dining-restaurant">
+                      <img src="assets/food-v2/nawa-xinjiang.jpg" alt="纳瓦新疆菜" loading="lazy" decoding="async" draggable="false" />
+                      <span class="dining-restaurant-copy">
+                        <strong>纳瓦新疆音乐餐厅</strong>
+                        <span class="dining-restaurant-meta"><b>4.6</b> · 新疆菜 · 650 m</span>
+                        <span class="dining-restaurant-price">约 ¥95 / 人</span>
+                      </span>
+                    </article>
+
+                    <article class="dining-restaurant">
+                      <img src="assets/food-v2/yuruntian-restaurant.webp" alt="雨润田藕嘢门店" loading="lazy" decoding="async" draggable="false" />
+                      <span class="dining-restaurant-copy">
+                        <strong>雨润田·藕嘢</strong>
+                        <span class="dining-restaurant-meta"><b>4.5</b> · 湖北菜 · 700 m</span>
+                        <span class="dining-restaurant-price">参考 ¥41–100 / 人</span>
+                      </span>
+                    </article>
+
+                    <article class="dining-restaurant">
+                      <img src="assets/food-v2/tianxi-cantonese.jpg" alt="天玺粤菜菜品" loading="lazy" decoding="async" draggable="false" />
+                      <span class="dining-restaurant-copy">
+                        <strong>天玺海鲜酒家</strong>
+                        <span class="dining-restaurant-meta"><b>4.4</b> · 粤菜 · 820 m</span>
+                        <span class="dining-restaurant-price">约 ¥86 / 人</span>
+                      </span>
+                    </article>
+
+                    <article class="dining-restaurant">
+                      <img src="assets/food-v2/muwu-barbecue.jpg" alt="木屋烧烤菜品" loading="lazy" decoding="async" draggable="false" />
+                      <span class="dining-restaurant-copy">
+                        <strong>木屋烧烤</strong>
+                        <span class="dining-restaurant-meta"><b>4.3</b> · 烧烤 · 760 m</span>
+                        <span class="dining-restaurant-price">约 ¥79 / 人</span>
+                      </span>
+                    </article>
+
+                    <article class="dining-restaurant">
+                      <img src="assets/food-v2/banbudian-sichuan.jpg" alt="先启半步颠川菜" loading="lazy" decoding="async" draggable="false" />
+                      <span class="dining-restaurant-copy">
+                        <strong>先启半步颠小酒馆</strong>
+                        <span class="dining-restaurant-meta"><b>3.8</b> · 川菜 · 1.2 km</span>
+                        <span class="dining-restaurant-price">约 ¥84 / 人</span>
+                      </span>
+                    </article>
+
+                    <article class="dining-restaurant">
+                      <img src="assets/food-v2/seafood-79.jpg" alt="79号渔船海鲜菜品" loading="lazy" decoding="async" draggable="false" />
+                      <span class="dining-restaurant-copy">
+                        <strong>79号渔船海鲜饭店</strong>
+                        <span class="dining-restaurant-meta"><b>4.7</b> · 海鲜 · 950 m</span>
+                        <span class="dining-restaurant-price">约 ¥160 / 人</span>
+                      </span>
+                    </article>
+
+                    <article class="dining-restaurant">
+                      <img src="assets/food-v2/haidilao.jpg" alt="海底捞火锅菜品" loading="lazy" decoding="async" draggable="false" />
+                      <span class="dining-restaurant-copy">
+                        <strong>海底捞火锅</strong>
+                        <span class="dining-restaurant-meta"><b>4.8</b> · 火锅 · 380 m</span>
+                        <span class="dining-restaurant-price">约 ¥113 / 人</span>
+                      </span>
+                    </article>
+                  </div>
+                </div>
+              </section>
+
+              <div class="dining-processing dining-detail-processing" id="diningDetailProcessing" role="status" aria-live="polite" aria-hidden="true">
+                <div class="dining-processing-flow" id="diningDetailSteps">
+                  <p>识别目标餐厅</p>
+                  <p>查找八合里招牌菜</p>
+                  <p>核对高频推荐菜品</p>
+                  <p>整理菜品信息</p>
+                  <p>生成招牌菜页面</p>
+                </div>
+              </div>
+
+              <section class="dining-detail" id="diningDetail" aria-label="八合里招牌菜" aria-hidden="true">
+                <div class="dining-scroll dining-detail-scroll" id="diningDetailScroll" tabindex="0" aria-label="八合里招牌菜，可上下滑动">
+                  <button class="dining-detail-back" id="diningDetailBack" type="button">
+                    <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+                    <span>周边好吃的</span>
+                  </button>
+
+                  <header class="dining-detail-header">
+                    <h1 tabindex="-1">八合里潮汕鲜牛肉火锅</h1>
+                    <p>潮汕牛肉火锅 · 步行约 6 分钟</p>
+                  </header>
+
+                  <h2 class="dining-dishes-title">招牌菜</h2>
+                  <div class="dining-dish-grid">
+                    <article>
+                      <img src="assets/food-v2/baheli-dishes/beef-platter.jpg" alt="至尊牛肉三拼" />
+                      <h3>至尊牛肉三拼</h3>
+                      <p>嫩肉、吊龙与肥牛，一盘尝到三种口感。</p>
+                    </article>
+                    <article>
+                      <img src="assets/food-v2/baheli-dishes/diaolong.jpg" alt="吊龙伴" loading="lazy" decoding="async" />
+                      <h3>吊龙伴</h3>
+                      <p>肥瘦相间，短涮至刚熟更嫩。</p>
+                    </article>
+                    <article>
+                      <img src="assets/food-v2/baheli-dishes/beef-balls.jpg" alt="熟牛肉丸" loading="lazy" decoding="async" />
+                      <h3>熟牛肉丸</h3>
+                      <p>紧实弹牙，适合在清汤里慢慢煮透。</p>
+                    </article>
+                    <article>
+                      <img src="assets/food-v2/baheli-dishes/beef-clear-broth.jpg" alt="牛骨清汤锅" loading="lazy" decoding="async" />
+                      <h3>牛骨清汤锅</h3>
+                      <p>汤底清鲜，涮过牛肉后更有肉香。</p>
+                    </article>
+                    <article>
+                      <img src="assets/food-v2/baheli-dishes/crispy-beef.png" alt="特色酥牛肉" loading="lazy" decoding="async" />
+                      <h3>特色酥牛肉</h3>
+                      <p>外层酥脆，适合趁热直接吃。</p>
+                    </article>
+                  </div>
+                </div>
+              </section>
+            </section>
+
+            <section class="travel-scene" id="travelScene" data-travel-state="idle" aria-label="上海出差机票场景" aria-hidden="true">
+              <div class="travel-processing" id="travelQueryProcessing" role="status" aria-live="polite" aria-hidden="true">
+                <div class="dining-processing-flow travel-processing-flow" id="travelQuerySteps">
+                  <p>识别出差目的地</p>
+                  <p>确认当前出发地</p>
+                  <p>查询可选航班</p>
+                  <p>比较时间与价格</p>
+                  <p>整理购票信息</p>
+                </div>
+              </div>
+
+              <section class="travel-results" id="travelResults" aria-label="上海至深圳可选航班" aria-hidden="true">
+                <div class="travel-scroll" id="travelResultsScroll" tabindex="0" aria-label="可选航班，可上下滑动">
+                  <header class="travel-results-header">
+                    <p class="travel-kicker">机票查询</p>
+                    <h1>我最近要去深圳出差，<br />帮我看下机票</h1>
+                    <p class="travel-ai-note">内容由 AI 生成</p>
+                  </header>
+
+                  <section class="travel-route" aria-label="上海到深圳">
+                    <p>行程</p>
+                    <div class="travel-route-cities">
+                      <label class="travel-city-picker">
+                        <select id="travelOriginSelect" aria-label="修改出发地">
+                          <option selected>上海</option>
+                          <option>北京</option>
+                          <option>杭州</option>
+                          <option>广州</option>
+                        </select>
+                        <span class="travel-city-pill"><strong id="travelOriginDisplay">上海</strong></span>
+                        <small>出发</small>
+                      </label>
+                      <i aria-hidden="true"><b></b><em>→</em><b></b></i>
+                      <label class="travel-city-picker">
+                        <select id="travelDestinationSelect" aria-label="修改目的地">
+                          <option selected>深圳</option>
+                          <option>北京</option>
+                          <option>广州</option>
+                          <option>成都</option>
+                        </select>
+                        <span class="travel-city-pill"><strong id="travelDestinationDisplay">深圳</strong></span>
+                        <small>到达</small>
+                      </label>
+                    </div>
+                  </section>
+
+                  <dl class="travel-details">
+                    <div><dt>出发日期</dt><dd>8月28日 · 周五</dd></div>
+                  </dl>
+
+                  <section class="travel-flights" aria-label="航班列表">
+                    <div class="travel-flight-filters" aria-label="筛选航班">
+                      <button class="travel-flight-filter is-active" type="button" data-travel-filter="all" aria-pressed="true">全部</button>
+                      <button class="travel-flight-filter" type="button" data-travel-filter="direct" aria-expanded="false"><span>直飞</span><i aria-hidden="true"></i></button>
+                      <button class="travel-flight-filter" type="button" data-travel-filter="airport" aria-expanded="false"><span>机场</span><i aria-hidden="true"></i></button>
+                      <button class="travel-flight-filter" type="button" data-travel-filter="airline" aria-expanded="false"><span>航司</span><i aria-hidden="true"></i></button>
+                      <button class="travel-flight-filter" type="button" data-travel-filter="cabin" aria-expanded="false"><span>舱位</span><i aria-hidden="true"></i></button>
+                    </div>
+                    <button class="travel-flight-option" type="button" data-flight="深圳航空 08:10" aria-pressed="false">
+                      <span class="travel-flight-main"><strong>08:10 → 10:25</strong><b>¥620</b></span>
+                      <span class="travel-flight-carrier"><img class="airline-logo" src="assets/travel/airlines/shenzhen-airlines-symbol.png" alt="" aria-hidden="true" /><span><b>深圳航空</b> · <span class="travel-flight-route-copy">上海虹桥 → 深圳宝安</span></span></span>
+                    </button>
+                    <button class="travel-flight-option" type="button" data-flight="中国东方航空 09:05" aria-pressed="false">
+                      <span class="travel-flight-main"><strong>09:05 → 11:25</strong><b>¥650</b></span>
+                      <span class="travel-flight-carrier"><img class="airline-logo" src="assets/travel/airlines/china-eastern.png" alt="" aria-hidden="true" /><span><b>中国东方航空</b> · <span class="travel-flight-route-copy">上海虹桥 → 深圳宝安</span></span></span>
+                    </button>
+                    <button class="travel-flight-option" type="button" data-flight="南方航空 10:35" aria-pressed="false">
+                      <span class="travel-flight-main"><strong>10:35 → 12:50</strong><b>¥680</b></span>
+                      <span class="travel-flight-carrier"><img class="airline-logo" src="assets/travel/airlines/china-southern.png" alt="" aria-hidden="true" /><span><b>南方航空</b> · <span class="travel-flight-route-copy">上海虹桥 → 深圳宝安</span></span></span>
+                    </button>
+                    <button class="travel-flight-option" type="button" data-flight="吉祥航空 12:20" aria-pressed="false">
+                      <span class="travel-flight-main"><strong>12:20 → 14:40</strong><b>¥690</b></span>
+                      <span class="travel-flight-carrier"><img class="airline-logo" src="assets/travel/airlines/juneyao-air-symbol.png" alt="" aria-hidden="true" /><span><b>吉祥航空</b> · <span class="travel-flight-route-copy">上海虹桥 → 深圳宝安</span></span></span>
+                    </button>
+                    <button class="travel-flight-option" type="button" data-flight="东方航空 13:20" aria-pressed="false">
+                      <span class="travel-flight-main"><strong>13:20 → 15:40</strong><b>¥710</b></span>
+                      <span class="travel-flight-carrier"><img class="airline-logo" src="assets/travel/airlines/china-eastern.png" alt="" aria-hidden="true" /><span><b>中国东方航空</b> · <span class="travel-flight-route-copy">上海虹桥 → 深圳宝安</span></span></span>
+                    </button>
+                    <button class="travel-flight-option" type="button" data-flight="春秋航空 16:45" aria-pressed="false">
+                      <span class="travel-flight-main"><strong>16:45 → 19:05</strong><b>¥590</b></span>
+                      <span class="travel-flight-carrier"><img class="airline-logo" src="assets/travel/airlines/spring-airlines.png" alt="" aria-hidden="true" /><span><b>春秋航空</b> · <span class="travel-flight-route-copy">上海虹桥 → 深圳宝安</span></span></span>
+                    </button>
+                  </section>
+                </div>
+              </section>
+            </section>
+
+            <section class="calendar-view" id="calendarView" aria-hidden="true" lang="zh-CN">
+              <div class="calendar-view-scroll" id="calendarViewScroll">
+                <header class="calendar-view-header">
+                  <button class="calendar-back" id="calendarBack" type="button" aria-label="返回主屏幕">
+                    <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+                  </button>
+                  <h1>8月29日</h1>
+                  <div class="calendar-header-actions" aria-label="日历操作">
+                    <button type="button" aria-label="更多">
+                      <img src="assets/icons/sf-symbols/ellipsis.png" alt="" />
+                    </button>
+                  </div>
+                </header>
+
+                <div class="calendar-mode-switch" role="tablist" aria-label="日历视图">
+                  <button type="button" role="tab" aria-selected="false">年</button>
+                  <button type="button" role="tab" aria-selected="false">月</button>
+                  <button type="button" role="tab" aria-selected="false">周</button>
+                  <button class="is-selected" type="button" role="tab" aria-selected="true">日</button>
+                </div>
+
+                <div class="calendar-week" aria-label="8月26日至9月1日，当前选择8月29日">
+                  <svg class="calendar-week-geometry" viewBox="0 0 430 104" preserveAspectRatio="none" aria-hidden="true">
+                    <path class="calendar-week-fill" d="M0 18 Q215 2 430 18 L430 102 Q215 86 0 102 Z"></path>
+                    <path class="calendar-week-line" d="M0 18 Q215 2 430 18"></path>
+                    <path class="calendar-week-line" d="M0 102 Q215 86 430 102"></path>
+                  </svg>
+                  <button class="calendar-day-far" type="button" aria-label="8月26日，星期三">
+                    <span>三</span><strong>26</strong>
+                  </button>
+                  <button class="calendar-day-mid" type="button" aria-label="8月27日，星期四">
+                    <span>四</span><strong>27</strong>
+                  </button>
+                  <button class="calendar-day-near" type="button" aria-label="8月28日，星期五">
+                    <span>五</span><strong>28</strong>
+                  </button>
+                  <button class="is-today" type="button" aria-label="8月29日，星期六，今天" aria-current="date">
+                    <span>六</span><strong>29</strong>
+                  </button>
+                  <button class="calendar-day-near" type="button" aria-label="8月30日，星期日">
+                    <span>日</span><strong>30</strong>
+                  </button>
+                  <button class="calendar-day-mid" type="button" aria-label="8月31日，星期一">
+                    <span>一</span><strong>31</strong>
+                  </button>
+                  <button class="calendar-day-far" type="button" aria-label="9月1日，星期二">
+                    <span>二</span><strong>1</strong>
+                  </button>
+                </div>
+
+                <section class="calendar-agenda" aria-labelledby="calendarTodayTitle">
+                  <header>
+                    <h2 id="calendarTodayTitle">今天</h2>
+                    <p>农历七月十七</p>
+                  </header>
+
+                  <article class="calendar-event is-all-day is-conflict">
+                    <div class="calendar-event-time"><span class="event-dot event-dot-yellow"></span><b>全天</b></div>
+                    <div class="calendar-event-copy"><h3>bananafish书店</h3><p><span class="event-source-icon event-source-note">便</span>便单</p></div>
+                    <span class="calendar-conflict">冲突</span>
+                  </article>
+
+                  <article class="calendar-event is-all-day is-conflict">
+                    <div class="calendar-event-time"><span class="event-dot event-dot-yellow"></span><b>全天</b></div>
+                    <div class="calendar-event-copy"><h3>异国日记</h3><p><span class="event-source-icon event-source-note">便</span>便单</p></div>
+                    <span class="calendar-conflict">冲突</span>
+                  </article>
+
+                  <article class="calendar-event is-all-day is-conflict">
+                    <div class="calendar-event-time"><span class="event-dot event-dot-yellow"></span><b>全天</b></div>
+                    <div class="calendar-event-copy"><h3>设计灵感–<br />detailgarden.replit.app</h3><p><span class="event-source-icon event-source-note">便</span>便单</p></div>
+                    <span class="calendar-conflict">冲突</span>
+                  </article>
+
+                  <article class="calendar-event is-all-day">
+                    <div class="calendar-event-time"><span class="event-dot event-dot-blue"></span><b>全天</b></div>
+                    <div class="calendar-event-copy"><h3>“月末周六工作日”</h3><p><span class="event-source-icon event-source-welink">W</span>WeLink｜华为日历2026</p></div>
+                  </article>
+
+                  <article class="calendar-event calendar-event-timed is-conflict">
+                    <div class="calendar-event-time"><b>上午10:10</b><span class="event-dot event-dot-blue"></span><b>中午12:10</b></div>
+                    <div class="calendar-event-copy"><h3>WAIC 2026 洞察 &amp; 2012实验室知识产权保护策略2.0介绍</h3><p><span class="event-source-icon event-source-welink">W</span>WeLink｜仅线上</p></div>
+                    <span class="calendar-conflict">冲突</span>
+                  </article>
+                </section>
+              </div>
+            </section>
+
+            <div class="ai-spatial-surface ai-spatial-surface-private" id="aiPrivateSurface" aria-hidden="true">
+              <button class="private-space-back" id="privateSpaceBack" type="button" aria-label="返回桌面">
+                <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+              </button>
+              <div class="private-space-copy" id="privateSpaceCopy">
+                <h2>临时聊天</h2>
+                <p>聊天内容只留在当前区域，不会被记忆或出现在对话历史记录中</p>
+              </div>
+              <section class="private-chat-thread" id="privateChatThread" aria-label="临时对话" aria-hidden="true">
+                <p class="private-chat-message private-chat-user" id="privateChatUser">你好</p>
+                <p class="private-chat-message private-chat-assistant" id="privateChatAssistant">你好！很高兴见到你。今天想聊什么</p>
+              </section>
+              <section class="private-note-flow" id="privateNoteFlow" aria-hidden="true">
+                <p class="private-note-heading">通话已结束，正在整理情绪笔记</p>
+                <article class="private-note-card" id="privateNoteCard" data-state="idle" aria-label="情绪笔记生成中">
+                  <p class="private-note-status" id="privateNoteStatus" role="status" aria-live="polite"></p>
+                  <div class="private-note-cover" aria-hidden="true">
+                    <div class="private-note-cover-media">
+                      <img class="private-note-cover-primary" src="assets/private-note/disney/ticket-castle.png" alt="" />
+                      <div class="private-note-cover-secondary">
+                        <img src="assets/private-note/disney/fireworks.png" alt="" />
+                        <img src="assets/private-note/disney/character-meet.png" alt="" />
+                      </div>
+                    </div>
+                    <div class="private-note-cover-footer">
+                      <img class="private-note-cover-mood" src="assets/moods/happy.png" alt="" />
+                      <div class="private-note-cover-copy">
+                        <h3>迪士尼一日游</h3>
+                        <p>今天真的玩得特别开心。</p>
+                      </div>
+                      <img class="private-note-cover-chevron" src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                    </div>
+                  </div>
+                </article>
+                <div class="private-note-actions" id="privateNoteActions" aria-hidden="true">
+                  <button id="privateNoteDestroy" type="button">
+                    <img src="assets/icons/sf-symbols/trash.png" alt="" />
+                    <span>销毁</span>
+                  </button>
+                  <button id="privateNoteTransfer" type="button" aria-pressed="false">
+                    <img src="assets/icons/sf-symbols/folder.png" alt="" />
+                    <span>转存</span>
+                  </button>
+                </div>
+              </section>
+              <section class="private-note-reader" id="privateNoteReader" role="dialog" aria-modal="false" aria-label="情绪笔记" aria-hidden="true">
+                <header class="private-note-reader-toolbar">
+                  <button class="private-note-reader-back" id="privateNoteBack" type="button" aria-label="返回临时聊天">
+                    <img src="assets/icons/sf-symbols/chevron.left.png" alt="" />
+                  </button>
+                  <div class="private-note-view-switch" role="tablist" aria-label="情绪笔记视图">
+                    <button class="is-active" id="privateNoteViewDocument" type="button" role="tab" aria-label="笔记视图" aria-selected="true">
+                      <img src="assets/icons/sf-symbols/doc.text.png" alt="" />
+                    </button>
+                    <button id="privateNoteViewStack" type="button" role="tab" aria-label="卡片视图" aria-selected="false">
+                      <img src="assets/icons/sf-symbols/rectangle.stack.png" alt="" />
+                    </button>
+                  </div>
+                  <button class="private-note-share-button" id="privateNoteShareButton" type="button" aria-label="分享情绪笔记" aria-expanded="false">
+                    <img src="assets/icons/sf-symbols/square.and.arrow.up.png" alt="" />
+                  </button>
+                </header>
+                <article class="private-note-document" id="privateNoteDocument" lang="zh-CN">
+                  <div class="private-note-meta">
+                    <div class="private-note-mood" aria-label="心情：开心">
+                      <img src="assets/moods/happy.png" alt="开心" />
+                    </div>
+                    <time datetime="2026-08-29">8月29日</time>
+                  </div>
+                  <h2>迪士尼一日游</h2>
+                  <p>昨天晚上明明说好要早点睡，结果我还是兴奋到快一点才放下手机。早上进园的时候人其实还有点懵，直到远远看到城堡，才突然反应过来：啊，真的来迪士尼了。我们先在城堡前面拍照，我举着票拍了好几张，第一张还完全糊掉了，但现在看反而很像今天的开场，乱乱的，又特别开心。</p>
+                  <figure class="private-note-photo private-note-photo-portrait">
+                    <img src="assets/private-note/disney/ticket-castle.png" alt="城堡前举着迪士尼票拍下的照片" />
+                  </figure>
+                  <figure class="private-note-photo private-note-photo-portrait">
+                    <img src="assets/private-note/disney/park-exit.png" alt="上海迪士尼乐园入口与出口招牌" />
+                  </figure>
+                  <p>上午基本一直在赶项目，边排队边研究下一站去哪。大家每次走进商店前都说“这次一定不买东西”，结果进去以后还是每个架子都要看一遍。我本来觉得排队会很无聊，后来发现我们光是在队伍里讲废话就能讲很久，轮到玩的时候反而有点舍不得这段排队时间结束。</p>
+                  <figure class="private-note-photo private-note-photo-portrait">
+                    <img src="assets/private-note/disney/toy-store.png" alt="迪士尼园区里的奇趣商店门头" />
+                  </figure>
+                  <figure class="private-note-photo private-note-photo-wide">
+                    <img src="assets/private-note/disney/birthday-badge.png" alt="佩戴在衣服上的迪士尼生日徽章" />
+                  </figure>
+                  <p>下午去了疯狂动物城。看到豹警官的时候我真的笑得停不下来，排了挺久才轮到，结果走过去以后脑子突然空白，只会站在那里傻笑。旁边的人一直举着手机，我也跟着拍了好多张。它看起来比电影里还圆，而且明明只是坐在那里，现场所有人都像被它控制了一样一起笑。</p>
+                  <figure class="private-note-photo private-note-photo-wide">
+                    <img src="assets/private-note/disney/character-meet.png" alt="城堡前的迪士尼角色合影" />
+                  </figure>
+                  <figure class="private-note-photo private-note-photo-wide">
+                    <img src="assets/private-note/disney/zootopia.png" alt="疯狂动物城里的豹警官和游客" />
+                  </figure>
+                  <p>天黑以后完全是另一种感觉。白天一直觉得时间还很多，城堡亮起来以后才发现今天真的快结束了。等烟花的时候腿已经酸得不想动，可第一束光冲上去的时候还是马上把手机拿了出来。现场很吵，前面也全是人，照片不算完美，但我就是很喜欢。</p>
+                  <figure class="private-note-photo private-note-photo-wide">
+                    <img src="assets/private-note/disney/night-castle.png" alt="夜色里被灯光照亮的迪士尼城堡" />
+                  </figure>
+                  <figure class="private-note-photo private-note-photo-night">
+                    <img src="assets/private-note/disney/fireworks.png" alt="夜晚城堡上空的烟花" />
+                  </figure>
+                  <p>回去的路上大家都累到没怎么说话，我在车上翻照片，发现几乎每一张都有一点糊，或者有人闭眼，但就是这些照片让我觉得今天真的发生过。现在脚还是很酸，可如果明天有人问我要不要再去一次，我应该还是会立刻说要。</p>
+                </article>
+                <section class="private-note-stack-view" id="privateNoteStackView" aria-label="迪士尼一日游卡片视图" aria-hidden="true">
+                  <time class="private-note-stack-date" datetime="2026-08-29">8月29日</time>
+                  <div class="private-note-card-copy" aria-label="当前照片相关文字">
+                    <div class="private-note-card-copy-scroll" id="privateNoteCardCopyScroll" tabindex="0">
+                      <p id="privateNoteCardCopyText">刚进园的时候还没完全清醒，拿着票对着城堡拍了好几张。第一张有点糊，可它特别像今天真正开始的那一秒。</p>
+                    </div>
+                  </div>
+                  <div class="private-note-card-carousel" id="privateNoteCardCarousel" role="group" aria-label="横向滑动查看照片" tabindex="0">
+                    <article class="private-note-image-card is-active" data-caption="刚进园的时候还没完全清醒，拿着票对着城堡拍了好几张。第一张有点糊，可它特别像今天真正开始的那一秒。">
+                      <img src="assets/private-note/disney/ticket-castle.png" alt="城堡前举着迪士尼票拍下的照片" />
+                    </article>
+                    <article class="private-note-image-card" data-caption="走到园区出口的时候又抬头看了一眼招牌。明明才刚进来没多久，我已经开始担心晚上离开时会舍不得。">
+                      <img src="assets/private-note/disney/park-exit.png" alt="上海迪士尼乐园入口与出口招牌" />
+                    </article>
+                    <article class="private-note-image-card" data-caption="碰到大家一起出现真的特别幸运。我们站在后面等了好一会儿，轮到拍照的时候，每个人都在拼命挥手。">
+                      <img src="assets/private-note/disney/character-meet.png" alt="城堡前的迪士尼角色合影" />
+                    </article>
+                    <article class="private-note-image-card" data-caption="下午在疯狂动物城看到豹警官，我本来想装得淡定一点，结果走近以后只会傻笑。它真的比电影里还圆，旁边每个人也都在笑。">
+                      <img src="assets/private-note/disney/zootopia.png" alt="疯狂动物城里的豹警官和游客" />
+                    </article>
+                    <article class="private-note-image-card" data-caption="路过商店的时候本来只想进去吹空调，结果又在每个架子前停下来。这个高高的门头让我一下想起小时候看动画的感觉。">
+                      <img src="assets/private-note/disney/toy-store.png" alt="迪士尼园区里的奇趣商店门头" />
+                    </article>
+                    <article class="private-note-image-card" data-caption="今天刚好戴了生日徽章，工作人员一路都会对我说生日快乐。被陌生人祝福有点不好意思，但心里其实超级开心。">
+                      <img src="assets/private-note/disney/birthday-badge.png" alt="佩戴在衣服上的迪士尼生日徽章" />
+                    </article>
+                    <article class="private-note-image-card" data-caption="天黑以后城堡像完全换了一个样子。周围很暗，只有粉色和蓝色的灯落在塔尖上，我们远远站着也看了很久。">
+                      <img src="assets/private-note/disney/night-castle.png" alt="夜色里被灯光照亮的迪士尼城堡" />
+                    </article>
+                    <article class="private-note-image-card" data-caption="腿已经酸得快站不住了，烟花升起来的时候还是马上举起手机。前面全是人，照片也不完美，可我就是很喜欢。">
+                      <img src="assets/private-note/disney/fireworks.png" alt="夜晚城堡上空的烟花" />
+                    </article>
+                  </div>
+                </section>
+                <div class="private-note-share-layer" id="privateNoteShareLayer" aria-hidden="true">
+                  <button class="private-note-share-backdrop" id="privateNoteShareBackdrop" type="button" aria-label="关闭分享面板"></button>
+                  <section class="private-note-share-sheet" role="dialog" aria-modal="true" aria-labelledby="privateNoteShareTitle">
+                    <span class="private-note-share-handle" aria-hidden="true"></span>
+                    <h2 id="privateNoteShareTitle">分享</h2>
+                    <section class="private-note-share-group" aria-labelledby="privateNoteSharePeopleTitle">
+                      <h3 id="privateNoteSharePeopleTitle">分享给</h3>
+                      <div class="private-note-share-people">
+                        <button type="button" data-private-share-person aria-label="分享给联系人一">
+                          <img src="assets/activity/weekend-dinner/avatars/person-1.png" alt="" />
+                        </button>
+                        <button type="button" data-private-share-person aria-label="分享给联系人二">
+                          <img src="assets/activity/weekend-dinner/avatars/person-2.png" alt="" />
+                        </button>
+                        <button type="button" data-private-share-person aria-label="分享给联系人三">
+                          <img src="assets/activity/weekend-dinner/avatars/person-3.png" alt="" />
+                        </button>
+                        <button type="button" data-private-share-person aria-label="分享给联系人四">
+                          <img src="assets/activity/weekend-dinner/avatars/person-4.png" alt="" />
+                        </button>
+                        <button class="private-note-share-more" type="button" aria-label="查看更多联系人">
+                          <img src="assets/icons/sf-symbols/chevron.right.png" alt="" />
+                        </button>
+                      </div>
+                    </section>
+                    <section class="private-note-share-group" aria-labelledby="privateNoteShareCollectionsTitle">
+                      <h3 id="privateNoteShareCollectionsTitle">加入到合集</h3>
+                      <div class="private-note-share-collections">
+                        <button type="button" data-private-share-collection="日记" aria-pressed="false">
+                          <span><img src="assets/journal/my-journal-closed.png" alt="" /></span>
+                          <strong>日记</strong>
+                        </button>
+                        <button type="button" data-private-share-collection="旅行手账" aria-pressed="false">
+                          <span><img src="assets/gallery/tokyo-memories.png" alt="" /></span>
+                          <strong>旅行手账</strong>
+                        </button>
+                      </div>
+                    </section>
+                  </section>
+                </div>
+              </section>
+              <div class="private-live-glow" aria-hidden="true"></div>
+            </div>
+            <div class="ai-spatial-surface ai-spatial-surface-collab" id="aiCollabSurface" aria-hidden="true"></div>
+
+            <div class="bottom-system" id="bottomSystem">
+              <div class="private-live-controls" id="privateLiveControls" aria-label="私密 AI Live 通话控制" aria-hidden="true">
+                <button class="private-live-control private-live-mute" id="privateLiveMute" type="button" aria-label="静音" aria-pressed="false">
+                  <img id="privateLiveMuteIcon" src="assets/icons/sf-symbols/mic.fill.png" alt="" />
+                </button>
+                <button class="private-live-control private-live-video" id="privateLiveVideo" type="button" aria-label="打开摄像头" aria-pressed="false">
+                  <img id="privateLiveVideoIcon" src="assets/icons/sf-symbols/video.slash.fill.png" alt="" />
+                </button>
+                <button class="private-live-control private-live-end" id="privateLiveEnd" type="button" aria-label="挂断">
+                  <img src="assets/icons/sf-symbols/xmark.png" alt="" />
+                </button>
+              </div>
+              <button class="calendar-launch-pill" id="calendarLaunchPill" type="button" aria-hidden="true" tabindex="-1">
+                <img src="assets/icons/sf-symbols/calendar.png" alt="" />
+                <span>查看日历</span>
+              </button>
+              <div class="home-voice" id="homeVoice" role="group" aria-label="AI 对话控制">
+                <span class="home-voice-material home-voice-material-private" aria-hidden="true"></span>
+                <span class="home-voice-material home-voice-material-collab" aria-hidden="true"></span>
+                <span class="home-voice-direction home-voice-private" aria-hidden="true">
+                  <img src="assets/icons/sf-symbols/eye.slash.fill.png" alt="" />
+                </span>
+                <span class="home-voice-waveform" id="homeVoiceWaveform" aria-hidden="true">
+                  <i style="--wave-height: 8px"></i><i style="--wave-height: 14px"></i><i style="--wave-height: 24px"></i><i style="--wave-height: 36px"></i>
+                  <i style="--wave-height: 28px"></i><i style="--wave-height: 17px"></i><i style="--wave-height: 10px"></i><i style="--wave-height: 16px"></i>
+                  <i style="--wave-height: 30px"></i><i style="--wave-height: 42px"></i><i style="--wave-height: 33px"></i><i style="--wave-height: 20px"></i>
+                  <i style="--wave-height: 12px"></i><i style="--wave-height: 9px"></i><i style="--wave-height: 22px"></i><i style="--wave-height: 34px"></i>
+                  <i style="--wave-height: 18px"></i><i style="--wave-height: 11px"></i><i style="--wave-height: 28px"></i><i style="--wave-height: 40px"></i>
+                  <i style="--wave-height: 25px"></i><i style="--wave-height: 16px"></i><i style="--wave-height: 12px"></i><i style="--wave-height: 20px"></i>
+                  <i style="--wave-height: 32px"></i><i style="--wave-height: 38px"></i><i style="--wave-height: 29px"></i><i style="--wave-height: 21px"></i>
+                  <i style="--wave-height: 14px"></i><i style="--wave-height: 9px"></i>
+                </span>
+                <span class="home-voice-direction home-voice-collab" aria-hidden="true">
+                  <img src="assets/icons/sf-symbols/person.2.png" alt="" />
+                </span>
+                <section class="voice-task-panel" id="voiceTaskPanel" role="dialog" aria-modal="false" aria-labelledby="voiceTaskQuestion" aria-hidden="true">
+                  <header class="voice-task-header">
+                    <h2 id="voiceTaskQuestion"></h2>
+                    <button class="voice-task-close" id="voiceTaskClose" type="button" aria-label="停止处理">
+                      <img src="assets/icons/sf-symbols/chevron.down.png" alt="" />
+                    </button>
+                  </header>
+                  <div class="voice-task-stream" role="status" aria-live="polite">
+                    <p id="voiceTaskStatus"></p>
+                  </div>
+                </section>
+                <section class="home-context-panel" id="homeContextPanel" role="dialog" aria-modal="false" aria-labelledby="homeContextQuestion" aria-hidden="true">
+                  <header class="home-context-header">
+                    <h2 id="homeContextQuestion">我今天还有什么需要处理？</h2>
+                    <button class="home-context-close" id="homeContextClose" type="button" aria-label="收起回答">
+                      <img src="assets/icons/sf-symbols/chevron.down.png" alt="" />
+                    </button>
+                  </header>
+                  <div class="home-context-stream" role="status" aria-live="polite">
+                    <p id="homeContextStatus"></p>
+                  </div>
+                  <div class="home-context-answer" id="homeContextAnswer" aria-hidden="true">
+                    <p>今天有两件事：确认上海出差的机票，以及查看 Lin 刚分享的架构笔记。建议先处理机票。</p>
+                  </div>
+                </section>
+                <section class="dining-followup-panel" id="diningFollowupPanel" role="dialog" aria-modal="false" aria-labelledby="diningFollowupQuestion" aria-hidden="true">
+                  <header class="dining-followup-header">
+                    <h2 id="diningFollowupQuestion">第一家店有哪些招牌菜</h2>
+                    <button class="dining-followup-close" id="diningFollowupClose" type="button" aria-label="收起回答">
+                      <img src="assets/icons/sf-symbols/chevron.down.png" alt="" />
+                    </button>
+                  </header>
+
+                  <div class="dining-followup-stream" id="diningFollowupStream" role="status" aria-live="polite">
+                    <p id="diningFollowupStatus"></p>
+                  </div>
+
+                  <div class="dining-followup-answer" id="diningFollowupAnswer" aria-hidden="true">
+                    <p>
+                      八合里最常被点的是
+                      <button class="dining-dish-entity" type="button" data-dish="至尊牛肉三拼"><img src="assets/food-v2/baheli-dishes/beef-platter.jpg" alt="" aria-hidden="true" /><span>至尊牛肉三拼</span></button>，一次能尝到多种部位；
+                      <button class="dining-dish-entity" type="button" data-dish="吊龙伴"><img src="assets/food-v2/baheli-dishes/diaolong.jpg" alt="" aria-hidden="true" /><span>吊龙伴</span></button>肉味更足，
+                      <button class="dining-dish-entity" type="button" data-dish="熟牛肉丸"><img src="assets/food-v2/baheli-dishes/beef-balls.jpg" alt="" aria-hidden="true" /><span>熟牛肉丸</span></button>弹韧，
+                      <button class="dining-dish-entity" type="button" data-dish="牛骨清汤锅"><img src="assets/food-v2/baheli-dishes/beef-clear-broth.jpg" alt="" aria-hidden="true" /><span>牛骨清汤锅</span></button>适合先喝汤，想加一道炸物可以点
+                      <button class="dining-dish-entity" type="button" data-dish="特色酥牛肉"><img src="assets/food-v2/baheli-dishes/crispy-beef.png" alt="" aria-hidden="true" /><span>特色酥牛肉</span></button>。
+                    </p>
+                  </div>
+
+                  <div class="dining-entity-actions" id="diningEntityActions" aria-hidden="true">
+                    <button id="diningFavoriteAction" type="button" aria-pressed="false">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.75 5.57 6.15.9-4.45 4.33 1.05 6.12L12 16.83l-5.5 2.89 1.05-6.12L3.1 9.27l6.15-.9L12 2.8z" /></svg>
+                      <span>收藏</span>
+                    </button>
+                    <span class="dining-action-divider" aria-hidden="true"></span>
+                    <button id="diningCartAction" type="button" aria-pressed="false">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2.1l1.45 9.1a2 2 0 0 0 1.98 1.68h8.96a2 2 0 0 0 1.94-1.5L20.7 8H7.05M10 19.2a1.15 1.15 0 1 1-2.3 0 1.15 1.15 0 0 1 2.3 0zm8 0a1.15 1.15 0 1 1-2.3 0 1.15 1.15 0 0 1 2.3 0zM15.5 2.8v5M13 5.3h5" /></svg>
+                      <span>加入购物车</span>
+                    </button>
+                  </div>
+                </section>
+                <section class="dining-taste-panel" id="diningTastePanel" role="dialog" aria-modal="false" aria-labelledby="diningTasteQuestion" aria-hidden="true">
+                  <header class="dining-taste-toolbar">
+                    <button class="dining-history-toggle" id="diningHistoryToggle" type="button" aria-expanded="false" aria-controls="diningConversationHistory" disabled>
+                      <span>2 轮对话</span>
+                      <img src="assets/icons/sf-symbols/chevron.down.png" alt="" />
+                    </button>
+                    <button class="dining-taste-close" id="diningTasteClose" type="button" aria-label="收起回答">
+                      <img src="assets/icons/sf-symbols/chevron.down.png" alt="" />
+                    </button>
+                  </header>
+
+                  <h2 class="dining-taste-question" id="diningTasteQuestion">雨润田这家店口味辣吗？</h2>
+
+                  <div class="dining-taste-stream" role="status" aria-live="polite">
+                    <p id="diningTasteStatus"></p>
+                  </div>
+
+                  <div class="dining-taste-answer" id="diningTasteAnswer" aria-hidden="true">
+                    <p>雨润田的藕汤本身不辣，整体偏鲜香。香辣藕片和干锅类辣度更明显，点单时可以备注少辣。</p>
+                  </div>
+
+                  <div class="dining-conversation-history" id="diningConversationHistory" aria-hidden="true">
+                    <article aria-label="第一轮对话">
+                      <p class="dining-history-query">第一家店有哪些招牌菜</p>
+                      <p class="dining-history-answer">八合里常点至尊牛肉三拼、吊龙伴、熟牛肉丸、牛骨清汤锅和特色酥牛肉。</p>
+                    </article>
+                    <article aria-label="第二轮对话">
+                      <p class="dining-history-query">雨润田这家店口味辣吗？</p>
+                      <p class="dining-history-answer">雨润田的藕汤本身不辣，整体偏鲜香。香辣藕片和干锅类辣度更明显，点单时可以备注少辣。</p>
+                    </article>
+                  </div>
+                </section>
+                <button class="home-voice-main" id="commandTrigger" type="button" aria-pressed="false">
+                  <span class="home-voice-symbol home-voice-keyboard" aria-hidden="true">&#xF0172;</span>
+                  <span class="home-voice-label" lang="zh-CN">按住说话</span>
+                  <span class="home-voice-resume-label" id="homeVoiceResumeLabel" lang="zh-CN" hidden>第一家店有哪些…</span>
+                </button>
+                <button class="home-voice-video" id="aiLiveButton" type="button" aria-label="开始 AI Live 视频对话">
+                  <span class="home-voice-video-symbol" aria-hidden="true">&#xF00A3;</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="prototype-toast" id="toast" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </main>
+    <script src="js/interactions.js"></script>
+    <script>
+      (() => {
+        const captureView = new URLSearchParams(window.location.search).get("capture");
+        if (!captureView) return;
+        document.documentElement.classList.add("figma-capture-mode");
+        const deviceWrap = document.getElementById("deviceWrap");
+        const deviceSlot = document.getElementById("deviceSlot");
+        const previewStage = document.querySelector(".preview-stage");
+        previewStage?.style.setProperty("width", "432px", "important");
+        previewStage?.style.setProperty("height", "932px", "important");
+        previewStage?.style.setProperty("min-height", "932px", "important");
+        previewStage?.style.setProperty("align-items", "flex-start", "important");
+        previewStage?.style.setProperty("justify-content", "flex-start", "important");
+        previewStage?.style.setProperty("padding", "0", "important");
+        deviceWrap?.style.setProperty("transform", "none", "important");
+        deviceWrap?.style.setProperty("width", "432px", "important");
+        deviceWrap?.style.setProperty("height", "932px", "important");
+        deviceSlot?.style.setProperty("width", "432px", "important");
+        deviceSlot?.style.setProperty("height", "932px", "important");
+        window.requestAnimationFrame(() => {
+          document.querySelector(`[data-prototype="${captureView}"]`)?.click();
+        });
+      })();
+    </script>
+  </body>
+</html>

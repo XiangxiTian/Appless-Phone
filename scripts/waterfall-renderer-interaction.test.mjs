@@ -631,7 +631,7 @@ assert.match(waterfallCss, /\.waterfall-card\.is-active,[\s\S]*?transform:\s*non
 assert.doesNotMatch(waterfallCss, /\.waterfall-reader-hotzone\s*\{/);
 assert.doesNotMatch(waterfallJs, /data-waterfall-reader-hotzone/);
 assert.match(waterfallCss, /\.waterfall-reader-head\s*\{[^}]*opacity:\s*1/s);
-assert.match(waterfallCss, /\.waterfall-reader-head\s*\{[^}]*left:\s*0[^}]*right:\s*0[^}]*background:\s*#eef0f2[^}]*border-bottom:/s,
+assert.match(waterfallCss, /\.waterfall-reader-head\s*\{[^}]*left:\s*0[^}]*right:\s*0[^}]*background:\s*#ffffff[^}]*border-bottom:/s,
   'detail controls must stay in an opaque persistent top bar while content scrolls');
 assert.match(waterfallCss,
   /\.waterfall-reader-signals\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s,
@@ -669,7 +669,7 @@ assert.doesNotMatch(waterfallCss, /\.waterfall-card\.is-active \.waterfall-card-
 assert.match(waterfallCss, /\.waterfall-overlay\s*\{[^}]*display:\s*none[^}]*background:\s*var\(--paper\)[^}]*opacity:\s*0/s);
 assert.match(waterfallCss, /\.waterfall-overlay\.active\s*\{[^}]*display:\s*block[^}]*opacity:\s*1[^}]*animation:\s*waterfall-overlay-in 180ms var\(--ease-out\) both/s);
 assert.match(waterfallCss, /\.waterfall-overlay\.active\.closing\s*\{[^}]*opacity:\s*0[^}]*animation:\s*none[^}]*transition:\s*opacity 140ms var\(--ease-out\)/s);
-assert.match(waterfallCss, /\.waterfall-track\s*\{[^}]*background:\s*#eef0f2/s);
+assert.match(waterfallCss, /\.waterfall-track\s*\{[^}]*background:\s*#ffffff/s);
 assert.match(waterfallCss, /\.waterfall-card\s*\{[^}]*background:\s*transparent/s);
 assert.match(waterfallCss, /\.waterfall-card--text\s*\{[^}]*background:\s*transparent/s);
 assert.match(waterfallCss, /\.waterfall-cinema-copy\s*\{[^}]*overflow:\s*hidden/s);
@@ -731,7 +731,7 @@ assert.match(waterfallCss,
   /\.waterfall-preferences\s*\{[^}]*transform:\s*translate3d\(0, 24px, 0\)[^}]*opacity:\s*0/s,
   'the source sheet must enter with a short slide and fade');
 assert.match(waterfallCss,
-  /\.waterfall-preferences\s*\{[^}]*border:\s*1px solid rgba\(255, 255, 255, 0\.72\)[^}]*background:\s*linear-gradient\(145deg, rgba\(255, 255, 255, 0\.68\), rgba\(243, 240, 236, 0\.54\)\)[^}]*backdrop-filter:\s*blur\(38px\) saturate\(145%\) brightness\(1\.08\)/s,
+  /\.waterfall-preferences\s*\{[^}]*border:\s*1px solid rgba\(255, 255, 255, 0\.72\)[^}]*background:\s*linear-gradient\(145deg, rgba\(255, 255, 255, 0\.94\), rgba\(239, 243, 248, 0\.88\)\)[^}]*backdrop-filter:\s*blur\(38px\) saturate\(145%\) brightness\(1\.08\)/s,
   'source settings must keep the in-page glass material while suppressing feed text behind it');
 assert.match(waterfallCss, /@media \(prefers-reduced-transparency: reduce\)[\s\S]*?\.waterfall-preferences\s*\{[^}]*backdrop-filter:\s*none/s,
   'the glass source sheet needs a legible reduced-transparency fallback');
@@ -1036,9 +1036,9 @@ assert.doesNotMatch(mediaErrorSource, /stage\.hidden|refreshMetricsAfterSettle/,
 assert.doesNotMatch(waterfallJs, /onerror="this\.parentElement\.hidden=true"/,
   'inline cover fallback must preserve the media stage');
 assert.match(renderer, /body\.waterfall-direct\s*\{\s*background:\s*transparent/,
-  'direct discovery must let the native aurora show through the Web document');
-assert.match(renderer, /body\.waterfall-direct \.waterfall-overlay,[\s\S]*body\.waterfall-direct \.waterfall-track\s*\{\s*background:\s*transparent/,
-  'direct discovery must keep the aurora visible between cards instead of a paper wash');
+  'direct discovery body remains transparent so the scoped feed layer owns its visual background');
+assert.match(renderer, /body\.waterfall-direct \.waterfall-overlay,[\s\S]*body\.waterfall-direct \.waterfall-track\s*\{\s*background:\s*#ffffff/,
+  'direct discovery must use the requested white background between cards');
 assert.match(renderer, /startInDiscovery \? ' class="waterfall-direct"' : ''/,
   'ordinary aggregate documents must keep their existing opaque body');
 assert.doesNotMatch(waterfallJs, /target=\"_blank\"/,

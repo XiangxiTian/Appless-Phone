@@ -1107,6 +1107,507 @@ body {
   .appless-v2-address-functions { grid-template-columns: 32px minmax(0,1fr); }
   .appless-v2-address-functions button { grid-column: 2; justify-self: start; }
 }
+
+/* AIOS Demo dining results: summary -> query -> location -> filters -> restaurant list. */
+html,
+body {
+  min-height: 100%;
+  background: #f8fafc;
+}
+.editorial-food-shell {
+  width: min(100%, 820px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 22px 24px calc(112px + env(safe-area-inset-bottom, 0px));
+  overflow-x: hidden;
+  background: linear-gradient(180deg, #ffecd5 0%, #fff5e9 17%, #f8fafc 39%, #f8fafc 100%);
+}
+.editorial-cover {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  color: #101215;
+}
+.editorial-cover-media,
+.editorial-cover::after,
+.persona-banner,
+.source-cloud,
+.cover-stats { display: none; }
+.editorial-cover-content { width: 100%; }
+.food-scene-kicker {
+  display: block;
+  margin: 0 0 5px;
+  color: #777f85;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 21px;
+}
+.editorial-cover h1 {
+  max-width: 360px;
+  margin: 0;
+  color: #101215;
+  font-family: inherit;
+  font-size: 32px;
+  font-weight: 770;
+  line-height: 38px;
+  letter-spacing: -1.15px;
+}
+.editorial-cover p {
+  max-width: none;
+  margin: 5px 0 0;
+  color: #93999f;
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 20px;
+}
+.editorial-location-bar {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, max-content) 42px 42px;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0;
+}
+.food-current-address {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 15px 0 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 21px;
+  background: rgba(218, 244, 185, 0.72);
+  color: #168d36;
+  box-shadow: none;
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+.food-current-address::after { display: none; }
+.food-location-symbol {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0;
+  background: transparent;
+  color: #129b3c;
+}
+.food-location-symbol svg { width: 22px; height: 22px; }
+.food-location-copy { min-width: 0; flex: 1; }
+.food-location-copy small { display: none; }
+.food-location-copy strong {
+  display: block;
+  margin: 0;
+  overflow: hidden;
+  color: #168d36;
+  font-size: 16px;
+  font-weight: 670;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-location-chevron { display: none; }
+.food-map-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(77, 85, 92, 0.12);
+  border-radius: 21px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #454d53;
+  box-shadow: none;
+}
+.food-map-icon svg { width: 19px; height: 19px; }
+.food-favorites-count { background: #23272b; color: #ffffff; }
+.editorial-tabs,
+.food-filters {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: transparent;
+  border: 0;
+  backdrop-filter: none;
+  scrollbar-width: none;
+  gap: 7px;
+}
+.editorial-tabs::-webkit-scrollbar,
+.food-filters::-webkit-scrollbar { display: none; }
+.editorial-tabs {
+  position: static;
+  margin: 18px 0 0;
+  padding: 0 0 2px;
+}
+.food-filters {
+  margin: 8px 0 0;
+  padding: 0 0 2px;
+}
+.appless-v2-food-tabs,
+.appless-v2-food-filters { display: flex; }
+.editorial-tab {
+  display: inline-flex;
+  height: 36px;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 18px;
+  background: #eceff1;
+  color: #575e64;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.editorial-tab.active {
+  border-color: #23272b;
+  background: #23272b;
+  color: #ffffff;
+  box-shadow: none;
+}
+.food-control {
+  position: relative;
+  display: inline-flex;
+  width: auto;
+  min-width: 70px;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  border: 0;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(77, 85, 92, 0.14);
+}
+.food-control select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: auto;
+  min-width: 70px;
+  height: 36px;
+  padding: 0 30px 0 13px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #575e64;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 20px;
+}
+.food-control::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 13px;
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  border-right: 1.7px solid #575e64;
+  border-bottom: 1.7px solid #575e64;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.editorial-feature,
+.editorial-card {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 128px;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin: 20px 0 0;
+  padding: 11px;
+  overflow: hidden;
+  border: 1px solid rgba(67, 76, 84, 0.08);
+  border-radius: 27px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #141619;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.editorial-feature:active,
+.editorial-card:active { transform: scale(0.985); opacity: 0.86; }
+.editorial-feature-media {
+  position: relative;
+  display: block;
+  width: 112px;
+  height: 106px;
+  min-height: 106px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #e9ecee;
+}
+.editorial-feature-media > .food-restaurant-photo,
+.editorial-card > .food-restaurant-photo {
+  display: block;
+  width: 112px;
+  height: 106px;
+  border-radius: 20px;
+  object-fit: cover;
+}
+.editorial-feature-media > .editorial-badge,
+.food-feature-icon { display: none; }
+.editorial-feature-copy {
+  min-width: 0;
+  padding: 0;
+}
+.food-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 5px;
+}
+.editorial-feature-copy .editorial-badge {
+  display: inline-flex;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #e66f24;
+  font-size: 13px;
+  font-weight: 740;
+  line-height: 18px;
+}
+.food-card-topline .food-favorite-toggle,
+.food-card-head-actions .food-favorite-toggle {
+  position: static;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 16px;
+  background: #f3f5f6;
+  color: #727a80;
+  box-shadow: none;
+  font-size: 18px;
+}
+.food-favorite-toggle.active { background: #fff2cf; color: #dc9b1d; }
+.editorial-feature .editorial-card-head {
+  display: block;
+  grid-template-columns: minmax(0, 1fr);
+}
+.editorial-feature .editorial-title small {
+  display: block;
+  overflow: hidden;
+  color: #727a80;
+  font-size: 12px;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editorial-feature .editorial-title h2,
+.editorial-title h2 {
+  margin: 0 0 6px;
+  overflow: hidden;
+  color: #141619;
+  font-family: inherit;
+  font-size: 19px;
+  font-weight: 750;
+  line-height: 24px;
+  letter-spacing: -0.45px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editorial-feature .editorial-title h2 { font-size: 20px; line-height: 25px; }
+.editorial-feature p,
+.editorial-meta {
+  margin: 0;
+  overflow: hidden;
+  color: #5f676d;
+  font-size: 14px;
+  font-weight: 570;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editorial-feature .editorial-detail {
+  display: none;
+  grid-column: 1 / -1;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(67, 76, 84, 0.1);
+}
+.editorial-feature.expanded { align-items: start; }
+.editorial-feature.expanded .editorial-detail { display: block; }
+.editorial-feature .editorial-detail-grid,
+.editorial-card .editorial-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+.editorial-detail-row {
+  display: block;
+  min-width: 0;
+  padding: 9px;
+  border-radius: 12px;
+  background: #f3f5f6;
+  font-size: 12px;
+  line-height: 17px;
+}
+.editorial-detail-row b { display: block; color: #7b8389; font-size: 11px; font-weight: 620; }
+.editorial-detail-row span { display: block; margin-top: 3px; color: #202428; overflow-wrap: anywhere; }
+.editorial-actions { gap: 7px; margin-top: 10px; }
+.editorial-action,
+.editorial-feature .editorial-action {
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 19px;
+  background: #23272b;
+  color: #ffffff;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 680;
+}
+.editorial-action.secondary,
+.editorial-feature .editorial-action.secondary,
+.editorial-action.luckin-menu,
+.editorial-action.mcd-menu {
+  border: 1px solid rgba(77, 85, 92, 0.14);
+  background: #ffffff;
+  color: #575e64;
+  box-shadow: none;
+}
+.editorial-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 0 0 18px;
+}
+.editorial-list .editorial-card { margin-top: 0; }
+.editorial-card::before { display: none; }
+.editorial-card > .food-restaurant-photo { grid-column: 1; grid-row: 1; }
+.editorial-card-head {
+  display: grid;
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.merchant-avatar { display: none; }
+.food-card-head-actions {
+  display: flex;
+  align-self: center;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+}
+.editorial-expand {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 24px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #727a80;
+  font-size: 12px;
+  font-weight: 620;
+}
+.editorial-source-row {
+  grid-column: 2;
+  margin: -35px 42px 0 0;
+  align-self: end;
+}
+.editorial-source {
+  padding: 0;
+  background: transparent;
+  color: #8a9196;
+  font-size: 12px;
+  font-weight: 560;
+}
+.editorial-card .editorial-detail {
+  display: none;
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(67, 76, 84, 0.1);
+}
+.editorial-card.expanded {
+  display: grid;
+  align-items: start;
+}
+.editorial-card.expanded .editorial-card-head { display: grid; }
+.editorial-card.expanded .editorial-source-row { grid-column: 2; }
+.editorial-card.expanded .editorial-expand { float: none; }
+.editorial-card.expanded .editorial-detail { display: block; }
+.editorial-card .editorial-actions,
+.editorial-card.expanded .editorial-actions { display: flex; }
+.editorial-empty { margin-top: 0; }
+.appless-v2-address-functions { display: none; }
+@media (min-width: 620px) {
+  .editorial-food-shell { padding-right: 32px; padding-left: 32px; }
+  .editorial-list { grid-template-columns: 1fr; padding-right: 0; padding-left: 0; }
+}
+@media (max-width: 380px) {
+  .editorial-food-shell { padding-right: 18px; padding-left: 18px; }
+  .editorial-cover h1 { font-size: 29px; line-height: 35px; }
+  .editorial-location-bar { grid-template-columns: minmax(0, 1fr) 40px 40px; }
+  .food-current-address { min-width: 0; padding-right: 11px; padding-left: 10px; }
+  .food-location-copy strong { font-size: 14px; }
+  .food-map-icon { width: 40px; height: 40px; }
+  .editorial-feature,
+  .editorial-card { grid-template-columns: 94px minmax(0, 1fr); gap: 11px; }
+  .editorial-feature-media,
+  .editorial-feature-media > .food-restaurant-photo,
+  .editorial-card > .food-restaurant-photo { width: 94px; height: 94px; min-height: 94px; }
+  .editorial-feature .editorial-title h2,
+  .editorial-title h2 { font-size: 17px; line-height: 22px; }
+}
+/* The native shell owns the full-screen dining gradient in immersive result mode. */
+html,
+body,
+.editorial-food-shell { background: transparent; }
+.editorial-food-shell {
+  padding-top: 14px;
+  padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+}
+.editorial-location-bar {
+  display: flex;
+  width: 100%;
+  align-items: center;
+}
+.food-current-address { max-width: min(100%, 310px); }
+.food-map-icon { display: none; }
+.editorial-feature:focus {
+  border-color: #0868d5;
+  outline: 2px solid #0868d5;
+  outline-offset: -2px;
+}
+.editorial-feature .editorial-title h2,
+.editorial-title h2 {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.editorial-feature p,
+.editorial-meta { white-space: normal; }
+.editorial-card > .food-restaurant-photo,
+.editorial-feature-media > .food-restaurant-photo { object-position: center; }
+@media (max-width: 380px) {
+  .editorial-food-shell { padding-top: 11px; }
+  .food-current-address { max-width: 100%; }
+}
 `;
 
 const FOOD_HOME_JS: string = `
@@ -1217,6 +1718,27 @@ const FOOD_HOME_JS: string = `
       return;
     }
     add(wrap, 'span', 'merchant-avatar-fallback', avatarInitial(block));
+  }
+  function restaurantPhoto(index) {
+    var photos = [
+      'resource://rawfile/food-v2/baheli-restaurant.jpg',
+      'resource://rawfile/food-v2/nawa-xinjiang.jpg',
+      'resource://rawfile/food-v2/yuruntian-restaurant.webp',
+      'resource://rawfile/food-v2/tianxi-cantonese.jpg',
+      'resource://rawfile/food-v2/muwu-barbecue.jpg',
+      'resource://rawfile/food-v2/banbudian-sichuan.jpg',
+      'resource://rawfile/food-v2/seafood-79.jpg',
+      'resource://rawfile/food-v2/haidilao.jpg'
+    ];
+    return photos[index % photos.length];
+  }
+  function addRestaurantPhoto(parent, index, title) {
+    var image = add(parent, 'img', 'food-restaurant-photo');
+    image.src = restaurantPhoto(index);
+    image.alt = text(title) + ' 图片';
+    image.setAttribute('loading', index === 0 ? 'eager' : 'lazy');
+    image.setAttribute('draggable', 'false');
+    return image;
   }
   function hasLocation(block) {
     return text(metric(block, ['location'])).length > 0;
@@ -1766,6 +2288,12 @@ const FOOD_HOME_JS: string = `
   }
   function setExpanded(key) {
     state.expandedKey = state.expandedKey === key ? '' : key;
+    var feature = document.querySelector('.editorial-feature');
+    if (feature) {
+      var featureExpanded = feature.getAttribute('data-card-key') === state.expandedKey;
+      feature.classList.toggle('expanded', featureExpanded);
+      feature.setAttribute('aria-expanded', featureExpanded ? 'true' : 'false');
+    }
     Array.prototype.slice.call(document.querySelectorAll('.editorial-list > .editorial-card')).forEach(function (card) {
       var expanded = card.getAttribute('data-card-key') === state.expandedKey;
       card.classList.toggle('expanded', expanded);
@@ -1829,7 +2357,7 @@ const FOOD_HOME_JS: string = `
     var visibleTotal = visible + featureVisible;
     var total = cards.length + (feature ? 1 : 0);
     if (count) {
-      count.textContent = visibleTotal === total ? text(count.getAttribute('data-default-summary')) : String(visibleTotal) + ' 条结果 · 来源结果已合并';
+      count.textContent = visibleTotal === total ? text(count.getAttribute('data-default-summary')) : String(visibleTotal) + ' 条结果 · 内容由 AI 生成';
     }
     var kicker = document.getElementById('editorial-kicker-count');
     if (kicker) { kicker.textContent = '附近餐饮 · ' + String(visibleTotal) + ' 条结果'; }
@@ -1909,8 +2437,8 @@ const FOOD_HOME_JS: string = `
   var heroContent = add(hero, 'div', 'editorial-cover-content');
   var sceneKicker = add(heroContent, 'small', 'food-scene-kicker', '附近餐饮 · ' + String(blocks.length) + ' 条结果');
   sceneKicker.id = 'editorial-kicker-count';
-  add(heroContent, 'h1', '', '今天附近值得吃');
-  var resultSummary = add(heroContent, 'p', '', String(blocks.filter(hasLocation).length) + ' 家可导航 · 来源结果已合并');
+  add(heroContent, 'h1', '', '周边有什么好吃的？');
+  var resultSummary = add(heroContent, 'p', '', '内容由 AI 生成');
   resultSummary.id = 'editorial-count';
   resultSummary.setAttribute('data-default-summary', resultSummary.textContent);
   var locationBar = add(heroContent, 'div', 'editorial-location-bar');
@@ -2170,16 +2698,12 @@ const FOOD_HOME_JS: string = `
     ['food_show_all', '全部', 'all'],
     ['food_filter_featured', '精选', 'featured'],
     ['food_filter_1km', '1公里内', 'within_1km'],
-    ['food_filter_source', '来源', 'source'],
     ['food_filter_coffee', '咖啡', 'coffee'],
-    ['food_filter_late', '深夜', 'late'],
-    ['food_filter_group', '聚餐', 'group'],
-    ['food_filter_light', '轻食', 'light']
+    ['food_filter_late', '深夜', 'late']
   ];
   selectValue('价格', [['all', '不限'], ['0_50', '¥0-50'], ['50_100', '¥50-100'], ['100_200', '¥100-200'], ['200_plus', '¥200+']], state.price, function (value) { state.price = value; });
   selectValue('评分', [['all', '不限'], ['4', '4.0+'], ['4_5', '4.5+'], ['4_8', '4.8+']], state.rating, function (value) { state.rating = value; });
   selectValue('营业', [['all', '不限'], ['open', '营业中']], state.business, function (value) { state.business = value; });
-  selectValue('排序', [['smart', '智能排序'], ['distance', '距离最近'], ['rating', '评分最高'], ['price', '价格最低']], state.sort, function (value) { state.sort = value; });
   if (blocks.length > 0) {
     var featureBlock = blocks[0];
     var feature = add(shell, 'section', 'editorial-feature appless-v2-food-card featured');
@@ -2192,7 +2716,12 @@ const FOOD_HOME_JS: string = `
     feature.setAttribute('data-featured', 'true');
     feature.setAttribute('data-sources', sourceParts(featureBlock).join(' / '));
     feature.setAttribute('data-search', [text(featureBlock.title), text(featureBlock.subtitle), metric(featureBlock, ['category']), metric(featureBlock, ['address']), sourceParts(featureBlock).join(' ')].join(' '));
+    feature.setAttribute('aria-expanded', 'false');
+    feature.setAttribute('role', 'button');
+    feature.tabIndex = 0;
+    feature.addEventListener('click', function () { setExpanded(text(featureBlock.id) || '0'); });
     var featureMedia = add(feature, 'div', 'editorial-feature-media appless-v2-food-photo');
+    addRestaurantPhoto(featureMedia, 0, text(featureBlock.title) || '推荐餐厅');
     add(featureMedia, 'span', 'editorial-badge', '为你推荐');
     var featureIcon = add(featureMedia, 'i', 'food-feature-icon');
     featureIcon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12M7 8v8.5A2.5 2.5 0 0 0 9.5 19h5A2.5 2.5 0 0 0 17 16.5V8M9 5h6l1 3H8l1-3Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 3.5c1.2 1 2.8 1 4 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
@@ -2234,6 +2763,7 @@ const FOOD_HOME_JS: string = `
         });
       });
     }
+    feature.appendChild(featureDetail);
   }
   var listNode = add(shell, 'section', 'editorial-list');
   var empty = add(listNode, 'div', 'editorial-empty', '当前筛选下暂无匹配餐饮。');
@@ -2254,6 +2784,7 @@ const FOOD_HOME_JS: string = `
     card.setAttribute('data-sources', sourceParts(block).join(' / '));
     card.setAttribute('data-search', [text(block.title), text(block.subtitle), metric(block, ['category']), metric(block, ['address']), sourceParts(block).join(' ')].join(' '));
     card.setAttribute('aria-expanded', 'false');
+    addRestaurantPhoto(card, index, text(block.title) || '餐厅');
     var head = add(card, 'div', 'editorial-card-head');
     addAvatar(head, block);
     var title = add(head, 'div', 'editorial-title');
@@ -2333,6 +2864,10 @@ const FOOD_HOME_JS: string = `
     button.addEventListener('click', function () { handleFilter({ id: item[0], label: item[1] }); });
   });
   applyFilter();
+  var featuredRestaurant = document.querySelector('.editorial-feature');
+  if (featuredRestaurant && typeof featuredRestaurant.focus === 'function') {
+    featuredRestaurant.focus({ preventScroll: true });
+  }
 })();
 `;
 

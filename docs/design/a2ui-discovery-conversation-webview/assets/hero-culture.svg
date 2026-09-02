@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 912" role="img" aria-labelledby="t d">
+  <title id="t">夜间博物馆</title><desc id="d">现代博物馆在夜色中发光，人们走向入口</desc>
+  <defs><linearGradient id="n" y2="1"><stop stop-color="#152943"/><stop offset="1" stop-color="#725b55"/></linearGradient><linearGradient id="g" x2="1" y2="1"><stop stop-color="#b7e0e1"/><stop offset="1" stop-color="#f2c27b"/></linearGradient></defs>
+  <rect width="1200" height="912" fill="url(#n)"/><circle cx="940" cy="132" r="62" fill="#f2e4bd" opacity=".8"/>
+  <path d="M70 358 466 179l629 174v401H70Z" fill="#eae4d8"/><path d="m466 179 629 174-76 54-553-151L143 404l-73-46Z" fill="#f4eee2"/><path d="M154 424h841v262H154Z" fill="url(#g)"/>
+  <g stroke="#f3eee4" stroke-width="14"><path d="M284 416v275M433 382v309M586 384v307M741 404v287M891 430v261"/></g>
+  <rect y="690" width="1200" height="222" fill="#4f4847"/><path d="M0 730c280-28 491-20 674 14 186 34 356 32 526 0v168H0Z" fill="#665e59"/>
+  <g fill="#202937"><circle cx="283" cy="676" r="25"/><path d="M252 712c13-27 50-34 68-6l14 109h-94Z"/><circle cx="468" cy="707" r="22"/><path d="M440 738c13-23 45-30 62-5l13 91h-87Z"/><circle cx="794" cy="688" r="24"/><path d="M764 720c14-25 48-32 67-5l14 102h-94Z"/></g>
+  <g fill="#e9ae65"><rect x="195" y="479" width="192" height="25" rx="12"/><rect x="629" y="477" width="231" height="25" rx="12"/><rect x="502" y="535" width="122" height="20" rx="10"/></g>
+</svg>

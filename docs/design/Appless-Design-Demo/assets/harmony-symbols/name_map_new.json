@@ -1,0 +1,3990 @@
+{
+  "version": "2.1",
+  "data": {
+    "系统UI": [
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI"
+        ],
+        "name": "airplane_fill",
+        "name_cn": "飞行模式",
+        "unicode": "F0113"
+      },
+      {
+        "module": "电子邮件",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_clockwise",
+        "name_cn": "邮件",
+        "unicode": "F00C7"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_counterclockwise",
+        "name_cn": "恢复",
+        "unicode": "F00C8"
+      },
+      {
+        "module": "计算器",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_counterclockwise_clock",
+        "name_cn": "历史记录",
+        "unicode": "F03D5"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_down_right_and_arrow_up_left",
+        "name_cn": "ic_reduce",
+        "unicode": "F00C9"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_right_up_and_square",
+        "name_cn": "新页签打开",
+        "unicode": "F00CB"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_up_left_and_arrow_down_right",
+        "name_cn": "放大",
+        "unicode": "F00CD"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrowshape_turn_up_right_fill",
+        "name_cn": "转发",
+        "unicode": "F08C2"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI"
+        ],
+        "name": "battery",
+        "name_cn": "检测项_电池 ",
+        "unicode": "F011A"
+      },
+      {
+        "module": "查找设备",
+        "category": [
+          "系统UI"
+        ],
+        "name": "battery_75percent",
+        "name_cn": "设备的电量 会根据设备实际电量动态变化",
+        "unicode": "F0659"
+      },
+      {
+        "module": "查找设备",
+        "category": [
+          "系统UI"
+        ],
+        "name": "bell_fill",
+        "name_cn": "播放铃声",
+        "unicode": "F01D1"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "系统UI"
+        ],
+        "name": "bell_slash",
+        "name_cn": "静音",
+        "unicode": "F01D3"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI"
+        ],
+        "name": "bell_slash_fill",
+        "name_cn": "响铃静音",
+        "unicode": "F01D2"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "bluetooth",
+        "name_cn": "检测项_蓝牙 ",
+        "unicode": "F0254"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "bluetooth_slash",
+        "name_cn": "三态开关补充",
+        "unicode": "F0253"
+      },
+      {
+        "module": "录音机",
+        "category": [
+          "系统UI"
+        ],
+        "name": "bookmark",
+        "name_cn": "标记打点",
+        "unicode": "F000A"
+      },
+      {
+        "module": "hivison/hitouch",
+        "category": [
+          "系统UI"
+        ],
+        "name": "bookmark_filled_on_bookmark",
+        "name_cn": "hitouch稍后阅读",
+        "unicode": "F065A"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI"
+        ],
+        "name": "brush",
+        "name_cn": "换肤",
+        "unicode": "F000D"
+      },
+      {
+        "module": "主题",
+        "category": [
+          "系统UI"
+        ],
+        "name": "brush_fill",
+        "name_cn": "主题-选中态",
+        "unicode": "F000C"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI"
+        ],
+        "name": "checkmark",
+        "name_cn": "确认",
+        "unicode": "F0013"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI"
+        ],
+        "name": "checkmark_circle",
+        "name_cn": "清单",
+        "unicode": "F000F"
+      },
+      {
+        "module": "打印和扫描",
+        "category": [
+          "系统UI"
+        ],
+        "name": "checkmark_circle_fill",
+        "name_cn": "口算批改",
+        "unicode": "F000E"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "checkmark_square",
+        "name_cn": "多选选",
+        "unicode": "F0012"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "checkmark_square_fill",
+        "name_cn": "已选",
+        "unicode": "F01DA"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI"
+        ],
+        "name": "checkmark_square_on_square",
+        "name_cn": "全选",
+        "unicode": "F0011"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI"
+        ],
+        "name": "checkmark_square_on_square_fill",
+        "name_cn": "取消全选",
+        "unicode": "F01D9"
+      },
+      {
+        "module": "智慧屏",
+        "category": [
+          "系统UI"
+        ],
+        "name": "circle_viewfinder",
+        "name_cn": "扫一扫",
+        "unicode": "F0123"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "系统UI"
+        ],
+        "name": "clean",
+        "name_cn": "清理加速",
+        "unicode": "F0016"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "系统UI"
+        ],
+        "name": "clean_fill",
+        "name_cn": "保洁",
+        "unicode": "F0015"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI"
+        ],
+        "name": "dot_grid_1x2",
+        "name_cn": "ic_more_list",
+        "unicode": "F0060"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "系统UI"
+        ],
+        "name": "dot_grid_2x2",
+        "name_cn": "更多",
+        "unicode": "F0061"
+      },
+      {
+        "module": "文管",
+        "category": [
+          "系统UI"
+        ],
+        "name": "externaldrive",
+        "name_cn": "移动存储设备",
+        "unicode": "F00DF"
+      },
+      {
+        "module": "文管",
+        "category": [
+          "系统UI"
+        ],
+        "name": "externaldrive_fill",
+        "name_cn": "移动存储设备 filled",
+        "unicode": "F00DE"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "系统UI"
+        ],
+        "name": "externaldrive_fill_3",
+        "name_cn": "类别",
+        "unicode": "F011E"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "eye",
+        "name_cn": "护眼模式",
+        "unicode": "F0120"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "eye_slash",
+        "name_cn": "密码不可见",
+        "unicode": "F011F"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "系统UI"
+        ],
+        "name": "flag",
+        "name_cn": "目标",
+        "unicode": "F01AC"
+      },
+      {
+        "module": "锁屏AOD",
+        "category": [
+          "系统UI"
+        ],
+        "name": "flashlight_off_fill",
+        "name_cn": "手电筒关",
+        "unicode": "F001A"
+      },
+      {
+        "module": "锁屏AOD",
+        "category": [
+          "系统UI"
+        ],
+        "name": "flashlight_on_fill",
+        "name_cn": "手电筒开",
+        "unicode": "F001C"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "full_screen_fill",
+        "name_cn": "预览",
+        "unicode": "F054A"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "系统UI"
+        ],
+        "name": "gearshape",
+        "name_cn": "设置",
+        "unicode": "F0020"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "系统UI",
+          "人物"
+        ],
+        "name": "hand_point_up_tap_fill",
+        "name_cn": "点击",
+        "unicode": "F0484"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "系统UI",
+          "人物"
+        ],
+        "name": "hand_point_up_tap_fill_1",
+        "name_cn": "显示触摸轨迹",
+        "unicode": "F0522"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "系统UI",
+          "人物"
+        ],
+        "name": "hand_point_up_tap_fill_slash",
+        "name_cn": "关闭触摸轨迹",
+        "unicode": "F0671"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI",
+          "人物"
+        ],
+        "name": "hand_tap",
+        "name_cn": "检测项_触摸屏 ",
+        "unicode": "F048A"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI"
+        ],
+        "name": "hand_thumbsup_fill",
+        "name_cn": "赞扬",
+        "unicode": "F05D7"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "heart",
+        "name_cn": "取消收藏",
+        "unicode": "F0025"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "heart_fill",
+        "name_cn": "收藏",
+        "unicode": "F0021"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "系统UI"
+        ],
+        "name": "heart_slash",
+        "name_cn": "不喜欢",
+        "unicode": "F0024"
+      },
+      {
+        "module": "主题",
+        "category": [
+          "系统UI"
+        ],
+        "name": "house",
+        "name_cn": "home",
+        "unicode": "F0027"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "系统UI"
+        ],
+        "name": "house_fill",
+        "name_cn": "首页-选中",
+        "unicode": "F0026"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "label",
+        "name_cn": "标注",
+        "unicode": "F0208"
+      },
+      {
+        "module": "锁屏AOD",
+        "category": [
+          "系统UI"
+        ],
+        "name": "line_viewfinder",
+        "name_cn": "扫一扫",
+        "unicode": "F0028"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "lock",
+        "name_cn": "关闭",
+        "unicode": "F0008"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "lock_fill",
+        "name_cn": "锁",
+        "unicode": "F04C1"
+      },
+      {
+        "module": "控制中心",
+        "category": [
+          "系统UI"
+        ],
+        "name": "lock_filled_arrow_counterclockwise",
+        "name_cn": "旋转锁定",
+        "unicode": "F057C"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "lock_open",
+        "name_cn": "开启",
+        "unicode": "F04C4"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "lock_open_fill",
+        "name_cn": "解锁",
+        "unicode": "F04C3"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "系统UI"
+        ],
+        "name": "magnifyingglass",
+        "name_cn": "搜索",
+        "unicode": "F0029"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "系统UI",
+          "通信"
+        ],
+        "name": "mic",
+        "name_cn": "语音",
+        "unicode": "F0006"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI",
+          "通信"
+        ],
+        "name": "mic_fill",
+        "name_cn": "话筒",
+        "unicode": "F0315"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "系统UI"
+        ],
+        "name": "minus",
+        "name_cn": "减少",
+        "unicode": "F002C"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "minus_circle",
+        "name_cn": "移除",
+        "unicode": "F002B"
+      },
+      {
+        "module": "设置",
+        "category": [
+          "系统UI"
+        ],
+        "name": "minus_magnifyingglass",
+        "name_cn": "缩小",
+        "unicode": "F0680"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "系统UI"
+        ],
+        "name": "moon_circle_fill",
+        "name_cn": "望月模式开",
+        "unicode": "F056E"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI"
+        ],
+        "name": "moon_fill",
+        "name_cn": "免打扰",
+        "unicode": "F002D"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "系统UI"
+        ],
+        "name": "moon_slash_circle",
+        "name_cn": "望月模式关",
+        "unicode": "F056F"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI"
+        ],
+        "name": "more",
+        "name_cn": "更多",
+        "unicode": "F0570"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "nfc",
+        "name_cn": "NFC",
+        "unicode": "F04D7"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "nfc_fill",
+        "name_cn": "NFC",
+        "unicode": "F04D6"
+      },
+      {
+        "module": "电子邮件",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "paperplane",
+        "name_cn": "邮件",
+        "unicode": "F0030"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI"
+        ],
+        "name": "paperplane_right_fill",
+        "name_cn": "发送",
+        "unicode": "F08A8"
+      },
+      {
+        "module": "小艺建议",
+        "category": [
+          "系统UI"
+        ],
+        "name": "pin",
+        "name_cn": "取消常驻",
+        "unicode": "F0032"
+      },
+      {
+        "module": "小艺建议",
+        "category": [
+          "系统UI"
+        ],
+        "name": "pin_fill_1",
+        "name_cn": "设为常驻",
+        "unicode": "F08AB"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "系统UI"
+        ],
+        "name": "plus",
+        "name_cn": "增加",
+        "unicode": "F0035"
+      },
+      {
+        "module": "设置",
+        "category": [
+          "系统UI"
+        ],
+        "name": "plus_magnifyingglass",
+        "name_cn": "放大",
+        "unicode": "F0127"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI"
+        ],
+        "name": "plus_square",
+        "name_cn": "定制工具栏",
+        "unicode": "F08C3"
+      },
+      {
+        "module": "打印和扫描",
+        "category": [
+          "系统UI"
+        ],
+        "name": "plus_square_on_square_fill",
+        "name_cn": "复印",
+        "unicode": "F006D"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI"
+        ],
+        "name": "power",
+        "name_cn": "开关机键",
+        "unicode": "F0036"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "qrcode",
+        "name_cn": "二维码",
+        "unicode": "F0128"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI"
+        ],
+        "name": "rays",
+        "name_cn": "检测项_重启 ",
+        "unicode": "F0037"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "rectangle_and_arrowshape_turn_up_right",
+        "name_cn": "转发",
+        "unicode": "F00D5"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI"
+        ],
+        "name": "rectangle_portrait_rotate",
+        "name_cn": "检测项_重力感应 ",
+        "unicode": "F0038"
+      },
+      {
+        "module": "教育中心",
+        "category": [
+          "系统UI"
+        ],
+        "name": "rectangle_rotate",
+        "name_cn": "切换模式",
+        "unicode": "F08AD"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "redo",
+        "name_cn": "重做",
+        "unicode": "F01F4"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "save",
+        "name_cn": "保存",
+        "unicode": "F003B"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI"
+        ],
+        "name": "share",
+        "name_cn": "分享 ",
+        "unicode": "F003D"
+      },
+      {
+        "module": "桌面",
+        "category": [
+          "系统UI"
+        ],
+        "name": "slider_horizontal_2",
+        "name_cn": "控制中心",
+        "unicode": "F0072"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "系统UI"
+        ],
+        "name": "slider_vertical_3",
+        "name_cn": "呼吸节奏",
+        "unicode": "F012A"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "系统UI"
+        ],
+        "name": "speaker",
+        "name_cn": "音量",
+        "unicode": "F0044"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "系统UI"
+        ],
+        "name": "speaker_slash",
+        "name_cn": "拍摄静音",
+        "unicode": "F0043"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI"
+        ],
+        "name": "speaker_wave_3",
+        "name_cn": "检测项_扬声器 ",
+        "unicode": "F004A"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "speaker_wave_3_slash",
+        "name_cn": "关闭声音",
+        "unicode": "F058F"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "square_fill_grid_2x2",
+        "name_cn": "分类相册",
+        "unicode": "F004B"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI"
+        ],
+        "name": "square_grid_2x2",
+        "name_cn": "检测项_应用 ",
+        "unicode": "F00E3"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "系统UI"
+        ],
+        "name": "star",
+        "name_cn": "获赞与收藏",
+        "unicode": "F004E"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI"
+        ],
+        "name": "star_fill",
+        "name_cn": "ic_favourites_filled",
+        "unicode": "F0009"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "系统UI"
+        ],
+        "name": "sun_max",
+        "name_cn": "曝光",
+        "unicode": "F0050"
+      },
+      {
+        "module": "华为阅读",
+        "category": [
+          "系统UI"
+        ],
+        "name": "sun_max_fill",
+        "name_cn": "主题-选中态-黄",
+        "unicode": "F004F"
+      },
+      {
+        "module": "华为阅读",
+        "category": [
+          "系统UI"
+        ],
+        "name": "sun_min",
+        "name_cn": "主题-light",
+        "unicode": "F0051"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "系统UI"
+        ],
+        "name": "trash",
+        "name_cn": "删除",
+        "unicode": "F0001"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "trash_fill",
+        "name_cn": "删除相册",
+        "unicode": "F0052"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "undo",
+        "name_cn": "撤销",
+        "unicode": "F01F3"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "wifi",
+        "name_cn": "检测项_WLAN ",
+        "unicode": "F0000"
+      },
+      {
+        "module": "桌面",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "wifi_slash",
+        "name_cn": "WLAN 关闭",
+        "unicode": "F0691"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "xmark",
+        "name_cn": "退出",
+        "unicode": "F0056"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI"
+        ],
+        "name": "xmark_circle",
+        "name_cn": "关闭",
+        "unicode": "F0055"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI"
+        ],
+        "name": "xmark_circle_fill",
+        "name_cn": "取消",
+        "unicode": "F0054"
+      }
+    ],
+    "时间": [
+      {
+        "module": "时钟",
+        "category": [
+          "时间"
+        ],
+        "name": "alarm_fill_1",
+        "name_cn": "闹钟",
+        "unicode": "F05EF"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "时间"
+        ],
+        "name": "calendar",
+        "name_cn": "日历",
+        "unicode": "F03DA"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "时间"
+        ],
+        "name": "calendar_badge_clock",
+        "name_cn": "预约新游",
+        "unicode": "F03D8"
+      },
+      {
+        "module": "日历",
+        "category": [
+          "时间"
+        ],
+        "name": "calendar_fill",
+        "name_cn": "新建",
+        "unicode": "F03D9"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "时间"
+        ],
+        "name": "clock",
+        "name_cn": "时长",
+        "unicode": "F03DD"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "时间"
+        ],
+        "name": "clock_fill",
+        "name_cn": "运动时间",
+        "unicode": "F03DC"
+      },
+      {
+        "module": "时钟",
+        "category": [
+          "时间"
+        ],
+        "name": "stopwatch_2",
+        "name_cn": "秒表",
+        "unicode": "F05F0"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "时间"
+        ],
+        "name": "timer",
+        "name_cn": "定时拍摄",
+        "unicode": "F0406"
+      },
+      {
+        "module": "时钟",
+        "category": [
+          "时间"
+        ],
+        "name": "timer_circle_fill",
+        "name_cn": "计时器",
+        "unicode": "F05F6"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "时间"
+        ],
+        "name": "worldclock",
+        "name_cn": "语言切换",
+        "unicode": "F040A"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "时间"
+        ],
+        "name": "worldclock_fill",
+        "name_cn": "震中经纬度",
+        "unicode": "F0409"
+      },
+      {
+        "module": "时钟",
+        "category": [
+          "时间"
+        ],
+        "name": "worldclock_fill_2",
+        "name_cn": "世界时钟",
+        "unicode": "F05F1"
+      }
+    ],
+    "箭头": [
+      {
+        "module": "电子邮件",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_clockwise",
+        "name_cn": "邮件",
+        "unicode": "F00C7"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_counterclockwise",
+        "name_cn": "恢复",
+        "unicode": "F00C8"
+      },
+      {
+        "module": "计算器",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_counterclockwise_clock",
+        "name_cn": "历史记录",
+        "unicode": "F03D5"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_down_circle",
+        "name_cn": "下载",
+        "unicode": "F089D"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_down_right_and_arrow_up_left",
+        "name_cn": "ic_reduce",
+        "unicode": "F00C9"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_left",
+        "name_cn": "返加",
+        "unicode": "F00CA"
+      },
+      {
+        "module": "智慧屏",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_left_circle",
+        "name_cn": "返回",
+        "unicode": "F069F"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_right",
+        "name_cn": "箭头",
+        "unicode": "F0231"
+      },
+      {
+        "module": "数据克隆",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_right_circle",
+        "name_cn": "迁移",
+        "unicode": "F06A0"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_right_up_and_square",
+        "name_cn": "新页签打开",
+        "unicode": "F00CB"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_up_circle",
+        "name_cn": "检查更新",
+        "unicode": "F00CC"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_up_circle_fill",
+        "name_cn": "发送",
+        "unicode": "F0232"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_up_left",
+        "name_cn": "快捷填充搜索词",
+        "unicode": "F0233"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrow_up_left_and_arrow_down_right",
+        "name_cn": "放大",
+        "unicode": "F00CD"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrow_up_to_line",
+        "name_cn": "一键回顶",
+        "unicode": "F00CF"
+      },
+      {
+        "module": "智慧助手",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowshape_3_triangle_path",
+        "name_cn": "节能",
+        "unicode": "F04F5"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowshape_down_to_line_fill",
+        "name_cn": "下载量",
+        "unicode": "F00D0"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "arrowshape_turn_up_right_fill",
+        "name_cn": "转发",
+        "unicode": "F08C2"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowshape_up",
+        "name_cn": "翻译输入",
+        "unicode": "F023D"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowshape_up_fill",
+        "name_cn": "拍摄输入",
+        "unicode": "F0239"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowshape_up_frame_fill",
+        "name_cn": "换肤",
+        "unicode": "F023A"
+      },
+      {
+        "module": "智慧多窗",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowshape_up_left_and_arrowshape_down_right",
+        "name_cn": "最大化窗口",
+        "unicode": "F07EE"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowshape_up_to_line_fill",
+        "name_cn": "置顶",
+        "unicode": "F0010"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowtriangle_down_fill",
+        "name_cn": "下拉列表",
+        "unicode": "F023F"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "箭头"
+        ],
+        "name": "arrowtriangle_up_fill",
+        "name_cn": "收起列表",
+        "unicode": "F0240"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_down",
+        "name_cn": "向下",
+        "unicode": "F00DB"
+      },
+      {
+        "module": "预览",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_down_2_circle",
+        "name_cn": "下一页",
+        "unicode": "F06C0"
+      },
+      {
+        "module": "智慧屏",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_down_circle",
+        "name_cn": "下键",
+        "unicode": "F06C1"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_left",
+        "name_cn": "返回",
+        "unicode": "F00DA"
+      },
+      {
+        "module": "华为阅读",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_left_2",
+        "name_cn": "滑动进入",
+        "unicode": "F06C2"
+      },
+      {
+        "module": "智慧屏",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_left_circle",
+        "name_cn": "左键",
+        "unicode": "F06C3"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_right",
+        "name_cn": "下一步",
+        "unicode": "F00D9"
+      },
+      {
+        "module": "智慧屏",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_right_circle",
+        "name_cn": "右键",
+        "unicode": "F06C4"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_up",
+        "name_cn": "向上",
+        "unicode": "F00D8"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_up_2",
+        "name_cn": "上滑查看更多内容",
+        "unicode": "F06C6"
+      },
+      {
+        "module": "预览",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_up_2_circle",
+        "name_cn": "上一页",
+        "unicode": "F06C5"
+      },
+      {
+        "module": "智慧屏",
+        "category": [
+          "箭头"
+        ],
+        "name": "chevron_up_circle",
+        "name_cn": "上键",
+        "unicode": "F045F"
+      },
+      {
+        "module": "文管",
+        "category": [
+          "箭头"
+        ],
+        "name": "line_below_arrowtriangle_up_circle_fill",
+        "name_cn": "移除设备 filled",
+        "unicode": "F0416"
+      },
+      {
+        "module": "文管",
+        "category": [
+          "箭头"
+        ],
+        "name": "line_below_arrowtriangle_up_fill",
+        "name_cn": "移除设备",
+        "unicode": "F0417"
+      },
+      {
+        "module": "电子邮件",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "paperplane",
+        "name_cn": "邮件",
+        "unicode": "F0030"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "rectangle_and_arrowshape_turn_up_right",
+        "name_cn": "转发",
+        "unicode": "F00D5"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "redo",
+        "name_cn": "重做",
+        "unicode": "F01F4"
+      },
+      {
+        "module": "中转站",
+        "category": [
+          "箭头"
+        ],
+        "name": "transfer_station",
+        "name_cn": "中转站",
+        "unicode": "F0788"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "箭头"
+        ],
+        "name": "undo",
+        "name_cn": "撤销",
+        "unicode": "F01F3"
+      }
+    ],
+    "相机与照片": [
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "arrow_down_and_rectangle_on_rectangle",
+        "name_cn": "移出相册",
+        "unicode": "F041D"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "arrow_up_and_rectangle_on_rectangle",
+        "name_cn": "移入相册",
+        "unicode": "F0420"
+      },
+      {
+        "module": "SDK",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "camera",
+        "name_cn": "拍照",
+        "unicode": "F045B"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "camera_fill",
+        "name_cn": "拍照",
+        "unicode": "F0438"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "camera_filters_fill",
+        "name_cn": "选中滤镜",
+        "unicode": "F082C"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "capture_smiles",
+        "name_cn": "笑脸抓拍",
+        "unicode": "F05C8"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "circle_lefthalf_inset_filled",
+        "name_cn": "黑白",
+        "unicode": "F005C"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "circle_righthalf_inset_filled",
+        "name_cn": "饱和度",
+        "unicode": "F005D"
+      },
+      {
+        "module": "控制中心",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "dot_video_fill",
+        "name_cn": "录屏",
+        "unicode": "F0082"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "drop",
+        "name_cn": "虚化",
+        "unicode": "F0063"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "drop_bottomrighthalf_inset_filled",
+        "name_cn": "自然饱和度",
+        "unicode": "F0136"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "flower",
+        "name_cn": "超级微距",
+        "unicode": "F0284"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "hand_draw",
+        "name_cn": "智选消除",
+        "unicode": "F0066"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "heart_square_stack_fill",
+        "name_cn": "时刻",
+        "unicode": "F0514"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "lightbulb",
+        "name_cn": "开启柔关灯",
+        "unicode": "F029C"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "lightbulb_slash",
+        "name_cn": "关闭柔关灯",
+        "unicode": "F029A"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "line_arrowtriangle_2_inward",
+        "name_cn": "自拍镜像",
+        "unicode": "F0068"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "livephoto",
+        "name_cn": "动态照片",
+        "unicode": "F05F7"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "movie_fill",
+        "name_cn": "观影",
+        "unicode": "F04D2"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "paintpalette",
+        "name_cn": "色调",
+        "unicode": "F0125"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "picture",
+        "name_cn": "图片",
+        "unicode": "F0003"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "picture_2",
+        "name_cn": "从图库中选择",
+        "unicode": "F04E5"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "picture_damage",
+        "name_cn": "检测项_应用 ",
+        "unicode": "F04E9"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "picture_fill",
+        "name_cn": "图片",
+        "unicode": "F04EA"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "play_video",
+        "name_cn": "微电影",
+        "unicode": "F04EE"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "play_video_fill",
+        "name_cn": "脚本",
+        "unicode": "F08AC"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "puzzle",
+        "name_cn": "拼图",
+        "unicode": "F04A0"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "puzzle_fill",
+        "name_cn": "拼图",
+        "unicode": "F04B5"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "rectangle_on_rectangle",
+        "name_cn": "相册",
+        "unicode": "F04A2"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "rectangle_on_rectangle_fill",
+        "name_cn": "相册",
+        "unicode": "F04A1"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "resolution_video",
+        "name_cn": "视频分辨率",
+        "unicode": "F04A3"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "scope",
+        "name_cn": "开启目标追踪",
+        "unicode": "F04A6"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "scope_slash",
+        "name_cn": "关闭目标追踪",
+        "unicode": "F04A5"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "shutter_photo",
+        "name_cn": "图库入口",
+        "unicode": "F04AF"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "square_slash",
+        "name_cn": "无边框",
+        "unicode": "F04B4"
+      },
+      {
+        "module": "华为视频",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "template",
+        "name_cn": "热剧",
+        "unicode": "F04FF"
+      },
+      {
+        "module": "天际通",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "template_fill",
+        "name_cn": "视频",
+        "unicode": "F04FE"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "video_fill",
+        "name_cn": "视频",
+        "unicode": "F00A3"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "video_slasj_fill",
+        "name_cn": "关闭摄像头",
+        "unicode": "F0841"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "xmark_picture",
+        "name_cn": "开启智能无图",
+        "unicode": "F0842"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "相机与照片"
+        ],
+        "name": "xmark_picture_fill",
+        "name_cn": "关闭智能无图",
+        "unicode": "F0821"
+      }
+    ],
+    "办公文件": [
+      {
+        "module": "邮件",
+        "category": [
+          "办公文件"
+        ],
+        "name": "arrow_right_folder_circle",
+        "name_cn": "移至",
+        "unicode": "F00BA"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "办公文件"
+        ],
+        "name": "arrow_right_folder_fill",
+        "name_cn": "移至",
+        "unicode": "F00BB"
+      },
+      {
+        "module": "华为阅读",
+        "category": [
+          "办公文件"
+        ],
+        "name": "book_open_fill",
+        "name_cn": "书城-选中",
+        "unicode": "F07C9"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "办公文件"
+        ],
+        "name": "book_pages_fill_1",
+        "name_cn": "小说",
+        "unicode": "F08BF"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "办公文件"
+        ],
+        "name": "briefcase",
+        "name_cn": "工具箱",
+        "unicode": "F065F"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "办公文件"
+        ],
+        "name": "case_fill",
+        "name_cn": "保险理财",
+        "unicode": "F0660"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "办公文件"
+        ],
+        "name": "checkmark_clipboard_fill",
+        "name_cn": "开发",
+        "unicode": "F018A"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc",
+        "name_cn": "草稿箱",
+        "unicode": "F00BD"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_plaintext",
+        "name_cn": "ic_notes",
+        "unicode": "F00C1"
+      },
+      {
+        "module": "教育中心",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_plaintext_and_pencil",
+        "name_cn": "问题与建议",
+        "unicode": "F05AF"
+      },
+      {
+        "module": "教育中心",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_plaintext_and_pencil_fill",
+        "name_cn": "写作业",
+        "unicode": "F0669"
+      },
+      {
+        "module": "锁屏AOD",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_plaintext_fill",
+        "name_cn": "备忘录",
+        "unicode": "F00C2"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_text",
+        "name_cn": "日志",
+        "unicode": "F00BC"
+      },
+      {
+        "module": "钱包",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_text_badge_arrow_up",
+        "name_cn": "上报征信",
+        "unicode": "F05B1"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_text_badge_checkmark",
+        "name_cn": " 已完成",
+        "unicode": "F00C4"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_text_badge_magnifyingglass",
+        "name_cn": "页内查找",
+        "unicode": "F05B3"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "办公文件"
+        ],
+        "name": "doc_text_fill",
+        "name_cn": "文件",
+        "unicode": "F00BF"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "办公文件"
+        ],
+        "name": "folder",
+        "name_cn": "存储",
+        "unicode": "F00C5"
+      },
+      {
+        "module": "文管",
+        "category": [
+          "办公文件"
+        ],
+        "name": "folder_badge_eye",
+        "name_cn": "显示隐藏文件夹",
+        "unicode": "F05BD"
+      },
+      {
+        "module": "笔记",
+        "category": [
+          "办公文件"
+        ],
+        "name": "folder_badge_plus",
+        "name_cn": "新建文件夹",
+        "unicode": "F0004"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "办公文件"
+        ],
+        "name": "folder_fill",
+        "name_cn": "工作",
+        "unicode": "F00C6"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "办公文件"
+        ],
+        "name": "form",
+        "name_cn": "表格",
+        "unicode": "F0194"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "办公文件"
+        ],
+        "name": "grid",
+        "name_cn": "网格",
+        "unicode": "F0670"
+      },
+      {
+        "module": "华为视频",
+        "category": [
+          "办公文件"
+        ],
+        "name": "list_square_bill",
+        "name_cn": "服务协议",
+        "unicode": "F05BF"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "办公文件"
+        ],
+        "name": "paperclip",
+        "name_cn": "附件",
+        "unicode": "F010F"
+      },
+      {
+        "module": "隐私和安全",
+        "category": [
+          "办公文件"
+        ],
+        "name": "text_clipboard",
+        "name_cn": "设置",
+        "unicode": "F019D"
+      }
+    ],
+    "键盘": [
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "asterisk_rectangle_badge_handwritten",
+        "name_cn": "手写",
+        "unicode": "F02EE"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "celiakeyboard_elevate",
+        "name_cn": "键盘抬高",
+        "unicode": "F0492"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "celiakeyboard_mechanical",
+        "name_cn": "机械键盘",
+        "unicode": "F02F2"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "celiakeyboard_menu_icon_size",
+        "name_cn": "编辑键盘",
+        "unicode": "F02F3"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "键盘"
+        ],
+        "name": "delete_left",
+        "name_cn": "删除",
+        "unicode": "F00DD"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "键盘"
+        ],
+        "name": "delete_left_fill",
+        "name_cn": "删除",
+        "unicode": "F0541"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "input_mode",
+        "name_cn": "输入方式",
+        "unicode": "F0494"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_badge_bihua",
+        "name_cn": "笔画",
+        "unicode": "F0302"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_badge_cangjie",
+        "name_cn": "仓颉",
+        "unicode": "F0303"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_badge_handwritten",
+        "name_cn": "键盘手写",
+        "unicode": "F0306"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_badge_spell",
+        "name_cn": "拼音",
+        "unicode": "F0307"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_badge_wubi",
+        "name_cn": "五笔",
+        "unicode": "F0308"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_badge_zhuyin",
+        "name_cn": "注音",
+        "unicode": "F0309"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_circle",
+        "name_cn": "键盘",
+        "unicode": "F0172"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_onehanded_left",
+        "name_cn": "右手模式",
+        "unicode": "F030C"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_onehanded_right",
+        "name_cn": "左手模式",
+        "unicode": "F030D"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_square",
+        "name_cn": "悬浮键盘",
+        "unicode": "F030E"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "keyboard_thumbmode",
+        "name_cn": "拇指模式",
+        "unicode": "F030F"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "onehand",
+        "name_cn": "单手模式",
+        "unicode": "F0318"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "selector",
+        "name_cn": "编辑光标移动",
+        "unicode": "F031B"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "space_1",
+        "name_cn": "空格",
+        "unicode": "F031C"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "swipeup_input",
+        "name_cn": "上滑输入",
+        "unicode": "F031E"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "键盘"
+        ],
+        "name": "traditional_square",
+        "name_cn": "繁体输入",
+        "unicode": "F0322"
+      },
+      {
+        "module": "hivison/hitouch",
+        "category": [
+          "键盘"
+        ],
+        "name": "translate",
+        "name_cn": "hitouch全屏翻译",
+        "unicode": "F007E"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "键盘"
+        ],
+        "name": "translate_c2e",
+        "name_cn": "ic_translate_c2e",
+        "unicode": "F0323"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "键盘"
+        ],
+        "name": "translate_e2c",
+        "name_cn": "ic_translate_e2c",
+        "unicode": "F0324"
+      }
+    ],
+    "媒体": [
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "backward_end_fill",
+        "name_cn": "上一首",
+        "unicode": "F00A6"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "媒体"
+        ],
+        "name": "discover_fill",
+        "name_cn": "发现",
+        "unicode": "F01DB"
+      },
+      {
+        "module": "华为视频",
+        "category": [
+          "媒体"
+        ],
+        "name": "fast_forward",
+        "name_cn": "倍速快进",
+        "unicode": "F066B"
+      },
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "forward_end_fill",
+        "name_cn": "下一首",
+        "unicode": "F00A7"
+      },
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "gobackward_15",
+        "name_cn": "快退15s",
+        "unicode": "F03F2"
+      },
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "gobackward_30",
+        "name_cn": "快退30s",
+        "unicode": "F03F3"
+      },
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "goforward_10",
+        "name_cn": "快进10s",
+        "unicode": "F03F4"
+      },
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "goforward_15",
+        "name_cn": "快进15s",
+        "unicode": "F03F5"
+      },
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "goforward_30",
+        "name_cn": "快进30s",
+        "unicode": "F03F6"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "媒体"
+        ],
+        "name": "headphones_fill",
+        "name_cn": "头戴耳机",
+        "unicode": "F0672"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "媒体"
+        ],
+        "name": "identify_song",
+        "name_cn": "听歌识曲",
+        "unicode": "F033B"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "媒体"
+        ],
+        "name": "list_interrupt",
+        "name_cn": "列表-节奏",
+        "unicode": "F033C"
+      },
+      {
+        "module": "全场景协同",
+        "category": [
+          "媒体"
+        ],
+        "name": "media_center",
+        "name_cn": "播控中心",
+        "unicode": "F067C"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "媒体"
+        ],
+        "name": "music",
+        "name_cn": "音乐",
+        "unicode": "F00AD"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "媒体"
+        ],
+        "name": "music_fill",
+        "name_cn": "音乐",
+        "unicode": "F00AA"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "媒体"
+        ],
+        "name": "music_note_list",
+        "name_cn": "播放队列",
+        "unicode": "F00AC"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "媒体"
+        ],
+        "name": "order_play",
+        "name_cn": "顺序播放",
+        "unicode": "F00AE"
+      },
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "pause",
+        "name_cn": "暂停",
+        "unicode": "F00B1"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "媒体"
+        ],
+        "name": "pause_round_triangle_fill",
+        "name_cn": "暂停",
+        "unicode": "F086B"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "媒体"
+        ],
+        "name": "play_circle_fill",
+        "name_cn": "旋转",
+        "unicode": "F00B2"
+      },
+      {
+        "module": "播控",
+        "category": [
+          "媒体"
+        ],
+        "name": "play_fill",
+        "name_cn": "播放",
+        "unicode": "F00B4"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "媒体"
+        ],
+        "name": "play_hexagon_fill",
+        "name_cn": "视频",
+        "unicode": "F0813"
+      },
+      {
+        "module": "华为视频",
+        "category": [
+          "媒体"
+        ],
+        "name": "play_round_rectangle_fill",
+        "name_cn": "短视频",
+        "unicode": "F0814"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "媒体"
+        ],
+        "name": "record_circle",
+        "name_cn": "语音视频消息",
+        "unicode": "F00B7"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "媒体"
+        ],
+        "name": "remove_songlist",
+        "name_cn": "从列表移除",
+        "unicode": "F0363"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "媒体"
+        ],
+        "name": "repeat",
+        "name_cn": "循环播放",
+        "unicode": "F00B8"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "媒体"
+        ],
+        "name": "repeat_1",
+        "name_cn": "单曲循环",
+        "unicode": "F00B9"
+      },
+      {
+        "module": "智慧多窗",
+        "category": [
+          "媒体"
+        ],
+        "name": "reverse_order",
+        "name_cn": "切换分屏位置",
+        "unicode": "F03FD"
+      },
+      {
+        "module": "钱包",
+        "category": [
+          "媒体"
+        ],
+        "name": "service",
+        "name_cn": "客服",
+        "unicode": "F0365"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "媒体"
+        ],
+        "name": "shuffle",
+        "name_cn": "随机播放",
+        "unicode": "F00B5"
+      },
+      {
+        "module": "录音机",
+        "category": [
+          "媒体"
+        ],
+        "name": "skip_silence",
+        "name_cn": "跳过静音",
+        "unicode": "F03BB"
+      }
+    ],
+    "通信": [
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "beidou_satellite_circle_fill",
+        "name_cn": "畅连北斗卫星",
+        "unicode": "F0516"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "beidou_satellite_fill",
+        "name_cn": "北斗卫星消息",
+        "unicode": "F06AD"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "dial",
+        "name_cn": "拨号盘_加粗",
+        "unicode": "F0081"
+      },
+      {
+        "module": "主题",
+        "category": [
+          "通信"
+        ],
+        "name": "ellipsis_bubble",
+        "name_cn": "评论",
+        "unicode": "F0473"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "通信"
+        ],
+        "name": "ellipsis_message",
+        "name_cn": "系统消息",
+        "unicode": "F0085"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "ellipsis_message_fill",
+        "name_cn": "消息",
+        "unicode": "F0084"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "通信"
+        ],
+        "name": "envelope",
+        "name_cn": "消息",
+        "unicode": "F0088"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "通信"
+        ],
+        "name": "envelope_fill",
+        "name_cn": "邮件",
+        "unicode": "F0089"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "通信"
+        ],
+        "name": "envelope_open_fill",
+        "name_cn": "标记为已读",
+        "unicode": "F008A"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "hd_square_fill",
+        "name_cn": "HD",
+        "unicode": "F028A"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "通信"
+        ],
+        "name": "message",
+        "name_cn": "短信",
+        "unicode": "F008F"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "通信"
+        ],
+        "name": "message_badge_gearshape_1",
+        "name_cn": "消息管理",
+        "unicode": "F0756"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "message_on_message",
+        "name_cn": "畅连消息",
+        "unicode": "F008E"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "message_on_message_fill",
+        "name_cn": "消息tab",
+        "unicode": "F008D"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "系统UI",
+          "通信"
+        ],
+        "name": "mic",
+        "name_cn": "语音",
+        "unicode": "F0006"
+      },
+      {
+        "module": "智慧屏",
+        "category": [
+          "通信"
+        ],
+        "name": "mic_circle",
+        "name_cn": "语音",
+        "unicode": "F0314"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI",
+          "通信"
+        ],
+        "name": "mic_fill",
+        "name_cn": "话筒",
+        "unicode": "F0315"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "mic_slash",
+        "name_cn": "静音",
+        "unicode": "F0758"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "mic_slash_fill",
+        "name_cn": "静音-面性",
+        "unicode": "F0317"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "phone_down_fill",
+        "name_cn": "挂断",
+        "unicode": "F009F"
+      },
+      {
+        "module": "音量条",
+        "category": [
+          "通信"
+        ],
+        "name": "phone_fill",
+        "name_cn": "童话",
+        "unicode": "F009E"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "recordingtape",
+        "name_cn": "语音信箱",
+        "unicode": "F0176"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "recordingtape_rectangle",
+        "name_cn": "语音信箱",
+        "unicode": "F0175"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "recordingtape_rectangle_fill",
+        "name_cn": "语音信箱",
+        "unicode": "F0174"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "通信"
+        ],
+        "name": "satellite",
+        "name_cn": "天通卫星",
+        "unicode": "F0177"
+      }
+    ],
+    "连接": [
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "bluetooth",
+        "name_cn": "检测项_蓝牙 ",
+        "unicode": "F0254"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "bluetooth_slash",
+        "name_cn": "三态开关补充",
+        "unicode": "F0253"
+      },
+      {
+        "module": "全场景协同",
+        "category": [
+          "连接"
+        ],
+        "name": "dot_radiowaves_left_and_right",
+        "name_cn": "分享",
+        "unicode": "F0279"
+      },
+      {
+        "module": "设置",
+        "category": [
+          "连接"
+        ],
+        "name": "hotspot",
+        "name_cn": "智能热点",
+        "unicode": "F028F"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "连接"
+        ],
+        "name": "icloud",
+        "name_cn": "云开启",
+        "unicode": "F0294"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "连接"
+        ],
+        "name": "icloud_slash",
+        "name_cn": "云关闭",
+        "unicode": "F0293"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "连接"
+        ],
+        "name": "icloud_slash_fill",
+        "name_cn": "云关闭",
+        "unicode": "F0292"
+      },
+      {
+        "module": "打印和扫描",
+        "category": [
+          "连接"
+        ],
+        "name": "link_slash",
+        "name_cn": "断开连接",
+        "unicode": "F02A0"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "连接"
+        ],
+        "name": "mobiledata",
+        "name_cn": "检测项_移动网络 ",
+        "unicode": "F02A9"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "nfc",
+        "name_cn": "NFC",
+        "unicode": "F04D7"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "nfc_fill",
+        "name_cn": "NFC",
+        "unicode": "F04D6"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "wifi",
+        "name_cn": "检测项_WLAN ",
+        "unicode": "F0000"
+      },
+      {
+        "module": "桌面",
+        "category": [
+          "系统UI",
+          "连接"
+        ],
+        "name": "wifi_slash",
+        "name_cn": "WLAN 关闭",
+        "unicode": "F0691"
+      }
+    ],
+    "符号标识": [
+      {
+        "module": "钱包",
+        "category": [
+          "符号标识"
+        ],
+        "name": "bolt",
+        "name_cn": "电费",
+        "unicode": "F0262"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "符号标识"
+        ],
+        "name": "bolt_filled_on_circle",
+        "name_cn": "功率",
+        "unicode": "F025F"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "符号标识"
+        ],
+        "name": "bolt_shield_fill",
+        "name_cn": "应急预警",
+        "unicode": "F07F1"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "符号标识"
+        ],
+        "name": "exclamationmark",
+        "name_cn": "ic_importance",
+        "unicode": "F010B"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "符号标识"
+        ],
+        "name": "exclamationmark_circle",
+        "name_cn": "异常、错误",
+        "unicode": "F0109"
+      },
+      {
+        "module": "浏览器",
+        "category": [
+          "符号标识"
+        ],
+        "name": "exclamationmark_shield_fill",
+        "name_cn": "恶意网址拦截",
+        "unicode": "F0477"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "符号标识"
+        ],
+        "name": "exclamationmark_triangle_fill",
+        "name_cn": "警示",
+        "unicode": "F06D7"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "符号标识"
+        ],
+        "name": "info_circle",
+        "name_cn": "模式详情",
+        "unicode": "F0296"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "符号标识"
+        ],
+        "name": "info_shield",
+        "name_cn": "隐私声明",
+        "unicode": "F0297"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "符号标识"
+        ],
+        "name": "nosign",
+        "name_cn": "关闭",
+        "unicode": "F010E"
+      },
+      {
+        "module": "应用市场",
+        "category": [
+          "符号标识"
+        ],
+        "name": "questionmark_circle",
+        "name_cn": "帮助与客服",
+        "unicode": "F0100"
+      }
+    ],
+    "编辑": [
+      {
+        "module": "锁屏AOD",
+        "category": [
+          "编辑"
+        ],
+        "name": "calculator_1",
+        "name_cn": "计算器",
+        "unicode": "F085F"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "character_arrow_clockwise",
+        "name_cn": "自动优化",
+        "unicode": "F01D6"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "character_viewfinder",
+        "name_cn": "文字识别",
+        "unicode": "F01D8"
+      },
+      {
+        "module": "笔记",
+        "category": [
+          "编辑"
+        ],
+        "name": "circle_dashed",
+        "name_cn": "套索",
+        "unicode": "F0134"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "close_sidebar",
+        "name_cn": "关闭",
+        "unicode": "F089F"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "crop_rotate",
+        "name_cn": "裁剪",
+        "unicode": "F0161"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "cut",
+        "name_cn": "截取",
+        "unicode": "F005F"
+      },
+      {
+        "module": "笔记",
+        "category": [
+          "编辑"
+        ],
+        "name": "eraser_line",
+        "name_cn": "橡皮擦",
+        "unicode": "F0065"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "indent_right",
+        "name_cn": "缩进",
+        "unicode": "F0163"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "indentation_left",
+        "name_cn": "缩进2",
+        "unicode": "F0164"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "list_bullet",
+        "name_cn": "项目符号-圆点",
+        "unicode": "F0069"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "编辑"
+        ],
+        "name": "list_bullet_circle",
+        "name_cn": "公众号消息menu",
+        "unicode": "F0166"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "编辑"
+        ],
+        "name": "list_bullet_square_fill",
+        "name_cn": "属性",
+        "unicode": "F0167"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "编辑"
+        ],
+        "name": "list_checkmask",
+        "name_cn": "列表-列表编辑",
+        "unicode": "F0142"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "list_letter",
+        "name_cn": "项目符号-字母",
+        "unicode": "F0144"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "list_number",
+        "name_cn": "项目符号-数字",
+        "unicode": "F0143"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "list_square",
+        "name_cn": "项目符号-方形",
+        "unicode": "F0145"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "open_sidebar",
+        "name_cn": "打开",
+        "unicode": "F08A7"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "编辑"
+        ],
+        "name": "paintbrush",
+        "name_cn": "画笔",
+        "unicode": "F07DE"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "编辑"
+        ],
+        "name": "paintbrush_fill",
+        "name_cn": "选中画笔",
+        "unicode": "F07DD"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "编辑"
+        ],
+        "name": "paintpalette_fill",
+        "name_cn": "颜色动态",
+        "unicode": "F0124"
+      },
+      {
+        "module": "预览",
+        "category": [
+          "编辑"
+        ],
+        "name": "pencil_line_1",
+        "name_cn": "高亮色",
+        "unicode": "F0626"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "编辑"
+        ],
+        "name": "pencil_waveform",
+        "name_cn": "涂鸦",
+        "unicode": "F006C"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "编辑"
+        ],
+        "name": "pencil_waveform_fill",
+        "name_cn": "涂鸦-面性",
+        "unicode": "F0627"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "rectangle_and_cut",
+        "name_cn": "截屏",
+        "unicode": "F006F"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "编辑"
+        ],
+        "name": "rename",
+        "name_cn": "重命名",
+        "unicode": "F0071"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "编辑"
+        ],
+        "name": "sort",
+        "name_cn": "备注",
+        "unicode": "F0581"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "square_and_pencil",
+        "name_cn": "编辑",
+        "unicode": "F0073"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "square_and_pencil_fill",
+        "name_cn": "重命名相册",
+        "unicode": "F0074"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "编辑"
+        ],
+        "name": "swap",
+        "name_cn": "列表-排序",
+        "unicode": "F02D1"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "text_aligncenter",
+        "name_cn": "居中对齐",
+        "unicode": "F0076"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "text_alignleft",
+        "name_cn": "左对齐",
+        "unicode": "F0077"
+      },
+      {
+        "module": "备忘录",
+        "category": [
+          "编辑"
+        ],
+        "name": "text_alignright",
+        "name_cn": "右对齐",
+        "unicode": "F0078"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "编辑"
+        ],
+        "name": "text_and_arrow_down",
+        "name_cn": "列表-倒序",
+        "unicode": "F0079"
+      },
+      {
+        "module": "华为音乐",
+        "category": [
+          "编辑"
+        ],
+        "name": "text_and_arrow_up",
+        "name_cn": "列表-正序",
+        "unicode": "F007A"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "编辑"
+        ],
+        "name": "textformat_size_square",
+        "name_cn": "字体大小",
+        "unicode": "F007C"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "编辑"
+        ],
+        "name": "transparency_lock",
+        "name_cn": "透明度锁定",
+        "unicode": "F0639"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "trapezoid_and_line_horizontal",
+        "name_cn": "水平校正",
+        "unicode": "F016A"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "编辑"
+        ],
+        "name": "trapezoid_and_line_vertical",
+        "name_cn": "垂直校正",
+        "unicode": "F016B"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "编辑"
+        ],
+        "name": "triangleshape_fill",
+        "name_cn": "稳定性",
+        "unicode": "F036B"
+      },
+      {
+        "module": "绘画",
+        "category": [
+          "编辑"
+        ],
+        "name": "vertical_flip",
+        "name_cn": "垂直翻转",
+        "unicode": "F063B"
+      }
+    ],
+    "隐私&安全": [
+      {
+        "module": "应用市场",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "checkmark_shield",
+        "name_cn": "安全检测",
+        "unicode": "F045E"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "checkmark_shield_fill",
+        "name_cn": "安全保护",
+        "unicode": "F045D"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "eye",
+        "name_cn": "护眼模式",
+        "unicode": "F0120"
+      },
+      {
+        "module": "全搜",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "eye_slash",
+        "name_cn": "密码不可见",
+        "unicode": "F011F"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "hand_raised_hexagon",
+        "name_cn": "拦截规则",
+        "unicode": "F0743"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "hand_raised_hexagon_fill",
+        "name_cn": "骚扰电话",
+        "unicode": "F0487"
+      },
+      {
+        "module": "钱包",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "key_horizontal",
+        "name_cn": "添加车钥匙",
+        "unicode": "F049B"
+      },
+      {
+        "module": "隐私和安全",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "key_shield",
+        "name_cn": "设置",
+        "unicode": "F049E"
+      },
+      {
+        "module": "超级隐私",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "key_shield_fill",
+        "name_cn": "超级隐私",
+        "unicode": "F049D"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "lock",
+        "name_cn": "关闭",
+        "unicode": "F0008"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "lock_fill",
+        "name_cn": "锁",
+        "unicode": "F04C1"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "lock_open",
+        "name_cn": "开启",
+        "unicode": "F04C4"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "系统UI",
+          "隐私&安全"
+        ],
+        "name": "lock_open_fill",
+        "name_cn": "解锁",
+        "unicode": "F04C3"
+      },
+      {
+        "module": "隐私和安全",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "nearlink",
+        "name_cn": "设置",
+        "unicode": "F075C"
+      },
+      {
+        "module": "智慧助手",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "person_shield",
+        "name_cn": "隐私管理",
+        "unicode": "F04DE"
+      },
+      {
+        "module": "隐私规范涉及",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "person_shield_fill",
+        "name_cn": "隐私声明",
+        "unicode": "F04DD"
+      },
+      {
+        "module": "SDK",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "staroflife_rectangle",
+        "name_cn": "密码登录",
+        "unicode": "F04F8"
+      },
+      {
+        "module": "锁屏AOD",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "touchid",
+        "name_cn": "小指纹",
+        "unicode": "F0507"
+      },
+      {
+        "module": "状态栏",
+        "category": [
+          "隐私&安全"
+        ],
+        "name": "vpn_key",
+        "name_cn": "VPN",
+        "unicode": "F078F"
+      }
+    ],
+    "人物": [
+      {
+        "module": "华为视频",
+        "category": [
+          "人物"
+        ],
+        "name": "children",
+        "name_cn": "少儿",
+        "unicode": "F0663"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "人物"
+        ],
+        "name": "ear",
+        "name_cn": "聆听",
+        "unicode": "F05C9"
+      },
+      {
+        "module": "身份验证",
+        "category": [
+          "人物"
+        ],
+        "name": "face",
+        "name_cn": "人脸识别",
+        "unicode": "F05CA"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "人物"
+        ],
+        "name": "face_smiling",
+        "name_cn": "表情符号和人物",
+        "unicode": "F05D0"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "人物"
+        ],
+        "name": "figure_arms_open",
+        "name_cn": "站立",
+        "unicode": "F05D1"
+      },
+      {
+        "module": "智慧助手",
+        "category": [
+          "人物"
+        ],
+        "name": "figure_running",
+        "name_cn": "运动",
+        "unicode": "F07D5"
+      },
+      {
+        "module": "智慧生活",
+        "category": [
+          "系统UI",
+          "人物"
+        ],
+        "name": "hand_point_up_tap_fill",
+        "name_cn": "点击",
+        "unicode": "F0484"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "系统UI",
+          "人物"
+        ],
+        "name": "hand_point_up_tap_fill_1",
+        "name_cn": "显示触摸轨迹",
+        "unicode": "F0522"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "系统UI",
+          "人物"
+        ],
+        "name": "hand_point_up_tap_fill_slash",
+        "name_cn": "关闭触摸轨迹",
+        "unicode": "F0671"
+      },
+      {
+        "module": "DFS",
+        "category": [
+          "系统UI",
+          "人物"
+        ],
+        "name": "hand_tap",
+        "name_cn": "检测项_触摸屏 ",
+        "unicode": "F048A"
+      },
+      {
+        "module": "输入法",
+        "category": [
+          "人物"
+        ],
+        "name": "person",
+        "name_cn": "账号",
+        "unicode": "F05E5"
+      },
+      {
+        "module": "邮件",
+        "category": [
+          "人物"
+        ],
+        "name": "person_2",
+        "name_cn": "添加邮件联系人邮箱",
+        "unicode": "F05DC"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "人物"
+        ],
+        "name": "person_2_fill",
+        "name_cn": "合并",
+        "unicode": "F05DB"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "人物"
+        ],
+        "name": "person_badge_plus",
+        "name_cn": "添加人像",
+        "unicode": "F05DF"
+      },
+      {
+        "module": "主题",
+        "category": [
+          "人物"
+        ],
+        "name": "person_crop_circle_fill_1",
+        "name_cn": "我的-未选中",
+        "unicode": "F05F3"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "人物"
+        ],
+        "name": "person_filled_badge_plus",
+        "name_cn": "添加成员",
+        "unicode": "F05E4"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "人物"
+        ],
+        "name": "person_filled_viewfinder",
+        "name_cn": "随影人动_on",
+        "unicode": "F0579"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "人物"
+        ],
+        "name": "person_square_fill",
+        "name_cn": "随影人动_off",
+        "unicode": "F057A"
+      },
+      {
+        "module": "相机",
+        "category": [
+          "人物"
+        ],
+        "name": "portrait",
+        "name_cn": "人像",
+        "unicode": "F05C7"
+      }
+    ],
+    "形状": [
+      {
+        "module": "锁屏AOD",
+        "category": [
+          "形状"
+        ],
+        "name": "circle",
+        "name_cn": "工具箱",
+        "unicode": "F0007"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "形状"
+        ],
+        "name": "oval",
+        "name_cn": "椭圆形",
+        "unicode": "F034B"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "形状"
+        ],
+        "name": "rectangle",
+        "name_cn": "矩形",
+        "unicode": "F0070"
+      },
+      {
+        "module": "文管",
+        "category": [
+          "形状"
+        ],
+        "name": "rectangle_split_3x1",
+        "name_cn": "分栏视图",
+        "unicode": "F0528"
+      },
+      {
+        "module": "图库",
+        "category": [
+          "形状"
+        ],
+        "name": "rotate_left",
+        "name_cn": "旋转",
+        "unicode": "F0364"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "形状"
+        ],
+        "name": "smallcircle_filled_circle",
+        "name_cn": "粗细",
+        "unicode": "F0169"
+      },
+      {
+        "module": "截录屏",
+        "category": [
+          "形状"
+        ],
+        "name": "square",
+        "name_cn": "方形",
+        "unicode": "F0075"
+      }
+    ],
+    "交通出行": [
+      {
+        "module": "图库",
+        "category": [
+          "交通出行"
+        ],
+        "name": "local_fill",
+        "name_cn": "定位",
+        "unicode": "F01B8"
+      },
+      {
+        "module": "通信社交",
+        "category": [
+          "交通出行"
+        ],
+        "name": "location_north_up_right_circle_fill",
+        "name_cn": "距震中距离",
+        "unicode": "F080D"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "交通出行"
+        ],
+        "name": "map",
+        "name_cn": "显示地图",
+        "unicode": "F01C2"
+      },
+      {
+        "module": "查找设备",
+        "category": [
+          "交通出行"
+        ],
+        "name": "map_badge_local",
+        "name_cn": "地图",
+        "unicode": "F01C0"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "交通出行"
+        ],
+        "name": "map_slash",
+        "name_cn": "隐藏地图",
+        "unicode": "F01C3"
+      },
+      {
+        "module": "查找设备",
+        "category": [
+          "交通出行"
+        ],
+        "name": "navigation",
+        "name_cn": "导航",
+        "unicode": "F0810"
+      },
+      {
+        "module": "隐私和安全",
+        "category": [
+          "交通出行"
+        ],
+        "name": "position",
+        "name_cn": "设置",
+        "unicode": "F01CA"
+      },
+      {
+        "module": "钱包",
+        "category": [
+          "交通出行"
+        ],
+        "name": "route_plan",
+        "name_cn": "路线规划",
+        "unicode": "F07E4"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "交通出行"
+        ],
+        "name": "satellite_map",
+        "name_cn": "隐藏卫星地图",
+        "unicode": "F0775"
+      },
+      {
+        "module": "APP",
+        "category": [
+          "交通出行"
+        ],
+        "name": "satellite_map_fill",
+        "name_cn": "显示卫星地图",
+        "unicode": "F0774"
+      }
+    ]
+  }
+}

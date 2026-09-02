@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 912" role="img" aria-labelledby="t d">
+  <title id="t">焕新的城市街区</title><desc id="d">阳光照进老街，居民沿着绿意步道散步</desc>
+  <defs>
+    <linearGradient id="sky" x2="1" y2="1"><stop stop-color="#cfebef"/><stop offset=".52" stop-color="#f5e8d0"/><stop offset="1" stop-color="#d5b88a"/></linearGradient>
+    <linearGradient id="wall" y2="1"><stop stop-color="#d79a6d"/><stop offset="1" stop-color="#824d37"/></linearGradient>
+    <linearGradient id="road" x2="1" y2="1"><stop stop-color="#d8c8ad"/><stop offset="1" stop-color="#8e7a65"/></linearGradient>
+  </defs>
+  <rect width="1200" height="912" fill="url(#sky)"/><circle cx="985" cy="145" r="105" fill="#fff4c1" opacity=".7"/>
+  <path d="M0 260 225 122l179 69 173-105 214 148 202-112 207 160v370H0Z" fill="#66808a" opacity=".62"/>
+  <path d="M0 337 225 204v454H0Z" fill="url(#wall)"/><path d="M225 204h258v454H225Z" fill="#e9c99d"/><path d="M760 245h440v426H760Z" fill="#c4d8d4"/>
+  <g fill="#425e67"><rect x="56" y="368" width="105" height="154" rx="5"/><rect x="281" y="298" width="64" height="96" rx="4"/><rect x="377" y="298" width="64" height="96" rx="4"/><rect x="833" y="325" width="106" height="157" rx="5"/><rect x="991" y="325" width="106" height="157" rx="5"/></g>
+  <g fill="#f5e6c4"><rect x="71" y="385" width="35" height="56"/><rect x="114" y="385" width="32" height="56"/><rect x="294" y="312" width="38" height="66"/><rect x="390" y="312" width="38" height="66"/><rect x="851" y="345" width="29" height="58"/><rect x="890" y="345" width="29" height="58"/><rect x="1009" y="345" width="29" height="58"/><rect x="1048" y="345" width="29" height="58"/></g>
+  <path d="M0 711c222-110 424-91 607-3 196 95 395 83 593-7v211H0Z" fill="url(#road)"/><path d="M-20 720c231-115 433-101 620-14 204 95 399 94 634-20" fill="none" stroke="#eee4d1" stroke-width="52" opacity=".8"/>
+  <g><path d="M117 700c-13-94 6-160 56-199 48 42 66 109 49 199Z" fill="#2f6d52"/><circle cx="151" cy="481" r="59" fill="#4f8a66"/><circle cx="203" cy="489" r="51" fill="#6a9e70"/><rect x="168" y="580" width="18" height="146" fill="#594431"/></g>
+  <g><path d="M963 691c-8-100 11-166 62-205 51 46 65 114 47 205Z" fill="#3f7355"/><circle cx="1000" cy="471" r="58" fill="#638d62"/><circle cx="1054" cy="489" r="47" fill="#79a36c"/><rect x="1021" y="574" width="18" height="139" fill="#5d4937"/></g>
+  <g transform="translate(494 510)"><circle cx="67" cy="42" r="31" fill="#d19872"/><path d="M37 82c22-21 67-20 87 5l24 127H10Z" fill="#2f566a"/><path d="m48 211-8 151M118 211l29 151" stroke="#293742" stroke-width="24" stroke-linecap="round"/><path d="m33 102-61 93M124 104l68 64" stroke="#d19872" stroke-width="17" stroke-linecap="round"/></g>
+  <g transform="translate(738 603) scale(.82)"><circle cx="67" cy="42" r="31" fill="#b97856"/><path d="M37 82c22-21 67-20 87 5l24 127H10Z" fill="#b65a42"/><path d="m48 211-8 151M118 211l29 151" stroke="#37444a" stroke-width="24" stroke-linecap="round"/></g>
+</svg>

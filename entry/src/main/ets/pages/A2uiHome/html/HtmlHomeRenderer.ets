@@ -1033,22 +1033,9 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   margin-top: 0;
 }
 .plain-chat-user-message {
-  display: grid;
-  grid-template-columns: 24px minmax(0, auto);
-  align-items: center;
-  gap: 7px;
+  display: block;
   max-width: 84%;
   margin: 0 0 0 auto;
-}
-.plain-chat-user-role {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  background: rgba(153, 95, 76, 0.1);
-  color: var(--accent);
-  font-size: 9px;
 }
 .plain-chat-user-copy {
   margin: 0;
@@ -1083,16 +1070,16 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   box-shadow: 0 8px 22px rgba(82, 59, 44, 0.07);
 }
 .plain-chat-assistant-mark {
-  display: grid;
-  place-items: center;
   width: 24px;
   height: 24px;
-  border-radius: 8px;
-  background: rgba(153, 95, 76, 0.1);
-  color: var(--accent);
-  font-family: Georgia, serif;
-  font-size: 13px;
-  font-style: italic;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.plain-chat-assistant-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .plain-chat-response-copy {
   margin: 0;
@@ -1101,6 +1088,58 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   line-height: 1.72;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.plain-chat-tool-result-entry {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 18px;
+  padding: 10px 12px;
+  background: #17191d;
+  color: #ffffff;
+  font: inherit;
+  text-align: left;
+  box-shadow: 0 10px 22px rgba(8, 12, 18, 0.18);
+}
+.plain-chat-tool-result-entry:active {
+  transform: scale(0.985);
+}
+.plain-chat-tool-result-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 18px;
+  font-weight: 800;
+}
+.plain-chat-tool-result-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.plain-chat-tool-result-kicker {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  font-weight: 650;
+}
+.plain-chat-tool-result-title {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plain-chat-tool-result-open {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 760;
 }
 .deepsearch-trace {
   margin: 0 0 10px;
@@ -1293,7 +1332,7 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
 }
 .plain-chat-context {
   margin-top: 15px;
-  border-top: 1px solid rgba(73, 63, 56, 0.1);
+  border-top: 1px solid rgba(23, 25, 29, 0.1);
 }
 .plain-chat-context > summary {
   display: flex;
@@ -1319,7 +1358,7 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   height: 16px;
   border: 0;
   border-radius: 4px;
-  background: rgba(153, 95, 76, 0.06);
+  background: rgba(23, 25, 29, 0.05);
 }
 .plain-chat-context-icon::before {
   content: '';
@@ -1390,6 +1429,12 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   white-space: nowrap;
 }
 .plain-chat-role-assistant .plain-chat-role { color: var(--accent); }
+.plain-chat-context-logo {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
 .plain-chat-turn-copy {
   margin: 0;
   color: var(--ink-soft);
@@ -1397,6 +1442,28 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.plain-chat-turn-body {
+  min-width: 0;
+}
+.plain-chat-turn-body .plain-chat-tool-result-entry {
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 9px;
+  border-radius: 14px;
+  padding: 8px 10px;
+}
+.plain-chat-turn-body .plain-chat-tool-result-icon {
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+}
+.plain-chat-turn-body .plain-chat-tool-result-kicker {
+  font-size: 10px;
+}
+.plain-chat-turn-body .plain-chat-tool-result-title,
+.plain-chat-turn-body .plain-chat-tool-result-open {
+  font-size: 12px;
 }
 .plain-chat-hero {
   margin-bottom: 4px;
@@ -1418,7 +1485,7 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   line-height: 1.45;
 }
 .conversation-thinking {
-  min-height: 82px;
+  min-height: 60px;
 }
 .conversation-thinking-indicator {
   display: inline-flex;
@@ -3306,7 +3373,6 @@ body[data-scene] .block,
 }
 
 /* Keep chat and thinking typography aligned with the shared scene hierarchy. */
-.plain-chat-user-role { font-size: 12px; }
 .plain-chat-user-copy { font-size: 15px; }
 .plain-chat-response-copy { font-size: 15px; }
 .plain-chat-context > summary { font-size: 13px; }
@@ -3318,6 +3384,42 @@ body[data-scene] .block,
 .plain-chat-hero h1 { font-size: 27px; }
 .plain-chat-hero .subtitle { font-size: 15px; }
 .conversation-thinking-indicator { font-size: 15px; }
+
+/* Let the native white-glass backdrop show through; keep only the selected bubble palette here. */
+body[data-view="conversation"],
+body[data-view="conversation-thinking"] {
+  --ink: #17191d;
+  --ink-soft: #30343b;
+  --muted: #6f747d;
+  --line: rgba(23, 25, 29, 0.12);
+  --accent: #17191d;
+  --accent-soft: rgba(23, 25, 29, 0.09);
+  background: transparent;
+  backdrop-filter: none;
+}
+body[data-view="conversation"] .plain-chat-user-copy,
+body[data-view="conversation-thinking"] .plain-chat-user-copy {
+  border-radius: 24px;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(30, 41, 57, 0.72);
+  color: #f5f8fc;
+  box-shadow: 0 12px 30px rgba(8, 14, 24, 0.14);
+}
+body[data-view="conversation"] .plain-chat-response,
+body[data-view="conversation-thinking"] .plain-chat-response {
+  --ink-soft: #313746;
+  --muted: rgba(49, 55, 70, 0.62);
+  --accent: #17191d;
+  min-height: 60px;
+  border-radius: 24px;
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(239, 243, 248, 0.9);
+  box-shadow: 0 18px 38px rgba(18, 28, 46, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+body[data-view="conversation"] .plain-chat-response-copy,
+body[data-view="conversation-thinking"] .plain-chat-response-copy {
+  color: #313746;
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -3955,8 +4057,17 @@ const HTML_HOME_JS: string = `
       var role = text(item && item.role) === 'assistant' ? 'assistant' : 'user';
       var roleClass = role === 'assistant' ? 'plain-chat-role-assistant' : 'plain-chat-role-user';
       var turn = add(timelineWrap, 'article', 'plain-chat-turn ' + roleClass);
-      add(turn, 'div', 'plain-chat-role', role === 'assistant' ? 'Appless' : '你');
-      add(turn, 'p', 'plain-chat-turn-copy', text(item && item.content));
+      var roleNode = add(turn, 'div', 'plain-chat-role');
+      if (role === 'assistant') {
+        var logo = add(roleNode, 'img', 'plain-chat-context-logo');
+        logo.src = 'resource://rawfile/aios-home/assets/brand/digital-mate-mark-black.png';
+        logo.alt = 'Appless';
+      } else {
+        roleNode.textContent = '你';
+      }
+      var turnBody = add(turn, 'div', 'plain-chat-turn-body');
+      add(turnBody, 'p', 'plain-chat-turn-copy', text(item && item.content));
+      syncPlainChatToolResultEntry(turnBody, item && item.toolResultEntry);
     });
   }
   function plainChatContextKey(contextItems) {
@@ -3969,7 +4080,28 @@ const HTML_HOME_JS: string = `
   }
   function addPlainChatAssistantIdentity(parent) {
     var identity = add(parent, 'div', 'plain-chat-assistant-identity');
-    add(identity, 'div', 'plain-chat-assistant-mark', 'A');
+    var mark = add(identity, 'div', 'plain-chat-assistant-mark');
+    var logo = add(mark, 'img', 'plain-chat-assistant-logo');
+    logo.src = 'resource://rawfile/aios-home/assets/brand/digital-mate-mark-black.png';
+    logo.alt = 'Appless';
+  }
+  function syncPlainChatToolResultEntry(response, explicitEntry) {
+    if (!response) { return; }
+    var current = response.querySelector('.plain-chat-tool-result-entry');
+    if (current && current.parentNode) { current.parentNode.removeChild(current); }
+    var assistant = latestAssistant(list(data && data.history));
+    var entry = explicitEntry !== undefined ? explicitEntry : (assistant && assistant.toolResultEntry);
+    var action = entry && entry.action;
+    if (!entry || !action || text(action.id).trim().length === 0) { return; }
+    var button = add(response, 'button', 'plain-chat-tool-result-entry');
+    button.type = 'button';
+    button.setAttribute('aria-label', '展开' + (text(entry.title).trim() || '完整工具结果'));
+    add(button, 'span', 'plain-chat-tool-result-icon', '↗');
+    var copy = add(button, 'span', 'plain-chat-tool-result-copy');
+    add(copy, 'span', 'plain-chat-tool-result-kicker', '工具结果已就绪');
+    add(copy, 'span', 'plain-chat-tool-result-title', text(entry.title).trim() || '查看完整结果');
+    add(button, 'span', 'plain-chat-tool-result-open', '展开');
+    button.addEventListener('click', function () { postAction(action); });
   }
   function addPlainChat(parent, history) {
     var assistant = latestAssistant(history);
@@ -3978,15 +4110,14 @@ const HTML_HOME_JS: string = `
     var section = add(parent, 'section', 'section plain-chat');
     if (currentUser) {
       var userMessage = add(section, 'article', 'plain-chat-user-message');
-      add(userMessage, 'span', 'plain-chat-user-role', '你');
       var userCopy = add(userMessage, 'p', 'plain-chat-user-copy');
       add(userCopy, 'span', 'plain-chat-user-text', text(currentUser.content));
     }
     var assistantTurn = add(section, 'div', 'plain-chat-assistant-turn');
     addPlainChatAssistantIdentity(assistantTurn);
     var response = add(assistantTurn, 'article', 'plain-chat-response');
-    var responseCopy = add(response, 'p', 'plain-chat-response-copy');
-    queueConversationAssistantReveal(responseCopy, text(assistant.content));
+    add(response, 'p', 'plain-chat-response-copy', text(assistant.content));
+    syncPlainChatToolResultEntry(response, assistant.toolResultEntry);
     syncDeepSearchTrace(assistantTurn);
     var contextItems = [];
     history.forEach(function (item) {
@@ -4009,15 +4140,9 @@ const HTML_HOME_JS: string = `
     }
     return text(data.subtitle).trim() || '已收到请求，正在整理执行步骤。';
   }
-  function addConversationHero(parent) {
-    var hero = add(parent, 'header', 'hero plain-chat-hero');
-    add(hero, 'h1', '', '和 Appless 聊聊');
-    add(hero, 'p', 'subtitle', '回答优先，历史内容按需展开');
-  }
   function addThinkingScene(parent, timeline, history) {
     var section = add(parent, 'section', 'section plain-chat thinking-chat');
     var userMessage = add(section, 'article', 'plain-chat-user-message');
-    add(userMessage, 'span', 'plain-chat-user-role', '你');
     var userCopy = add(userMessage, 'p', 'plain-chat-user-copy');
     add(userCopy, 'span', 'plain-chat-user-text', thinkingRequest(timeline, history));
     var assistantTurn = add(section, 'div', 'plain-chat-assistant-turn');
@@ -4086,12 +4211,7 @@ const HTML_HOME_JS: string = `
       }
     }
     var role = userMessage.querySelector('.plain-chat-user-role');
-    if (!role) {
-      role = document.createElement('span');
-      role.className = 'plain-chat-user-role';
-      role.textContent = '你';
-      userMessage.insertBefore(role, userMessage.firstChild);
-    }
+    if (role && role.parentNode) { role.parentNode.removeChild(role); }
     var copy = userMessage.querySelector('.plain-chat-user-copy');
     if (!copy) { copy = add(userMessage, 'p', 'plain-chat-user-copy'); }
     var userText = copy.querySelector('.plain-chat-user-text');
@@ -4229,6 +4349,7 @@ const HTML_HOME_JS: string = `
       }
     }
     replaceAssistantResponse(response, assistant, thinking);
+    syncPlainChatToolResultEntry(response);
     syncDeepSearchTrace(assistantTurn);
     replacePlainChatContext(section, conversationContextItems(history, assistant, thinking));
     if (document.body) {
@@ -4246,6 +4367,7 @@ const HTML_HOME_JS: string = `
     var response = assistantTurn ? assistantTurn.querySelector('.plain-chat-response') : null;
     if (!response) { return false; }
     replaceAssistantResponse(response, { content: text(target) }, false);
+    syncPlainChatToolResultEntry(response);
     if (document.body) {
       document.body.setAttribute('data-view', 'conversation');
       document.body.removeAttribute('data-scene');
@@ -4255,7 +4377,6 @@ const HTML_HOME_JS: string = `
   function addLegacyHero(parent) {
     var plainChat = isPlainChatScene(list(data.blocks), list(data.timeline), list(data.history));
     if (plainChat) {
-      addConversationHero(parent);
       return;
     }
     var hero = add(parent, 'header', 'hero');
@@ -4330,7 +4451,7 @@ const HTML_HOME_JS: string = `
     });
   }
   function renderSceneHero(parent) {
-    if (isThinkingDocument()) { addConversationHero(parent); return; }
+    if (isThinkingDocument()) { return; }
     if (!isEnhancedScene()) { addLegacyHero(parent); return; }
     if (scene === 'gmail') { addGmailHero(parent); return; }
     addLegacyHero(parent);
@@ -6617,6 +6738,7 @@ export function renderHtmlHomeDocument(
     personaMemory: document.personaMemory,
     personaAvatarDataUri: personaAvatarDataUri(document.persona.avatarKey),
     rawSurfaceRoot: document.rawSurfaceRoot,
+    toolResultEntry: document.toolResultEntry,
     deepSearch: document.deepSearch,
     generatedAt: '',
     isBusy: isBusy || (document as HtmlHomeDocumentWithBusy).isBusy === true

@@ -1,7 +1,6 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   PublicFeedEvent,
-  cnNewsPostPassesQuality,
   publicFeedEventCallbackCount,
   publicFeedPostsFromEvents,
 } from '@loop/agent-core';
@@ -12,20 +11,15 @@ function event(kind: 'start' | 'end' | 'text' | 'attribute', name: string, value
 
 export default function publicFeedClientTest(): void {
   describe('publicFeedClient', () => {
-    it('rejects CNNews posts whose cleaned body is shorter than 100 characters', 0, () => {
+    it('keeps a valid CNNews item when its RSS summary is shorter than 100 characters', 0, () => {
       const shortPosts = publicFeedPostsFromEvents('cnnews', 'IT 之家', [
         event('start', 'item'), event('text', 'title', '短正文'),
         event('text', 'link', 'https://www.ithome.com/short.htm'),
         event('text', 'description', '<p>' + '短'.repeat(99) + '</p>'), event('end', 'item')
       ], 4);
-      const acceptedPosts = publicFeedPostsFromEvents('cnnews', 'IT 之家', [
-        event('start', 'item'), event('text', 'title', '合格正文'),
-        event('text', 'link', 'https://www.ithome.com/accepted.htm'),
-        event('text', 'description', '<p>' + '长'.repeat(100) + '</p>'), event('end', 'item')
-      ], 4);
 
-      expect(cnNewsPostPassesQuality(shortPosts[0])).assertFalse();
-      expect(cnNewsPostPassesQuality(acceptedPosts[0])).assertTrue();
+      expect(shortPosts.length).assertEqual(1);
+      expect(shortPosts[0].text.length).assertEqual(99);
     });
 
     it('maps RSS fields into a bounded source post', 0, () => {

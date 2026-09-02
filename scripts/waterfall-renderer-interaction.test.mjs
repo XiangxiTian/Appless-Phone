@@ -30,6 +30,30 @@ const rankingWorkerClient = readFileSync(
   new URL('../entry/src/main/ets/pages/A2uiHome/waterfall/WaterfallRankingWorkerClient.ets', import.meta.url),
   'utf8'
 );
+const poolWorker = readFileSync(
+  new URL('../entry/src/main/ets/workers/WaterfallPoolWorker.ets', import.meta.url),
+  'utf8'
+);
+const poolWorkerClient = readFileSync(
+  new URL('../entry/src/main/ets/pages/A2uiHome/waterfall/WaterfallPoolWorkerClient.ets', import.meta.url),
+  'utf8'
+);
+const poolWorkerPolicy = readFileSync(
+  new URL('../entry/src/main/ets/workers/WaterfallPoolWorkerPolicy.ets', import.meta.url),
+  'utf8'
+);
+const poolCore = readFileSync(
+  new URL('../agent_core/src/main/ets/aiphone/runtime/WaterfallPool.ets', import.meta.url),
+  'utf8'
+);
+const poolTakeCoordinator = readFileSync(
+  new URL('../agent_core/src/main/ets/aiphone/runtime/WaterfallPoolTakeCoordinator.ets', import.meta.url),
+  'utf8'
+);
+const publicFeedClient = readFileSync(
+  new URL('../agent_core/src/main/ets/aiphone/runtime/PublicFeedClient.ets', import.meta.url),
+  'utf8'
+);
 const canaryRuntime = readFileSync(
   new URL('../entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets', import.meta.url),
   'utf8'
@@ -168,10 +192,8 @@ const aboutToAppearSource = indexPage.slice(
   indexPage.indexOf('  aboutToAppear(): void {'),
   indexPage.indexOf('  onPageShow(): void {'));
 assert.match(aboutToAppearSource,
-  /this\.ensureInterestWaterfall\(\);/,
-  'app startup must preserve discovery recall preloading');
-assert.doesNotMatch(aboutToAppearSource, /this\.ensureInterestWaterfall\(false\);/,
-  'the loading-shell fix must not defer the existing discovery recall');
+  /void this\.restoreAccountSession\(\);/,
+  'app startup must restore the active account before initializing account-scoped pool state');
 assert.match(indexPage, /\.cachedCount\(1, true\)/,
   'the adjacent discovery WebView must render the existing source-convergence shell before the first swipe');
 assert.match(indexPage, /waterfallActive:\s*this\.bimRootIndex === 1/,
@@ -202,10 +224,60 @@ assert.match(indexPage,
 assert.doesNotMatch(indexPage, /flattenWhenFastSourcesSettle|fastSourceFlattenApplied/,
   'tail flattening must not depend on a Bilibili and YouTube special case');
 assert.match(indexPage,
-  /private commitInterestWaterfallDisplay\(\)[\s\S]*?preload_display_committed/,
-  'opening discovery must commit the pre-ranked preload inventory exactly once');
-assert.match(indexPage, /this\.loadWaterfallPreferences\(\);\s*this\.ensureInterestWaterfall\(\);/,
-  'discovery recall must preload after persisted source preferences are available');
+  /private commitInterestWaterfallDisplay\(\)[\s\S]*?activateWaterfallPoolRuntime\(\)[\s\S]*?preload_display_committed/,
+  'opening discovery must activate the expanded pool and commit pre-ranked inventory exactly once');
+assert.match(indexPage,
+  /if \(entries\.length === 0\)[\s\S]*?scheduleInterestPoolEmptyTakeRetry\(generation\);/,
+  'a bounded empty pool take must schedule another planned take so later background refills reach the open feed');
+assert.match(indexPage,
+  /private scheduleInterestPoolEmptyTakeRetry\(generation: number\)[\s\S]*?applyInterestWaterfallUpdate\(planWaterfallContinuation\(state\)\);/,
+  'the empty-take retry must re-enter the normal continuation planner instead of duplicating refill logic');
+assert.match(indexPage,
+  /this\.loadWaterfallPreferences\(\);\s*this\.startWaterfallPoolRuntime\(\);\s*this\.ensureInterestWaterfall\(false\);/,
+  'the cold pool must preload after persisted source preferences are available');
+assert.doesNotMatch(indexPage, /requestWaterfallPoolSupply|\.supply\(\)/,
+  'the page must consume the autonomous pool without manually driving source supply');
+assert.match(poolCore,
+  /takeUpToForProfile[\s\S]*?scheduleAutomaticDiscoveryRefill\(\)[\s\S]*?notifyLowWatermarkObserver\(\)/,
+  'consuming pool content must schedule discovery and search-source refill internally');
+assert.match(poolWorker,
+  /MAX_TAKE_SUPPLY_ATTEMPTS[\s\S]*?MAX_TAKE_WAIT_MS[\s\S]*?coordinateWaterfallPoolTake/,
+  'the Worker must use the shared bounded take coordinator');
+assert.match(poolTakeCoordinator,
+  /maxAttempts[\s\S]*?deadlineMs[\s\S]*?remainingWaitMs[\s\S]*?wait\.cancel\(\)/,
+  'a pool take must have an end-to-end wait deadline independent of producer retries');
+assert.match(poolWorker,
+  /supplyRuntime[\s\S]*?settleAvailabilityWaiters\(\)/,
+  'an empty production round must settle registered availability waits');
+assert.match(poolCore,
+  /discoveryRetryTimerByAdapterId[\s\S]*?scheduleDiscoveryRetry[\s\S]*?runDiscoveryRetry/,
+  'pull discovery failures must retain an adapter-owned background retry');
+assert.match(poolWorker,
+  /runLowWatermarkTopic[\s\S]*?lowWatermarkRetryAttempt[\s\S]*?scheduleLowWatermarkTopic/,
+  'search-source low-watermark production must retry in the background with backoff');
+assert.match(poolCore,
+  /refreshScheduledDiscoveries\(\)[\s\S]*?refreshScheduledDiscoveriesIfDue\(\)/,
+  'forced scheduled refresh and pool-owned due refresh must remain separate operations');
+assert.match(poolWorker,
+  /runtime\.refreshScheduledDiscoveriesIfDue\(\)/,
+  'automatic supply must respect scheduled-source refresh cadence without weakening forced refresh');
+assert.match(poolWorkerClient,
+  /setSearchPolicy\([\s\S]*?type: 'set_search_policy'/,
+  'runtime search-policy changes must be forwarded to the pool Worker');
+assert.match(indexPage,
+  /saveAggregateSearchPolicy\(\)[\s\S]*?waterfallPoolWorkerClient\.setSearchPolicy\(waterfallSearchPolicyForRuntime\(\)\)/,
+  'the settings UI save path must forward its current policy to the existing pool Worker client');
+assert.match(poolWorker,
+  /command\.type === 'set_search_policy'[\s\S]*?applyWaterfallPoolWorkerSearchPolicy/,
+  'the pool Worker must apply runtime search-policy changes');
+assert.match(poolWorkerPolicy,
+  /applyWaterfallPoolWorkerSearchPolicy[\s\S]*?configureWaterfallSearchPolicyForRuntime/,
+  'the shared Worker policy handler must update the adapter request runtime');
+assert.match(toolGateway,
+  /configuredAggregateAdapterLoader[\s\S]*?loadAggregateSourceBatch\([\s\S]*?waterfallSearchPolicyForRuntime\(\)/,
+  'pool adapters must read the current search policy for every request');
+assert.doesNotMatch(publicFeedClient, /CNNEWS_MIN_TEXT_LENGTH|cnNewsPostPassesQuality/,
+  'CNNews must not reject valid RSS items solely because their summary is shorter than 100 characters');
 assert.doesNotMatch(indexPage, /waitingForInitialPeers/,
   'the first source with cards must paint immediately instead of waiting for slower peers');
 assert.doesNotMatch(waterfallJs, /function interleaveBySource/,
@@ -304,7 +376,7 @@ assert.match(indexPage,
   'saved-only details must resolve comment requests through the existing saved-card candidate path');
 assert.match(indexPage, /persistSavedWaterfallCandidate\(current\)/,
   'loaded comments must refresh an existing saved-card snapshot');
-assert.match(indexPage, /if \(active > 8\) return/,
+assert.match(indexPage, /if \(active > WATERFALL_LOW_WATERMARK\) return/,
   'discovery refill must start before the user can swipe through the last three cards');
 assert.match(waterfallCore, /WATERFALL_LOW_WATERMARK: number = 8/,
   'native inventory must refill before the rendered tail is exhausted');

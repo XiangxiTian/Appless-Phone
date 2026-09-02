@@ -643,6 +643,7 @@ const WATERFALL_POOL_COLD_START_INTERVAL_MS: number = 10000;
 const WATERFALL_POOL_INITIAL_TOPIC_COUNT: number = 5;
 const WATERFALL_POOL_REPLACES_LEGACY_PRELOAD: boolean = true;
 const WATERFALL_POOL_SESSION_TOPIC_LIMIT: number = 128;
+const WATERFALL_POOL_EMPTY_TAKE_RETRY_DELAYS_MS: number[] = [1000, 3000, 10000, 30000];
 
 function boundedWaterfallSessionTopicWeights(weights: WaterfallPreferenceWeight[]): WaterfallPreferenceWeight[] {
   if (weights.length <= WATERFALL_POOL_SESSION_TOPIC_LIMIT) return weights.slice();
@@ -1351,6 +1352,8 @@ struct Index {
   private waterfallPoolActivated: boolean = false;
   private interestPoolAvailabilityWait: WaterfallPoolWorkerTake | null = null;
   private interestPoolRequestedSources: string[] = [];
+  private interestPoolEmptyTakeRetryTimerId: number = -1;
+  private interestPoolEmptyTakeRetryAttempt: number = 0;
   private interestRefreshPreloadTail: WaterfallRankedCandidate[] = [];
   private interestRefreshPreloadReserve: WaterfallRankedCandidate[] = [];
   private interestRefreshPreloadSources: WaterfallSourceState[] = [];
@@ -2177,11 +2180,6 @@ struct Index {
     pool.start(WATERFALL_POOL_INITIAL_TOPIC_COUNT, WATERFALL_POOL_COLD_START_INTERVAL_MS);
   }
 
-  private requestWaterfallPoolSupply(): void {
-    this.startWaterfallPoolRuntime();
-    this.ensureWaterfallPoolRuntime().supply();
-  }
-
   private activateWaterfallPoolRuntime(): void {
     if (this.waterfallPoolActivated) return;
     this.waterfallPoolActivated = true;
@@ -2190,6 +2188,7 @@ struct Index {
   }
 
   private cancelInterestPoolRefill(): void {
+    this.cancelInterestPoolEmptyTakeRetry();
     const wait = this.interestPoolAvailabilityWait;
     const requestedSources = this.interestPoolRequestedSources.slice();
     this.interestPoolAvailabilityWait = null;
@@ -2205,6 +2204,33 @@ struct Index {
       });
     }
     if (wait !== null) wait.cancel();
+  }
+
+  private cancelInterestPoolEmptyTakeRetry(resetAttempt: boolean = true): void {
+    if (this.interestPoolEmptyTakeRetryTimerId >= 0) {
+      clearTimeout(this.interestPoolEmptyTakeRetryTimerId);
+      this.interestPoolEmptyTakeRetryTimerId = -1;
+    }
+    if (resetAttempt) this.interestPoolEmptyTakeRetryAttempt = 0;
+  }
+
+  private scheduleInterestPoolEmptyTakeRetry(generation: number): void {
+    if (this.interestPoolEmptyTakeRetryTimerId >= 0) return;
+    const delayIndex = Math.min(
+      this.interestPoolEmptyTakeRetryAttempt,
+      WATERFALL_POOL_EMPTY_TAKE_RETRY_DELAYS_MS.length - 1
+    );
+    const delayMs = WATERFALL_POOL_EMPTY_TAKE_RETRY_DELAYS_MS[delayIndex];
+    this.interestPoolEmptyTakeRetryAttempt += 1;
+    this.interestPoolEmptyTakeRetryTimerId = setTimeout((): void => {
+      this.interestPoolEmptyTakeRetryTimerId = -1;
+      const state = this.interestWaterfallFeedState;
+      if (generation !== this.interestWaterfallGeneration || state === null || state.mode === 'search' ||
+        this.interestPoolAvailabilityWait !== null) return;
+      this.logWaterfallInventory('pool_empty_take_retry', state,
+        'attempt=' + this.interestPoolEmptyTakeRetryAttempt.toString());
+      this.applyInterestWaterfallUpdate(planWaterfallContinuation(state));
+    }, delayMs);
   }
 
   private interestPoolSourceState(
@@ -2242,6 +2268,7 @@ struct Index {
       });
     });
     if (requestedSources.length === 0) return;
+    this.cancelInterestPoolEmptyTakeRetry(false);
     const pool = this.ensureWaterfallPoolRuntime();
     const refillStartedAtMs = Date.now();
     const availabilityWait = pool.takeOrWait(
@@ -2250,15 +2277,27 @@ struct Index {
     this.interestPoolRequestedSources = requestedSources.slice();
     this.logWaterfallInventory('pool_refill_started', state,
       'requests=' + requests.length.toString() + ' sources=' + requestedSources.length.toString());
-    this.requestWaterfallPoolSupply();
     void availabilityWait.promise.then((entries: WaterfallSourcePoolEntry[]): void => {
       const waitResolvedAtMs = Date.now();
       if (this.interestPoolAvailabilityWait !== availabilityWait) return;
       this.interestPoolAvailabilityWait = null;
       this.interestPoolRequestedSources = [];
-      if (entries.length === 0 || generation !== this.interestWaterfallGeneration) return;
+      if (generation !== this.interestWaterfallGeneration) return;
       const latest = this.interestWaterfallFeedState;
       if (latest === null || latest.mode === 'search') return;
+      if (entries.length === 0) {
+        requestedSources.forEach((sourceId: string): void => {
+          const next = this.interestPoolSourceState(latest, sourceId, 'success', '暂时没有可用内容');
+          for (let index = 0; index < latest.sources.length; index += 1) {
+            if (latest.sources[index].source === sourceId) latest.sources[index] = next;
+          }
+        });
+        this.interestWaterfallFeedState = latest;
+        this.publishInterestWaterfallPayload();
+        this.scheduleInterestPoolEmptyTakeRetry(generation);
+        return;
+      }
+      this.cancelInterestPoolEmptyTakeRetry();
       const mergeStartedAtMs = Date.now();
       let merged = latest;
       requestedSources.forEach((sourceId: string): void => {
@@ -4956,6 +4995,9 @@ struct Index {
 
   private saveAggregateSearchPolicy(): void {
     this.syncAggregateSearchRuntimePolicy();
+    if (this.waterfallPoolWorkerClient !== null) {
+      this.waterfallPoolWorkerClient.setSearchPolicy(waterfallSearchPolicyForRuntime());
+    }
     this.syncWaterfallPoolAdapterSelection();
     const store = this.aggregateSearchPolicyPreferences();
     if (store === null) {

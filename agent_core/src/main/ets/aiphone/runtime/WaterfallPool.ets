@@ -30,6 +30,9 @@ import { filterWaterfallPoolCandidates, WaterfallPoolQualityFilterResult } from 
 export const DEFAULT_WATERFALL_POOL_REQUEST_LIMIT: number = 10;
 export const DEFAULT_WATERFALL_POOL_DISCOVERY_WATERMARK: number = 50;
 const MAX_WATERFALL_POOL_REFILL_ROUNDS: number = 20;
+const WATERFALL_POOL_ADAPTER_TIMEOUT_MS: number = 15000;
+const WATERFALL_SCHEDULED_REFRESH_COOLDOWN_MS: number = 30000;
+const WATERFALL_DISCOVERY_RETRY_DELAYS_MS: number[] = [1000, 3000, 10000, 30000];
 
 export interface WaterfallPoolOptions {
   sourceCapacity?: number;
@@ -37,6 +40,9 @@ export interface WaterfallPoolOptions {
   discoveryWatermark?: number;
   defaultQueryLanguage?: WaterfallQueryLanguage;
   observer?: WaterfallPoolObserver;
+  lowWatermarkObserver?: WaterfallPoolLowWatermarkObserver;
+  adapterTimeoutMs?: number;
+  discoveryRetryDelaysMs?: number[];
 }
 
 export type WaterfallPoolAcceptOrigin = 'search' | 'discovery' | 'scheduled' | 'scheduled_manual' | 'external';
@@ -50,6 +56,7 @@ export interface WaterfallPoolAcceptedEvent {
 }
 
 export type WaterfallPoolObserver = (event: WaterfallPoolAcceptedEvent) => void;
+export type WaterfallPoolLowWatermarkObserver = () => void;
 
 export interface WaterfallPoolAcceptedPage {
   page: WaterfallSourcePage;
@@ -133,6 +140,32 @@ function failedAdapterPage(
     message: poolErrorMessage(error),
     fetchedAt: Date.now()
   };
+}
+
+function boundedAdapterPage(
+  request: Promise<WaterfallSourcePage>,
+  adapterId: string,
+  timeoutMs: number
+): Promise<WaterfallSourcePage> {
+  return new Promise<WaterfallSourcePage>((resolve, reject): void => {
+    let settled = false;
+    const timerId = setTimeout((): void => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Waterfall adapter timed out: ' + adapterId));
+    }, timeoutMs);
+    request.then((page: WaterfallSourcePage): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timerId);
+      resolve(page);
+    }).catch((error: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timerId);
+      reject(error);
+    });
+  });
 }
 
 type WaterfallQueuedSearchRunner = (
@@ -295,11 +328,20 @@ export class WaterfallPool {
   private readonly discoveryInFlight: Set<string> = new Set<string>();
   private readonly scheduledSubscriptionsByAdapterId: Map<string, WaterfallSourceSubscription> =
     new Map<string, WaterfallSourceSubscription>();
+  private readonly scheduledLastRefreshAtMs: Map<string, number> = new Map<string, number>();
+  private readonly discoveryRetryTimerByAdapterId: Map<string, number> = new Map<string, number>();
+  private readonly discoveryFailureCountByAdapterId: Map<string, number> = new Map<string, number>();
   private readonly availabilityWaiters: Map<number, WaterfallPoolAvailabilityWaiter> =
     new Map<number, WaterfallPoolAvailabilityWaiter>();
   private nextAvailabilityWaiterId: number = 1;
+  private automaticDiscoveryTimerId: number = -1;
+  private automaticDiscoveryRunning: boolean = false;
+  private automaticDiscoveryRequested: boolean = false;
   private started: boolean = false;
   private readonly observer: WaterfallPoolObserver | null;
+  private readonly lowWatermarkObserver: WaterfallPoolLowWatermarkObserver | null;
+  private readonly adapterTimeoutMs: number;
+  private readonly discoveryRetryDelaysMs: number[];
 
   constructor(registry: WaterfallSourceAdapterRegistry, options: WaterfallPoolOptions = {}) {
     this.sourceCapacity = normalizedPositive(options.sourceCapacity, DEFAULT_WATERFALL_SOURCE_POOL_CAPACITY);
@@ -310,6 +352,11 @@ export class WaterfallPool {
     );
     this.defaultQueryLanguage = options.defaultQueryLanguage ?? 'domestic';
     this.observer = options.observer ?? null;
+    this.lowWatermarkObserver = options.lowWatermarkObserver ?? null;
+    this.adapterTimeoutMs = normalizedPositive(options.adapterTimeoutMs, WATERFALL_POOL_ADAPTER_TIMEOUT_MS);
+    const configuredRetryDelays = options.discoveryRetryDelaysMs ?? WATERFALL_DISCOVERY_RETRY_DELAYS_MS;
+    this.discoveryRetryDelaysMs = configuredRetryDelays.length > 0 ? configuredRetryDelays.map(
+      (delayMs: number): number => normalizedPositive(delayMs, 1)) : WATERFALL_DISCOVERY_RETRY_DELAYS_MS.slice();
     registry.search.forEach((adapter: WaterfallSearchAdapter): void => {
       this.registerSource(adapter.adapterId, adapter.sourceId);
       this.searchAdaptersById.set(adapter.adapterId, adapter);
@@ -362,7 +409,12 @@ export class WaterfallPool {
         this.unsubscribeScheduledAdapter(adapterId);
       }
     }
-    if (enabled) this.notifyAvailabilityWaiters();
+    if (!enabled) this.cancelDiscoveryRetry(adapterId);
+    if (enabled) {
+      this.notifyAvailabilityWaiters();
+      this.scheduleAutomaticDiscoveryRefill();
+      this.notifyLowWatermarkObserver();
+    }
     return true;
   }
 
@@ -388,6 +440,8 @@ export class WaterfallPool {
     this.containersBySource.forEach((container: WaterfallSourcePoolContainer): void => {
       container.expandCapacity(nextCapacity);
     });
+    this.scheduleAutomaticDiscoveryRefill();
+    this.notifyLowWatermarkObserver();
     return true;
   }
 
@@ -443,6 +497,7 @@ export class WaterfallPool {
     const tasks: Promise<WaterfallPoolTopicAcceptedPage>[] = [];
     this.searchAdaptersById.forEach((adapter: WaterfallSearchAdapter): void => {
       if (!this.isAdapterEnabled(adapter.adapterId)) return;
+      if ((this.containersBySource.get(adapter.sourceId)?.size ?? 0) >= this.discoveryWatermark) return;
       const query = this.queryForTopic(adapter, topic);
       tasks.push(this.enqueueTopicAdapter(adapter, query));
     });
@@ -455,6 +510,15 @@ export class WaterfallPool {
       snapshots.push(queue.snapshot());
     });
     return snapshots;
+  }
+
+  hasEnabledSearchSourceBelowWatermark(): boolean {
+    let low = false;
+    this.searchAdaptersById.forEach((adapter: WaterfallSearchAdapter): void => {
+      if (low || !this.isAdapterEnabled(adapter.adapterId)) return;
+      if ((this.containersBySource.get(adapter.sourceId)?.size ?? 0) < this.discoveryWatermark) low = true;
+    });
+    return low;
   }
 
   /**
@@ -473,6 +537,14 @@ export class WaterfallPool {
 
   stop(): void {
     this.started = false;
+    if (this.automaticDiscoveryTimerId >= 0) {
+      clearTimeout(this.automaticDiscoveryTimerId);
+      this.automaticDiscoveryTimerId = -1;
+    }
+    this.automaticDiscoveryRequested = false;
+    this.discoveryRetryTimerByAdapterId.forEach((timerId: number): void => clearTimeout(timerId));
+    this.discoveryRetryTimerByAdapterId.clear();
+    this.discoveryFailureCountByAdapterId.clear();
     const adapterIds = Array.from(this.scheduledSubscriptionsByAdapterId.keys());
     adapterIds.forEach((adapterId: string): void => this.unsubscribeScheduledAdapter(adapterId));
     this.cancelAllAvailabilityWaiters();
@@ -484,14 +556,30 @@ export class WaterfallPool {
       if (!this.isAdapterEnabled(adapter.adapterId)) return;
       tasks.push(this.refillDiscovery(adapter));
     });
-    return Promise.all(tasks);
+    const results = await Promise.all(tasks);
+    this.handleDiscoveryRefillResults(results);
+    return results;
   }
 
-  /** Pulls every scheduled source immediately without publishing to its listeners. */
+  /** Pulls every scheduled source immediately, even when its normal refresh time has not arrived. */
   async refreshScheduledDiscoveries(): Promise<WaterfallPoolAcceptedPage[]> {
     const tasks: Promise<WaterfallPoolAcceptedPage>[] = [];
     this.scheduledAdaptersById.forEach((adapter: WaterfallScheduledDiscoveryAdapter): void => {
       if (!this.isAdapterEnabled(adapter.adapterId)) return;
+      tasks.push(this.loadScheduledAdapter(adapter));
+    });
+    return Promise.all(tasks);
+  }
+
+  /** Refreshes scheduled sources only when their pool-owned cooldown has elapsed. */
+  async refreshScheduledDiscoveriesIfDue(): Promise<WaterfallPoolAcceptedPage[]> {
+    const tasks: Promise<WaterfallPoolAcceptedPage>[] = [];
+    const now = Date.now();
+    this.scheduledAdaptersById.forEach((adapter: WaterfallScheduledDiscoveryAdapter): void => {
+      if (!this.isAdapterEnabled(adapter.adapterId)) return;
+      const lastRefresh = this.scheduledLastRefreshAtMs.get(adapter.adapterId) ?? 0;
+      if (now - lastRefresh < WATERFALL_SCHEDULED_REFRESH_COOLDOWN_MS) return;
+      this.scheduledLastRefreshAtMs.set(adapter.adapterId, now);
       tasks.push(this.loadScheduledAdapter(adapter));
     });
     return Promise.all(tasks);
@@ -574,6 +662,10 @@ export class WaterfallPool {
       ' selected=' + results.length.toString() +
       ' rounds=' + round.toString() +
       ' totalMs=' + (Date.now() - batchStartedAtMs).toString());
+    if (results.length > 0) {
+      this.scheduleAutomaticDiscoveryRefill();
+      this.notifyLowWatermarkObserver();
+    }
     return results;
   }
 
@@ -611,6 +703,18 @@ export class WaterfallPool {
       if (waiter === undefined) return;
       this.availabilityWaiters.delete(waiterId);
       waiter.resolve(false);
+    });
+  }
+
+  /** Completes the current production round even when no compatible item was produced. */
+  settleAvailabilityWaiters(): void {
+    const waiters: WaterfallPoolAvailabilityWaiter[] = [];
+    this.availabilityWaiters.forEach((waiter: WaterfallPoolAvailabilityWaiter): void => {
+      waiters.push(waiter);
+    });
+    this.availabilityWaiters.clear();
+    waiters.forEach((waiter: WaterfallPoolAvailabilityWaiter): void => {
+      waiter.resolve(this.hasAvailableForProfile(waiter.profile, waiter.enabledSources));
     });
   }
 
@@ -655,6 +759,83 @@ export class WaterfallPool {
     waiters.forEach((waiter: WaterfallPoolAvailabilityWaiter): void => waiter.resolve(false));
   }
 
+  private scheduleAutomaticDiscoveryRefill(): void {
+    if (!this.started || this.discoveryAdaptersById.size === 0) return;
+    if (this.automaticDiscoveryRunning) {
+      this.automaticDiscoveryRequested = true;
+      return;
+    }
+    if (this.automaticDiscoveryTimerId >= 0) return;
+    this.automaticDiscoveryTimerId = setTimeout((): void => {
+      this.automaticDiscoveryTimerId = -1;
+      void this.runAutomaticDiscoveryRefill().catch((_error: Error): void => {});
+    }, 0);
+  }
+
+  private notifyLowWatermarkObserver(): void {
+    if (!this.started || this.lowWatermarkObserver === null) return;
+    if (!this.hasEnabledSearchSourceBelowWatermark()) return;
+    try {
+      this.lowWatermarkObserver();
+    } catch (_error) {
+      // A producer scheduling hook must never interrupt pool consumption.
+    }
+  }
+
+  private async runAutomaticDiscoveryRefill(): Promise<void> {
+    if (!this.started || this.automaticDiscoveryRunning) return;
+    this.automaticDiscoveryRunning = true;
+    try {
+      await this.refillDiscoveries();
+    } finally {
+      this.automaticDiscoveryRunning = false;
+      if (this.automaticDiscoveryRequested) {
+        this.automaticDiscoveryRequested = false;
+        this.scheduleAutomaticDiscoveryRefill();
+      }
+    }
+  }
+
+  private cancelDiscoveryRetry(adapterId: string): void {
+    const timerId = this.discoveryRetryTimerByAdapterId.get(adapterId);
+    if (timerId !== undefined) clearTimeout(timerId);
+    this.discoveryRetryTimerByAdapterId.delete(adapterId);
+    this.discoveryFailureCountByAdapterId.delete(adapterId);
+  }
+
+  private handleDiscoveryRefillResults(results: WaterfallPoolDiscoveryRefillResult[]): void {
+    results.forEach((result: WaterfallPoolDiscoveryRefillResult): void => {
+      if (result.reachedWatermark) {
+        this.cancelDiscoveryRetry(result.adapterId);
+        return;
+      }
+      if (!this.started || !this.isAdapterEnabled(result.adapterId)) return;
+      this.scheduleDiscoveryRetry(result.adapterId);
+    });
+  }
+
+  private scheduleDiscoveryRetry(adapterId: string): void {
+    if (!this.started || !this.isAdapterEnabled(adapterId) ||
+      this.discoveryRetryTimerByAdapterId.has(adapterId)) return;
+    const failureCount = (this.discoveryFailureCountByAdapterId.get(adapterId) ?? 0) + 1;
+    this.discoveryFailureCountByAdapterId.set(adapterId, failureCount);
+    const delayIndex = Math.min(failureCount - 1, this.discoveryRetryDelaysMs.length - 1);
+    const delayMs = this.discoveryRetryDelaysMs[delayIndex];
+    const timerId = setTimeout((): void => {
+      this.discoveryRetryTimerByAdapterId.delete(adapterId);
+      void this.runDiscoveryRetry(adapterId).catch((_error: Error): void => {});
+    }, delayMs);
+    this.discoveryRetryTimerByAdapterId.set(adapterId, timerId);
+  }
+
+  private async runDiscoveryRetry(adapterId: string): Promise<void> {
+    if (!this.started || !this.isAdapterEnabled(adapterId)) return;
+    const adapter = this.discoveryAdaptersById.get(adapterId);
+    if (adapter === undefined) return;
+    const result = await this.refillDiscovery(adapter);
+    this.handleDiscoveryRefillResults([result]);
+  }
+
   private registerSource(adapterId: string, sourceId: AggregateSearchSource): void {
     if (this.adapterIds.has(adapterId)) {
       throw new Error('Duplicate waterfall adapter id: ' + adapterId);
@@ -694,7 +875,9 @@ export class WaterfallPool {
       };
     }
     try {
-      return this.accept(await adapter.search({ query, limit: this.requestLimit, continuation }), query, 'search');
+      const page = await boundedAdapterPage(
+        adapter.search({ query, limit: this.requestLimit, continuation }), adapter.adapterId, this.adapterTimeoutMs);
+      return this.accept(page, query, 'search');
     } catch (error) {
       return this.accept(failedAdapterPage(adapter.adapterId, adapter.sourceId, error), query, 'search');
     }
@@ -747,8 +930,11 @@ export class WaterfallPool {
         insert: emptyInsertResult()
       };
     }
+    this.scheduledLastRefreshAtMs.set(adapter.adapterId, Date.now());
     try {
-      return this.accept(await adapter.discover({ limit: this.requestLimit, continuation: null }), '', 'scheduled_manual');
+      const page = await boundedAdapterPage(
+        adapter.discover({ limit: this.requestLimit, continuation: null }), adapter.adapterId, this.adapterTimeoutMs);
+      return this.accept(page, '', 'scheduled_manual');
     } catch (error) {
       return this.accept(failedAdapterPage(adapter.adapterId, adapter.sourceId, error), '', 'scheduled_manual');
     }
@@ -759,7 +945,8 @@ export class WaterfallPool {
     continuation: WaterfallContinuation | null
   ): Promise<WaterfallSourcePage> {
     try {
-      return await adapter.discover({ limit: this.requestLimit, continuation });
+      return await boundedAdapterPage(
+        adapter.discover({ limit: this.requestLimit, continuation }), adapter.adapterId, this.adapterTimeoutMs);
     } catch (error) {
       return failedAdapterPage(adapter.adapterId, adapter.sourceId, error);
     }
@@ -821,6 +1008,7 @@ export class WaterfallPool {
     if (this.scheduledSubscriptionsByAdapterId.has(adapter.adapterId)) return;
     const subscription = adapter.subscribe((page: WaterfallSourcePage): void => {
       if (this.started && this.isAdapterEnabled(adapter.adapterId)) {
+        this.scheduledLastRefreshAtMs.set(adapter.adapterId, Date.now());
         this.accept(page, '', 'scheduled');
       }
     });

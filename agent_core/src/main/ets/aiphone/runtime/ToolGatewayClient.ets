@@ -15657,7 +15657,6 @@ function configuredAggregateAdapterLoader(
 ): WaterfallAggregateSourceLoader {
   const youtubeApiKey = localProviderConfig.youtubeApiKey;
   const zhihuApiKey = localProviderConfig.zhihuApiKey;
-  const policy: AggregateSearchPolicy = waterfallSearchPolicyForRuntime();
   return (
     query: string,
     continuation: WaterfallContinuation | null,
@@ -15669,7 +15668,7 @@ function configuredAggregateAdapterLoader(
     { apiKey: zhihuApiKey },
     continuation,
     limit,
-    policy,
+    waterfallSearchPolicyForRuntime(),
     context
   );
 }

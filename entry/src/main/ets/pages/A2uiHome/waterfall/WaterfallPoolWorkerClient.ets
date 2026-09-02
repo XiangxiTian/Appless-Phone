@@ -7,7 +7,7 @@ import {
   WaterfallSourcePoolEntry
 } from '@loop/agent-core';
 
-interface WaterfallPoolWorkerCommand {
+export interface WaterfallPoolWorkerCommand {
   type: string;
   requestId?: number;
   providerConfigJson?: string;
@@ -21,6 +21,8 @@ interface WaterfallPoolWorkerCommand {
   initialTopicCount?: number;
   topicIntervalMs?: number;
 }
+
+export type WaterfallPoolWorkerCommandObserver = (command: WaterfallPoolWorkerCommand) => void;
 
 interface WaterfallPoolWorkerResponse {
   type: string;
@@ -66,17 +68,24 @@ export class WaterfallPoolWorkerClient {
   private workerInstance: worker.ThreadWorker | null = null;
   private readonly providerConfigJson: string;
   private readonly composioConfigJson: string;
-  private readonly searchPolicy: AggregateSearchPolicy;
+  private searchPolicy: AggregateSearchPolicy;
+  private readonly commandObserver: WaterfallPoolWorkerCommandObserver | null;
   private readonly pendingTakes: Map<number, PendingPoolTake> = new Map<number, PendingPoolTake>();
   private nextRequestId: number = 1;
 
-  constructor(providerConfigJson: string, composioConfigJson: string, searchPolicy: AggregateSearchPolicy) {
+  constructor(
+    providerConfigJson: string,
+    composioConfigJson: string,
+    searchPolicy: AggregateSearchPolicy,
+    commandObserver: WaterfallPoolWorkerCommandObserver | null = null
+  ) {
     this.providerConfigJson = providerConfigJson;
     this.composioConfigJson = composioConfigJson;
     this.searchPolicy = {
       domesticOnly: searchPolicy.domesticOnly,
       multilingual: searchPolicy.multilingual
     };
+    this.commandObserver = commandObserver;
   }
 
   start(initialTopicCount: number, topicIntervalMs: number): void {
@@ -91,16 +100,22 @@ export class WaterfallPoolWorkerClient {
     this.post({ type: 'supplement_topic', topic });
   }
 
-  supply(): void {
-    this.post({ type: 'supply' });
-  }
-
   activate(): void {
     this.post({ type: 'activate' });
   }
 
   setEnabledAdapters(enabledAdapterIds: string[]): void {
     this.post({ type: 'set_enabled_adapters', enabledAdapterIds: enabledAdapterIds.slice() });
+  }
+
+  setSearchPolicy(searchPolicy: AggregateSearchPolicy): void {
+    this.searchPolicy = {
+      domesticOnly: searchPolicy.domesticOnly,
+      multilingual: searchPolicy.multilingual
+    };
+    if (this.workerInstance !== null || this.commandObserver !== null) {
+      this.post({ type: 'set_search_policy', searchPolicy: this.searchPolicy });
+    }
   }
 
   takeOrWait(
@@ -195,6 +210,10 @@ export class WaterfallPoolWorkerClient {
   }
 
   private post(command: WaterfallPoolWorkerCommand): void {
+    if (this.commandObserver !== null) {
+      this.commandObserver(command);
+      return;
+    }
     this.ensureWorker().postMessage(command);
   }
 

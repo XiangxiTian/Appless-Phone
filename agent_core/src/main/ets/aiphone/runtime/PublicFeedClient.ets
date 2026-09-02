@@ -10,7 +10,6 @@ import {
 const MAX_FEED_BODY_BYTES: number = 2 * 1024 * 1024;
 const MAX_FEED_ITEMS: number = 80;
 const DEFAULT_SOURCE_POSTS: number = 10;
-const CNNEWS_MIN_TEXT_LENGTH: number = 100;
 
 interface PublicFeedDefinition {
   provider: string;
@@ -177,10 +176,6 @@ function postsFromCollectedItems(
   return posts;
 }
 
-export function cnNewsPostPassesQuality(post: AggregateSearchPost): boolean {
-  return cleanText(post.text).length >= CNNEWS_MIN_TEXT_LENGTH;
-}
-
 export function publicFeedPostsFromEvents(
   source: AggregateSearchSource,
   provider: string,
@@ -322,7 +317,7 @@ export async function loadCnNewsSource(
   let rawCount = 0;
   loadedProviders.forEach((collected: AggregateSearchPost[]): void => {
     rawCount += collected.length;
-    providerPosts.push(collected.filter((post: AggregateSearchPost): boolean => cnNewsPostPassesQuality(post)));
+    providerPosts.push(collected);
   });
   for (let itemIndex = 0; posts.length < postLimit(limit); itemIndex += 1) {
     let appended = false;

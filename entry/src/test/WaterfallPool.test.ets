@@ -4,11 +4,14 @@ import {
   AggregateSearchSourceBatch,
   AggregateWaterfallDiscoveryAdapter,
   AggregateWaterfallSearchAdapter,
+  coordinateWaterfallPoolTake,
   WaterfallCandidate,
   WaterfallColdStartTopic,
   WaterfallFeedState,
   WaterfallPool,
   WaterfallPoolAcceptedEvent,
+  WaterfallPoolAvailabilityWait,
+  WaterfallPoolTakeCoordinatorCallbacks,
   WaterfallScheduledDiscoveryAdapter,
   WaterfallScheduledDiscoveryListener,
   WaterfallPreferenceSnapshot,
@@ -100,10 +103,13 @@ class PoolTestScheduledAdapter implements WaterfallScheduledDiscoveryAdapter {
   readonly kind: 'scheduled_discovery' = 'scheduled_discovery';
   readonly pagination: 'none' = 'none';
   readonly refreshIntervalMs: number = 1000;
+  discoverCalls: number = 0;
   private listener: WaterfallScheduledDiscoveryListener | null = null;
 
   discover(_request: WaterfallSourceDiscoveryRequest): Promise<WaterfallSourcePage> {
-    return Promise.resolve(this.page('manual'));
+    this.discoverCalls++;
+    const id = this.discoverCalls === 1 ? 'manual' : 'manual-' + this.discoverCalls.toString();
+    return Promise.resolve(this.page(id));
   }
 
   subscribe(listener: WaterfallScheduledDiscoveryListener): WaterfallSourceSubscription {
@@ -130,6 +136,42 @@ class PoolTestScheduledAdapter implements WaterfallScheduledDiscoveryAdapter {
       message: 'ok',
       fetchedAt: 100
     };
+  }
+}
+
+class PoolTestTakeCallbacks implements WaterfallPoolTakeCoordinatorCallbacks<WaterfallSourcePoolEntry> {
+  supplyCalls: number = 0;
+  private readonly pool: WaterfallPool;
+  private readonly profile: WaterfallPreferenceSnapshot;
+  private readonly settleSupply: boolean;
+
+  constructor(pool: WaterfallPool, profile: WaterfallPreferenceSnapshot, settleSupply: boolean) {
+    this.pool = pool;
+    this.profile = profile;
+    this.settleSupply = settleSupply;
+  }
+
+  take(): WaterfallSourcePoolEntry[] {
+    return [];
+  }
+
+  waitForAvailable(): WaterfallPoolAvailabilityWait {
+    return this.pool.waitForAvailable(this.profile, ['youtube']);
+  }
+
+  requestSupply(): void {
+    this.supplyCalls++;
+    if (this.settleSupply) this.pool.settleAvailabilityWaiters();
+  }
+
+  isCancelled(): boolean {
+    return false;
+  }
+
+  onWaitStarted(_wait: WaterfallPoolAvailabilityWait): void {
+  }
+
+  onWaitFinished(_wait: WaterfallPoolAvailabilityWait): void {
   }
 }
 
@@ -449,6 +491,56 @@ export default function waterfallPoolTest() {
       expect(pool.containerFor('youtube')?.size).assertEqual(1);
     });
 
+    it('settles an empty availability wait when one production round finishes without content', 0, async () => {
+      const pool = new WaterfallPool({ search: [], discovery: [], scheduledDiscovery: [] });
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: []
+      };
+      const wait = pool.waitForAvailable(profile, ['youtube']);
+
+      pool.settleAvailabilityWaiters();
+
+      expect(await wait.promise).assertFalse();
+    });
+
+    it('returns an empty result after three failed Worker supply rounds', 0, async () => {
+      const pool = new WaterfallPool({ search: [], discovery: [], scheduledDiscovery: [] });
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: []
+      };
+      const callbacks = new PoolTestTakeCallbacks(pool, profile, true);
+
+      const result = await coordinateWaterfallPoolTake(callbacks, {
+        maxAttempts: 3,
+        maxWaitMs: 1000,
+        retryDelaysMs: [0, 0, 0]
+      });
+
+      expect(result.entries.length).assertEqual(0);
+      expect(result.attempts).assertEqual(3);
+      expect(result.waitCycles).assertEqual(3);
+      expect(result.cancelled).assertFalse();
+      expect(callbacks.supplyCalls).assertEqual(3);
+    });
+
+    it('returns an empty result when the Worker take deadline is reached', 0, async () => {
+      const pool = new WaterfallPool({ search: [], discovery: [], scheduledDiscovery: [] });
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: []
+      };
+      const callbacks = new PoolTestTakeCallbacks(pool, profile, false);
+
+      const result = await coordinateWaterfallPoolTake(callbacks, {
+        maxAttempts: 3,
+        maxWaitMs: 5,
+        retryDelaysMs: [0, 0, 0]
+      });
+
+      expect(result.entries.length).assertEqual(0);
+      expect(result.attempts).assertEqual(1);
+      expect(result.deadlineReached).assertTrue();
+    });
+
     it('refills pull discovery until the source watermark is reached', 0, async () => {
       let page = 0;
       const discovery = new AggregateWaterfallDiscoveryAdapter(
@@ -472,6 +564,135 @@ export default function waterfallPoolTest() {
       expect(page).assertEqual(2);
       expect(pool.containerFor('youtube')?.size).assertEqual(4);
       expect(result[0].reachedWatermark).assertTrue();
+    });
+
+    it('automatically refills pull discovery after consumption lowers its source waterline', 0, async () => {
+      let calls = 0;
+      const discovery = new AggregateWaterfallDiscoveryAdapter(
+        'youtube.discovery_test', 'youtube', 'cursor',
+        (_query, _continuation, _limit) => {
+          calls++;
+          return Promise.resolve(poolTestBatch('youtube', ['item-' + calls.toString()]));
+        }
+      );
+      const pool = new WaterfallPool(
+        { search: [], discovery: [discovery], scheduledDiscovery: [] },
+        { requestLimit: 1, discoveryWatermark: 1 }
+      );
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: []
+      };
+      await pool.start();
+
+      expect(pool.takeUpToForProfile(profile, ['youtube'], 1).length).assertEqual(1);
+      await new Promise<void>((resolve): void => {
+        setTimeout(resolve, 10);
+      });
+
+      expect(calls).assertEqual(2);
+      expect(pool.containerFor('youtube')?.size).assertEqual(1);
+      pool.stop();
+    });
+
+    it('retries a failed pull discovery in the background until its waterline is restored', 0, async () => {
+      let calls = 0;
+      const discovery = new AggregateWaterfallDiscoveryAdapter(
+        'youtube.discovery_retry_test', 'youtube', 'cursor',
+        (_query, _continuation, _limit) => {
+          calls++;
+          if (calls === 1) return Promise.reject(new Error('temporary discovery failure'));
+          return Promise.resolve(poolTestBatch('youtube', ['recovered']));
+        }
+      );
+      const pool = new WaterfallPool(
+        { search: [], discovery: [discovery], scheduledDiscovery: [] },
+        { requestLimit: 1, discoveryWatermark: 1, discoveryRetryDelaysMs: [1] }
+      );
+
+      await pool.start();
+      await new Promise<void>((resolve): void => {
+        setTimeout(resolve, 20);
+      });
+
+      expect(calls).assertEqual(2);
+      expect(pool.containerFor('youtube')?.size).assertEqual(1);
+      pool.stop();
+    });
+
+    it('cancels a pending discovery retry when the pool stops', 0, async () => {
+      let calls = 0;
+      const discovery = new AggregateWaterfallDiscoveryAdapter(
+        'youtube.discovery_stop_test', 'youtube', 'cursor',
+        (_query, _continuation, _limit) => {
+          calls++;
+          return Promise.reject(new Error('persistent discovery failure'));
+        }
+      );
+      const pool = new WaterfallPool(
+        { search: [], discovery: [discovery], scheduledDiscovery: [] },
+        { requestLimit: 1, discoveryWatermark: 1, discoveryRetryDelaysMs: [10] }
+      );
+
+      await pool.start();
+      pool.stop();
+      await new Promise<void>((resolve): void => {
+        setTimeout(resolve, 30);
+      });
+
+      expect(calls).assertEqual(1);
+    });
+
+    it('bounds an adapter request that never settles', 0, async () => {
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_timeout_test', 'youtube', 'cursor',
+        (_query, _continuation, _limit) => new Promise<AggregateSearchSourceBatch>(
+          (_resolve, _reject): void => {})
+      );
+      const pool = new WaterfallPool(
+        { search: [search], discovery: [], scheduledDiscovery: [] },
+        { adapterTimeoutMs: 5 }
+      );
+
+      const result = await pool.supplement('timeout');
+
+      expect(result.results.length).assertEqual(1);
+      expect(result.results[0].page.status).assertEqual('error');
+      expect(result.results[0].page.message.indexOf('timed out') >= 0).assertTrue();
+    });
+
+    it('notifies the producer once consumption leaves an enabled source below its waterline', 0, async () => {
+      let refillRequests = 0;
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        (_query, _continuation, _limit) => Promise.resolve(poolTestBatch('youtube', []))
+      );
+      const pool = new WaterfallPool(
+        { search: [search], discovery: [], scheduledDiscovery: [] },
+        {
+          discoveryWatermark: 2,
+          lowWatermarkObserver: (): void => {
+            refillRequests++;
+          }
+        }
+      );
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: []
+      };
+      pool.accept({
+        adapterId: search.adapterId,
+        sourceId: search.sourceId,
+        items: [poolTestCandidate('one')],
+        continuation: null,
+        exhausted: true,
+        status: 'success',
+        message: 'ok',
+        fetchedAt: 100
+      });
+      await pool.start();
+
+      expect(pool.takeUpToForProfile(profile, ['youtube'], 1).length).assertEqual(1);
+      expect(refillRequests).assertEqual(1);
+      pool.stop();
     });
 
     it('does not request from a disabled pull discovery adapter', 0, async () => {
@@ -542,6 +763,25 @@ export default function waterfallPoolTest() {
       expect(results.length).assertEqual(1);
       expect(requiredFirstPoolEntry(pool, 'youtube').candidate.id).assertEqual('manual');
       expect(pool.isStarted).assertFalse();
+    });
+
+    it('allows consecutive forced scheduled refreshes while due refreshes remain throttled', 0, async () => {
+      const scheduled = new PoolTestScheduledAdapter();
+      const pool = new WaterfallPool({
+        search: [], discovery: [], scheduledDiscovery: [scheduled]
+      });
+
+      const firstDue = await pool.refreshScheduledDiscoveriesIfDue();
+      const secondDue = await pool.refreshScheduledDiscoveriesIfDue();
+      const firstForced = await pool.refreshScheduledDiscoveries();
+      const secondForced = await pool.refreshScheduledDiscoveries();
+
+      expect(firstDue.length).assertEqual(1);
+      expect(secondDue.length).assertEqual(0);
+      expect(firstForced.length).assertEqual(1);
+      expect(secondForced.length).assertEqual(1);
+      expect(scheduled.discoverCalls).assertEqual(3);
+      expect(pool.containerFor('youtube')?.size).assertEqual(3);
     });
 
     it('observes accepted pages without coupling diagnostics to ingestion', 0, async () => {

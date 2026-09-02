@@ -227,6 +227,7 @@ export * from './src/main/ets/aiphone/runtime/WaterfallSourceAdapter';
 export * from './src/main/ets/aiphone/runtime/WaterfallAggregateSourceAdapter';
 export * from './src/main/ets/aiphone/runtime/WaterfallSourcePoolContainer';
 export * from './src/main/ets/aiphone/runtime/WaterfallPool';
+export * from './src/main/ets/aiphone/runtime/WaterfallPoolTakeCoordinator';
 export * from './src/main/ets/aiphone/runtime/WaterfallPoolQualityPolicy';
 export * from './src/main/ets/aiphone/runtime/YouTubeApiClient';
 export * from './src/main/ets/aiphone/payment/PaymentCore';

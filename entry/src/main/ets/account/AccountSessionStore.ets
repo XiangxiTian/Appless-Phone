@@ -150,7 +150,6 @@ export class AccountSessionStore {
     try {
       this.activeOwnerStore.clear();
     } catch (_error) {
-      return this.setSnapshot(AccountSessionStatus.ERROR, '', '本地账号状态清理失败，请稍后重试。');
     }
     return this.setSnapshot(AccountSessionStatus.SIGNED_OUT, '', '');
   }

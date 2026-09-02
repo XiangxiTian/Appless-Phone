@@ -3930,7 +3930,6 @@ struct Index {
 
   onPageShow(): void {
     this.subscribeWaterfallConversationTypedTest();
-    this.accountSessionStatus = AccountSessionStatus.RESTORING;
     void this.restoreAccountSession();
   }
 

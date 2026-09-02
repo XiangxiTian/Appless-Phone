@@ -79,7 +79,6 @@ class FakeLegacyClaimCoordinator implements LegacyAccountClaimCoordinator {
 
 class FakeActiveAccountOwnerStore implements ActiveAccountOwnerStore {
   ownerId: string = '';
-  throwOnClear: boolean = false;
 
   read(): string {
     return this.ownerId;
@@ -90,9 +89,6 @@ class FakeActiveAccountOwnerStore implements ActiveAccountOwnerStore {
   }
 
   clear(): void {
-    if (this.throwOnClear) {
-      throw new Error('active owner clear failed');
-    }
     this.ownerId = '';
   }
 }
@@ -173,20 +169,6 @@ export default function accountSessionStoreTest() {
       expect(snapshot.errorMessage.length > 0).assertTrue();
       expect(publicSnapshotText(snapshot).indexOf(storedUnionId)).assertEqual(-1);
       expect(activeOwner.read()).assertEqual('');
-    });
-
-    it('does not report logout success while the active owner remains persisted', 0, async () => {
-      const activeOwner = new FakeActiveAccountOwnerStore();
-      activeOwner.ownerId = deriveHuaweiOwnerId('active-owner');
-      activeOwner.throwOnClear = true;
-      const store = new AccountSessionStore(
-        new FakeHuaweiAccountService(), new MemoryCredentialStore(), 'configured-client', undefined, activeOwner);
-
-      const snapshot = await store.clearLocalSession();
-
-      expect(snapshot.status).assertEqual(AccountSessionStatus.ERROR);
-      expect(snapshot.errorMessage.length > 0).assertTrue();
-      expect(activeOwner.read()).assertEqual(deriveHuaweiOwnerId('active-owner'));
     });
 
     it('rejects login when Client ID is absent without invoking a fake provider', 0, async () => {

@@ -645,11 +645,6 @@ export function htmlHomeHtmlForViewValue(
   return currentHtml();
 }
 
-export function memorySideEffectToastText(message: string): string {
-  const value: string = message.replace(/[\r\n\t]+/g, ' ').trim();
-  return value.substring(0, 240);
-}
-
 const AGGREGATE_DOMESTIC_ONLY_KEY: string = 'only_domestic_sources';
 const AGGREGATE_MULTILINGUAL_KEY: string = 'include_multilingual_results';
 const ANYTHING_DEMO_ROUTE_URL: string = 'pages/A2uiHome/AnythingDemo';
@@ -5642,7 +5637,6 @@ struct Index {
         this.updateStreamingAssistantAnswer(answer, generation);
       },
       onMemorySideEffectResult: (result: LeaderMemoryToolResult): void => {
-        this.showMemoryResultToast(result.message);
         aiLogInfo('[AIPhone][MemorySideEffect] status=' + result.status);
       },
       onMemoryForgetOverlay: (request: MemoryForgetOverlayRequest | null): void => {
@@ -6760,26 +6754,6 @@ struct Index {
     this.finishStreamingAssistantRevealState();
   }
 
-  private isBaseConversationPageVisible(): boolean {
-    return !this.showUserManagementPage &&
-      !this.showLongTermMemoryPage &&
-      !this.showComposioAuthPage &&
-      !this.showConfigPage &&
-      !this.showPublicPersonaPage &&
-      !this.showBimPage;
-  }
-
-  private showMemoryResultToast(message: string): void {
-    if (this.isBaseConversationPageVisible()) return;
-    const toastMessage: string = memorySideEffectToastText(message);
-    if (toastMessage.length === 0) return;
-    this.getUIContext().getPromptAction().showToast({
-      message: toastMessage,
-      duration: 2500,
-      alignment: Alignment.Top
-    });
-  }
-
   private showMemoryCandidateActionToast(message: string): void {
     if (message.trim().length === 0) return;
     this.getUIContext().getPromptAction().showToast({
@@ -7437,7 +7411,6 @@ struct Index {
       }
       const readyMessage: string = result.message.length > 0 ?
         result.message : this.currentSurface.title;
-      this.showMemoryResultToast(readyMessage);
       this.completeStreamingAssistantMessage(readyMessage, turnGeneration);
       const hasCurrentTurnSurface = this.currentSurface.runtimeOwner === 'multi_agent' &&
         this.currentSurface.runtimeGeneration === turnGeneration;

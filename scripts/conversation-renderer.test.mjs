@@ -56,21 +56,7 @@ test('secondary pages overlay the persistent home WebView', () => {
   assert.match(buildBody, /this\.ConfigPageContent\(\)/);
 });
 
-test('base conversation replies do not show a foreground toast', () => {
-  const visibilityBody = sourceBody(
-    indexSource,
-    'private isBaseConversationPageVisible(): boolean {'
-  );
-  const toastBody = sourceBody(
-    indexSource,
-    'private showMemoryResultToast(message: string): void {'
-  );
-
-  assert.match(visibilityBody, /!this\.showUserManagementPage/);
-  assert.match(visibilityBody, /!this\.showLongTermMemoryPage/);
-  assert.match(visibilityBody, /!this\.showComposioAuthPage/);
-  assert.match(visibilityBody, /!this\.showConfigPage/);
-  assert.match(visibilityBody, /!this\.showPublicPersonaPage/);
-  assert.match(visibilityBody, /!this\.showBimPage/);
-  assert.match(toastBody, /if \(this\.isBaseConversationPageVisible\(\)\) return;/);
+test('agent replies do not show a foreground toast', () => {
+  assert.doesNotMatch(indexSource, /showMemoryResultToast/);
+  assert.doesNotMatch(indexSource, /memorySideEffectToastText/);
 });

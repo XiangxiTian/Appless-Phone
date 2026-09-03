@@ -3985,8 +3985,7 @@ const HTML_HOME_JS: string = `
     var assistantTurn = add(section, 'div', 'plain-chat-assistant-turn');
     addPlainChatAssistantIdentity(assistantTurn);
     var response = add(assistantTurn, 'article', 'plain-chat-response');
-    var responseCopy = add(response, 'p', 'plain-chat-response-copy');
-    queueConversationAssistantReveal(responseCopy, text(assistant.content));
+    add(response, 'p', 'plain-chat-response-copy', text(assistant.content));
     syncDeepSearchTrace(assistantTurn);
     var contextItems = [];
     history.forEach(function (item) {
@@ -4153,13 +4152,19 @@ const HTML_HOME_JS: string = `
     if (conversationRevealTimer) { return; }
     revealConversationAssistant();
   }
-  function replaceAssistantResponse(response, assistant, thinking) {
+  function replaceAssistantResponse(response, assistant, thinking, reveal) {
     var currentThinking = response.classList.contains('conversation-thinking');
     var expectedText = text(assistant && assistant.content);
     var currentCopy = response.querySelector('.plain-chat-response-copy');
     if (thinking && currentThinking && response.querySelector('.conversation-thinking-indicator')) { return; }
     if (!thinking && !currentThinking && currentCopy) {
-      queueConversationAssistantReveal(currentCopy, expectedText);
+      if (reveal) {
+        queueConversationAssistantReveal(currentCopy, expectedText);
+      } else {
+        stopConversationReveal();
+        conversationRevealTarget = '';
+        currentCopy.textContent = expectedText;
+      }
       return;
     }
     stopConversationReveal();
@@ -4179,7 +4184,11 @@ const HTML_HOME_JS: string = `
     response.removeAttribute('role');
     response.removeAttribute('aria-live');
     currentCopy = add(response, 'p', 'plain-chat-response-copy');
-    queueConversationAssistantReveal(currentCopy, expectedText);
+    if (reveal) {
+      queueConversationAssistantReveal(currentCopy, expectedText);
+    } else {
+      currentCopy.textContent = expectedText;
+    }
   }
   function applyConversationUpdate(nextData, animateUserText) {
     var section = document.querySelector('.plain-chat');
@@ -4228,7 +4237,7 @@ const HTML_HOME_JS: string = `
         }, { once: true });
       }
     }
-    replaceAssistantResponse(response, assistant, thinking);
+    replaceAssistantResponse(response, assistant, thinking, true);
     syncDeepSearchTrace(assistantTurn);
     replacePlainChatContext(section, conversationContextItems(history, assistant, thinking));
     if (document.body) {
@@ -4240,12 +4249,12 @@ const HTML_HOME_JS: string = `
     if (currentDataNode) { currentDataNode.textContent = JSON.stringify(data); }
     return true;
   }
-  function applyConversationAssistantTarget(target) {
+  function applyConversationAssistantTarget(target, reveal) {
     var section = document.querySelector('.plain-chat');
     var assistantTurn = section ? section.querySelector('.plain-chat-assistant-turn') : null;
     var response = assistantTurn ? assistantTurn.querySelector('.plain-chat-response') : null;
     if (!response) { return false; }
-    replaceAssistantResponse(response, { content: text(target) }, false);
+    replaceAssistantResponse(response, { content: text(target) }, false, reveal === true);
     if (document.body) {
       document.body.setAttribute('data-view', 'conversation');
       document.body.removeAttribute('data-scene');

@@ -2357,7 +2357,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('deepsearch-trace')).assertLarger(-1);
       expect(html.indexOf('__aiphoneApplyDeepSearchProgress')).assertLarger(-1);
       expect(html.indexOf("var trace = response.querySelector('.deepsearch-trace')")).assertLarger(-1);
-      expect(html.indexOf('replaceAssistantResponse(response, assistant, thinking);\n' +
+      expect(html.indexOf('replaceAssistantResponse(response, assistant, thinking, true);\n' +
         '    syncDeepSearchTrace(assistantTurn);')).assertLarger(-1);
       expect(html.indexOf('trace.open = false')).assertLarger(-1);
     });

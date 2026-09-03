@@ -95,6 +95,8 @@ class HtmlHomeActionBridge {
 export struct HtmlHomeSurfaceView {
   @Prop @Watch('onConversationStreamChange') conversationStreamText: string = '';
   @Prop @Watch('onConversationStreamChange') conversationStreamTick: number = 0;
+  @StorageProp('a2uiSystemTopInsetVp') systemTopInsetVp: number = 24;
+  @StorageProp('a2uiSystemBottomInsetVp') systemBottomInsetVp: number = 12;
   @Prop @Watch('onHtmlOrBusyChange') html: string = '';
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadJson: string = '';
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadTick: number = 0;
@@ -762,6 +764,7 @@ export struct HtmlHomeSurfaceView {
         }
         .width('100%')
         .height('100%')
+        .padding({ top: this.systemTopInsetVp, bottom: this.systemBottomInsetVp })
         .backgroundColor(COLOR_PAGE)
       }
 

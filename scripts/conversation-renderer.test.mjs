@@ -14,6 +14,10 @@ const indexSource = fs.readFileSync(
   new URL('../entry/src/main/ets/pages/A2uiHome/Index.ets', import.meta.url),
   'utf8'
 );
+const configPageSource = fs.readFileSync(
+  new URL('../entry/src/main/ets/pages/A2uiHome/components/ConfigPage.ets', import.meta.url),
+  'utf8'
+);
 
 function sourceBody(source, signature) {
   const start = source.indexOf(signature);
@@ -59,4 +63,14 @@ test('secondary pages overlay the persistent home WebView', () => {
 test('agent replies do not show a foreground toast', () => {
   assert.doesNotMatch(indexSource, /showMemoryResultToast/);
   assert.doesNotMatch(indexSource, /memorySideEffectToastText/);
+});
+
+test('secondary page headers stay below the system bars', () => {
+  assert.match(configPageSource, /@StorageProp\('a2uiSystemTopInsetVp'\) systemTopInsetVp/);
+  assert.match(configPageSource, /top: 16 \+ this\.systemTopInsetVp/);
+  assert.match(surfaceSource, /@StorageProp\('a2uiSystemTopInsetVp'\) systemTopInsetVp/);
+  assert.match(
+    surfaceSource,
+    /if \(this\.popupVisible\) \{[\s\S]*?\.padding\(\{ top: this\.systemTopInsetVp, bottom: this\.systemBottomInsetVp \}\)/
+  );
 });

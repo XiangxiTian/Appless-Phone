@@ -49,6 +49,8 @@ const CONNECTION_BADGE_ERROR_COLOR: string = '#A44D45';
 @Component
 export struct ConfigPage {
   @Link baseUrl: string;
+  @StorageProp('a2uiSystemTopInsetVp') systemTopInsetVp: number = 24;
+  @StorageProp('a2uiSystemBottomInsetVp') systemBottomInsetVp: number = 12;
   @Link apiKey: string;
   @Link selectedModel: string;
   @Link customParametersJson: string;
@@ -1103,7 +1105,12 @@ export struct ConfigPage {
         .shadow({ radius: 22, color: CONFIG_GUIDE_CARD_SHADOW, offsetX: 0, offsetY: 12 })
         }
         .width('100%')
-        .padding(16)
+        .padding({
+          left: 16,
+          right: 16,
+          top: 16 + this.systemTopInsetVp,
+          bottom: 16 + this.systemBottomInsetVp
+        })
       }
       .width('100%')
       .height('100%')

@@ -6563,7 +6563,17 @@ struct Index {
     this.finishStreamingAssistantRevealState();
   }
 
+  private isBaseConversationPageVisible(): boolean {
+    return !this.showUserManagementPage &&
+      !this.showLongTermMemoryPage &&
+      !this.showComposioAuthPage &&
+      !this.showConfigPage &&
+      !this.showPublicPersonaPage &&
+      !this.showBimPage;
+  }
+
   private showMemoryResultToast(message: string): void {
+    if (this.isBaseConversationPageVisible()) return;
     const toastMessage: string = memorySideEffectToastText(message);
     if (toastMessage.length === 0) return;
     this.getUIContext().getPromptAction().showToast({

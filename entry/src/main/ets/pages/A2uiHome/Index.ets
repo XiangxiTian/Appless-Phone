@@ -6699,6 +6699,7 @@ struct Index {
   private finishStreamingAssistantRevealState(): void {
     this.streamingAssistantMessageId = '';
     this.streamingAssistantGeneration = 0;
+    this.streamingAssistantDomText = '';
   }
 
   private startStreamingAssistantReveal(
@@ -12372,37 +12373,9 @@ struct Index {
           this.activateAccountOwner(ownerId);
         }
       })
-    } else if (this.showUserManagementPage) {
-      this.UserManagementPageContent();
-    } else if (this.showLongTermMemoryPage) {
-      this.LongTermMemoryPageContent();
-    } else if (this.showComposioAuthPage) {
-      ComposioAuthPage({
-        userShortId: this.composioUserId,
-        items: this.composioAuthItems,
-        message: this.composioAuthMessage,
-        isBusy: this.composioAuthBusy,
-        onBack: () => {
-          this.showComposioAuthPage = false;
-        },
-        onRefresh: () => {
-          this.refreshComposioAuth();
-        },
-        onAuthorize: (item: ComposioAuthConfigItem) => {
-          this.openComposioAuthLink(item);
-        },
-        onOpenExternalAuth: (url: string) => {
-          this.openExternalUrl(url);
-        }
-      })
-    } else if (this.showConfigPage) {
-      this.ConfigPageContent();
-    } else if (this.showPublicPersonaPage) {
-      this.PublicPersonaPageContent();
-    } else if (this.showBimPage) {
-      this.BimPageContent();
     } else {
-      Swiper(this.bimRootController) {
+      Stack() {
+        Swiper(this.bimRootController) {
       HomePage({
         inputText: $inputText,
         isBusy: this.isBusy,
@@ -12685,6 +12658,67 @@ struct Index {
           inputMethod.getController().hideTextInput().catch((_error: BusinessError): void => {});
         }
       })
+    }
+      if (this.showUserManagementPage) {
+        Stack() {
+          this.UserManagementPageContent()
+        }
+          .width('100%')
+          .height('100%')
+          .zIndex(2)
+      } else if (this.showLongTermMemoryPage) {
+        Stack() {
+          this.LongTermMemoryPageContent()
+        }
+          .width('100%')
+          .height('100%')
+          .zIndex(2)
+      } else if (this.showComposioAuthPage) {
+        Stack() {
+          ComposioAuthPage({
+            userShortId: this.composioUserId,
+            items: this.composioAuthItems,
+            message: this.composioAuthMessage,
+            isBusy: this.composioAuthBusy,
+            onBack: () => {
+              this.showComposioAuthPage = false;
+            },
+            onRefresh: () => {
+              this.refreshComposioAuth();
+            },
+            onAuthorize: (item: ComposioAuthConfigItem) => {
+              this.openComposioAuthLink(item);
+            },
+            onOpenExternalAuth: (url: string) => {
+              this.openExternalUrl(url);
+            }
+          })
+        }
+          .width('100%')
+          .height('100%')
+          .zIndex(2)
+      } else if (this.showConfigPage) {
+        Stack() {
+          this.ConfigPageContent()
+        }
+          .width('100%')
+          .height('100%')
+          .zIndex(2)
+      } else if (this.showPublicPersonaPage) {
+        Stack() {
+          this.PublicPersonaPageContent()
+        }
+          .width('100%')
+          .height('100%')
+          .zIndex(2)
+      } else if (this.showBimPage) {
+        Stack() {
+          this.BimPageContent()
+        }
+          .width('100%')
+          .height('100%')
+          .zIndex(2)
+      }
     }
   }
 }

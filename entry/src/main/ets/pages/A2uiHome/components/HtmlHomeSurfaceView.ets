@@ -137,6 +137,7 @@ export struct HtmlHomeSurfaceView {
   private conversationPatchInFlight: boolean = false;
   private conversationStreamPushInFlight: boolean = false;
   private appliedConversationStreamTick: number = -1;
+  private conversationStreamInitialSyncPending: boolean = true;
   private rendererWaterfallFullscreen: boolean = false;
   private rendererWaterfallComposerHidden: boolean = false;
   private waterfallShareBusy: boolean = false;
@@ -317,6 +318,7 @@ export struct HtmlHomeSurfaceView {
       this.lastQueuedWaterfallPayloadTick = -1;
       this.lastDeepSearchProgressJson = '';
       this.appliedConversationStreamTick = -1;
+      this.conversationStreamInitialSyncPending = true;
       this.appliedLuckinPatchTick = this.luckinInlinePatchTick;
       aiLogInfo('[AIPhone][HtmlHomeSurfaceLoad] chars=' + targetHtml.length.toString() +
         ' contentDigest=' + sha256Digest(targetHtml) +
@@ -343,20 +345,23 @@ export struct HtmlHomeSurfaceView {
     }
     const targetText = this.conversationStreamText;
     const targetTick = this.conversationStreamTick;
+    const reveal = !this.conversationStreamInitialSyncPending;
     try {
       this.conversationStreamPushInFlight = true;
       this.controller.runJavaScript(
         '(function(){' +
         'if(!window.__aiphoneSetConversationAssistantTarget){return "missing";}' +
-        'return window.__aiphoneSetConversationAssistantTarget(' + JSON.stringify(targetText) + ')' +
+        'return window.__aiphoneSetConversationAssistantTarget(' + JSON.stringify(targetText) + ',' +
+        (reveal ? 'true' : 'false') + ')' +
         '?"ok":"rejected";' +
         '})()'
       ).then((result: string): void => {
         this.conversationStreamPushInFlight = false;
         this.appliedConversationStreamTick = targetTick;
         if (result === 'ok') {
+          this.conversationStreamInitialSyncPending = false;
           aiLogInfo('[AIPhone][HtmlHomeConversationStreamPush] chars=' + targetText.length.toString() +
-            ' tick=' + targetTick.toString());
+            ' tick=' + targetTick.toString() + ' reveal=' + (reveal ? 'true' : 'false'));
         } else {
           aiLogError('[AIPhone][HtmlHomeConversationStreamPushRejected] result=' + result +
             ' tick=' + targetTick.toString());

@@ -1190,6 +1190,35 @@ function postsFromDynamicRawPreview(
   }
 }
 
+function stableDynamicPostId(
+  source: AggregateSearchSource,
+  post: AggregateSearchPost,
+  index: number
+): string {
+  const providerId = postProviderId(post).trim();
+  if (providerId.length > 0) return source + '-' + providerId;
+  const url = post.url.trim();
+  if (url.length > 0) return source + '-url-' + encodeURIComponent(url).substring(0, 512);
+  const contentIdentity = [post.title, post.author, post.publishedAt, post.text].join('|').trim();
+  if (contentIdentity.length > 0) {
+    return source + '-content-' + encodeURIComponent(contentIdentity).substring(0, 512);
+  }
+  return source + '-row-' + index.toString();
+}
+
+function stabilizeDynamicPostIds(
+  source: AggregateSearchSource,
+  posts: AggregateSearchPost[]
+): AggregateSearchPost[] {
+  // X execution is diagnosed separately. Restrict this correction to the two
+  // providers whose Pool growth was proven to collide on row-index ids.
+  if (source !== 'hackernews' && source !== 'reddit') return posts;
+  posts.forEach((post: AggregateSearchPost, index: number): void => {
+    post.id = stableDynamicPostId(source, post, index);
+  });
+  return posts;
+}
+
 function shouldKeepDynamicRow(label: string): boolean {
   return label !== '执行工具' &&
     label !== '查询' &&
@@ -1212,7 +1241,7 @@ function postsFromDynamicResult(
   }
   const rawPosts = postsFromDynamicRawPreview(source, provider, result);
   if (rawPosts.length > 0) {
-    return rawPosts;
+    return stabilizeDynamicPostIds(source, rawPosts);
   }
   const posts: AggregateSearchPost[] = [];
   for (let rowIndex = 0; rowIndex < result.rows.length; rowIndex++) {
@@ -1233,7 +1262,7 @@ function postsFromDynamicResult(
     };
     posts.push(postFromDynamicRow(source, provider, fallbackResult, 0));
   }
-  return posts;
+  return stabilizeDynamicPostIds(source, posts);
 }
 
 export function hackerNewsPostsFromComposioResult(result: DynamicGenericToolResult): AggregateSearchPost[] {

@@ -182,7 +182,7 @@ export interface WaterfallBehaviorActionArgs {
   topics: string[];
   source: string;
   format: WaterfallFormat;
-  behavior: 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip';
+  behavior: 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip' | 'open';
   durationMs: number;
   timestamp: number;
 }

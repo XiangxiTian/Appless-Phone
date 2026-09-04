@@ -9,4 +9,10 @@ export interface LocalModel {
     systemPrompt?: string,
     onTextDelta?: LocalModelTextDeltaListener
   ): Promise<string>;
+  completeStructured?(
+    prompt: string,
+    responseFormatJson: string,
+    conversation?: ConversationContext,
+    systemPrompt?: string
+  ): Promise<string>;
 }

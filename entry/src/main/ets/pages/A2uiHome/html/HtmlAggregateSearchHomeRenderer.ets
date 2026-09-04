@@ -3400,7 +3400,7 @@ const WATERFALL_JS: string = `
       behaviorStartedAt = Date.now();
       postBehavior(behaviorCandidateId, 'dwell', behaviorDurationMs);
       behaviorTimer = null;
-    }, Math.max(0, 8000 - behaviorDurationMs));
+    }, Math.max(0, 3000 - behaviorDurationMs));
   }
   function mergePayload(payload) {
     if (!payload) return;
@@ -3628,6 +3628,7 @@ const WATERFALL_JS: string = `
     if (!reader || !track) return;
     var item = candidateById(id);
     if (!item) return;
+    postBehavior(item.id, 'open', 0);
     readerReturnMode = mode === 'collection' ? 'collection' : 'discovering';
     stopStageMedia(track);
     destroyInlinePlayer();
@@ -5024,7 +5025,7 @@ export function waterfallBehaviorFromAction(
       args['format'] !== 'image_text' && args['format'] !== 'text') ||
     typeof args['behavior'] !== 'string' ||
     (args['behavior'] !== 'play_complete' && args['behavior'] !== 'read_complete' &&
-      args['behavior'] !== 'dwell' && args['behavior'] !== 'quick_skip') ||
+      args['behavior'] !== 'dwell' && args['behavior'] !== 'quick_skip' && args['behavior'] !== 'open') ||
     typeof args['durationMs'] !== 'number' || !isFinite(args['durationMs'] as number) ||
     (args['durationMs'] as number) < 0 || typeof args['timestamp'] !== 'number' ||
     !isFinite(args['timestamp'] as number) || (args['timestamp'] as number) <= 0) {
@@ -5043,7 +5044,7 @@ export function waterfallBehaviorFromAction(
     topics,
     source: (args['source'] as string).trim(),
     format: args['format'] as 'landscape_video' | 'portrait_video' | 'image_text' | 'text',
-    behavior: args['behavior'] as 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip',
+    behavior: args['behavior'] as 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip' | 'open',
     durationMs: args['durationMs'] as number,
     timestamp: args['timestamp'] as number
   };

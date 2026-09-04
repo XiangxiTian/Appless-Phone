@@ -246,6 +246,7 @@ export default function waterfallPoolTest() {
       expect(result.results.length).assertEqual(2);
       expect(pool.containerFor('youtube')?.size).assertEqual(1);
       expect(pool.containerFor('bilibili')?.size).assertEqual(1);
+      expect(requiredFirstPoolEntry(pool, 'youtube').searchKeywords.join(',')).assertEqual('人工智能');
       expect(requiredFirstPoolEntry(pool, 'youtube').keywords.indexOf('人工智能') >= 0).assertTrue();
     });
 
@@ -306,6 +307,103 @@ export default function waterfallPoolTest() {
       expect(pool.containerFor('youtube')?.size).assertEqual(0);
     });
 
+    it('auto-disables a source after ten consecutive empty searches until the user reopens it', 0, async () => {
+      let calls = 0;
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        (_query, _continuation, _limit) => {
+          calls++;
+          return Promise.resolve(poolTestBatch('youtube', []));
+        }
+      );
+      const pool = new WaterfallPool({
+        search: [search], discovery: [], scheduledDiscovery: []
+      });
+
+      for (let index = 0; index < 9; index += 1) await pool.supplement('empty-' + index.toString());
+      expect(pool.isSourceAutomaticallyDisabled('youtube')).assertFalse();
+      expect(pool.consecutiveEmptySearches('youtube')).assertEqual(9);
+
+      await pool.supplement('empty-9');
+      expect(pool.isSourceAutomaticallyDisabled('youtube')).assertTrue();
+      expect(pool.consecutiveEmptySearches('youtube')).assertEqual(10);
+      expect((await pool.supplement('blocked')).results.length).assertEqual(0);
+      expect(calls).assertEqual(10);
+
+      pool.setEnabledAdapters(['youtube.search_test']);
+      expect((await pool.supplement('ordinary-sync')).results.length).assertEqual(0);
+      pool.setEnabledAdapters(['youtube.search_test'], ['youtube']);
+      expect(pool.isSourceAutomaticallyDisabled('youtube')).assertFalse();
+      expect(pool.consecutiveEmptySearches('youtube')).assertEqual(0);
+      expect((await pool.supplement('user-reopened')).results.length).assertEqual(1);
+      expect(calls).assertEqual(11);
+    });
+
+    it('resets the consecutive empty-search streak when a source returns content', 0, async () => {
+      let calls = 0;
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        (_query, _continuation, _limit) => {
+          calls++;
+          return Promise.resolve(poolTestBatch('youtube', calls === 2 ? ['recovered'] : []));
+        }
+      );
+      const pool = new WaterfallPool(
+        { search: [search], discovery: [], scheduledDiscovery: [] },
+        { emptySearchDisableThreshold: 2 }
+      );
+
+      await pool.supplement('empty');
+      expect(pool.consecutiveEmptySearches('youtube')).assertEqual(1);
+      await pool.supplement('content');
+      expect(pool.consecutiveEmptySearches('youtube')).assertEqual(0);
+      await pool.supplement('empty-again');
+      expect(pool.consecutiveEmptySearches('youtube')).assertEqual(1);
+      expect(pool.isSourceAutomaticallyDisabled('youtube')).assertFalse();
+    });
+
+    it('counts duplicate-only and quality-filtered searches as empty Pool supply', 0, () => {
+      const youtube = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        (_query, _continuation, _limit) => Promise.resolve(poolTestBatch('youtube', []))
+      );
+      const bilibili = new AggregateWaterfallSearchAdapter(
+        'bilibili.search', 'bilibili', 'page',
+        (_query, _continuation, _limit) => Promise.resolve(poolTestBatch('bilibili', []))
+      );
+      const pool = new WaterfallPool(
+        { search: [youtube, bilibili], discovery: [], scheduledDiscovery: [] },
+        { emptySearchDisableThreshold: 1 }
+      );
+      const duplicatePage: WaterfallSourcePage = {
+        adapterId: youtube.adapterId,
+        sourceId: youtube.sourceId,
+        items: [poolTestCandidate('duplicate')],
+        continuation: null,
+        exhausted: true,
+        status: 'success',
+        message: 'ok',
+        fetchedAt: 100
+      };
+      pool.accept(duplicatePage, 'first', 'search');
+      expect(pool.isSourceAutomaticallyDisabled('youtube')).assertFalse();
+      pool.accept(duplicatePage, 'duplicate', 'search');
+      expect(pool.isSourceAutomaticallyDisabled('youtube')).assertTrue();
+
+      pool.accept({
+        adapterId: bilibili.adapterId,
+        sourceId: bilibili.sourceId,
+        items: [poolTestCandidateWithViews('filtered', 1999)],
+        continuation: null,
+        exhausted: true,
+        status: 'success',
+        message: 'ok',
+        fetchedAt: 100
+      }, 'filtered', 'search');
+      expect(pool.containerFor('bilibili')?.size).assertEqual(0);
+      expect(pool.isSourceAutomaticallyDisabled('bilibili')).assertTrue();
+    });
+
     it('selects one language variant per adapter for a bilingual topic', 0, async () => {
       const queries: string[] = [];
       const domestic = new AggregateWaterfallSearchAdapter(
@@ -336,6 +434,75 @@ export default function waterfallPoolTest() {
       expect(result.results.length).assertEqual(2);
       expect(queries.indexOf('domestic:人工智能') >= 0).assertTrue();
       expect(queries.indexOf('global:artificial intelligence') >= 0).assertTrue();
+      expect(requiredFirstPoolEntry(pool, 'bilibili').searchKeywords.join(',')).assertEqual('人工智能');
+      expect(requiredFirstPoolEntry(pool, 'youtube').searchKeywords.join(',')).assertEqual('artificial intelligence');
+    });
+
+    it('assigns a default topic only to its selected low-watermark source', 0, async () => {
+      const queries: string[] = [];
+      const youtube = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        (query, _continuation, _limit) => {
+          queries.push('youtube:' + query);
+          return Promise.resolve(poolTestBatch('youtube', ['youtube-result']));
+        },
+        'global'
+      );
+      const bilibili = new AggregateWaterfallSearchAdapter(
+        'bilibili.search_test', 'bilibili', 'page',
+        (query, _continuation, _limit) => {
+          queries.push('bilibili:' + query);
+          return Promise.resolve(poolTestBatch('bilibili', ['bilibili-result']));
+        },
+        'domestic'
+      );
+      const pool = new WaterfallPool(
+        { search: [youtube, bilibili], discovery: [], scheduledDiscovery: [] },
+        { discoveryWatermark: 2 }
+      );
+      const topic: WaterfallColdStartTopic = {
+        id: 'ai', domesticQuery: '人工智能', globalQuery: 'artificial intelligence'
+      };
+
+      const result = await pool.supplementSourceTopic('youtube', topic);
+
+      expect(result.results.length).assertEqual(1);
+      expect(queries.join(',')).assertEqual('youtube:artificial intelligence');
+      expect(pool.containerFor('youtube')?.size).assertEqual(1);
+      expect(pool.containerFor('bilibili')?.size).assertEqual(0);
+    });
+
+    it('does not dispatch a default topic for a source at its watermark', 0, async () => {
+      let calls = 0;
+      const search = new AggregateWaterfallSearchAdapter(
+        'youtube.search_test', 'youtube', 'cursor',
+        (query, _continuation, _limit) => {
+          calls++;
+          return Promise.resolve(poolTestBatch('youtube', [query]));
+        }
+      );
+      const pool = new WaterfallPool(
+        { search: [search], discovery: [], scheduledDiscovery: [] },
+        { discoveryWatermark: 1 }
+      );
+      const topic: WaterfallColdStartTopic = {
+        id: 'default', domesticQuery: '默认', globalQuery: 'default'
+      };
+      pool.accept({
+        adapterId: search.adapterId,
+        sourceId: search.sourceId,
+        items: [poolTestCandidate('existing')],
+        continuation: null,
+        exhausted: true,
+        status: 'success',
+        message: 'ok',
+        fetchedAt: 100
+      });
+
+      const result = await pool.supplementSourceTopic('youtube', topic);
+
+      expect(result.results.length).assertEqual(0);
+      expect(calls).assertEqual(0);
     });
 
     it('serializes keywords inside one adapter and coalesces duplicate queued searches', 0, async () => {
@@ -873,6 +1040,37 @@ export default function waterfallPoolTest() {
       expect(requiredFirstPoolEntry(pool, 'youtube').candidate.id).assertEqual('first');
     });
 
+    it('pauses scheduled discovery at the watermark and resumes after consumption', 0, async () => {
+      const scheduled = new PoolTestScheduledAdapter();
+      const pool = new WaterfallPool(
+        { search: [], discovery: [], scheduledDiscovery: [scheduled] },
+        { discoveryWatermark: 1 }
+      );
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: []
+      };
+      pool.accept({
+        adapterId: scheduled.adapterId,
+        sourceId: scheduled.sourceId,
+        items: [poolTestCandidate('existing')],
+        continuation: null,
+        exhausted: true,
+        status: 'success',
+        message: 'ok',
+        fetchedAt: 100
+      });
+
+      await pool.start();
+      scheduled.publish('blocked-at-watermark');
+      expect(pool.containerFor('youtube')?.size).assertEqual(1);
+
+      expect(pool.takeUpToForProfile(profile, ['youtube'], 1).length).assertEqual(1);
+      scheduled.publish('resumed-below-watermark');
+      expect(pool.containerFor('youtube')?.size).assertEqual(1);
+      expect(requiredFirstPoolEntry(pool, 'youtube').candidate.id).assertEqual('resumed-below-watermark');
+      pool.stop();
+    });
+
     it('unsubscribes and restores a scheduled adapter when its switch changes', 0, async () => {
       const scheduled = new PoolTestScheduledAdapter();
       const pool = new WaterfallPool({
@@ -903,11 +1101,12 @@ export default function waterfallPoolTest() {
       expect(pool.isStarted).assertFalse();
     });
 
-    it('allows consecutive forced scheduled refreshes while due refreshes remain throttled', 0, async () => {
+    it('gates due and forced scheduled refreshes at the source watermark', 0, async () => {
       const scheduled = new PoolTestScheduledAdapter();
-      const pool = new WaterfallPool({
-        search: [], discovery: [], scheduledDiscovery: [scheduled]
-      });
+      const pool = new WaterfallPool(
+        { search: [], discovery: [], scheduledDiscovery: [scheduled] },
+        { discoveryWatermark: 1 }
+      );
 
       const firstDue = await pool.refreshScheduledDiscoveriesIfDue();
       const secondDue = await pool.refreshScheduledDiscoveriesIfDue();
@@ -916,10 +1115,10 @@ export default function waterfallPoolTest() {
 
       expect(firstDue.length).assertEqual(1);
       expect(secondDue.length).assertEqual(0);
-      expect(firstForced.length).assertEqual(1);
-      expect(secondForced.length).assertEqual(1);
-      expect(scheduled.discoverCalls).assertEqual(3);
-      expect(pool.containerFor('youtube')?.size).assertEqual(3);
+      expect(firstForced.length).assertEqual(0);
+      expect(secondForced.length).assertEqual(0);
+      expect(scheduled.discoverCalls).assertEqual(1);
+      expect(pool.containerFor('youtube')?.size).assertEqual(1);
     });
 
     it('observes accepted pages without coupling diagnostics to ingestion', 0, async () => {

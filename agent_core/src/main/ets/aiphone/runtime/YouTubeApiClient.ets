@@ -14,6 +14,17 @@ const YOUTUBE_VIDEOS_URL: string = 'https://www.googleapis.com/youtube/v3/videos
 const YOUTUBE_COMMENT_THREADS_URL: string = 'https://www.googleapis.com/youtube/v3/commentThreads';
 let youtubeSearchDiagnosticSequence: number = 0;
 
+function youtubeDiagnosticText(value: string, limit: number = 320): string {
+  const normalized = value.replace(/https?:\/\/[^\s]*/gi, '<url>').replace(/[\r\n\t]+/g, ' ').trim();
+  const lower = normalized.toLowerCase();
+  if (lower.indexOf('client_secret=') >= 0 || lower.indexOf('access_token=') >= 0 ||
+    lower.indexOf('authorization:') >= 0 || lower.indexOf('bearer ') >= 0 ||
+    lower.indexOf('x-api-key') >= 0 || lower.indexOf('api_key=') >= 0) {
+    return '<redacted>';
+  }
+  return normalized.length <= limit ? normalized : normalized.substring(0, limit) + '...<truncated>';
+}
+
 interface YouTubeSearchResponse {
   nextPageToken?: string;
   items?: YouTubeSearchItem[];
@@ -490,30 +501,46 @@ export async function callYouTubeVideoSearch(
 ): Promise<DynamicGenericToolResult[]> {
   const requestId = ++youtubeSearchDiagnosticSequence;
   const adapterStartedAtMs = Date.now();
+  const normalizedQuery = query.trim();
+  const normalizedOrder = normalizedYouTubeOrder(options.order);
+  const normalizedMaxResults = normalizedYouTubeMaxResults(options.maxResults);
+  const normalizedLanguage = normalizeYouTubeRelevanceLanguage(options.relevanceLanguage ?? '');
   aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
-    ' stage=adapter-start queryChars=' + query.trim().length.toString() +
+    ' stage=adapter-start query=' + JSON.stringify(youtubeDiagnosticText(normalizedQuery, 80)) +
+    ' queryChars=' + normalizedQuery.length.toString() +
+    ' order=' + normalizedOrder +
+    ' maxResults=' + normalizedMaxResults.toString() +
+    ' relevanceLanguage=' + (normalizedLanguage.length > 0 ? normalizedLanguage : 'none') +
     ' continuation=' + ((options.pageToken ?? '').trim().length > 0 ? 'present' : 'none'));
   try {
     const composioStartedAtMs = Date.now();
     const result = await callComposioYouTubeSearchWithProviderData(
       query,
-      normalizedYouTubeOrder(options.order),
-      normalizedYouTubeMaxResults(options.maxResults),
-      normalizeYouTubeRelevanceLanguage(options.relevanceLanguage ?? ''),
+      normalizedOrder,
+      normalizedMaxResults,
+      normalizedLanguage,
       options.pageToken ?? ''
     );
     const mapped = youtubeVideoResultsFromComposioSearch(result, query);
     aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
       ' stage=composio-end elapsedMs=' + (Date.now() - composioStartedAtMs).toString() +
-      ' status=' + result.status + ' results=' + mapped.length.toString());
+      ' status=' + result.status +
+      ' tool=' + youtubeDiagnosticText(result.toolName, 80) +
+      ' providerPhase=' + (result.providerPhase ?? 'none') +
+      ' providerData=' + (result.providerData === undefined ? 'absent' : 'present') +
+      ' title=' + JSON.stringify(youtubeDiagnosticText(result.title)) +
+      ' summary=' + JSON.stringify(youtubeDiagnosticText(result.summary)) +
+      ' results=' + mapped.length.toString());
     const enriched = await enrichYouTubeSearchResults(mapped, requestId);
     aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
       ' stage=adapter-end elapsedMs=' + (Date.now() - adapterStartedAtMs).toString() +
       ' results=' + enriched.length.toString());
     return enriched;
   } catch (_error) {
+    const message = _error instanceof Error ? _error.message : JSON.stringify(_error);
     aiLogInfo('[AIPhone][YouTubeAdapterStage] requestId=' + requestId.toString() +
-      ' stage=adapter-exception elapsedMs=' + (Date.now() - adapterStartedAtMs).toString());
+      ' stage=adapter-exception elapsedMs=' + (Date.now() - adapterStartedAtMs).toString() +
+      ' message=' + JSON.stringify(youtubeDiagnosticText(message)));
     throw _error instanceof Error ? _error : new Error('YouTube adapter request failed.');
   }
 }

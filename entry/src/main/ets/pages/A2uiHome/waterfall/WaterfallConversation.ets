@@ -31,7 +31,7 @@ export interface WaterfallConversationState {
 }
 
 export interface WaterfallPreferenceTagEvidence {
-  behavior: 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip';
+  behavior: 'open' | 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip';
   durationMs: number;
   timestamp: number;
 }

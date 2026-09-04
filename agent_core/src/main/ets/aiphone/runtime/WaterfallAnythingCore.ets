@@ -32,6 +32,7 @@ export interface WaterfallInterestRecallRequest {
 
 export interface WaterfallPreferenceWeight {
   key: string;
+  aliases?: string[];
   weight: number;
   updatedAt: number;
 }
@@ -47,6 +48,7 @@ export interface WaterfallPreferenceSnapshot {
   sourceWeights: WaterfallPreferenceWeight[];
   formatWeights: WaterfallPreferenceWeight[];
   explicitRules: WaterfallExplicitPreference[];
+  interestTopicWeightSource?: 'content' | 'search_keywords';
   sessionTopicWeights?: WaterfallPreferenceWeight[];
   sessionSourceWeights?: WaterfallPreferenceWeight[];
   sessionFormatWeights?: WaterfallPreferenceWeight[];
@@ -202,6 +204,8 @@ export interface WaterfallCandidate {
   duration?: string;
   originalIndex: number;
   searchQuery?: string;
+  /** Pool search terms that produced this candidate; retrieval provenance, not inferred content tags. */
+  searchKeywords?: string[];
   queryStage?: WaterfallQueryStage;
   sourceRank?: number;
   providerScore?: number;
@@ -354,6 +358,8 @@ interface CandidatePreferenceText {
   format: string;
   topic: string;
 }
+
+const WATERFALL_INTEREST_KEYWORD_REPEAT_SIMILARITY: number = 0.5;
 
 function normalizedText(value: string): string {
   return value.trim().toLowerCase();
@@ -564,6 +570,7 @@ function toRankedCandidate(item: RankedCandidateInternal): WaterfallRankedCandid
     duration: item.candidate.duration,
     originalIndex: item.candidate.originalIndex,
     searchQuery: item.candidate.searchQuery,
+    searchKeywords: item.candidate.searchKeywords,
     queryStage: item.candidate.queryStage,
     sourceRank: item.candidate.sourceRank,
     providerScore: item.candidate.providerScore,
@@ -601,7 +608,9 @@ function traditionalCandidateGroups(
       return;
     }
     const normalizedUrl = normalizedHttpUrl(candidate.url);
-    const preference = scoreWaterfallCandidatePreference(candidate, input.profile);
+    const preference = input.mode === 'interest' ?
+      scoreWaterfallInterestCandidatePreference(candidate, input.profile) :
+      scoreWaterfallCandidatePreference(candidate, input.profile);
     if (normalizedUrl.length === 0 || preference.blocked) {
       return;
     }
@@ -663,7 +672,14 @@ export function rankWaterfallCandidates(
   applyTraditionalScores(groups, input.mode ?? 'search');
   const similarities = tfidfSimilarityMatrix(groups);
   const diverse = suppressNearDuplicates(groups, similarities);
-  return mmrOrder(diverse, input.mode === 'interest' ? 0.70 : 0.82, similarities, groups)
+  return mmrOrder(
+    diverse,
+    input.mode === 'interest' ? 0.70 : 0.82,
+    similarities,
+    groups,
+    input.mode === 'interest' && input.profile?.interestTopicWeightSource === 'search_keywords' ?
+      input.profile : undefined
+  )
     .map((item: TraditionalRankedCandidateInternal): WaterfallRankedCandidate => toRankedCandidate(item));
 }
 
@@ -698,7 +714,13 @@ function matchingWeight(
 ): number {
   let score = 0;
   (weights ?? []).forEach((weight: WaterfallPreferenceWeight): void => {
-    if (candidateMatches(candidate, dimension, weight.key)) {
+    let matched = candidateMatches(candidate, dimension, weight.key);
+    if (!matched && dimension === 'topic') {
+      (weight.aliases ?? []).forEach((alias: string): void => {
+        if (!matched && candidateMatches(candidate, dimension, alias)) matched = true;
+      });
+    }
+    if (matched) {
       score += weight.weight;
     }
   });
@@ -709,7 +731,8 @@ export function scoreWaterfallPreferenceText(
   source: string,
   format: string,
   topicText: string,
-  profile: WaterfallPreferenceSnapshot | undefined
+  profile: WaterfallPreferenceSnapshot | undefined,
+  historicalTopicText?: string
 ): WaterfallCandidatePreferenceScore {
   if (profile === undefined) {
     return { blocked: false, priority: 0, historical: 0, session: 0, explicit: 'none' };
@@ -718,6 +741,11 @@ export function scoreWaterfallPreferenceText(
     source: normalizedText(source),
     format: normalizedText(format),
     topic: normalizedText(topicText)
+  };
+  const historicalCandidateText: CandidatePreferenceText = {
+    source: candidateText.source,
+    format: candidateText.format,
+    topic: historicalTopicText === undefined ? candidateText.topic : normalizedText(historicalTopicText)
   };
   let explicit = 0;
   profile.explicitRules.forEach((rule: WaterfallExplicitPreference): void => {
@@ -735,9 +763,9 @@ export function scoreWaterfallPreferenceText(
   if (explicit === -2) {
     return { blocked: true, priority: 0, historical: 0, session: 0, explicit: 'block' };
   }
-  const historical = matchingWeight(candidateText, 'topic', profile.topicWeights) +
-    matchingWeight(candidateText, 'source', profile.sourceWeights) +
-    matchingWeight(candidateText, 'format', profile.formatWeights);
+  const historical = matchingWeight(historicalCandidateText, 'topic', profile.topicWeights) +
+    matchingWeight(historicalCandidateText, 'source', profile.sourceWeights) +
+    matchingWeight(historicalCandidateText, 'format', profile.formatWeights);
   const session = matchingWeight(candidateText, 'topic', profile.sessionTopicWeights) +
     matchingWeight(candidateText, 'source', profile.sessionSourceWeights) +
     matchingWeight(candidateText, 'format', profile.sessionFormatWeights);
@@ -761,6 +789,14 @@ export function scoreWaterfallPreferenceText(
   };
 }
 
+function interestPreferenceText(candidate: WaterfallCandidate): CandidatePreferenceText {
+  return {
+    source: normalizedText(candidate.source),
+    format: normalizedText(candidate.format ?? ''),
+    topic: normalizedText((candidate.searchKeywords ?? []).join(' '))
+  };
+}
+
 /** Shared preference semantics for the legacy waterfall and the parallel source pool. */
 export function scoreWaterfallCandidatePreference(
   candidate: WaterfallCandidate,
@@ -772,6 +808,23 @@ export function scoreWaterfallCandidatePreference(
     candidateText.format,
     candidateText.topic,
     profile
+  );
+}
+
+/** Interest ranking matches LLM profile terms against Pool retrieval provenance. */
+export function scoreWaterfallInterestCandidatePreference(
+  candidate: WaterfallCandidate,
+  profile: WaterfallPreferenceSnapshot | undefined
+): WaterfallCandidatePreferenceScore {
+  const candidateText = preferenceText(candidate);
+  const historicalTopicText = profile?.interestTopicWeightSource === 'search_keywords' ?
+    interestPreferenceText(candidate).topic : undefined;
+  return scoreWaterfallPreferenceText(
+    candidateText.source,
+    candidateText.format,
+    candidateText.topic,
+    profile,
+    historicalTopicText
   );
 }
 
@@ -963,7 +1016,8 @@ function mmrOrder(
   items: TraditionalRankedCandidateInternal[],
   lambda: number,
   similarities: number[][],
-  corpus: TraditionalRankedCandidateInternal[]
+  corpus: TraditionalRankedCandidateInternal[],
+  interestProfile: WaterfallPreferenceSnapshot | undefined
 ): TraditionalRankedCandidateInternal[] {
   const pool = items.slice();
   const selected: TraditionalRankedCandidateInternal[] = [];
@@ -975,6 +1029,8 @@ function mmrOrder(
       selected.forEach((other: TraditionalRankedCandidateInternal): void => {
         similarity = Math.max(similarity, similarities[corpus.indexOf(pool[index])][corpus.indexOf(other)]);
       });
+      const keywordRepeat = interestKeywordRepeatPenalty(pool[index].candidate, selected, interestProfile);
+      similarity = Math.max(similarity, WATERFALL_INTEREST_KEYWORD_REPEAT_SIMILARITY * keywordRepeat);
       const score = lambda * pool[index].score - (1 - lambda) * similarity + pool[index].epsilon;
       if (score > bestScore) {
         bestScore = score;
@@ -984,6 +1040,56 @@ function mmrOrder(
     selected.push(pool.splice(bestIndex, 1)[0]);
   }
   return selected;
+}
+
+function canonicalInterestKeyword(
+  value: string,
+  profile: WaterfallPreferenceSnapshot | undefined
+): string {
+  const normalized = normalizedText(value);
+  if (normalized.length === 0 || profile === undefined) return '';
+  for (let index = 0; index < profile.topicWeights.length; index += 1) {
+    const weight = profile.topicWeights[index];
+    const key = normalizedText(weight.key);
+    if (key === normalized) return key;
+    const aliases = weight.aliases ?? [];
+    for (let aliasIndex = 0; aliasIndex < aliases.length; aliasIndex += 1) {
+      if (normalizedText(aliases[aliasIndex]) === normalized) return key;
+    }
+  }
+  return '';
+}
+
+function candidateInterestKeywordKeys(
+  candidate: WaterfallCandidate,
+  profile: WaterfallPreferenceSnapshot | undefined
+): string[] {
+  const keys: string[] = [];
+  (candidate.searchKeywords ?? []).forEach((value: string): void => {
+    const key = canonicalInterestKeyword(value, profile);
+    if (key.length > 0 && keys.indexOf(key) < 0) keys.push(key);
+  });
+  return keys;
+}
+
+function interestKeywordRepeatPenalty(
+  candidate: WaterfallCandidate,
+  selected: TraditionalRankedCandidateInternal[],
+  profile: WaterfallPreferenceSnapshot | undefined
+): number {
+  const keys = candidateInterestKeywordKeys(candidate, profile);
+  if (keys.length === 0 || selected.length === 0) return 0;
+  const missingCount = selected.length + 1;
+  let minimumCount = missingCount;
+  keys.forEach((key: string): void => {
+    let count = 0;
+    selected.forEach((item: TraditionalRankedCandidateInternal): void => {
+      if (candidateInterestKeywordKeys(item.candidate, profile).indexOf(key) >= 0) count += 1;
+    });
+    minimumCount = Math.min(minimumCount, count);
+  });
+  if (minimumCount <= 0 || minimumCount === missingCount) return 0;
+  return minimumCount / (minimumCount + 1);
 }
 
 function stableEpsilon(value: string): number {
@@ -999,6 +1105,9 @@ const WATERFALL_STABLE_LIMIT: number = 2;
 const WATERFALL_MAX_SOURCE_RUN: number = 1;
 export const WATERFALL_LOW_WATERMARK: number = 8;
 export const WATERFALL_TARGET_INVENTORY: number = 20;
+/** Interest feed keeps a deep deferred reservoir while the visible Tail stays bounded at 20. */
+export const WATERFALL_INTEREST_LOW_WATERMARK: number = 80;
+export const WATERFALL_INTEREST_TARGET_INVENTORY: number = 100;
 const WATERFALL_MAX_REQUEST: number = 10;
 export const WATERFALL_MAX_CONSECUTIVE_EMPTY_BATCHES: number = 5;
 
@@ -1252,6 +1361,10 @@ function activeInventoryCount(state: WaterfallFeedState): number {
   return count;
 }
 
+function unshownEnabledInventoryCount(state: WaterfallFeedState): number {
+  return activeInventoryCount(state) + filterEnabled(state.reserve ?? [], state.enabledSources).length;
+}
+
 function totalCandidateCount(state: WaterfallFeedState): number {
   return state.shown.length + (state.current === null ? 0 : 1) + state.stable.length +
     state.tail.length + (state.reserve ?? []).length;
@@ -1419,7 +1532,7 @@ function planWaterfallInterestLoads(state: WaterfallFeedState): WaterfallLoadReq
     refreshCurrentAndStable(state);
   }
   promoteReserveToTarget(state);
-  if (activeInventoryCount(state) > WATERFALL_LOW_WATERMARK) return [];
+  if (unshownEnabledInventoryCount(state) >= WATERFALL_INTEREST_LOW_WATERMARK) return [];
   const requests: WaterfallLoadRequest[] = [];
   state.sources.forEach((source: WaterfallSourceState): void => {
     if (state.enabledSources.indexOf(source.source) < 0 || source.inFlight || source.phase === 'loading' ||
@@ -1480,6 +1593,7 @@ function rankedToCandidates(items: WaterfallRankedCandidate[]): WaterfallCandida
     duration: item.duration,
     originalIndex: item.originalIndex,
     searchQuery: item.searchQuery,
+    searchKeywords: item.searchKeywords,
     queryStage: item.queryStage,
     sourceRank: item.sourceRank,
     providerScore: item.providerScore,
@@ -1525,9 +1639,18 @@ export function removeWaterfallProfileRecallQueries(
       query.length > 0 && values.indexOf(query) === index);
   if (normalizedQueries.length === 0) return state;
   const next = copyState(state);
-  const keep = (candidate: WaterfallRankedCandidate): boolean =>
-    candidate.recallRoute !== 'profile' ||
-      normalizedQueries.indexOf(normalizedText(candidate.searchQuery ?? '')) < 0;
+  const keep = (candidate: WaterfallRankedCandidate): boolean => {
+    const remaining = (candidate.searchKeywords ?? []).filter((keyword: string): boolean =>
+      normalizedQueries.indexOf(normalizedText(keyword)) < 0);
+    const removedProvenance = remaining.length !== (candidate.searchKeywords ?? []).length;
+    const removedPrimary = candidate.recallRoute === 'profile' &&
+      normalizedQueries.indexOf(normalizedText(candidate.searchQuery ?? '')) >= 0;
+    if (!removedProvenance && !removedPrimary) return true;
+    if (remaining.length === 0) return false;
+    candidate.searchKeywords = remaining;
+    if (removedPrimary) candidate.searchQuery = remaining[0];
+    return true;
+  };
   next.tail = next.tail.filter(keep);
   next.reserve = (next.reserve ?? []).filter(keep);
   next.sources.forEach((source: WaterfallSourceState): void => {
@@ -1571,6 +1694,7 @@ function deferredRankedCandidate(candidate: WaterfallCandidate): WaterfallRanked
     duration: candidate.duration,
     originalIndex: candidate.originalIndex,
     searchQuery: candidate.searchQuery,
+    searchKeywords: candidate.searchKeywords,
     queryStage: candidate.queryStage,
     sourceRank: candidate.sourceRank,
     providerScore: candidate.providerScore,
@@ -1673,12 +1797,13 @@ function boundedInterestRankingCorpus(
       }
     }
   }
-  const limit = Math.max(0, Math.min(activeLimit, WATERFALL_TARGET_INVENTORY));
+  const limit = Math.max(0, Math.min(activeLimit, WATERFALL_INTEREST_TARGET_INVENTORY));
   const currentRecall = ordered.filter((candidate: WaterfallCandidate): boolean => {
     const source = sourceFor(state.sources, candidate.source);
     const query = source === null ? '' : normalizedText(source.query ?? '');
     return query.length > 0 && candidate.recallRoute === 'profile' && source !== null &&
-      source.recallRoute === 'profile' && normalizedText(candidate.searchQuery ?? '') === query;
+      source.recallRoute === 'profile' && (candidate.searchKeywords ?? [candidate.searchQuery ?? '']).some(
+        (keyword: string): boolean => normalizedText(keyword) === query);
   });
   const prioritized = currentRecall.concat(ordered.filter((candidate: WaterfallCandidate): boolean =>
     currentRecall.indexOf(candidate) < 0));
@@ -1772,8 +1897,11 @@ export function finalizeInterestWaterfallRecallRanking(
     filterEnabled(next.stable, next.enabledSources).length;
   const availableTailSlots = Math.max(0, WATERFALL_TARGET_INVENTORY - fixedActiveCount);
   const corpus = boundedInterestRankingCorpus(
-    next, rankedToCandidates(next.tail.concat(next.reserve ?? [])), availableTailSlots);
-  next.tail = limitConsecutiveSources(mixInterestRecallRanking(rankWaterfallCandidates({
+    next,
+    rankedToCandidates(next.tail.concat(next.reserve ?? [])),
+    Math.max(0, WATERFALL_INTEREST_TARGET_INVENTORY - fixedActiveCount)
+  );
+  const ranked = limitConsecutiveSources(mixInterestRecallRanking(rankWaterfallCandidates({
     query: next.query,
     candidates: corpus.active,
     enabledSources: next.enabledSources,
@@ -1782,12 +1910,13 @@ export function finalizeInterestWaterfallRecallRanking(
     preferenceDescription: next.preferenceDescription,
     mode: 'interest',
     profile: next.profile
-  }, nowMs)).slice(0, availableTailSlots), WATERFALL_MAX_SOURCE_RUN, frozenPrefix(next));
+  }, nowMs)), WATERFALL_MAX_SOURCE_RUN, frozenPrefix(next));
+  next.tail = ranked.slice(0, availableTailSlots);
   next.reserve = [];
   if (refreshDisplayWindow) refreshCurrentAndStable(next);
   trimWaterfallInventory(next);
-  next.reserve = corpus.overflow.map(
-    (candidate: WaterfallCandidate): WaterfallRankedCandidate => deferredRankedCandidate(candidate));
+  next.reserve = ranked.slice(availableTailSlots).concat(corpus.overflow.map(
+    (candidate: WaterfallCandidate): WaterfallRankedCandidate => deferredRankedCandidate(candidate)));
   return next;
 }
 

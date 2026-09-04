@@ -378,8 +378,12 @@ assert.match(indexPage,
   'saved-only details must resolve comment requests through the existing saved-card candidate path');
 assert.match(indexPage, /persistSavedWaterfallCandidate\(current\)/,
   'loaded comments must refresh an existing saved-card snapshot');
-assert.match(indexPage, /if \(active > WATERFALL_LOW_WATERMARK\) return/,
-  'discovery refill must start before the user can swipe through the last three cards');
+assert.match(indexPage, /if \(active >= WATERFALL_INTEREST_LOW_WATERMARK\) return/,
+  'interest discovery must refill below its expanded reserve low watermark');
+assert.match(waterfallCore, /WATERFALL_INTEREST_LOW_WATERMARK: number = 80/,
+  'interest reserve refill must begin below eighty unseen cards');
+assert.match(waterfallCore, /WATERFALL_INTEREST_TARGET_INVENTORY: number = 100/,
+  'interest reserve must target one hundred unseen cards');
 assert.match(waterfallCore, /WATERFALL_LOW_WATERMARK: number = 8/,
   'native inventory must refill before the rendered tail is exhausted');
 assert.match(waterfallCore, /WATERFALL_STABLE_LIMIT: number = 2/,
@@ -2058,9 +2062,9 @@ assert.equal(compactCardNodes[2].classList.contains('is-distant'), false);
 assert.equal(compactCardNodes[0].style.opacity, '', 'scroll presentation must not write opacity every frame');
 assert.equal(compactCardNodes[0].style.transform, '', 'scroll presentation must not write transforms every frame');
 track.querySelectorAll = () => [];
-const dwellTimer = timers.find((timer) => timer.delay === 8000 && !timer.canceled);
+const dwellTimer = timers.find((timer) => timer.delay === 3000 && !timer.canceled);
 assert.ok(dwellTimer, 'the visible current card must schedule one dwell timer');
-now += 8000;
+now += 3000;
 dwellTimer.callback();
 assert.equal(actions.at(-1)?.id, 'waterfall.behavior.record');
 assert.equal(actions.at(-1)?.args?.behavior, 'dwell');

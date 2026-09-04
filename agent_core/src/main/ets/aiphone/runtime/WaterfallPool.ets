@@ -31,6 +31,7 @@ import { filterWaterfallPoolCandidates, WaterfallPoolQualityFilterResult } from 
 
 export const DEFAULT_WATERFALL_POOL_REQUEST_LIMIT: number = 10;
 export const DEFAULT_WATERFALL_POOL_DISCOVERY_WATERMARK: number = 50;
+export const DEFAULT_WATERFALL_EMPTY_SEARCH_DISABLE_THRESHOLD: number = 10;
 const MAX_WATERFALL_POOL_REFILL_ROUNDS: number = 20;
 const WATERFALL_POOL_ADAPTER_TIMEOUT_MS: number = 15000;
 const WATERFALL_SCHEDULED_REFRESH_COOLDOWN_MS: number = 30000;
@@ -45,6 +46,7 @@ export interface WaterfallPoolOptions {
   lowWatermarkObserver?: WaterfallPoolLowWatermarkObserver;
   adapterTimeoutMs?: number;
   discoveryRetryDelaysMs?: number[];
+  emptySearchDisableThreshold?: number;
 }
 
 export type WaterfallPoolAcceptOrigin = 'search' | 'discovery' | 'scheduled' | 'scheduled_manual' | 'external';
@@ -55,6 +57,8 @@ export interface WaterfallPoolAcceptedEvent {
   accepted: WaterfallPoolAcceptedPage;
   sourceSize: number;
   sourceCapacity: number;
+  consecutiveEmptySearches: number;
+  sourceAutoDisabled: boolean;
 }
 
 export type WaterfallPoolObserver = (event: WaterfallPoolAcceptedEvent) => void;
@@ -349,6 +353,7 @@ export class WaterfallPool {
     new Map<string, WaterfallScheduledDiscoveryAdapter>();
   private readonly adapterIds: Set<string> = new Set<string>();
   private readonly adapterEnabledById: Map<string, boolean> = new Map<string, boolean>();
+  private readonly sourceIdByAdapterId: Map<string, string> = new Map<string, string>();
   private readonly adapterIdsBySource: Map<string, string[]> = new Map<string, string[]>();
   private readonly containersBySource: Map<string, WaterfallSourcePoolContainer> =
     new Map<string, WaterfallSourcePoolContainer>();
@@ -373,6 +378,9 @@ export class WaterfallPool {
   private readonly lowWatermarkObserver: WaterfallPoolLowWatermarkObserver | null;
   private readonly adapterTimeoutMs: number;
   private readonly discoveryRetryDelaysMs: number[];
+  private readonly emptySearchDisableThreshold: number;
+  private readonly consecutiveEmptySearchesBySource: Map<string, number> = new Map<string, number>();
+  private readonly autoDisabledSources: Set<string> = new Set<string>();
 
   constructor(registry: WaterfallSourceAdapterRegistry, options: WaterfallPoolOptions = {}) {
     this.sourceCapacity = normalizedPositive(options.sourceCapacity, DEFAULT_WATERFALL_SOURCE_POOL_CAPACITY);
@@ -385,6 +393,10 @@ export class WaterfallPool {
     this.observer = options.observer ?? null;
     this.lowWatermarkObserver = options.lowWatermarkObserver ?? null;
     this.adapterTimeoutMs = normalizedPositive(options.adapterTimeoutMs, WATERFALL_POOL_ADAPTER_TIMEOUT_MS);
+    this.emptySearchDisableThreshold = normalizedPositive(
+      options.emptySearchDisableThreshold,
+      DEFAULT_WATERFALL_EMPTY_SEARCH_DISABLE_THRESHOLD
+    );
     const configuredRetryDelays = options.discoveryRetryDelaysMs ?? WATERFALL_DISCOVERY_RETRY_DELAYS_MS;
     this.discoveryRetryDelaysMs = configuredRetryDelays.length > 0 ? configuredRetryDelays.map(
       (delayMs: number): number => normalizedPositive(delayMs, 1)) : WATERFALL_DISCOVERY_RETRY_DELAYS_MS.slice();
@@ -439,9 +451,9 @@ export class WaterfallPool {
     this.adapterEnabledById.set(adapterId, enabled);
     const scheduled = this.scheduledAdaptersById.get(adapterId);
     if (scheduled !== undefined) {
-      if (enabled && this.started) {
+      if (enabled && this.started && this.sourceIsBelowWatermark(scheduled.sourceId)) {
         this.subscribeScheduledAdapter(scheduled);
-      } else if (!enabled) {
+      } else {
         this.unsubscribeScheduledAdapter(adapterId);
       }
     }
@@ -454,11 +466,31 @@ export class WaterfallPool {
     return true;
   }
 
-  setEnabledAdapters(enabledAdapterIds: string[]): void {
+  setEnabledAdapters(enabledAdapterIds: string[], reopenAutoDisabledSourceIds: string[] = []): void {
     const enabled = new Set<string>(enabledAdapterIds);
+    if (reopenAutoDisabledSourceIds.length > 0) {
+      const reopenedSources = new Set<string>(reopenAutoDisabledSourceIds);
+      reopenedSources.forEach((sourceId: string): void => {
+        const adapterIds = this.adapterIdsBySource.get(sourceId) ?? [];
+        const sourceIsRequested = adapterIds.some((adapterId: string): boolean => enabled.has(adapterId));
+        if (!sourceIsRequested) return;
+        this.autoDisabledSources.delete(sourceId);
+        this.consecutiveEmptySearchesBySource.set(sourceId, 0);
+        aiLogInfo('[AIPhone][WaterfallSourceCircuitBreaker] action=user_reopen source=' + sourceId);
+      });
+    }
     this.adapterIds.forEach((adapterId: string): void => {
-      this.setAdapterEnabled(adapterId, enabled.has(adapterId));
+      const sourceId = this.sourceIdByAdapterId.get(adapterId) ?? '';
+      this.setAdapterEnabled(adapterId, enabled.has(adapterId) && !this.autoDisabledSources.has(sourceId));
     });
+  }
+
+  consecutiveEmptySearches(sourceId: string): number {
+    return this.consecutiveEmptySearchesBySource.get(sourceId) ?? 0;
+  }
+
+  isSourceAutomaticallyDisabled(sourceId: string): boolean {
+    return this.autoDisabledSources.has(sourceId);
   }
 
   containerFor(sourceId: string): WaterfallSourcePoolContainer | null {
@@ -476,6 +508,7 @@ export class WaterfallPool {
     this.containersBySource.forEach((container: WaterfallSourcePoolContainer): void => {
       container.expandCapacity(nextCapacity);
     });
+    this.reconcileScheduledSubscriptions();
     this.scheduleAutomaticDiscoveryRefill();
     this.notifyLowWatermarkObserver();
     return true;
@@ -493,11 +526,13 @@ export class WaterfallPool {
     const quality: WaterfallPoolQualityFilterResult =
       filterWaterfallPoolCandidates(page.adapterId, page.items);
     const insert = container.put(quality.items, { keyword, insertedAt: page.fetchedAt });
+    this.reconcileScheduledSubscriptionsForSource(page.sourceId);
     insert.rejected += quality.rejected;
     const accepted: WaterfallPoolAcceptedPage = {
       page,
       insert
     };
+    this.recordSearchOutcome(accepted, origin);
     if (this.observer !== null) {
       try {
         this.observer({
@@ -505,7 +540,9 @@ export class WaterfallPool {
           keyword,
           accepted,
           sourceSize: container.size,
-          sourceCapacity: container.capacity
+          sourceCapacity: container.capacity,
+          consecutiveEmptySearches: this.consecutiveEmptySearches(page.sourceId),
+          sourceAutoDisabled: this.isSourceAutomaticallyDisabled(page.sourceId)
         });
       } catch (_error) {
         // Diagnostics must never interrupt ingestion.
@@ -592,6 +629,53 @@ export class WaterfallPool {
     return { topicId: topic.id, results: await Promise.all(tasks) };
   }
 
+  /** Enqueues one cold-start topic only for the requested source. */
+  async supplementSourceTopic(
+    sourceId: string,
+    topic: WaterfallColdStartTopic,
+    skipBusyAdapters: boolean = false
+  ): Promise<WaterfallPoolTopicSupplementResult> {
+    const tasks: Promise<WaterfallPoolTopicAcceptedPage>[] = [];
+    if (!this.sourceIsBelowWatermark(sourceId)) return { topicId: topic.id, results: [] };
+    this.searchAdaptersById.forEach((adapter: WaterfallSearchAdapter): void => {
+      if (adapter.sourceId !== sourceId || !this.isAdapterEnabled(adapter.adapterId)) return;
+      const queue = this.searchQueuesByAdapterId.get(adapter.adapterId);
+      if (skipBusyAdapters && queue !== undefined) {
+        const snapshot = queue.snapshot();
+        if (snapshot.running || snapshot.pendingCount > 0) return;
+      }
+      const query = this.queryForTopic(adapter, topic);
+      tasks.push(this.enqueueTopicAdapter(adapter, query));
+    });
+    return { topicId: topic.id, results: await Promise.all(tasks) };
+  }
+
+  enabledSearchSources(): string[] {
+    return this.sourceOrder.filter((sourceId: string): boolean => {
+      let enabled = false;
+      this.searchAdaptersById.forEach((adapter: WaterfallSearchAdapter): void => {
+        if (adapter.sourceId === sourceId && this.isAdapterEnabled(adapter.adapterId)) enabled = true;
+      });
+      return enabled;
+    });
+  }
+
+  enabledSearchSourcesBelowWatermark(): string[] {
+    return this.enabledSearchSources().filter(
+      (sourceId: string): boolean => this.sourceIsBelowWatermark(sourceId));
+  }
+
+  /** User-interest searches jump ahead of background fill and are consumed once. */
+  async supplementPriorityTopic(topic: WaterfallColdStartTopic): Promise<WaterfallPoolTopicSupplementResult> {
+    const tasks: Promise<WaterfallPoolTopicAcceptedPage>[] = [];
+    this.searchAdaptersById.forEach((adapter: WaterfallSearchAdapter): void => {
+      if (!this.isAdapterEnabled(adapter.adapterId)) return;
+      const query = this.queryForTopic(adapter, topic);
+      tasks.push(this.enqueueTopicAdapter(adapter, query, true));
+    });
+    return { topicId: topic.id, results: await Promise.all(tasks) };
+  }
+
   searchQueueSnapshots(): WaterfallSearchQueueSnapshot[] {
     const snapshots: WaterfallSearchQueueSnapshot[] = [];
     this.searchQueuesByAdapterId.forEach((queue: WaterfallAdapterSearchQueue): void => {
@@ -617,7 +701,9 @@ export class WaterfallPool {
     if (!this.started) {
       this.started = true;
       this.scheduledAdaptersById.forEach((adapter: WaterfallScheduledDiscoveryAdapter): void => {
-        if (this.isAdapterEnabled(adapter.adapterId)) this.subscribeScheduledAdapter(adapter);
+        if (this.isAdapterEnabled(adapter.adapterId) && this.sourceIsBelowWatermark(adapter.sourceId)) {
+          this.subscribeScheduledAdapter(adapter);
+        }
       });
     }
     return this.refillDiscoveries();
@@ -653,7 +739,7 @@ export class WaterfallPool {
   async refreshScheduledDiscoveries(): Promise<WaterfallPoolAcceptedPage[]> {
     const tasks: Promise<WaterfallPoolAcceptedPage>[] = [];
     this.scheduledAdaptersById.forEach((adapter: WaterfallScheduledDiscoveryAdapter): void => {
-      if (!this.isAdapterEnabled(adapter.adapterId)) return;
+      if (!this.isAdapterEnabled(adapter.adapterId) || !this.sourceIsBelowWatermark(adapter.sourceId)) return;
       tasks.push(this.loadScheduledAdapter(adapter));
     });
     return Promise.all(tasks);
@@ -664,7 +750,7 @@ export class WaterfallPool {
     const tasks: Promise<WaterfallPoolAcceptedPage>[] = [];
     const now = Date.now();
     this.scheduledAdaptersById.forEach((adapter: WaterfallScheduledDiscoveryAdapter): void => {
-      if (!this.isAdapterEnabled(adapter.adapterId)) return;
+      if (!this.isAdapterEnabled(adapter.adapterId) || !this.sourceIsBelowWatermark(adapter.sourceId)) return;
       const lastRefresh = this.scheduledLastRefreshAtMs.get(adapter.adapterId) ?? 0;
       if (now - lastRefresh < WATERFALL_SCHEDULED_REFRESH_COOLDOWN_MS) return;
       this.scheduledLastRefreshAtMs.set(adapter.adapterId, now);
@@ -754,7 +840,15 @@ export class WaterfallPool {
       ' selected=' + results.length.toString() +
       ' rounds=' + round.toString() +
       ' totalMs=' + (Date.now() - batchStartedAtMs).toString());
+    results.forEach((entry: WaterfallSourcePoolEntry, index: number): void => {
+      aiLogInfo('[AIPhone][WaterfallPoolTakeItem] position=' + (index + 1).toString() +
+        ' candidateId=' + entry.candidate.id +
+        ' source=' + entry.sourceId +
+        ' searchKeywords=' + JSON.stringify(entry.searchKeywords) +
+        ' title=' + JSON.stringify(entry.candidate.title));
+    });
     if (results.length > 0) {
+      this.reconcileScheduledSubscriptions();
       this.scheduleAutomaticDiscoveryRefill();
       this.notifyLowWatermarkObserver();
     }
@@ -882,6 +976,10 @@ export class WaterfallPool {
     }
   }
 
+  private sourceIsBelowWatermark(sourceId: string): boolean {
+    return (this.containersBySource.get(sourceId)?.size ?? 0) < this.discoveryWatermark;
+  }
+
   private async runAutomaticDiscoveryRefill(): Promise<void> {
     if (!this.started || this.automaticDiscoveryRunning) return;
     this.automaticDiscoveryRunning = true;
@@ -942,6 +1040,7 @@ export class WaterfallPool {
     }
     this.adapterIds.add(adapterId);
     this.adapterEnabledById.set(adapterId, true);
+    this.sourceIdByAdapterId.set(adapterId, sourceId);
     const sourceAdapterIds = this.adapterIdsBySource.get(sourceId) ?? [];
     sourceAdapterIds.push(adapterId);
     this.adapterIdsBySource.set(sourceId, sourceAdapterIds);
@@ -951,7 +1050,30 @@ export class WaterfallPool {
         new WaterfallSourcePoolContainer(sourceId, this.sourceCapacity)
       );
       this.sourceOrder.push(sourceId);
+      this.consecutiveEmptySearchesBySource.set(sourceId, 0);
     }
+  }
+
+  private recordSearchOutcome(accepted: WaterfallPoolAcceptedPage, origin: WaterfallPoolAcceptOrigin): void {
+    const sourceId = accepted.page.sourceId;
+    if (origin !== 'search' || this.autoDisabledSources.has(sourceId)) return;
+    // This is an anti-spin circuit breaker: upstream rows that are all rejected,
+    // filtered, or merged into existing Pool entries still produced no new supply.
+    if (accepted.insert.inserted > 0) {
+      this.consecutiveEmptySearchesBySource.set(sourceId, 0);
+      return;
+    }
+    const consecutive = (this.consecutiveEmptySearchesBySource.get(sourceId) ?? 0) + 1;
+    this.consecutiveEmptySearchesBySource.set(sourceId, consecutive);
+    if (consecutive < this.emptySearchDisableThreshold) return;
+    this.autoDisabledSources.add(sourceId);
+    const adapterIds = this.adapterIdsBySource.get(sourceId) ?? [];
+    adapterIds.forEach((adapterId: string): void => {
+      this.setAdapterEnabled(adapterId, false);
+    });
+    aiLogInfo('[AIPhone][WaterfallSourceCircuitBreaker] action=auto_disable source=' + sourceId +
+      ' consecutiveEmptySearches=' + consecutive.toString() +
+      ' threshold=' + this.emptySearchDisableThreshold.toString());
   }
 
   private async loadSearchAdapter(
@@ -1004,7 +1126,8 @@ export class WaterfallPool {
 
   private async enqueueTopicAdapter(
     adapter: WaterfallSearchAdapter,
-    query: string
+    query: string,
+    priority: boolean = false
   ): Promise<WaterfallPoolTopicAcceptedPage> {
     const queue = this.searchQueuesByAdapterId.get(adapter.adapterId);
     if (queue === undefined) {
@@ -1021,7 +1144,7 @@ export class WaterfallPool {
     return {
       adapterId: adapter.adapterId,
       query,
-      accepted: await queue.enqueue(query)
+      accepted: await queue.enqueue(query, null, { priority, autoContinue: false })
     };
   }
 
@@ -1115,6 +1238,29 @@ export class WaterfallPool {
       if (this.isAdapterEnabled(adapterIds[index])) return true;
     }
     return false;
+  }
+
+  private reconcileScheduledSubscriptions(): void {
+    this.scheduledAdaptersById.forEach((adapter: WaterfallScheduledDiscoveryAdapter): void => {
+      if (this.started && this.isAdapterEnabled(adapter.adapterId) &&
+        this.sourceIsBelowWatermark(adapter.sourceId)) {
+        this.subscribeScheduledAdapter(adapter);
+      } else {
+        this.unsubscribeScheduledAdapter(adapter.adapterId);
+      }
+    });
+  }
+
+  private reconcileScheduledSubscriptionsForSource(sourceId: string): void {
+    this.scheduledAdaptersById.forEach((adapter: WaterfallScheduledDiscoveryAdapter): void => {
+      if (adapter.sourceId !== sourceId) return;
+      if (this.started && this.isAdapterEnabled(adapter.adapterId) &&
+        this.sourceIsBelowWatermark(sourceId)) {
+        this.subscribeScheduledAdapter(adapter);
+      } else {
+        this.unsubscribeScheduledAdapter(adapter.adapterId);
+      }
+    });
   }
 
   private subscribeScheduledAdapter(adapter: WaterfallScheduledDiscoveryAdapter): void {

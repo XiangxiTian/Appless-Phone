@@ -54,6 +54,25 @@ export class OpenAiCompatibleModel implements LocalModel {
     systemPrompt?: string,
     onTextDelta?: LocalModelTextDeltaListener
   ): Promise<string> {
+    return this.completeConfigured(prompt, '', conversation, systemPrompt, onTextDelta);
+  }
+
+  async completeStructured(
+    prompt: string,
+    responseFormatJson: string,
+    conversation?: ConversationContext,
+    systemPrompt?: string
+  ): Promise<string> {
+    return this.completeConfigured(prompt, responseFormatJson, conversation, systemPrompt);
+  }
+
+  private async completeConfigured(
+    prompt: string,
+    responseFormatJson: string,
+    conversation?: ConversationContext,
+    systemPrompt?: string,
+    onTextDelta?: LocalModelTextDeltaListener
+  ): Promise<string> {
     if (!this.provider.isConfigured()) {
       throw new Error('LLM provider is not configured.');
     }
@@ -66,6 +85,7 @@ export class OpenAiCompatibleModel implements LocalModel {
           prompt,
           conversation,
           systemPrompt,
+          responseFormatJson,
           onTextDelta === undefined ? undefined : (delta: string): void => {
             emittedText = true;
             onTextDelta(delta);
@@ -85,6 +105,7 @@ export class OpenAiCompatibleModel implements LocalModel {
     prompt: string,
     conversation?: ConversationContext,
     systemPrompt?: string,
+    responseFormatJson: string = '',
     onTextDelta?: LocalModelTextDeltaListener
   ): Promise<string> {
     const httpRequest = http.createHttp();
@@ -134,7 +155,7 @@ export class OpenAiCompatibleModel implements LocalModel {
           'Content-Type': 'application/json; charset=utf-8',
           'Accept': 'text/event-stream'
         },
-        extraData: this.buildRequestJson(prompt, conversation, systemPrompt),
+        extraData: this.buildRequestJson(prompt, conversation, systemPrompt, responseFormatJson),
         connectTimeout: MODEL_CONNECT_TIMEOUT_MS,
         readTimeout: MODEL_READ_TIMEOUT_MS
       });
@@ -273,9 +294,14 @@ export class OpenAiCompatibleModel implements LocalModel {
   private buildRequestJson(
     prompt: string,
     conversation?: ConversationContext,
-    systemPrompt?: string
+    systemPrompt?: string,
+    responseFormatJson: string = ''
   ): string {
-    const baseJson = JSON.stringify(this.buildRequest(prompt, conversation, systemPrompt));
+    let baseJson = JSON.stringify(this.buildRequest(prompt, conversation, systemPrompt));
+    const formatJson = responseFormatJson.trim();
+    if (formatJson.startsWith('{') && formatJson.endsWith('}')) {
+      baseJson = baseJson.substring(0, baseJson.length - 1) + ',"response_format":' + formatJson + '}';
+    }
     return mergeOpenAiRequestJson(baseJson, this.provider.customParametersJson);
   }
 

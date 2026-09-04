@@ -16,6 +16,12 @@ import {
   WaterfallPreferenceSnapshot,
   WaterfallPreferenceWeight
 } from '@loop/agent-core';
+import {
+  copyWaterfallLlmProfile,
+  parseWaterfallLlmProfile,
+  WaterfallLlmProfile,
+  WATERFALL_LLM_PROFILE_KEY
+} from './WaterfallLlmProfile';
 
 export const WATERFALL_PREFERENCES_STORE_NAME: string = 'aiphone_waterfall_preferences';
 export const WATERFALL_PREFERENCES_KEY: string = 'profile.v1';
@@ -83,7 +89,7 @@ export interface WaterfallBehaviorEvidence {
   topics: string[];
   source: string;
   format: WaterfallFormat;
-  behavior: 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip';
+  behavior: 'play_complete' | 'read_complete' | 'dwell' | 'quick_skip' | 'open';
   durationMs: number;
   timestamp: number;
 }
@@ -142,7 +148,7 @@ function validEvidence(value: WaterfallBehaviorEvidence): boolean {
     (value.format === 'landscape_video' || value.format === 'portrait_video' ||
       value.format === 'image_text' || value.format === 'text') &&
     (value.behavior === 'play_complete' || value.behavior === 'read_complete' ||
-      value.behavior === 'dwell' || value.behavior === 'quick_skip') &&
+      value.behavior === 'dwell' || value.behavior === 'quick_skip' || value.behavior === 'open') &&
     typeof value.durationMs === 'number' && value.durationMs >= 0 &&
     typeof value.timestamp === 'number' && isFinite(value.timestamp);
 }
@@ -191,7 +197,9 @@ function migratedEnabledSources(
 }
 
 function copyWeight(value: WaterfallPreferenceWeight): WaterfallPreferenceWeight {
-  return { key: value.key, weight: value.weight, updatedAt: value.updatedAt };
+  const result: WaterfallPreferenceWeight = { key: value.key, weight: value.weight, updatedAt: value.updatedAt };
+  if (value.aliases !== undefined) result.aliases = value.aliases.slice();
+  return result;
 }
 
 function copyRule(value: WaterfallExplicitPreference): WaterfallExplicitPreference {
@@ -505,6 +513,7 @@ export function waterfallBehaviorDelta(
   event: WaterfallBehaviorEvidence,
   evidence: WaterfallBehaviorEvidence[]
 ): number {
+  if (event.behavior === 'open') return 0;
   if (event.behavior === 'play_complete') return 3;
   if (event.behavior === 'read_complete') return 2;
   if (event.behavior === 'dwell') return 1;
@@ -536,6 +545,7 @@ export class WaterfallPreferencesStore {
   private profile: WaterfallPreferenceProfile | null = null;
   private cardRecords: WaterfallCardRecord[] | null = null;
   private tagState: WaterfallPreferenceTagState | null = null;
+  private llmProfile: WaterfallLlmProfile | null = null;
 
   constructor(store: preferences.Preferences) {
     this.store = store;
@@ -585,6 +595,23 @@ export class WaterfallPreferencesStore {
       console.warn('[AIPhone][WaterfallTagsFlushFailed] ' + error.message.substring(0, 160));
     });
     return copyTagState(this.tagState);
+  }
+
+  loadLlmProfile(): WaterfallLlmProfile {
+    if (this.llmProfile === null) {
+      const value = this.store.getSync(WATERFALL_LLM_PROFILE_KEY, '');
+      this.llmProfile = parseWaterfallLlmProfile(typeof value === 'string' ? value : '');
+    }
+    return copyWaterfallLlmProfile(this.llmProfile);
+  }
+
+  saveLlmProfile(profile: WaterfallLlmProfile): WaterfallLlmProfile {
+    this.llmProfile = copyWaterfallLlmProfile(profile);
+    this.store.putSync(WATERFALL_LLM_PROFILE_KEY, JSON.stringify(this.llmProfile));
+    this.store.flush().catch((error: Error): void => {
+      console.warn('[AIPhone][WaterfallLlmProfileFlushFailed] ' + error.message.substring(0, 160));
+    });
+    return copyWaterfallLlmProfile(this.llmProfile);
   }
 
   private saveCardRecords(records: WaterfallCardRecord[]): WaterfallCardRecord[] {

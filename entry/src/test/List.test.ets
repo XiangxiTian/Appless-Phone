@@ -77,6 +77,7 @@ import waterfallPoolTest from './WaterfallPool.test';
 import waterfallPoolPolicyPropagationTest from './WaterfallPoolPolicyPropagation.test';
 import waterfallPoolQualityPolicyTest from './WaterfallPoolQualityPolicy.test';
 import waterfallColdStartKeywordsTest from './WaterfallColdStartKeywords.test';
+import waterfallLlmProfileTest from './WaterfallLlmProfile.test';
 import aggregateSearchPolicyTest from './AggregateSearchPolicy.test';
 import paymentCoreTest from './PaymentCore.test';
 import paymentA2uiTest from './PaymentA2ui.test';
@@ -242,6 +243,7 @@ export default function testsuite() {
   waterfallPoolPolicyPropagationTest();
   waterfallPoolQualityPolicyTest();
   waterfallColdStartKeywordsTest();
+  waterfallLlmProfileTest();
   aggregateSearchPolicyTest();
   paymentCoreTest();
   paymentA2uiTest();

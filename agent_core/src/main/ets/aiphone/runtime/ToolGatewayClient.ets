@@ -15688,7 +15688,12 @@ function configuredYouTubePopularLoader(): WaterfallAggregateSourceLoader {
       const raw = await callComposioYouTubeMostPopularWithProviderData(limit, token);
       aiLogInfo('[AIPhone][YouTubePopularStage] requestId=' + requestId.toString() +
         ' stage=composio-end elapsedMs=' + (Date.now() - startedAtMs).toString() +
-        ' status=' + raw.status);
+        ' status=' + raw.status +
+        ' tool=' + waterfallInterestDiagnosticText(raw.toolName, 80) +
+        ' providerPhase=' + (raw.providerPhase ?? 'none') +
+        ' providerData=' + (raw.providerData === undefined ? 'absent' : 'present') +
+        ' title=' + JSON.stringify(waterfallInterestDiagnosticText(raw.title, 320)) +
+        ' summary=' + JSON.stringify(waterfallInterestDiagnosticText(raw.summary, 320)));
       const dynamic = youtubeVideoResultsFromComposioPopular(raw);
       const batch = aggregateVideoSourceBatchFromDynamicResults('youtube', dynamic, continuation, limit);
       aiLogInfo('[AIPhone][YouTubePopularStage] requestId=' + requestId.toString() +
@@ -15697,8 +15702,10 @@ function configuredYouTubePopularLoader(): WaterfallAggregateSourceLoader {
         ' status=' + batch.status.status);
       return batch;
     } catch (_error) {
+      const message = _error instanceof Error ? _error.message : JSON.stringify(_error);
       aiLogInfo('[AIPhone][YouTubePopularStage] requestId=' + requestId.toString() +
-        ' stage=exception elapsedMs=' + (Date.now() - startedAtMs).toString());
+        ' stage=exception elapsedMs=' + (Date.now() - startedAtMs).toString() +
+        ' message=' + JSON.stringify(waterfallInterestDiagnosticText(message, 320)));
       throw _error instanceof Error ? _error : new Error('YouTube popular request failed.');
     }
   };

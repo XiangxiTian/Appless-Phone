@@ -21,12 +21,27 @@ export interface WaterfallPoolWorkerCommand {
   profile?: WaterfallPreferenceSnapshot;
   enabledSources?: string[];
   enabledAdapterIds?: string[];
+  reopenedSourceIds?: string[];
   limit?: number;
   initialTopicCount?: number;
   topicIntervalMs?: number;
 }
 
 export type WaterfallPoolWorkerCommandObserver = (command: WaterfallPoolWorkerCommand) => void;
+
+export interface WaterfallSourceSearchCount {
+  sourceId: string;
+  searchCount: number;
+  searchInsertedCount: number;
+  discoveryCount: number;
+  discoveryInsertedCount: number;
+  poolSize: number;
+  poolCapacity: number;
+  consecutiveEmptySearches: number;
+  autoDisabled: boolean;
+}
+
+export type WaterfallPoolSearchCountObserver = (counts: WaterfallSourceSearchCount[]) => void;
 
 interface WaterfallPoolWorkerResponse {
   type: string;
@@ -38,6 +53,7 @@ interface WaterfallPoolWorkerResponse {
   workerTakeMs?: number;
   workerWaitCycles?: number;
   workerPostedAtMs?: number;
+  searchCounts?: WaterfallSourceSearchCount[];
 }
 
 interface PendingPoolTake {
@@ -74,6 +90,7 @@ export class WaterfallPoolWorkerClient {
   private readonly composioConfigJson: string;
   private searchPolicy: AggregateSearchPolicy;
   private readonly commandObserver: WaterfallPoolWorkerCommandObserver | null;
+  private readonly searchCountObserver: WaterfallPoolSearchCountObserver | null;
   private readonly pendingTakes: Map<number, PendingPoolTake> = new Map<number, PendingPoolTake>();
   private nextRequestId: number = 1;
 
@@ -81,7 +98,8 @@ export class WaterfallPoolWorkerClient {
     providerConfigJson: string,
     composioConfigJson: string,
     searchPolicy: AggregateSearchPolicy,
-    commandObserver: WaterfallPoolWorkerCommandObserver | null = null
+    commandObserver: WaterfallPoolWorkerCommandObserver | null = null,
+    searchCountObserver: WaterfallPoolSearchCountObserver | null = null
   ) {
     this.providerConfigJson = providerConfigJson;
     this.composioConfigJson = composioConfigJson;
@@ -90,6 +108,7 @@ export class WaterfallPoolWorkerClient {
       multilingual: searchPolicy.multilingual
     };
     this.commandObserver = commandObserver;
+    this.searchCountObserver = searchCountObserver;
   }
 
   start(initialTopicCount: number, topicIntervalMs: number): void {
@@ -104,12 +123,20 @@ export class WaterfallPoolWorkerClient {
     this.post({ type: 'supplement_topic', topic });
   }
 
+  supplementPriorityTopic(topic: WaterfallColdStartTopic): void {
+    this.post({ type: 'supplement_priority_topic', topic });
+  }
+
   activate(): void {
     this.post({ type: 'activate' });
   }
 
-  setEnabledAdapters(enabledAdapterIds: string[]): void {
-    this.post({ type: 'set_enabled_adapters', enabledAdapterIds: enabledAdapterIds.slice() });
+  setEnabledAdapters(enabledAdapterIds: string[], reopenedSourceIds: string[] = []): void {
+    this.post({
+      type: 'set_enabled_adapters',
+      enabledAdapterIds: enabledAdapterIds.slice(),
+      reopenedSourceIds: reopenedSourceIds.slice()
+    });
   }
 
   setSearchPolicy(searchPolicy: AggregateSearchPolicy): void {
@@ -177,6 +204,8 @@ export class WaterfallPoolWorkerClient {
         const pending = this.pendingTakes.get(requestId);
         if (pending === undefined) return;
         this.pendingTakes.delete(requestId);
+        aiLogInfo('[AIPhone][ApplePodcastPipeline] stage=client_cancel_take requestId=' + requestId.toString() +
+          ' elapsedMs=' + Math.max(0, Date.now() - pending.dispatchedAtMs).toString());
         pending.resolve([]);
         this.post({ type: 'cancel_take', requestId });
       }
@@ -230,9 +259,38 @@ export class WaterfallPoolWorkerClient {
   }
 
   private handleMessage(response: WaterfallPoolWorkerResponse): void {
+    if (response.type === 'search_counts') {
+      if (this.searchCountObserver !== null) {
+        const counts = (response.searchCounts ?? []).map(
+          (item: WaterfallSourceSearchCount): WaterfallSourceSearchCount => ({
+            sourceId: item.sourceId,
+            searchCount: item.searchCount,
+            searchInsertedCount: item.searchInsertedCount,
+            discoveryCount: item.discoveryCount,
+            discoveryInsertedCount: item.discoveryInsertedCount,
+            poolSize: item.poolSize,
+            poolCapacity: item.poolCapacity,
+            consecutiveEmptySearches: item.consecutiveEmptySearches,
+            autoDisabled: item.autoDisabled
+          }));
+        this.searchCountObserver(counts);
+      }
+      return;
+    }
     if (response.type !== 'take_result') return;
     const pending = this.pendingTakes.get(response.requestId);
-    if (pending === undefined) return;
+    if (pending === undefined) {
+      const orphanEntries = response.entries ?? [];
+      const orphanApple = orphanEntries.filter((entry: WaterfallSourcePoolEntry): boolean =>
+        entry.sourceId === 'applepodcasts');
+      aiLogInfo('[AIPhone][ApplePodcastPipeline] stage=orphan_take_result requestId=' +
+        response.requestId.toString() +
+        ' resultTotal=' + orphanEntries.length.toString() +
+        ' appleLost=' + orphanApple.length.toString() +
+        ' ids=' + JSON.stringify(orphanApple.slice(0, 20).map(
+          (entry: WaterfallSourcePoolEntry): string => entry.candidate.id)));
+      return;
+    }
     this.pendingTakes.delete(response.requestId);
     const receivedAtMs = Date.now();
     const workerReceivedAtMs = response.workerReceivedAtMs ?? receivedAtMs;

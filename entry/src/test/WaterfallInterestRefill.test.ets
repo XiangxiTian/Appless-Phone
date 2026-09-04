@@ -102,7 +102,7 @@ export default function waterfallInterestRefillTest() {
         source('youtube', 'success', { kind: 'cursor', value: 'next-youtube' })
       ]);
       const reserved: WaterfallRankedCandidate[] = [];
-      for (let index = 0; index < 9; index += 1) {
+      for (let index = 0; index < 81; index += 1) {
         reserved.push(candidate('reserve-' + index.toString(), 'bilibili'));
       }
       state.reserve = reserved;
@@ -110,7 +110,8 @@ export default function waterfallInterestRefillTest() {
       const update = planWaterfallContinuation(state);
 
       expect(update.state.tail.map((item: WaterfallRankedCandidate): string => item.id).join(','))
-        .assertEqual(reserved.map((item: WaterfallRankedCandidate): string => item.id).join(','));
+        .assertEqual(reserved.slice(0, 17).map((item: WaterfallRankedCandidate): string => item.id).join(','));
+      expect(update.state.reserve?.length ?? 0).assertEqual(64);
       expect(update.loadRequests.length).assertEqual(0);
       expect(update.expansionRequest === undefined).assertTrue();
     });
@@ -204,8 +205,11 @@ export default function waterfallInterestRefillTest() {
       sufficient.current = candidate('full-current', 'youtube');
       sufficient.stable = [candidate('full-1', 'youtube'), candidate('full-2', 'youtube')];
       sufficient.tail = [candidate('full-3', 'youtube'), candidate('full-4', 'youtube')];
-      for (let index = 5; index <= 10; index += 1) {
+      for (let index = 5; index <= 19; index += 1) {
         sufficient.tail.push(candidate('full-' + index.toString(), 'youtube'));
+      }
+      for (let index = 20; index <= 81; index += 1) {
+        sufficient.reserve?.push(candidate('full-' + index.toString(), 'youtube'));
       }
 
       const inFlight = interestState([
@@ -226,7 +230,7 @@ export default function waterfallInterestRefillTest() {
 
     it('keeps bounded overflow in reserve before planning an interest continuation', 0, () => {
       const state = interestState([
-        source('youtube', 'success', { kind: 'cursor', value: 'next-youtube' })
+        source('youtube', 'exhausted', null)
       ]);
       state.enabledSources = ['youtube'];
       state.current = candidate('bounded-current', 'youtube');

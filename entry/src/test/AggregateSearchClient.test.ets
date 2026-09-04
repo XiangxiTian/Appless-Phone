@@ -64,6 +64,7 @@ import {
   planWaterfallInterestRecall,
   rankWaterfallCandidates,
   removeWaterfallProfileRecallQueries,
+  scoreWaterfallInterestCandidatePreference,
   waterfallCommentSourceSupported,
   waterfallSearchPolicyForRuntime
 } from '@loop/agent-core';
@@ -653,6 +654,41 @@ export default function aggregateSearchClientTest() {
       expect(posts[0].commentCount).assertEqual('12');
       expect(posts[0].text).assertEqual('Long Reddit discussion');
       expect(JSON.stringify(posts[0].rows).indexOf('reddit.png')).assertLarger(-1);
+    });
+
+    it('keeps Hacker News and Reddit ids stable across result positions and queries', 0, () => {
+      const firstReddit = redditPostsFromComposioResult({
+        sourceTag: 'Composio', toolName: 'REDDIT_SEARCH_POSTS', title: 'Reddit',
+        status: 'success', summary: '1 result', rows: [],
+        rawPreview: '{"data":{"children":[{"data":{"title":"First topic",' +
+          '"permalink":"/r/test/comments/reddit_a/first"}}]}}'
+      });
+      const secondReddit = redditPostsFromComposioResult({
+        sourceTag: 'Composio', toolName: 'REDDIT_SEARCH_POSTS', title: 'Reddit',
+        status: 'success', summary: '1 result', rows: [],
+        rawPreview: '{"data":{"children":[{"data":{"title":"Second topic",' +
+          '"permalink":"/r/test/comments/reddit_b/second"}}]}}'
+      });
+      const firstHackerNews = hackerNewsPostsFromComposioResult({
+        sourceTag: 'Composio', toolName: 'HACKERNEWS_SEARCH_POSTS', title: 'Hacker News',
+        status: 'success', summary: '2 results', rows: [],
+        rawPreview: '{"hits":[{"objectID":"hn-a","title":"First HN story"},' +
+          '{"objectID":"hn-b","title":"Second HN story"}]}'
+      });
+      const reorderedHackerNews = hackerNewsPostsFromComposioResult({
+        sourceTag: 'Composio', toolName: 'HACKERNEWS_SEARCH_POSTS', title: 'Hacker News',
+        status: 'success', summary: '2 results', rows: [],
+        rawPreview: '{"hits":[{"objectID":"hn-b","title":"Second HN story"},' +
+          '{"objectID":"hn-a","title":"First HN story"}]}'
+      });
+
+      expect(firstReddit[0].id).assertEqual('reddit-reddit_a');
+      expect(secondReddit[0].id).assertEqual('reddit-reddit_b');
+      expect(firstReddit[0].id === secondReddit[0].id).assertFalse();
+      expect(firstHackerNews[0].id).assertEqual('hackernews-hn-a');
+      expect(firstHackerNews[1].id).assertEqual('hackernews-hn-b');
+      expect(reorderedHackerNews[0].id).assertEqual(firstHackerNews[1].id);
+      expect(reorderedHackerNews[1].id).assertEqual(firstHackerNews[0].id);
     });
 
     it('uses decoded Reddit preview images instead of article links', 0, () => {
@@ -1293,6 +1329,31 @@ export default function aggregateSearchClientTest() {
 
       expect(ranked.map((item: WaterfallRankedCandidate): string => item.id).join(','))
         .assertEqual('boost,session,history,down');
+    });
+
+    it('limits provenance matching to interest topic weights', 0, () => {
+      const profile = emptyPreferenceProfile();
+      profile.interestTopicWeightSource = 'search_keywords';
+      profile.topicWeights = [{ key: '足球', weight: 8, updatedAt: WATERFALL_NOW_MS }];
+      profile.sessionTopicWeights = [{ key: 'AI', weight: 4, updatedAt: WATERFALL_NOW_MS }];
+      profile.explicitRules = [{ dimension: 'topic', key: '屏蔽', effect: 'block' }];
+      const provenance = traditionalCandidate(
+        'provenance', 'x', '普通内容', '', 'https://x.test/provenance', 1, 0);
+      provenance.searchKeywords = ['足球'];
+      const titleOnly = traditionalCandidate(
+        'title-only', 'x', '足球', '', 'https://x.test/title-only', 1, 1);
+      titleOnly.searchKeywords = ['电影'];
+      const session = traditionalCandidate(
+        'session', 'x', 'AI 新闻', '', 'https://x.test/session', 1, 2);
+      session.searchKeywords = ['电影'];
+      const blocked = traditionalCandidate(
+        'blocked', 'x', '屏蔽', '', 'https://x.test/blocked-provenance', 1, 3);
+      blocked.searchKeywords = ['足球'];
+
+      expect(scoreWaterfallInterestCandidatePreference(provenance, profile).historical).assertEqual(8);
+      expect(scoreWaterfallInterestCandidatePreference(titleOnly, profile).historical).assertEqual(0);
+      expect(scoreWaterfallInterestCandidatePreference(session, profile).session).assertEqual(4);
+      expect(scoreWaterfallInterestCandidatePreference(blocked, profile).blocked).assertTrue();
     });
 
     it('removes a near duplicate before MMR keeps a distinct relevant source', 0, () => {
@@ -2639,6 +2700,62 @@ export default function aggregateSearchClientTest() {
       expect(snapshots[0].waterfall?.preferenceDescription).assertEqual(preferenceDescription);
       expect(result.waterfall?.preferenceDescription).assertEqual(preferenceDescription);
       expect(withPreference.map((item) => item.id).join(',')).assertEqual(withoutPreference.map((item) => item.id).join(','));
+    });
+
+    it('ranks discovery topics from pool search provenance instead of inferred card text', 0, () => {
+      const misleading = traditionalCandidate('misleading', 'youtube', 'Football match analysis', '',
+        'https://youtube.test/misleading', 1, 0);
+      misleading.searchKeywords = ['电影'];
+      const provenanceMatch = traditionalCandidate('provenance', 'bilibili', 'A completely unrelated title', '',
+        'https://bilibili.test/provenance', 1, 1);
+      provenanceMatch.searchKeywords = ['足球'];
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [{ key: '足球', aliases: ['football'], weight: 1, updatedAt: WATERFALL_NOW_MS }],
+        sourceWeights: [], formatWeights: [], explicitRules: [],
+        interestTopicWeightSource: 'search_keywords',
+        sessionTopicWeights: [], sessionSourceWeights: [], sessionFormatWeights: []
+      };
+
+      const ranked = rankWaterfallCandidates({
+        query: '', candidates: [misleading, provenanceMatch], enabledSources: ['youtube', 'bilibili'],
+        shownIds: [], stableIds: [], preferenceDescription: '', mode: 'interest', profile
+      }, WATERFALL_NOW_MS);
+
+      expect(ranked[0].id).assertEqual('provenance');
+    });
+
+    it('uses retrieval-keyword repetition suppression to cover another LLM interest early', 0, () => {
+      const candidates: WaterfallCandidate[] = [
+        traditionalCandidate('football-a', 'youtube', 'Alpha report', '', 'https://youtube.test/a', 1, 0),
+        traditionalCandidate('football-b', 'bilibili', 'Bravo report', '', 'https://bilibili.test/b', 1, 1),
+        traditionalCandidate('game-a', 'x', 'Charlie report', '', 'https://x.test/c', 1, 2),
+        traditionalCandidate('movie-a', 'reddit', 'Delta report', '', 'https://reddit.test/d', 1, 3)
+      ];
+      candidates[0].searchKeywords = ['足球'];
+      candidates[1].searchKeywords = ['football'];
+      candidates[2].searchKeywords = ['游戏'];
+      candidates[3].searchKeywords = ['电影'];
+      const profile: WaterfallPreferenceSnapshot = {
+        topicWeights: [
+          { key: '足球', aliases: ['football'], weight: 1, updatedAt: WATERFALL_NOW_MS },
+          { key: '游戏', aliases: ['games'], weight: 1, updatedAt: WATERFALL_NOW_MS },
+          { key: '电影', aliases: ['movies'], weight: 1, updatedAt: WATERFALL_NOW_MS }
+        ],
+        sourceWeights: [], formatWeights: [], explicitRules: [],
+        interestTopicWeightSource: 'search_keywords',
+        sessionTopicWeights: [], sessionSourceWeights: [], sessionFormatWeights: []
+      };
+
+      const ranked = rankWaterfallCandidates({
+        query: '', candidates, enabledSources: ['youtube', 'bilibili', 'x', 'reddit'],
+        shownIds: [], stableIds: [], preferenceDescription: '', mode: 'interest', profile
+      }, WATERFALL_NOW_MS);
+
+      expect((ranked[0].searchKeywords ?? []).join(',') === (ranked[1].searchKeywords ?? []).join(','))
+        .assertFalse();
+      expect(ranked.slice(0, 3).filter((item: WaterfallRankedCandidate): boolean =>
+        (item.searchKeywords ?? []).indexOf('足球') >= 0 ||
+        (item.searchKeywords ?? []).indexOf('football') >= 0).length).assertEqual(1);
     });
   });
 }

@@ -9,6 +9,7 @@ import {
   AggregateSearchSourceBatch,
   AggregateSearchSourceStatus
 } from './AggregateSearchTypes';
+import { aiLogInfo } from './AiphoneLogger';
 
 const APPLE_PODCAST_SEARCH_URL: string = 'https://itunes.apple.com/search';
 const APPLE_PODCAST_PROVIDER: string = 'Apple Podcasts';
@@ -16,6 +17,7 @@ const DEFAULT_RESULT_LIMIT: number = 10;
 const MAX_RESULT_LIMIT: number = 50;
 const MAX_RSS_BODY_BYTES: number = 10 * 1024 * 1024;
 const MAX_RSS_ITEMS: number = 50;
+let applePodcastSearchDiagnosticSequence: number = 0;
 
 export type ApplePodcastsCountry = 'CN' | 'US';
 
@@ -582,7 +584,10 @@ export async function searchApplePodcasts(
   limit: number = DEFAULT_RESULT_LIMIT
 ): Promise<AggregateSearchSourceBatch> {
   const trimmedQuery = query.trim();
+  const requestId = ++applePodcastSearchDiagnosticSequence;
   if (trimmedQuery.length === 0) {
+    aiLogInfo('[AIPhone][ApplePodcastPipeline] stage=request_skipped requestId=' + requestId.toString() +
+      ' reason=empty_query');
     return {
       source: 'applepodcasts',
       videos: [],
@@ -592,11 +597,39 @@ export async function searchApplePodcasts(
     };
   }
   try {
-    const response = await requestApplePodcasts(applePodcastsSearchUrl(
-      trimmedQuery, limit, applePodcastsCountryForPolicy(policy)));
-    return applePodcastBatchFromHttpResult(response, limit);
+    const country = applePodcastsCountryForPolicy(policy);
+    const startedAtMs = Date.now();
+    aiLogInfo('[AIPhone][ApplePodcastPipeline] stage=request_start requestId=' + requestId.toString() +
+      ' query=' + JSON.stringify(trimmedQuery.substring(0, 120)) +
+      ' country=' + country + ' limit=' + resultLimit(limit).toString());
+    const response = await requestApplePodcasts(applePodcastsSearchUrl(trimmedQuery, limit, country));
+    let rawResultCount = 0;
+    try {
+      const payload = JSON.parse(response.text) as ApplePodcastSearchPayload;
+      rawResultCount = payload.results !== undefined && Array.isArray(payload.results) ? payload.results.length : 0;
+    } catch (_error) {
+      rawResultCount = 0;
+    }
+    aiLogInfo('[AIPhone][ApplePodcastPipeline] stage=http_complete requestId=' + requestId.toString() +
+      ' query=' + JSON.stringify(trimmedQuery.substring(0, 120)) +
+      ' httpCode=' + response.code.toString() +
+      ' rawResults=' + rawResultCount.toString() +
+      ' bodyChars=' + response.text.length.toString() +
+      ' elapsedMs=' + (Date.now() - startedAtMs).toString());
+    const batch = applePodcastBatchFromHttpResult(response, limit);
+    aiLogInfo('[AIPhone][ApplePodcastPipeline] stage=parse_complete requestId=' + requestId.toString() +
+      ' query=' + JSON.stringify(trimmedQuery.substring(0, 120)) +
+      ' rawResults=' + rawResultCount.toString() +
+      ' parsedPosts=' + batch.posts.length.toString() +
+      ' parseDropped=' + Math.max(0, rawResultCount - batch.posts.length).toString() +
+      ' status=' + batch.status.status +
+      ' ids=' + JSON.stringify(batch.posts.slice(0, 10).map((post: AggregateSearchPost): string => post.id)));
+    return batch;
   } catch (error) {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
+    aiLogInfo('[AIPhone][ApplePodcastPipeline] stage=request_error requestId=' + requestId.toString() +
+      ' query=' + JSON.stringify(trimmedQuery.substring(0, 120)) +
+      ' error=' + JSON.stringify(message.substring(0, 200)));
     return {
       source: 'applepodcasts',
       videos: [],

@@ -21,11 +21,14 @@ import {
 } from '@loop/agent-core';
 import {
   phoneLocalMemoryOperationCanceled,
+  PhoneLocalMemoryConditionalWriteResult,
+  PhoneLocalMemoryExpectedRecord,
   PhoneLocalMemoryStore,
   PHONE_LOCAL_MEMORY_VECTOR_DIMENSION
 } from './PhoneLocalMemoryStore';
 
 const DEFAULT_MEMORY_MAX_FACT_LENGTH: number = 240;
+export const PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE: string = 'memory_write_conflict';
 
 const MEMORY_LOG_DOMAIN: number = 0x0000;
 const MEMORY_LOG_TAG: string = 'PhoneMemory';
@@ -452,6 +455,66 @@ export class PhoneLocalMemoryProvider implements ConversationMemoryPort {
     }
   }
 
+  async updateIfCurrent(request: MemoryUpdateRequest, expected: PhoneLocalMemoryExpectedRecord,
+    guard?: MemoryCommitGuard): Promise<MemoryWriteResult> {
+    const ownerId = request.ownerId.trim();
+    const existing = await this.get(ownerId, request.memoryId);
+    if (existing === null) {
+      return failedWrite(0, memoryError('memory_not_found', 'Memory record was not found.'));
+    }
+    const validation = validateMemoryDraftBatch([{
+      fact: request.fact,
+      sceneId: existing.sceneId,
+      personaTag: request.personaTag ?? existing.personaTag,
+      authority: request.authority ?? existing.authority,
+      sourceTurnId: request.sourceTurnId
+    }], {
+      allowedSceneIds: this.allowedSceneIds,
+      maxFactLength: this.maxFactLength
+    });
+    if (!validation.valid) {
+      return failedWrite(0, memoryError('memory_request_invalid', validation.issues[0].message));
+    }
+    if (this.store.replaceIfCurrent === undefined) {
+      return failedWrite(0, memoryError(
+        'memory_conditional_write_unavailable', 'Conditional memory update is unavailable.', true
+      ));
+    }
+    try {
+      const fact = validation.records[0].fact;
+      const embedding = normalizedVector(await this.embedder.embed(fact), this.embedder.dimension);
+      if (!commitIsActive(guard)) return canceledWrite(0);
+      const updated: MemoryRecord = {
+        memoryId: existing.memoryId,
+        ownerId: existing.ownerId,
+        sceneId: existing.sceneId,
+        personaTag: validation.records[0].personaTag ?? existing.personaTag,
+        authority: validation.records[0].authority ?? existing.authority,
+        fact,
+        normalizedFact: normalizeMemoryFact(fact),
+        factHash: normalizedMemoryFactHash(fact),
+        embedding,
+        embeddingProfileId: this.embedder.profileId,
+        sourceTurnId: request.sourceTurnId,
+        createdAt: existing.createdAt,
+        updatedAt: this.clock()
+      };
+      const result: PhoneLocalMemoryConditionalWriteResult =
+        await this.store.replaceIfCurrent(ownerId, updated, expected, guard);
+      if (result.status !== 'success') {
+        return failedWrite(0, memoryError(
+          PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE,
+          'Memory record changed before the conditional update.', false
+        ));
+      }
+      return successfulWrite(0, updated);
+    } catch (error) {
+      if (phoneLocalMemoryOperationCanceled(error)) return canceledWrite(0);
+      this.log('memory_update_failed', 'updateIfCurrent', 0, boundedErrorMessage(error, request.fact));
+      return failedWrite(0, memoryError('memory_update_failed', 'Memory record could not be updated.', true));
+    }
+  }
+
   async forget(ownerId: string, memoryId: string, guard?: MemoryCommitGuard): Promise<MemoryWriteResult> {
     if (ownerId.trim().length === 0 || memoryId.trim().length === 0) {
       return failedWrite(0, memoryError('memory_request_invalid', 'Memory owner and id must not be empty.'));
@@ -470,6 +533,39 @@ export class PhoneLocalMemoryProvider implements ConversationMemoryPort {
         return canceledWrite(0);
       }
       this.log('memory_delete_failed', 'forget', 0, boundedErrorMessage(error));
+      return failedWrite(0, memoryError('memory_delete_failed', 'Memory record could not be deleted.', true));
+    }
+  }
+
+  async forgetIfCurrent(ownerId: string, memoryId: string, expected: PhoneLocalMemoryExpectedRecord,
+    guard?: MemoryCommitGuard): Promise<MemoryWriteResult> {
+    const normalizedOwnerId = ownerId.trim();
+    const normalizedMemoryId = memoryId.trim();
+    if (normalizedOwnerId.length === 0 || normalizedMemoryId.length === 0) {
+      return failedWrite(0, memoryError('memory_request_invalid', 'Memory owner and id must not be empty.'));
+    }
+    if (this.store.removeIfCurrent === undefined) {
+      return failedWrite(0, memoryError(
+        'memory_conditional_write_unavailable', 'Conditional memory deletion is unavailable.', true
+      ));
+    }
+    const existing = await this.get(normalizedOwnerId, normalizedMemoryId);
+    if (existing === null) return failedWrite(0, memoryError('memory_not_found', 'Memory record was not found.'));
+    try {
+      if (!commitIsActive(guard)) return canceledWrite(0);
+      const result: PhoneLocalMemoryConditionalWriteResult = await this.store.removeIfCurrent(
+        normalizedOwnerId, normalizedMemoryId, expected, guard
+      );
+      if (result.status !== 'success') {
+        return failedWrite(0, memoryError(
+          PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE,
+          'Memory record changed before the conditional deletion.', false
+        ));
+      }
+      return successfulWrite(0, existing);
+    } catch (error) {
+      if (phoneLocalMemoryOperationCanceled(error)) return canceledWrite(0);
+      this.log('memory_delete_failed', 'forgetIfCurrent', 0, boundedErrorMessage(error));
       return failedWrite(0, memoryError('memory_delete_failed', 'Memory record could not be deleted.', true));
     }
   }

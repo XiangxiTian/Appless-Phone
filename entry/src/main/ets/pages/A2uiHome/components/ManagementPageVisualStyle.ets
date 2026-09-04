@@ -1,0 +1,3 @@
+export const MANAGEMENT_CARD_SHADOW_RADIUS: number = 16;
+export const MANAGEMENT_CARD_SHADOW_OFFSET_Y: number = 6;
+export const MANAGEMENT_DISCLOSURE_ARROW_ROTATION: number = 180;

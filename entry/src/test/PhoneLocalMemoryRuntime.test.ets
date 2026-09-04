@@ -7,6 +7,9 @@ import {
 } from '../main/ets/memory/PhoneLocalMemoryRuntime';
 import {
   PHONE_LOCAL_MEMORY_OPERATION_CANCELED,
+  phoneLocalMemoryExpectedRecordMatches,
+  PhoneLocalMemoryConditionalWriteResult,
+  PhoneLocalMemoryExpectedRecord,
   PhoneLocalMemoryProjectionFact,
   PhoneLocalMemoryProjectionStats,
   PhoneLocalMemorySearchRequest,
@@ -80,6 +83,7 @@ function requireRuntimeCommit(guard?: MemoryCommitGuard): void {
 class RuntimeMemoryStore implements PhoneLocalMemoryStore {
   records: MemoryRecord[] = [];
   metadata: Map<string, string> = new Map<string, string>();
+  conditionalHook: (() => void) | null = null;
 
   async initialize(): Promise<void> {}
 
@@ -176,6 +180,22 @@ class RuntimeMemoryStore implements PhoneLocalMemoryStore {
     throw new Error('not found');
   }
 
+  async replaceIfCurrent(ownerId: string, record: MemoryRecord, expected: PhoneLocalMemoryExpectedRecord,
+    guard?: MemoryCommitGuard): Promise<PhoneLocalMemoryConditionalWriteResult> {
+    requireRuntimeCommit(guard);
+    if (this.conditionalHook !== null) this.conditionalHook();
+    for (let index = 0; index < this.records.length; index += 1) {
+      const existing = this.records[index];
+      if (existing.ownerId !== ownerId || existing.memoryId !== record.memoryId) continue;
+      if (!phoneLocalMemoryExpectedRecordMatches(existing, expected)) {
+        return { status: 'conflict', record: copyRuntimeRecord(existing) };
+      }
+      this.records[index] = copyRuntimeRecord(record);
+      return { status: 'success', record: copyRuntimeRecord(record) };
+    }
+    return { status: 'not_found', record: null };
+  }
+
   async remove(ownerId: string, memoryId: string,
     guard?: MemoryCommitGuard): Promise<MemoryRecord | null> {
     requireRuntimeCommit(guard);
@@ -187,6 +207,22 @@ class RuntimeMemoryStore implements PhoneLocalMemoryStore {
       }
     }
     return null;
+  }
+
+  async removeIfCurrent(ownerId: string, memoryId: string, expected: PhoneLocalMemoryExpectedRecord,
+    guard?: MemoryCommitGuard): Promise<PhoneLocalMemoryConditionalWriteResult> {
+    requireRuntimeCommit(guard);
+    if (this.conditionalHook !== null) this.conditionalHook();
+    for (let index = 0; index < this.records.length; index += 1) {
+      const existing = this.records[index];
+      if (existing.ownerId !== ownerId || existing.memoryId !== memoryId) continue;
+      if (!phoneLocalMemoryExpectedRecordMatches(existing, expected)) {
+        return { status: 'conflict', record: copyRuntimeRecord(existing) };
+      }
+      this.records.splice(index, 1);
+      return { status: 'success', record: copyRuntimeRecord(existing) };
+    }
+    return { status: 'not_found', record: null };
   }
 
   async removeAll(ownerId: string, sceneIds: string[]): Promise<MemoryRecord[]> {
@@ -277,6 +313,12 @@ class TransientSearchFailureStore extends RuntimeMemoryStore {
   }
 }
 
+class SnapshotReadFailureStore extends RuntimeMemoryStore {
+  async list(_ownerId: string, _sceneIds: string[]): Promise<MemoryRecord[]> {
+    throw new Error('snapshot-read-failed');
+  }
+}
+
 function repeatedRuntimeCharacter(character: string, count: number): string {
   let output = '';
   for (let index = 0; index < count; index += 1) output += character;
@@ -342,6 +384,89 @@ export default function phoneLocalMemoryRuntimeTest() {
       expect(secondHits[0].fact).assertEqual('乙账号偏好博物馆');
       expect(store.records[0].ownerId).assertEqual('owner-a');
       expect(store.records[1].ownerId).assertEqual('owner-b');
+    });
+
+    it('lists lightweight snapshots for every scene in only the current owner scope', 0, async () => {
+      const store = new RuntimeMemoryStore();
+      const first = new PhoneLocalMemoryRuntime(null, {
+        ownerId: 'snapshot-owner-a',
+        storeFactory: (): PhoneLocalMemoryStore => store,
+        embedderFactory: async (): Promise<EmbeddingPort> => new RuntimeEmbeddingPort(),
+        idFactory: nextRuntimeMemoryId
+      });
+      const second = new PhoneLocalMemoryRuntime(null, {
+        ownerId: 'snapshot-owner-b',
+        storeFactory: (): PhoneLocalMemoryStore => store,
+        embedderFactory: async (): Promise<EmbeddingPort> => new RuntimeEmbeddingPort(),
+        idFactory: nextRuntimeMemoryId
+      });
+      const firstWrite = await first.remember(['账号甲的跨场景记忆'], 'snapshot-turn-a', 'companion-a');
+      await second.remember(['账号乙的记忆'], 'snapshot-turn-b', 'companion-b');
+      if (firstWrite.records[0].record === undefined) throw new Error('Expected snapshot fixture record.');
+      const firstMemoryId = firstWrite.records[0].record.memoryId;
+      store.records[0].sceneId = 'legacy-other-scene';
+
+      const snapshots = await first.listAllMemorySnapshots();
+      expect(snapshots.length).assertEqual(1);
+      expect(snapshots[0].memoryId).assertEqual(firstMemoryId);
+      expect(snapshots[0].fact).assertEqual('账号甲的跨场景记忆');
+      expect(snapshots[0].personaTag).assertEqual('companion-a');
+      expect(JSON.stringify(snapshots[0]).indexOf('embedding')).assertEqual(-1);
+      const exact = await first.getMemorySnapshot(firstMemoryId);
+      expect(exact?.memoryId).assertEqual(firstMemoryId);
+      expect(await second.getMemorySnapshot(firstMemoryId)).assertNull();
+    });
+
+    it('surfaces snapshot storage failures instead of using recall fail-open behavior', 0, async () => {
+      const runtime = new PhoneLocalMemoryRuntime(null, {
+        storeFactory: (): PhoneLocalMemoryStore => new SnapshotReadFailureStore(),
+        embedderFactory: async (): Promise<EmbeddingPort> => new RuntimeEmbeddingPort(),
+        idFactory: nextRuntimeMemoryId
+      });
+      let message = '';
+      try {
+        await runtime.listAllMemorySnapshots();
+      } catch (error) {
+        message = error instanceof Error ? error.message : JSON.stringify(error);
+      }
+      expect(message).assertEqual('snapshot-read-failed');
+    });
+
+    it('maps late conditional update and delete races to explicit conflicts without overwriting', 0, async () => {
+      const store = new RuntimeMemoryStore();
+      const runtime = new PhoneLocalMemoryRuntime(null, {
+        ownerId: 'conditional-owner',
+        storeFactory: (): PhoneLocalMemoryStore => store,
+        embedderFactory: async (): Promise<EmbeddingPort> => new RuntimeEmbeddingPort(),
+        idFactory: nextRuntimeMemoryId
+      });
+      const written = await runtime.remember(['用户喜欢咖啡'], 'conditional-turn', 'global');
+      const memoryId = written.records[0].record?.memoryId ?? '';
+      const expected = await runtime.getMemorySnapshot(memoryId);
+      if (expected === null) throw new Error('Expected conditional runtime fixture.');
+      store.conditionalHook = (): void => {
+        store.records[0].fact = '另一个写入者的新值';
+        store.records[0].updatedAt += 1;
+        store.conditionalHook = null;
+      };
+
+      const update = await runtime.updateIfSnapshotCurrent(
+        { memoryId, fact: '用户喜欢茶' }, 'conditional-update', 'global', expected
+      );
+      expect(update.status).assertEqual('error');
+      expect(update.error?.code).assertEqual('memory_write_conflict');
+      expect(store.records[0].fact).assertEqual('另一个写入者的新值');
+
+      const deleteExpected = await runtime.getMemorySnapshot(memoryId);
+      if (deleteExpected === null) throw new Error('Expected conditional delete fixture.');
+      store.conditionalHook = (): void => {
+        store.records[0].authority = 'seed';
+        store.conditionalHook = null;
+      };
+      const deletion = await runtime.forgetIfSnapshotCurrent(memoryId, deleteExpected);
+      expect(deletion.status).assertEqual('error');
+      expect(deletion.error?.code).assertEqual('memory_write_conflict');
+      expect(store.records.length).assertEqual(1);
     });
 
     it('claims the legacy owner once and keeps repeated claims idempotent', 0, async () => {

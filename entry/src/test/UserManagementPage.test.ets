@@ -1,13 +1,16 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   canSaveUserDisplayName,
+  LONG_TERM_MEMORY_ENTRY_SUBTITLE,
+  LONG_TERM_MEMORY_ENTRY_TITLE,
   normalizedUserDisplayName,
   userDisplayNameSaveAction
 } from '../main/ets/pages/A2uiHome/components/UserManagementPage';
 import {
-  LONG_TERM_MEMORY_PLACEHOLDER_MESSAGE,
-  LONG_TERM_MEMORY_PLACEHOLDER_TITLE
-} from '../main/ets/pages/A2uiHome/components/LongTermMemoryPlaceholderPage';
+  MANAGEMENT_CARD_SHADOW_OFFSET_Y,
+  MANAGEMENT_CARD_SHADOW_RADIUS,
+  MANAGEMENT_DISCLOSURE_ARROW_ROTATION
+} from '../main/ets/pages/A2uiHome/components/ManagementPageVisualStyle';
 
 export default function userManagementPageTest(): void {
   describe('UserManagementPage', () => {
@@ -27,11 +30,15 @@ export default function userManagementPageTest(): void {
       expect(userDisplayNameSaveAction('小罗', '华为用户')).assertEqual('save');
     });
 
-    it('keeps the long-term memory entry explicitly non-destructive while unfinished', 0, () => {
-      expect(LONG_TERM_MEMORY_PLACEHOLDER_TITLE).assertEqual('长期记忆');
-      expect(LONG_TERM_MEMORY_PLACEHOLDER_MESSAGE.indexOf('后续版本') >= 0).assertTrue();
-      expect(LONG_TERM_MEMORY_PLACEHOLDER_MESSAGE.indexOf('总结') >= 0).assertTrue();
-      expect(LONG_TERM_MEMORY_PLACEHOLDER_MESSAGE.indexOf('修正') >= 0).assertTrue();
+    it('exports the long-term memory overview entry copy', 0, () => {
+      expect(LONG_TERM_MEMORY_ENTRY_TITLE).assertEqual('长期记忆');
+      expect(LONG_TERM_MEMORY_ENTRY_SUBTITLE).assertEqual('查看概览并修正 Appless 记住的内容');
+    });
+
+    it('shares the raised-card depth and right-arrow direction across management pages', 0, () => {
+      expect(MANAGEMENT_CARD_SHADOW_RADIUS).assertEqual(16);
+      expect(MANAGEMENT_CARD_SHADOW_OFFSET_Y).assertEqual(6);
+      expect(MANAGEMENT_DISCLOSURE_ARROW_ROTATION).assertEqual(180);
     });
   });
 }

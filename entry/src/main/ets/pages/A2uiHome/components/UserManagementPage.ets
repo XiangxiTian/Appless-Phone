@@ -3,17 +3,29 @@ import {
   COLOR_ACCENT_SOFT,
   COLOR_CARD,
   COLOR_CARD_EDGE,
+  COLOR_CARD_RAISED,
+  COLOR_CARD_SHADOW,
   COLOR_ERROR,
   COLOR_ERROR_SOFT,
+  COLOR_FIELD,
   COLOR_INK,
   COLOR_MUTED,
+  COLOR_PAGE,
   COLOR_PANEL,
   COLOR_TEXT
 } from '../style/A2uiHomeTheme';
 import { A2UI_MOTION_CURVE } from '../style/A2uiHomeMotion';
+import {
+  MANAGEMENT_CARD_SHADOW_OFFSET_Y,
+  MANAGEMENT_CARD_SHADOW_RADIUS,
+  MANAGEMENT_DISCLOSURE_ARROW_ROTATION
+} from './ManagementPageVisualStyle';
 
 const USER_PAGE_PADDING: number = 16;
 const USER_CARD_RADIUS: number = 18;
+
+export const LONG_TERM_MEMORY_ENTRY_TITLE: string = '长期记忆';
+export const LONG_TERM_MEMORY_ENTRY_SUBTITLE: string = '查看概览并修正 Appless 记住的内容';
 
 export type UserDisplayNameSaveAction = 'disabled' | 'close' | 'save';
 
@@ -133,8 +145,9 @@ export struct UserManagementPage {
             .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_TEXT)
             .placeholderColor(COLOR_MUTED)
-            .backgroundColor(COLOR_PANEL)
+            .backgroundColor(COLOR_FIELD)
             .borderRadius(12)
+            .border({ width: 1, color: COLOR_CARD_EDGE })
             .padding({ left: 13, right: 13 })
             .margin({ left: 12, right: 10 })
             .maxLength(40)
@@ -219,9 +232,15 @@ export struct UserManagementPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(16)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(USER_CARD_RADIUS)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({
+      radius: MANAGEMENT_CARD_SHADOW_RADIUS,
+      color: COLOR_CARD_SHADOW,
+      offsetX: 0,
+      offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y
+    })
   }
 
   @Builder
@@ -253,16 +272,25 @@ export struct UserManagementPage {
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12, right: 10 })
 
-      Text('›')
-        .fontSize(25)
-        .fontColor(COLOR_MUTED)
+      Image($r('app.media.icon_back'))
+        .width(16)
+        .height(16)
+        .objectFit(ImageFit.Contain)
+        .rotate({ angle: MANAGEMENT_DISCLOSURE_ARROW_ROTATION })
+        .opacity(0.55)
     }
     .width('100%')
     .constraintSize({ minHeight: 76 })
     .padding({ left: 14, right: 14, top: 12, bottom: 12 })
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(USER_CARD_RADIUS)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({
+      radius: MANAGEMENT_CARD_SHADOW_RADIUS,
+      color: COLOR_CARD_SHADOW,
+      offsetX: 0,
+      offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y
+    })
     .onClick(onClick)
   }
 
@@ -310,10 +338,15 @@ export struct UserManagementPage {
       }
       .width('86%')
       .padding(20)
-      .backgroundColor(COLOR_CARD)
+      .backgroundColor(COLOR_CARD_RAISED)
       .borderRadius(20)
       .border({ width: 1, color: COLOR_CARD_EDGE })
-      .shadow({ radius: 20, color: '#33000000', offsetX: 0, offsetY: 8 })
+      .shadow({
+        radius: MANAGEMENT_CARD_SHADOW_RADIUS,
+        color: COLOR_CARD_SHADOW,
+        offsetX: 0,
+        offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y
+      })
     }
     .width('100%')
     .height('100%')
@@ -343,6 +376,15 @@ export struct UserManagementPage {
             }
           )
           this.ActionRow(
+            $r('app.media.icon_history'),
+            LONG_TERM_MEMORY_ENTRY_TITLE,
+            LONG_TERM_MEMORY_ENTRY_SUBTITLE,
+            false,
+            () => {
+              this.onOpenLongTermMemory();
+            }
+          )
+          this.ActionRow(
             $r('app.media.icon_sign_out'),
             '退出登录',
             '保留此账号的本地数据',
@@ -363,7 +405,7 @@ export struct UserManagementPage {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(COLOR_PANEL)
+      .backgroundColor(COLOR_PAGE)
 
       if (this.showLogoutConfirm) {
         this.LogoutConfirmation()

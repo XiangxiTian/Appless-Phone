@@ -67,6 +67,11 @@ import {
 } from '../main/ets/publicpersona/PublicPersonaProbeClient';
 import { DirectModelCallResult } from '../main/ets/model/LocalModelClient';
 import {
+  MemoryModelCaller,
+  MemoryModelTaskRunner,
+  MemoryModelTaskRunnerLogger
+} from '../main/ets/memory/MemoryModelTaskRunner';
+import {
   publicPersonaDraftAfterDefaultChange,
   publicPersonaImportButtonViewState,
   publicPersonaMarkdownSurfaceKind
@@ -260,6 +265,37 @@ interface EvidenceFixture {
   bio: string;
   posts: Object[];
   sourceUrls: string[];
+}
+
+class PersonaMemoryRunnerCaller implements MemoryModelCaller {
+  calls: number = 0;
+  raw: string;
+  prompt: string = '';
+  systemPrompt: string = '';
+
+  constructor(raw: string) {
+    this.raw = raw;
+  }
+
+  async call(_settings: LocalModelSettings, prompt: string, _history: A2uiMessage[],
+    systemPrompt: string): Promise<DirectModelCallResult> {
+    this.calls += 1;
+    this.prompt = prompt;
+    this.systemPrompt = systemPrompt;
+    return { ok: true, raw: this.raw, error: '', requestDebug: '', assistantDebug: '' };
+  }
+}
+
+class PersonaMemoryRunnerLogger implements MemoryModelTaskRunnerLogger {
+  lines: string[] = [];
+
+  info(message: string): void {
+    this.lines.push(message);
+  }
+
+  error(message: string): void {
+    this.lines.push(message);
+  }
 }
 
 interface PublicPersonaMemoryCandidatesFixture {
@@ -1553,6 +1589,61 @@ export default function publicPersonaTest() {
       expect(facts[1].fact.indexOf('截至 2026-09-04') === 0).assertTrue();
       expect(publicPersonaMemoryFactsAreCurrent(rebuilt)).assertTrue();
       expect(publicPersonaImportFacts(rebuilt, '2026-09-04T08:00:00.000Z').length).assertEqual(2);
+    });
+
+    it('routes edited persona memory rebuild through the memory task runner and rejects invalid schema once',
+      0, async () => {
+      let legacyModelCalls = 0;
+      const client = new PublicPersonaClient(async (toolId: string): Promise<DataResult> =>
+        dataResult(toolId, new Object(), 'empty'),
+      async (): Promise<DirectModelCallResult> => {
+        legacyModelCalls += 1;
+        return { ok: false, raw: '', error: 'legacy path must not run', requestDebug: '', assistantDebug: '' };
+      });
+      const snapshot = publicPersonaSnapshotAfterMarkdownEdit(
+        validSnapshot(), validSnapshot().personaMarkdown.replace('- 数学', '- 编曲'));
+      const validCaller = new PersonaMemoryRunnerCaller(
+        '{"memoryCandidates":[{"fact":"用户喜欢编曲","confidence":0.95,"kind":"preference"}]}'
+      );
+      const validLogger = new PersonaMemoryRunnerLogger();
+      const validRunner = new MemoryModelTaskRunner({
+        settingsProvider: modelSettings,
+        caller: validCaller,
+        logger: validLogger
+      });
+
+      const facts = await client.rebuildMemoryFacts(
+        snapshot, modelSettings(), '2026-09-04T08:00:00.000Z', validRunner
+      );
+
+      expect(facts.length).assertEqual(1);
+      expect(validCaller.calls).assertEqual(1);
+      expect(validCaller.prompt).assertContain('"personaMarkdown"');
+      expect(validCaller.prompt).assertContain('"memoryObservedAt":"2026-09-04T08:00:00.000Z"');
+      expect(validCaller.systemPrompt).assertContain('用户已保存并确认');
+      expect(validLogger.lines[0].indexOf('modelCallCount=1')).assertLarger(-1);
+      expect(legacyModelCalls).assertEqual(0);
+
+      const invalidCaller = new PersonaMemoryRunnerCaller('{"memoryCandidates":"invalid"}');
+      const invalidLogger = new PersonaMemoryRunnerLogger();
+      const invalidRunner = new MemoryModelTaskRunner({
+        settingsProvider: modelSettings,
+        caller: invalidCaller,
+        logger: invalidLogger
+      });
+      let rejected = false;
+      try {
+        await client.rebuildMemoryFacts(
+          snapshot, modelSettings(), '2026-09-04T08:00:00.000Z', invalidRunner
+        );
+      } catch (_error) {
+        rejected = true;
+      }
+      expect(rejected).assertTrue();
+      expect(invalidCaller.calls).assertEqual(1);
+      expect(invalidLogger.lines[0].indexOf('memory_model_schema_invalid')).assertLarger(-1);
+      expect(invalidLogger.lines[0].indexOf('modelCallCount=1')).assertLarger(-1);
+      expect(legacyModelCalls).assertEqual(0);
     });
 
     it('rejects failed or malformed persona memory rebuild model output', 0, async () => {

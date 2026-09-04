@@ -1,8 +1,13 @@
 import { ConversationContext, LocalModel } from '@loop/agent-core';
 import {
+  MemoryModelSchemaValidator,
+  MemoryModelTaskRunner
+} from '../../../memory/MemoryModelTaskRunner';
+import {
   PhoneLocalMemoryMutationEvent,
   PhoneLocalMemoryProjectionSourcePort
 } from '../../../memory/PhoneLocalMemoryRuntime';
+import { PhoneLocalMemoryProjectionFact } from '../../../memory/PhoneLocalMemoryStore';
 import {
   DISCOVERY_MEMORY_PROJECTION_COUNT_THRESHOLD,
   DISCOVERY_MEMORY_PROJECTION_WAIT_MS,
@@ -22,13 +27,34 @@ import { DiscoveryMemoryProjectionStorePort } from './DiscoveryMemoryProjectionS
 export interface DiscoveryMemoryProjectionCoordinatorOptions {
   source: PhoneLocalMemoryProjectionSourcePort;
   store: DiscoveryMemoryProjectionStorePort;
-  modelProvider: () => LocalModel;
+  modelProvider?: () => LocalModel;
+  runner?: MemoryModelTaskRunner;
   onProjection?: (projection: DiscoveryMemoryPreferenceProjection) => void;
   isActive?: () => boolean;
   now?: () => number;
   countThreshold?: number;
   waitThresholdMs?: number;
   logger?: (message: string) => void;
+}
+
+class DiscoveryMemoryProjectionSchemaValidator implements
+  MemoryModelSchemaValidator<DiscoveryMemoryPreferenceProjection> {
+  private readonly facts: PhoneLocalMemoryProjectionFact[];
+  private readonly previous: DiscoveryMemoryPreferenceProjection;
+  private readonly forcedMutationAt: number;
+
+  constructor(facts: PhoneLocalMemoryProjectionFact[],
+    previous: DiscoveryMemoryPreferenceProjection, forcedMutationAt: number) {
+    this.facts = facts;
+    this.previous = previous;
+    this.forcedMutationAt = forcedMutationAt;
+  }
+
+  validate(raw: string): DiscoveryMemoryPreferenceProjection | null {
+    return discoveryMemoryPreferenceProjectionFromModelOutput(
+      raw, this.facts, this.previous, this.forcedMutationAt
+    );
+  }
 }
 
 function copyProjection(value: DiscoveryMemoryPreferenceProjection): DiscoveryMemoryPreferenceProjection {
@@ -53,7 +79,8 @@ function copyProjection(value: DiscoveryMemoryPreferenceProjection): DiscoveryMe
 export class DiscoveryMemoryProjectionCoordinator {
   private readonly source: PhoneLocalMemoryProjectionSourcePort;
   private readonly store: DiscoveryMemoryProjectionStorePort;
-  private readonly modelProvider: () => LocalModel;
+  private readonly modelProvider: (() => LocalModel) | null;
+  private readonly runner: MemoryModelTaskRunner | null;
   private readonly onProjection: ((projection: DiscoveryMemoryPreferenceProjection) => void) | null;
   private readonly isActive: () => boolean;
   private readonly now: () => number;
@@ -69,7 +96,11 @@ export class DiscoveryMemoryProjectionCoordinator {
   constructor(options: DiscoveryMemoryProjectionCoordinatorOptions) {
     this.source = options.source;
     this.store = options.store;
-    this.modelProvider = options.modelProvider;
+    this.modelProvider = options.modelProvider ?? null;
+    this.runner = options.runner ?? null;
+    if (this.modelProvider === null && this.runner === null) {
+      throw new Error('Discovery memory projection requires a memory model runner or model provider.');
+    }
     this.onProjection = options.onProjection ?? null;
     this.isActive = options.isActive ?? (() => true);
     this.now = options.now ?? (() => Date.now());
@@ -141,20 +172,41 @@ export class DiscoveryMemoryProjectionCoordinator {
         signals: emptyDiscoveryMemoryPreferenceProjection().signals
       };
       if (facts.length > 0) {
-        const raw = await this.modelProvider().complete(
-          discoveryMemoryProjectionPrompt(facts),
-          new ConversationContext(),
-          DISCOVERY_MEMORY_PROJECTION_SYSTEM_PROMPT
-        );
-        if (!this.active()) return;
-        const parsed = discoveryMemoryPreferenceProjectionFromModelOutput(
-          raw,
-          facts,
-          this.projection,
-          forcedMutationAt
-        );
-        if (parsed === null) throw new Error('Discovery memory projection model returned invalid JSON.');
-        next = parsed;
+        const prompt = discoveryMemoryProjectionPrompt(facts);
+        if (this.runner !== null) {
+          const result = await this.runner.run<DiscoveryMemoryPreferenceProjection>({
+            taskType: 'discovery_memory_projection',
+            prompt,
+            systemPrompt: DISCOVERY_MEMORY_PROJECTION_SYSTEM_PROMPT,
+            validator: new DiscoveryMemoryProjectionSchemaValidator(
+              facts, this.projection, forcedMutationAt
+            ),
+            isActive: this.isActive
+          });
+          if (result.status === 'inactive') return;
+          if (result.status !== 'success' || result.value === null) {
+            throw new Error(result.error?.message ??
+              'Discovery memory projection model returned invalid JSON.');
+          }
+          next = result.value;
+        } else {
+          const modelProvider = this.modelProvider;
+          if (modelProvider === null) throw new Error('Discovery memory projection model is unavailable.');
+          const raw = await modelProvider().complete(
+            prompt,
+            new ConversationContext(),
+            DISCOVERY_MEMORY_PROJECTION_SYSTEM_PROMPT
+          );
+          if (!this.active()) return;
+          const parsed = discoveryMemoryPreferenceProjectionFromModelOutput(
+            raw,
+            facts,
+            this.projection,
+            forcedMutationAt
+          );
+          if (parsed === null) throw new Error('Discovery memory projection model returned invalid JSON.');
+          next = parsed;
+        }
       }
       if (!this.active()) return;
       const saved = this.store.save(next);

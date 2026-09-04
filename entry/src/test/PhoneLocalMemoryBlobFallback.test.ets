@@ -5,7 +5,12 @@ import {
   buildPhoneLocalMemoryBlobSearchSql,
   decodePhoneLocalMemoryEmbeddingBlob,
   encodePhoneLocalMemoryEmbeddingBlob,
+  executePhoneLocalMemoryBlobConditionalTransaction,
   executePhoneLocalMemoryBlobTransaction,
+  phoneLocalMemoryBlobConditionalDeleteValues,
+  phoneLocalMemoryBlobConditionalUpdateValues,
+  PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_DELETE_SQL,
+  PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_UPDATE_SQL,
   PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_HISTORY_SQL,
   PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_SQL,
   PHONE_LOCAL_MEMORY_BLOB_DEDUPE_INDEX_SQL,
@@ -15,6 +20,9 @@ import {
   PhoneLocalMemoryBlobTransactionPort,
   rankPhoneLocalMemoryBlobRecords
 } from '../main/ets/memory/PhoneLocalMemoryBlobFallbackPort';
+import {
+  PhoneLocalMemoryExpectedRecord
+} from '../main/ets/memory/PhoneLocalMemoryStore';
 
 class BlobTransactionSpy implements PhoneLocalMemoryBlobTransactionPort {
   beginTransactionCalls: number = 0;
@@ -25,6 +33,7 @@ class BlobTransactionSpy implements PhoneLocalMemoryBlobTransactionPort {
   executeSql: string[] = [];
   executeArgs: relationalStore.ValueType[][] = [];
   failAt: number = -1;
+  firstResult: relationalStore.ValueType = 0;
 
   beginTransaction(): void {
     this.beginTransactionCalls += 1;
@@ -41,7 +50,7 @@ class BlobTransactionSpy implements PhoneLocalMemoryBlobTransactionPort {
     this.executeSql.push(sql);
     this.executeArgs.push(args ?? []);
     if (this.executeSql.length === this.failAt) throw new Error('injected transaction failure');
-    return 0;
+    return this.executeSql.length === 1 ? this.firstResult : 0;
   }
 
   commit(): void {
@@ -83,6 +92,11 @@ export default function phoneLocalMemoryBlobFallbackTest() {
       );
       expect(PHONE_LOCAL_MEMORY_BLOB_PERSONA_TAG_RECORDS_SQL)
         .assertContain('owner_id = ? AND scene_id = ? AND persona_tag = ?');
+      expect(PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_UPDATE_SQL)
+        .assertContain('fact = ? AND persona_tag = ?');
+      expect(PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_UPDATE_SQL)
+        .assertContain('created_at = ? AND updated_at = ?');
+      expect(PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_DELETE_SQL).assertContain('authority = ?');
       expect(PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_HISTORY_SQL)
         .assertContain('memory_id IN (SELECT memory_id');
       expect(PHONE_LOCAL_MEMORY_BLOB_DELETE_PERSONA_TAG_SQL)
@@ -184,6 +198,68 @@ export default function phoneLocalMemoryBlobFallbackTest() {
       expect(store.threeArgumentExecuteCalls).assertEqual(0);
       expect(store.commitCalls).assertEqual(0);
       expect(store.rollBackCalls).assertEqual(1);
+    });
+
+    it('uses the legacy BLOB lifecycle and skips history when conditional mutation affects zero rows',
+      0, async () => {
+      const store = new BlobTransactionSpy();
+      store.firstResult = 0;
+      const changed = await executePhoneLocalMemoryBlobConditionalTransaction(store,
+        { sql: 'BLOB CAS', args: ['owner', 'memory'] },
+        [{ sql: 'BLOB history', args: ['history'] }]);
+
+      expect(changed).assertFalse();
+      expect(store.beginTransactionCalls).assertEqual(1);
+      expect(store.beginTransCalls).assertEqual(0);
+      expect(store.threeArgumentExecuteCalls).assertEqual(0);
+      expect(store.executeSql.length).assertEqual(1);
+      expect(store.commitCalls).assertEqual(0);
+      expect(store.rollBackCalls).assertEqual(1);
+    });
+
+    it('rolls back once when BLOB CAS succeeds but its history write fails', 0, async () => {
+      const store = new BlobTransactionSpy();
+      store.firstResult = 1;
+      store.failAt = 2;
+      let rejected = false;
+      try {
+        await executePhoneLocalMemoryBlobConditionalTransaction(store,
+          { sql: 'BLOB CAS', args: ['owner', 'memory'] },
+          [{ sql: 'BLOB history', args: ['history'] }]);
+      } catch (_error) {
+        rejected = true;
+      }
+
+      expect(rejected).assertTrue();
+      expect(store.beginTransactionCalls).assertEqual(1);
+      expect(store.beginTransCalls).assertEqual(0);
+      expect(store.threeArgumentExecuteCalls).assertEqual(0);
+      expect(store.executeSql.length).assertEqual(2);
+      expect(store.commitCalls).assertEqual(0);
+      expect(store.rollBackCalls).assertEqual(1);
+    });
+
+    it('keeps BLOB conditional predicate values in exact SQL placeholder order', 0, () => {
+      const current = record('memory-1', 'owner-1', 'global', 'profile', vector(1), 20);
+      current.fact = 'old fact';
+      current.personaTag = 'persona';
+      current.authority = 'seed';
+      current.createdAt = 10;
+      const expected: PhoneLocalMemoryExpectedRecord = {
+        memoryId: current.memoryId, fact: current.fact, personaTag: current.personaTag,
+        authority: current.authority, createdAt: current.createdAt, updatedAt: current.updatedAt
+      };
+      const updateValues = phoneLocalMemoryBlobConditionalUpdateValues('owner-1', current, expected);
+      const deleteValues = phoneLocalMemoryBlobConditionalDeleteValues('owner-1', expected);
+      const suffix = updateValues.slice(updateValues.length - 7);
+      expect(suffix[0] as string).assertEqual('owner-1');
+      expect(suffix[1] as string).assertEqual('memory-1');
+      expect(suffix[2] as string).assertEqual('old fact');
+      expect(suffix[3] as string).assertEqual('persona');
+      expect(suffix[4] as string).assertEqual('seed');
+      expect(suffix[5] as number).assertEqual(10);
+      expect(suffix[6] as number).assertEqual(20);
+      expect(JSON.stringify(deleteValues)).assertEqual(JSON.stringify(suffix));
     });
   });
 }

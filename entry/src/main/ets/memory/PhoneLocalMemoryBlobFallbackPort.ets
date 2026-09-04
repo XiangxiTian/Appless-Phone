@@ -6,6 +6,8 @@ import {
   PHONE_LOCAL_MEMORY_OPERATION_CANCELED,
   PHONE_LOCAL_MEMORY_VECTOR_DIMENSION,
   PhoneLocalMemoryHistoryOperation,
+  PhoneLocalMemoryConditionalWriteResult,
+  PhoneLocalMemoryExpectedRecord,
   PhoneLocalMemoryProjectionFact,
   PhoneLocalMemoryProjectionStats,
   PhoneLocalMemorySearchRequest,
@@ -85,6 +87,16 @@ const BLOB_UPDATE_SQL: string =
   'UPDATE conversation_memory_blob SET scene_id = ?, persona_tag = ?, authority = ?, fact = ?, ' +
   'normalized_fact = ?, fact_hash = ?, embedding = ?, embedding_profile_id = ?, source_turn_id = ?, ' +
   'updated_at = ? WHERE owner_id = ? AND memory_id = ?';
+
+export const PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_UPDATE_SQL: string =
+  'UPDATE conversation_memory_blob SET scene_id = ?, persona_tag = ?, authority = ?, fact = ?, ' +
+  'normalized_fact = ?, fact_hash = ?, embedding = ?, embedding_profile_id = ?, source_turn_id = ?, ' +
+  'updated_at = ? WHERE owner_id = ? AND memory_id = ? AND fact = ? AND persona_tag = ? ' +
+  'AND authority = ? AND created_at = ? AND updated_at = ?';
+
+export const PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_DELETE_SQL: string =
+  'DELETE FROM conversation_memory_blob WHERE owner_id = ? AND memory_id = ? AND fact = ? ' +
+  'AND persona_tag = ? AND authority = ? AND created_at = ? AND updated_at = ?';
 
 const BLOB_INSERT_HISTORY_SQL: string =
   'INSERT INTO conversation_memory_blob_history ' +
@@ -332,6 +344,44 @@ function updateValues(ownerId: string, record: MemoryRecord): relationalStore.Va
     record.sourceTurnId, record.updatedAt, ownerId, record.memoryId];
 }
 
+export async function executePhoneLocalMemoryBlobConditionalTransaction(
+  store: PhoneLocalMemoryBlobTransactionPort,
+  mutation: PhoneLocalMemoryBlobStatement,
+  afterMutation: PhoneLocalMemoryBlobStatement[]
+): Promise<boolean> {
+  store.beginTransaction();
+  let committed = false;
+  try {
+    const affected = mutation.args === undefined ? await store.execute(mutation.sql) :
+      await store.execute(mutation.sql, mutation.args);
+    if (typeof affected !== 'number' || affected !== 1) return false;
+    for (let position = 0; position < afterMutation.length; position += 1) {
+      const statement = afterMutation[position];
+      if (statement.args === undefined) await store.execute(statement.sql);
+      else await store.execute(statement.sql, statement.args);
+    }
+    store.commit();
+    committed = true;
+    return true;
+  } finally {
+    if (!committed) store.rollBack();
+  }
+}
+
+export function phoneLocalMemoryBlobConditionalUpdateValues(ownerId: string, record: MemoryRecord,
+  expected: PhoneLocalMemoryExpectedRecord): relationalStore.ValueType[] {
+  const values = updateValues(ownerId, record);
+  values.push(expected.fact, expected.personaTag, expected.authority,
+    expected.createdAt, expected.updatedAt);
+  return values;
+}
+
+export function phoneLocalMemoryBlobConditionalDeleteValues(ownerId: string,
+  expected: PhoneLocalMemoryExpectedRecord): relationalStore.ValueType[] {
+  return [ownerId, expected.memoryId, expected.fact, expected.personaTag, expected.authority,
+    expected.createdAt, expected.updatedAt];
+}
+
 function historyStatement(record: MemoryRecord,
   operation: PhoneLocalMemoryHistoryOperation): PhoneLocalMemoryBlobStatement {
   return {
@@ -512,6 +562,36 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
     }
   }
 
+  async replaceIfCurrent(ownerId: string, record: MemoryRecord, expected: PhoneLocalMemoryExpectedRecord,
+    guard?: MemoryCommitGuard): Promise<PhoneLocalMemoryConditionalWriteResult> {
+    if (ownerId !== record.ownerId || record.memoryId !== expected.memoryId) {
+      throw new Error('Memory record does not match conditional update scope.');
+    }
+    const store = await this.readyStore();
+    await this.writeMutex.acquire();
+    try {
+      requireActiveCommit(guard);
+      try {
+        const mutation: PhoneLocalMemoryBlobStatement = {
+          sql: PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_UPDATE_SQL,
+          args: phoneLocalMemoryBlobConditionalUpdateValues(ownerId, record, expected)
+        };
+        const history = historyStatement(record, 'update');
+        const historyAfter: PhoneLocalMemoryBlobStatement = {
+          sql: history.sql, args: history.args ?? []
+        };
+        const changed = await executePhoneLocalMemoryBlobConditionalTransaction(
+          new ArkDataBlobTransactionAdapter(store), mutation, [historyAfter]
+        );
+        return changed ? { status: 'success', record } : { status: 'conflict', record: null };
+      } catch (error) {
+        throw error instanceof Error ? error : new Error('BLOB memory update failed.');
+      }
+    } finally {
+      this.writeMutex.release();
+    }
+  }
+
   async remove(ownerId: string, memoryId: string,
     guard?: MemoryCommitGuard): Promise<MemoryRecord | null> {
     const store = await this.readyStore();
@@ -529,6 +609,34 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
           args: [ownerId, memoryId]
         }]);
         return existing;
+      } catch (error) {
+        throw error instanceof Error ? error : new Error('BLOB memory delete failed.');
+      }
+    } finally {
+      this.writeMutex.release();
+    }
+  }
+
+  async removeIfCurrent(ownerId: string, memoryId: string, expected: PhoneLocalMemoryExpectedRecord,
+    guard?: MemoryCommitGuard): Promise<PhoneLocalMemoryConditionalWriteResult> {
+    if (memoryId !== expected.memoryId) throw new Error('Memory record does not match conditional delete scope.');
+    const store = await this.readyStore();
+    await this.writeMutex.acquire();
+    try {
+      requireActiveCommit(guard);
+      try {
+        const mutation: PhoneLocalMemoryBlobStatement = {
+          sql: PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_DELETE_SQL,
+          args: phoneLocalMemoryBlobConditionalDeleteValues(ownerId, expected)
+        };
+        const historyDelete: PhoneLocalMemoryBlobStatement = {
+          sql: 'DELETE FROM conversation_memory_blob_history WHERE owner_id = ? AND memory_id = ?',
+          args: [ownerId, memoryId]
+        };
+        const changed = await executePhoneLocalMemoryBlobConditionalTransaction(
+          new ArkDataBlobTransactionAdapter(store), mutation, [historyDelete]
+        );
+        return changed ? { status: 'success', record: null } : { status: 'conflict', record: null };
       } catch (error) {
         throw error instanceof Error ? error : new Error('BLOB memory delete failed.');
       }

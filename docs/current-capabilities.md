@@ -1,6 +1,6 @@
 # 当前工具能力总表
 
-更新时间：2026-08-24
+更新时间：2026-09-02
 
 来源：`agent_core/src/main/ets/aiphone/AiphoneToolDefinitions.ets`、`agent_core/src/main/ets/aiphone/runtime/ToolDefinitionRegistry.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentRuntime.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets`、`agent_core/src/main/ets/aiphone/runtime/AggregateSearchClient.ets`、`agent_core/src/main/ets/aiphone/runtime/ComposioDynamicBackend.ets`、`scripts/aiphone-device-smoke.mjs`、支付/Composio 相关单测。
 
@@ -9,6 +9,8 @@
 授权页统一显示 app 名称。Slack、X 的读取和授权统一走当前用户的 Composio connected account；用户确认发送 Slack 回复时固定执行 `SLACK_CHAT_POST_MESSAGE`，X 回复仍不支持。QQ 邮箱、瑞幸、滴滴继续使用当前默认凭证和原有 provider 逻辑，授权页只新增各自官方授权/开发者页面入口，不会把网页登录结果自动写回 App。
 
 Firecrawl 六个固定工具由 HAP 携带 `FIRECRAWL_API_KEY`，直接连接 Firecrawl Hosted MCP；这是当前产品配置选择，不依赖 Mac gateway，也不会在手机上运行 Chromium。Credit、Monitor 检查和套餐计费均由 Firecrawl 账号/Provider 管理。Monitor 是退出 App 后仍保留的 Firecrawl 云状态；此版本没有 HarmonyOS 原生推送。
+
+用户管理页现提供“长期记忆”概览入口。宿主读取当前登录账号的全部长期记忆，以内部短索引交给 memory-only 模型任务生成 claim 级概览；主概览只展示模型整理后的统一内容，不暴露索引、原始记忆事实、更新时间或真实 memoryId。修正确认页仍会展示拟修改内容的前后 diff，并在内部关联精确来源；只有再次确认才调用本地 memory runtime，写入前会核验目标记录未变化，成功后用短时 Toast 提示，`presentation_only` 只调整本次概览、不写数据库。由于确认可能更新或删除真实长期记忆，该页面的真机写入验证为 `manual-only`，自动 smoke 只应停在确认方案页。
 
 ## 心上事（BIM）
 

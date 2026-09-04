@@ -315,7 +315,12 @@ import { HuaweiAccountLoginPage } from '../../account/HuaweiAccountLoginPage';
 import { configuredHuaweiAccountClientId } from '../../account/HuaweiAccountService';
 import { DefaultLegacyAccountClaimCoordinator } from '../../account/LegacyAccountMigration';
 import { ConfigPage } from './components/ConfigPage';
-import { LongTermMemoryPlaceholderPage } from './components/LongTermMemoryPlaceholderPage';
+import {
+  LONG_TERM_MEMORY_CORRECTION_SUCCESS_TOAST,
+  LongTermMemoryPage,
+  LongTermMemoryPageStatus,
+  shouldScrollLongTermMemoryApplyResultToTop
+} from './components/LongTermMemoryPage';
 import { PublicPersonaPage } from './components/PublicPersonaPage';
 import { UserManagementPage } from './components/UserManagementPage';
 import { PublicPersonaClient } from '../../publicpersona/PublicPersonaClient';
@@ -323,6 +328,23 @@ import {
   PhoneLocalMemoryMutationEvent,
   PhoneLocalMemoryRuntime
 } from '../../memory/PhoneLocalMemoryRuntime';
+import {
+  LongTermMemoryCorrectionApplyResult,
+  LongTermMemoryCorrectionPlanResult,
+  LongTermMemoryOverviewCoordinator,
+  LongTermMemoryOverviewGenerationResult
+} from '../../memory/LongTermMemoryOverviewCoordinator';
+import { MemoryModelTaskRunner } from '../../memory/MemoryModelTaskRunner';
+import {
+  MEMORY_OVERVIEW_CACHE_STORE_NAME,
+  MemoryOverviewCacheStore,
+  memoryOverviewCacheStoreNameForOwner
+} from '../../memory/MemoryOverviewCacheStore';
+import {
+  MemoryCorrectionPlan,
+  MemoryOverview,
+  MemoryOverviewEvidenceIndex
+} from '../../memory/MemoryOverview';
 import {
   PhoneLocalMemoryAvailabilityPort,
   phoneLocalMemoryAvailabilityForContext
@@ -1197,6 +1219,15 @@ struct Index {
   @State accountOwnerId: string = '';
   @State showUserManagementPage: boolean = false;
   @State showLongTermMemoryPage: boolean = false;
+  @State longTermMemoryPageStatus: LongTermMemoryPageStatus = 'loading';
+  @State longTermMemoryOverview: MemoryOverview | null = null;
+  @State longTermMemoryEvidenceIndex: MemoryOverviewEvidenceIndex = { entries: [] };
+  @State longTermMemoryMessage: string = '';
+  @State longTermMemoryCorrectionInput: string = '';
+  @State longTermMemoryCorrectionPlan: MemoryCorrectionPlan | null = null;
+  @State longTermMemoryPlanning: boolean = false;
+  @State longTermMemoryApplying: boolean = false;
+  @State longTermMemoryScrollTopTick: number = 0;
   @State showLogoutConfirmation: boolean = false;
   @State accountDisplayName: string = effectiveAccountDisplayName(emptyAccountProfileSnapshot());
   @State accountNameSaveMessage: string = '';
@@ -1440,6 +1471,10 @@ struct Index {
   private hotelReturnSurface: A2uiSurfaceState | null = null;
   private multiAgentRuntime: MultiAgentCanaryRuntime | null = null;
   private phoneLocalMemoryRuntime: PhoneLocalMemoryRuntime | null = null;
+  private memoryModelTaskRunnerInstance: MemoryModelTaskRunner | null = null;
+  private memoryOverviewCacheStoreInstance: MemoryOverviewCacheStore | null = null;
+  private longTermMemoryOverviewCoordinatorInstance: LongTermMemoryOverviewCoordinator | null = null;
+  private longTermMemoryPageGeneration: number = 0;
   private phoneLocalMemoryAvailability: PhoneLocalMemoryAvailabilityPort | null = null;
   private bimStoreInstance: BimStore | null = null;
   private bimCuratorTail: Promise<void> = Promise.resolve();
@@ -3803,6 +3838,177 @@ struct Index {
     this.showLogoutConfirmation = false;
   }
 
+  private memoryModelTaskRunner(): MemoryModelTaskRunner {
+    if (this.memoryModelTaskRunnerInstance === null) {
+      this.memoryModelTaskRunnerInstance = new MemoryModelTaskRunner({
+        settingsProvider: (): LocalModelSettings => this.getSettings()
+      });
+    }
+    return this.memoryModelTaskRunnerInstance;
+  }
+
+  private longTermMemoryOverviewCoordinator(): LongTermMemoryOverviewCoordinator {
+    if (this.longTermMemoryOverviewCoordinatorInstance === null) {
+      const ownerId = this.requireAccountOwnerId();
+      const accountGeneration = this.accountOwnerGeneration;
+      const runtime = this.localMemoryRuntime();
+      this.longTermMemoryOverviewCoordinatorInstance = new LongTermMemoryOverviewCoordinator({
+        source: runtime,
+        runtime,
+        runner: this.memoryModelTaskRunner(),
+        cacheStore: this.memoryOverviewCacheStore(),
+        isActive: (): boolean => this.showLongTermMemoryPage &&
+          this.accountSessionStatus === AccountSessionStatus.AUTHENTICATED &&
+          this.accountOwnerId === ownerId && this.accountOwnerGeneration === accountGeneration
+      });
+    }
+    return this.longTermMemoryOverviewCoordinatorInstance;
+  }
+
+  private memoryOverviewCacheStore(): MemoryOverviewCacheStore {
+    if (this.memoryOverviewCacheStoreInstance === null) {
+      const context = this.getUIContext().getHostContext() as common.Context;
+      this.memoryOverviewCacheStoreInstance = MemoryOverviewCacheStore.fromContext(
+        context, this.scopedStoreName(MEMORY_OVERVIEW_CACHE_STORE_NAME)
+      );
+    }
+    return this.memoryOverviewCacheStoreInstance;
+  }
+
+  private memoryOverviewCacheStoreForOwner(ownerId: string): MemoryOverviewCacheStore {
+    const context = this.getUIContext().getHostContext() as common.Context;
+    return MemoryOverviewCacheStore.fromContext(context, memoryOverviewCacheStoreNameForOwner(ownerId));
+  }
+
+  private resetLongTermMemoryPageState(clearInput: boolean): void {
+    this.longTermMemoryPageStatus = 'loading';
+    this.longTermMemoryOverview = null;
+    this.longTermMemoryEvidenceIndex = { entries: [] };
+    this.longTermMemoryMessage = '';
+    this.longTermMemoryCorrectionPlan = null;
+    this.longTermMemoryPlanning = false;
+    this.longTermMemoryApplying = false;
+    if (clearInput) this.longTermMemoryCorrectionInput = '';
+  }
+
+  private invalidateLongTermMemoryOverviewForAccount(): void {
+    this.longTermMemoryPageGeneration += 1;
+    if (this.longTermMemoryOverviewCoordinatorInstance !== null) {
+      this.longTermMemoryOverviewCoordinatorInstance.invalidate();
+    }
+    if (this.memoryModelTaskRunnerInstance !== null) {
+      this.memoryModelTaskRunnerInstance.invalidate();
+    }
+    this.longTermMemoryOverviewCoordinatorInstance = null;
+    this.memoryModelTaskRunnerInstance = null;
+    this.resetLongTermMemoryPageState(true);
+  }
+
+  private openLongTermMemoryOverview(): void {
+    this.showUserManagementPage = false;
+    this.showLongTermMemoryPage = true;
+    this.resetLongTermMemoryPageState(true);
+    const cached = this.longTermMemoryOverviewCoordinator().cachedOverviewResult();
+    if (cached !== null) {
+      this.longTermMemoryOverview = cached.overview;
+      this.longTermMemoryEvidenceIndex = cached.evidenceIndex;
+      this.longTermMemoryPageStatus = 'ready';
+    }
+    void this.refreshLongTermMemoryOverview(cached === null);
+  }
+
+  private closeLongTermMemoryOverview(): void {
+    this.longTermMemoryPageGeneration += 1;
+    if (this.longTermMemoryOverviewCoordinatorInstance !== null) {
+      this.longTermMemoryOverviewCoordinatorInstance.invalidate();
+    }
+    this.longTermMemoryPlanning = false;
+    this.longTermMemoryApplying = false;
+    this.longTermMemoryCorrectionPlan = null;
+    this.showLongTermMemoryPage = false;
+    this.showUserManagementPage = true;
+  }
+
+  private async refreshLongTermMemoryOverview(showLoading: boolean = true): Promise<void> {
+    if (!this.showLongTermMemoryPage) return;
+    const coordinator = this.longTermMemoryOverviewCoordinator();
+    coordinator.invalidate();
+    const generation = ++this.longTermMemoryPageGeneration;
+    if (showLoading) {
+      this.longTermMemoryPageStatus = 'loading';
+      this.longTermMemoryMessage = '';
+    }
+    this.longTermMemoryCorrectionPlan = null;
+    this.longTermMemoryPlanning = false;
+    this.longTermMemoryApplying = false;
+    const result: LongTermMemoryOverviewGenerationResult = await coordinator.generateOverview();
+    if (generation !== this.longTermMemoryPageGeneration || result.status === 'inactive' ||
+      !this.showLongTermMemoryPage) return;
+    this.longTermMemoryOverview = result.overview;
+    this.longTermMemoryEvidenceIndex = result.evidenceIndex;
+    this.longTermMemoryMessage = result.message;
+    if (result.status === 'ready') this.longTermMemoryPageStatus = 'ready';
+    if (result.status === 'empty') this.longTermMemoryPageStatus = 'empty';
+    if (result.status === 'error') this.longTermMemoryPageStatus = 'error';
+  }
+
+  private async planLongTermMemoryCorrection(): Promise<void> {
+    if (this.longTermMemoryPlanning || this.longTermMemoryApplying ||
+      this.longTermMemoryCorrectionInput.trim().length === 0) return;
+    const coordinator = this.longTermMemoryOverviewCoordinator();
+    const generation = this.longTermMemoryPageGeneration;
+    this.longTermMemoryPlanning = true;
+    this.longTermMemoryMessage = '';
+    const result: LongTermMemoryCorrectionPlanResult = await coordinator.planCorrection(
+      this.longTermMemoryCorrectionInput
+    );
+    if (generation !== this.longTermMemoryPageGeneration || result.status === 'inactive' ||
+      !this.showLongTermMemoryPage) return;
+    this.longTermMemoryPlanning = false;
+    this.longTermMemoryMessage = result.message;
+    if (result.status === 'ready' || result.status === 'needs_clarification') {
+      this.longTermMemoryCorrectionPlan = result.plan;
+      this.longTermMemoryScrollTopTick += 1;
+    }
+  }
+
+  private async applyLongTermMemoryCorrection(): Promise<void> {
+    if (this.longTermMemoryApplying || this.longTermMemoryCorrectionPlan === null ||
+      this.longTermMemoryCorrectionPlan.status !== 'ready') return;
+    const coordinator = this.longTermMemoryOverviewCoordinator();
+    const generation = this.longTermMemoryPageGeneration;
+    const plan = this.longTermMemoryCorrectionPlan;
+    this.longTermMemoryApplying = true;
+    const result: LongTermMemoryCorrectionApplyResult = await coordinator.applyPlan(plan);
+    if (generation !== this.longTermMemoryPageGeneration || result.status === 'inactive' ||
+      !this.showLongTermMemoryPage) return;
+    this.longTermMemoryApplying = false;
+    this.longTermMemoryMessage = result.status === 'success' ? '' : result.message;
+    if (shouldScrollLongTermMemoryApplyResultToTop(result.status)) {
+      this.longTermMemoryScrollTopTick += 1;
+    }
+    if (result.status === 'conflict') {
+      this.longTermMemoryCorrectionPlan = null;
+      this.longTermMemoryPageStatus = 'ready';
+      return;
+    }
+    this.longTermMemoryCorrectionPlan = null;
+    this.longTermMemoryOverview = result.overview;
+    this.longTermMemoryEvidenceIndex = result.evidenceIndex;
+    if (result.status === 'success' || result.status === 'presentation_only' ||
+      result.status === 'partial') {
+      if (result.status === 'success') {
+        this.getUIContext().getPromptAction().showToast({
+          message: LONG_TERM_MEMORY_CORRECTION_SUCCESS_TOAST
+        });
+      }
+      this.longTermMemoryPageStatus = result.overview === null ? 'empty' : 'ready';
+      this.longTermMemoryCorrectionInput = '';
+      return;
+    }
+    this.longTermMemoryPageStatus = result.overview === null ? 'error' : 'ready';
+  }
+
   private requireAccountOwnerId(): string {
     const ownerId: string = this.accountOwnerId.trim();
     if (ownerId.length === 0) {
@@ -3864,10 +4070,12 @@ struct Index {
 
   private invalidateAccountScopedState(preserveInput: boolean): void {
     const pendingInput: string = preserveInput ? this.inputText : '';
+    this.invalidateLongTermMemoryOverviewForAccount();
     this.accountOwnerGeneration += 1;
     this.unsubscribeTrainPresaleHandoff();
     this.disposeHotelRuntime();
     this.phoneLocalMemoryRuntime = null;
+    this.memoryOverviewCacheStoreInstance = null;
     this.bimStoreInstance = null;
     this.waterfallPreferencesStoreInstance = null;
     this.discoveryMemoryProjectionStoreInstance = null;
@@ -4221,7 +4429,8 @@ struct Index {
         const rebuiltFacts = await this.publicPersonaClient.rebuildMemoryFacts(
           snapshot,
           this.getSettings(),
-          importedAt
+          importedAt,
+          this.memoryModelTaskRunner()
         );
         if (jobId !== this.publicPersonaJobId || ownerGeneration !== this.accountOwnerGeneration) return false;
         const rebuiltSnapshot = sanitizePublicPersonaSnapshot(
@@ -5212,7 +5421,7 @@ struct Index {
       const options: DiscoveryMemoryProjectionCoordinatorOptions = {
         source: this.localMemoryRuntime(),
         store: this.discoveryMemoryProjectionStore(),
-        modelProvider: (): LocalModel => this.canaryModel(),
+        runner: this.memoryModelTaskRunner(),
         isActive: (): boolean => this.accountOwnerId === ownerId &&
           this.accountOwnerGeneration === ownerGeneration,
         onProjection: (projection: DiscoveryMemoryPreferenceProjection): void => {
@@ -5250,7 +5459,15 @@ struct Index {
     }
   }
 
-  private onPhoneLocalMemoryMutation(event: PhoneLocalMemoryMutationEvent): void {
+  private onPhoneLocalMemoryMutation(event: PhoneLocalMemoryMutationEvent, ownerId: string): void {
+    try {
+      this.memoryOverviewCacheStoreForOwner(ownerId).clear();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      aiLogError('[AIPhone][MemoryOverviewCache] code=mutation_clear_failed operation=' +
+        event.operation + ' detail=' + message.substring(0, 200));
+    }
+    if (this.accountOwnerId !== ownerId) return;
     try {
       this.discoveryMemoryProjectionCoordinator().notify(event);
     } catch (error) {
@@ -5715,10 +5932,11 @@ struct Index {
   private localMemoryRuntime(): PhoneLocalMemoryRuntime {
     if (this.phoneLocalMemoryRuntime === null) {
       const context = this.getUIContext().getHostContext() as common.Context;
+      const ownerId = this.requireAccountOwnerId();
       this.phoneLocalMemoryRuntime = new PhoneLocalMemoryRuntime(context, {
-        ownerId: this.requireAccountOwnerId(),
+        ownerId,
         onMutationCommitted: (event: PhoneLocalMemoryMutationEvent): Promise<void> => {
-          this.onPhoneLocalMemoryMutation(event);
+          this.onPhoneLocalMemoryMutation(event, ownerId);
           return Promise.resolve();
         }
       });
@@ -12028,8 +12246,11 @@ struct Index {
       return true;
     }
     if (this.showLongTermMemoryPage) {
-      this.showLongTermMemoryPage = false;
-      this.showUserManagementPage = true;
+      if (this.longTermMemoryCorrectionPlan !== null) {
+        this.longTermMemoryCorrectionPlan = null;
+      } else {
+        this.closeLongTermMemoryOverview();
+      }
       return true;
     }
     if (this.showPublicPersonaPage) {
@@ -12086,8 +12307,7 @@ struct Index {
         this.openPublicPersona(true);
       },
       onOpenLongTermMemory: (): void => {
-        this.showUserManagementPage = false;
-        this.showLongTermMemoryPage = true;
+        this.openLongTermMemoryOverview();
       },
       onRequestLogoutConfirmation: (): void => {
         this.showLogoutConfirmation = true;
@@ -12103,10 +12323,38 @@ struct Index {
 
   @Builder
   private LongTermMemoryPageContent() {
-    LongTermMemoryPlaceholderPage({
+    LongTermMemoryPage({
+      status: this.longTermMemoryPageStatus,
+      overview: this.longTermMemoryOverview,
+      message: this.longTermMemoryMessage,
+      plan: this.longTermMemoryCorrectionPlan,
+      correctionInput: this.longTermMemoryCorrectionInput,
+      planning: this.longTermMemoryPlanning,
+      applying: this.longTermMemoryApplying,
+      scrollToTopTick: this.longTermMemoryScrollTopTick,
       onBack: (): void => {
-        this.showLongTermMemoryPage = false;
-        this.showUserManagementPage = true;
+        if (this.longTermMemoryCorrectionPlan !== null) {
+          this.longTermMemoryCorrectionPlan = null;
+          this.longTermMemoryScrollTopTick += 1;
+        } else {
+          this.closeLongTermMemoryOverview();
+        }
+      },
+      onRetry: (): void => {
+        void this.refreshLongTermMemoryOverview();
+      },
+      onCorrectionInputChange: (value: string): void => {
+        this.longTermMemoryCorrectionInput = value;
+      },
+      onPlanCorrection: (): void => {
+        void this.planLongTermMemoryCorrection();
+      },
+      onConfirmPlan: (): void => {
+        void this.applyLongTermMemoryCorrection();
+      },
+      onCancelPlan: (): void => {
+        this.longTermMemoryCorrectionPlan = null;
+        this.longTermMemoryScrollTopTick += 1;
       }
     })
   }

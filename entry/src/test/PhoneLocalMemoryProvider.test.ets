@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@ohos/hypium';
+import { relationalStore } from '@kit.ArkData';
 import {
   EmbeddingPort,
   MemoryHit,
@@ -8,6 +9,8 @@ import {
 } from '@loop/agent-core';
 import {
   buildPhoneLocalMemorySearchSql,
+  PHONE_LOCAL_MEMORY_CONDITIONAL_DELETE_SQL,
+  PHONE_LOCAL_MEMORY_CONDITIONAL_UPDATE_SQL,
   PHONE_LOCAL_MEMORY_DELETE_SQL,
   PHONE_LOCAL_MEMORY_DELETE_PERSONA_TAG_HISTORY_SQL,
   PHONE_LOCAL_MEMORY_DELETE_PERSONA_TAG_SQL,
@@ -23,7 +26,15 @@ import {
   PHONE_LOCAL_MEMORY_SCHEMA_SQL,
   PHONE_LOCAL_MEMORY_UPDATE_SQL,
   PHONE_LOCAL_MEMORY_VECTOR_INDEX_SQL,
+  executePhoneLocalMemoryConditionalTransaction,
   phoneLocalMemoryCandidateLimit,
+  phoneLocalMemoryConditionalDeleteValues,
+  phoneLocalMemoryConditionalUpdateValues,
+  phoneLocalMemoryExpectedRecordMatches,
+  PhoneLocalMemoryConditionalWriteResult,
+  PhoneLocalMemoryConditionalStatement,
+  PhoneLocalMemoryConditionalTransactionPort,
+  PhoneLocalMemoryExpectedRecord,
   PhoneLocalMemoryProjectionFact,
   PhoneLocalMemoryProjectionStats,
   PhoneLocalMemorySearchRequest,
@@ -32,7 +43,8 @@ import {
 import {
   PhoneLocalMemoryLogContext,
   PhoneLocalMemoryLogger,
-  PhoneLocalMemoryProvider
+  PhoneLocalMemoryProvider,
+  PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE
 } from '../main/ets/memory/PhoneLocalMemoryProvider';
 
 function copyRecord(record: MemoryRecord): MemoryRecord {
@@ -145,6 +157,7 @@ class FakeMemoryStore implements PhoneLocalMemoryStore {
   searchCalls: PhoneLocalMemorySearchRequest[] = [];
   metadata: Map<string, string> = new Map<string, string>();
   insertHook: (() => void) | null = null;
+  conditionalHook: (() => void) | null = null;
 
   async initialize(): Promise<void> {}
 
@@ -262,6 +275,22 @@ class FakeMemoryStore implements PhoneLocalMemoryStore {
     throw new Error('missing record');
   }
 
+  async replaceIfCurrent(ownerId: string, record: MemoryRecord, expected: PhoneLocalMemoryExpectedRecord,
+    guard?: MemoryCommitGuard): Promise<PhoneLocalMemoryConditionalWriteResult> {
+    requireFakeCommit(guard);
+    if (this.conditionalHook !== null) this.conditionalHook();
+    for (let index = 0; index < this.records.length; index += 1) {
+      const existing = this.records[index];
+      if (existing.ownerId !== ownerId || existing.memoryId !== record.memoryId) continue;
+      if (!phoneLocalMemoryExpectedRecordMatches(existing, expected)) {
+        return { status: 'conflict', record: copyRecord(existing) };
+      }
+      this.records[index] = copyRecord(record);
+      return { status: 'success', record: copyRecord(record) };
+    }
+    return { status: 'not_found', record: null };
+  }
+
   async remove(ownerId: string, memoryId: string,
     guard?: MemoryCommitGuard): Promise<MemoryRecord | null> {
     requireFakeCommit(guard);
@@ -272,6 +301,22 @@ class FakeMemoryStore implements PhoneLocalMemoryStore {
       return copyRecord(deleted);
     }
     return null;
+  }
+
+  async removeIfCurrent(ownerId: string, memoryId: string, expected: PhoneLocalMemoryExpectedRecord,
+    guard?: MemoryCommitGuard): Promise<PhoneLocalMemoryConditionalWriteResult> {
+    requireFakeCommit(guard);
+    if (this.conditionalHook !== null) this.conditionalHook();
+    for (let index = 0; index < this.records.length; index += 1) {
+      const existing = this.records[index];
+      if (existing.ownerId !== ownerId || existing.memoryId !== memoryId) continue;
+      if (!phoneLocalMemoryExpectedRecordMatches(existing, expected)) {
+        return { status: 'conflict', record: copyRecord(existing) };
+      }
+      this.records.splice(index, 1);
+      return { status: 'success', record: copyRecord(existing) };
+    }
+    return { status: 'not_found', record: null };
   }
 
   async removeAll(ownerId: string, sceneIds: string[]): Promise<MemoryRecord[]> {
@@ -361,6 +406,51 @@ function provider(store: FakeMemoryStore, embedder: EmbeddingPort): PhoneLocalMe
   });
 }
 
+class ConditionalTransactionStore implements PhoneLocalMemoryConditionalTransactionPort {
+  affected: relationalStore.ValueType = 0;
+  throwMutation: boolean = false;
+  failAt: number = -1;
+  executedSql: string[] = [];
+  commitCalls: number = 0;
+  rollbackCalls: number = 0;
+
+  beginTrans(): Promise<number> {
+    return Promise.resolve(7);
+  }
+
+  execute(sql: string, _txId: number,
+    _args: relationalStore.ValueType[]): Promise<relationalStore.ValueType> {
+    this.executedSql.push(sql);
+    if (this.executedSql.length === this.failAt) return Promise.reject(new Error('statement failed'));
+    if (this.executedSql.length === 1) {
+      if (this.throwMutation) return Promise.reject(new Error('mutation failed'));
+      return Promise.resolve(this.affected);
+    }
+    return Promise.resolve(1);
+  }
+
+  commit(_txId: number): Promise<void> {
+    this.commitCalls += 1;
+    return Promise.resolve();
+  }
+
+  rollback(_txId: number): Promise<void> {
+    this.rollbackCalls += 1;
+    return Promise.resolve();
+  }
+}
+
+function expectedRecord(record: MemoryRecord): PhoneLocalMemoryExpectedRecord {
+  return {
+    memoryId: record.memoryId,
+    fact: record.fact,
+    personaTag: record.personaTag,
+    authority: record.authority,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt
+  };
+}
+
 export default function phoneLocalMemoryProviderTest() {
   describe('PhoneLocalMemoryProvider', () => {
     it('declares only the persistent vector schema and cosine ANN index', 0, () => {
@@ -391,6 +481,10 @@ export default function phoneLocalMemoryProviderTest() {
       expect(PHONE_LOCAL_MEMORY_INSERT_SQL).assertContain('INSERT INTO conversation_memory');
       expect(PHONE_LOCAL_MEMORY_UPDATE_SQL).assertContain('WHERE owner_id = ? AND memory_id = ?');
       expect(PHONE_LOCAL_MEMORY_DELETE_SQL).assertContain('WHERE owner_id = ? AND memory_id = ?');
+      expect(PHONE_LOCAL_MEMORY_CONDITIONAL_UPDATE_SQL).assertContain('fact = ? AND persona_tag = ?');
+      expect(PHONE_LOCAL_MEMORY_CONDITIONAL_UPDATE_SQL).assertContain('created_at = ? AND updated_at = ?');
+      expect(PHONE_LOCAL_MEMORY_CONDITIONAL_DELETE_SQL).assertContain('authority = ?');
+      expect(PHONE_LOCAL_MEMORY_CONDITIONAL_DELETE_SQL).assertContain('created_at = ? AND updated_at = ?');
       const searchSql = buildPhoneLocalMemorySearchSql(100);
       expect(searchSql).assertContain('ORDER BY embedding <=> ? LIMIT 100');
       expect(searchSql.indexOf('LIMIT ?')).assertEqual(-1);
@@ -402,6 +496,80 @@ export default function phoneLocalMemoryProviderTest() {
       expect(phoneLocalMemoryCandidateLimit(2)).assertEqual(100);
       expect(phoneLocalMemoryCandidateLimit(20)).assertEqual(200);
       expect(phoneLocalMemoryCandidateLimit(100)).assertEqual(1000);
+    });
+
+    it('fails closed on non-one CAS results without history and rolls back exactly once', 0, async () => {
+      const mutation: PhoneLocalMemoryConditionalStatement = { sql: 'conditional mutation', args: [] };
+      const history: PhoneLocalMemoryConditionalStatement = { sql: 'history write', args: [] };
+      const zeroStore = new ConditionalTransactionStore();
+      zeroStore.affected = 0;
+      const changed = await executePhoneLocalMemoryConditionalTransaction(zeroStore, mutation, [history]);
+      expect(changed).assertFalse();
+      expect(zeroStore.executedSql.length).assertEqual(1);
+      expect(zeroStore.commitCalls).assertEqual(0);
+      expect(zeroStore.rollbackCalls).assertEqual(1);
+
+      const unknownStore = new ConditionalTransactionStore();
+      unknownStore.affected = 'unexpected';
+      expect(await executePhoneLocalMemoryConditionalTransaction(
+        unknownStore, mutation, [history])).assertFalse();
+      expect(unknownStore.executedSql.length).assertEqual(1);
+      expect(unknownStore.rollbackCalls).assertEqual(1);
+
+      const throwingStore = new ConditionalTransactionStore();
+      throwingStore.throwMutation = true;
+      let rejected = false;
+      try {
+        await executePhoneLocalMemoryConditionalTransaction(throwingStore, mutation, [history]);
+      } catch (_error) {
+        rejected = true;
+      }
+      expect(rejected).assertTrue();
+      expect(throwingStore.executedSql.length).assertEqual(1);
+      expect(throwingStore.rollbackCalls).assertEqual(1);
+
+      const historyFailureStore = new ConditionalTransactionStore();
+      historyFailureStore.affected = 1;
+      historyFailureStore.failAt = 2;
+      rejected = false;
+      try {
+        await executePhoneLocalMemoryConditionalTransaction(historyFailureStore, mutation, [history]);
+      } catch (_error) {
+        rejected = true;
+      }
+      expect(rejected).assertTrue();
+      expect(historyFailureStore.executedSql.length).assertEqual(2);
+      expect(historyFailureStore.commitCalls).assertEqual(0);
+      expect(historyFailureStore.rollbackCalls).assertEqual(1);
+
+      const successStore = new ConditionalTransactionStore();
+      successStore.affected = 1;
+      expect(await executePhoneLocalMemoryConditionalTransaction(
+        successStore, mutation, [history])).assertTrue();
+      expect(successStore.executedSql.length).assertEqual(2);
+      expect(successStore.commitCalls).assertEqual(1);
+      expect(successStore.rollbackCalls).assertEqual(0);
+    });
+
+    it('keeps vector conditional predicate values in exact SQL placeholder order', 0, () => {
+      const current: MemoryRecord = {
+        memoryId: 'memory-1', ownerId: 'owner-1', sceneId: 'global', personaTag: 'persona',
+        authority: 'seed', fact: 'old fact', normalizedFact: 'old fact', factHash: 'hash',
+        embedding: new Array<number>(512).fill(0), embeddingProfileId: 'profile',
+        sourceTurnId: 'turn', createdAt: 10, updatedAt: 20
+      };
+      const expected = expectedRecord(current);
+      const updateValues = phoneLocalMemoryConditionalUpdateValues('owner-1', current, expected);
+      const deleteValues = phoneLocalMemoryConditionalDeleteValues('owner-1', expected);
+      const suffix = updateValues.slice(updateValues.length - 7);
+      expect(suffix[0] as string).assertEqual('owner-1');
+      expect(suffix[1] as string).assertEqual('memory-1');
+      expect(suffix[2] as string).assertEqual('old fact');
+      expect(suffix[3] as string).assertEqual('persona');
+      expect(suffix[4] as string).assertEqual('seed');
+      expect(suffix[5] as number).assertEqual(10);
+      expect(suffix[6] as number).assertEqual(20);
+      expect(JSON.stringify(deleteValues)).assertEqual(JSON.stringify(suffix));
     });
 
     it('keeps successful records when one best-effort insert fails', 0, async () => {
@@ -722,6 +890,41 @@ export default function phoneLocalMemoryProviderTest() {
       const forgotten = await memory.forget('owner-1', memoryId);
       expect(forgotten.status).assertEqual('success');
       expect(await memory.get('owner-1', memoryId)).assertNull();
+    });
+
+    it('fails conditional update and delete when the store changes after the provider read', 0, async () => {
+      const store = new FakeMemoryStore();
+      const memory = provider(store, new FakeEmbeddingPort());
+      const remembered = await memory.remember({
+        ownerId: 'owner-a', records: [{
+          fact: '喜欢咖啡', sceneId: 'global', personaTag: 'global', sourceTurnId: 'conditional-add'
+        }]
+      });
+      const record = remembered.records[0].record;
+      if (record === undefined) throw new Error('Expected conditional memory fixture.');
+      const expected = expectedRecord(record);
+      store.conditionalHook = (): void => {
+        store.records[0].fact = '并发写入的新值';
+        store.records[0].updatedAt += 1;
+        store.conditionalHook = null;
+      };
+      const update = await memory.updateIfCurrent({
+        ownerId: 'owner-a', memoryId: record.memoryId, fact: '喜欢茶',
+        personaTag: 'global', authority: 'leader', sourceTurnId: 'conditional-update'
+      }, expected);
+      expect(update.status).assertEqual('error');
+      expect(update.error?.code).assertEqual(PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE);
+      expect(store.records[0].fact).assertEqual('并发写入的新值');
+
+      const deleteExpected = expectedRecord(store.records[0]);
+      store.conditionalHook = (): void => {
+        store.records[0].personaTag = 'changed-tag';
+        store.conditionalHook = null;
+      };
+      const deletion = await memory.forgetIfCurrent('owner-a', record.memoryId, deleteExpected);
+      expect(deletion.status).assertEqual('error');
+      expect(deletion.error?.code).assertEqual(PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE);
+      expect(store.records.length).assertEqual(1);
     });
 
     it('cancels update after embedding and forget immediately before their commits', 0, async () => {

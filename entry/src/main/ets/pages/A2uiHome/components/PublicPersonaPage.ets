@@ -16,11 +16,15 @@ import {
   COLOR_ACCENT_SOFT,
   COLOR_CARD,
   COLOR_CARD_EDGE,
+  COLOR_CARD_RAISED,
+  COLOR_CARD_SHADOW,
   COLOR_ERROR,
   COLOR_ERROR_SOFT,
+  COLOR_FIELD,
   COLOR_INK,
   COLOR_LINE,
   COLOR_MUTED,
+  COLOR_PAGE,
   COLOR_PANEL,
   COLOR_TEXT,
   COLOR_WARNING,
@@ -31,6 +35,11 @@ import {
   A2UI_MOTION_MOVE_CURVE,
   A2UI_MOTION_NORMAL_MS
 } from '../style/A2uiHomeMotion';
+import {
+  MANAGEMENT_CARD_SHADOW_OFFSET_Y,
+  MANAGEMENT_CARD_SHADOW_RADIUS,
+  MANAGEMENT_DISCLOSURE_ARROW_ROTATION
+} from './ManagementPageVisualStyle';
 
 export function publicPersonaDraftAfterDefaultChange(
   current: string,
@@ -404,9 +413,11 @@ export struct PublicPersonaPage {
     }
     .width('100%')
     .padding(20)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
   }
 
   @Builder
@@ -427,7 +438,7 @@ export struct PublicPersonaPage {
         .height(48)
         .fontSize(14)
         .fontColor(COLOR_TEXT)
-        .backgroundColor(COLOR_PANEL)
+        .backgroundColor(COLOR_FIELD)
         .borderRadius(11)
         .border({ width: 1, color: COLOR_CARD_EDGE })
         .padding({ left: 12, right: 12 })
@@ -486,9 +497,11 @@ export struct PublicPersonaPage {
     }
     .width('100%')
     .padding(20)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
   }
 
   @Builder
@@ -512,9 +525,11 @@ export struct PublicPersonaPage {
     }
     .width('100%')
     .padding(20)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
     .animation({ duration: A2UI_MOTION_NORMAL_MS, curve: A2UI_MOTION_MOVE_CURVE })
   }
 
@@ -537,7 +552,7 @@ export struct PublicPersonaPage {
         .height(46)
         .fontSize(14)
         .fontColor(COLOR_TEXT)
-        .backgroundColor(COLOR_PANEL)
+        .backgroundColor(COLOR_FIELD)
         .borderRadius(11)
         .border({ width: 1, color: this.confirmedDisplayName.trim().length > 0 ? COLOR_CARD_EDGE : COLOR_WARNING })
         .padding({ left: 12, right: 12 })
@@ -649,9 +664,11 @@ export struct PublicPersonaPage {
     }
     .width('100%')
     .padding(18)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
   }
 
   @Builder
@@ -679,9 +696,11 @@ export struct PublicPersonaPage {
     }
     .width('100%')
     .padding(18)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
   }
 
   @Builder
@@ -759,9 +778,12 @@ export struct PublicPersonaPage {
             .fontSize(13)
             .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_ACCENT)
-          Text('›')
-            .fontSize(17)
-            .fontColor(COLOR_MUTED)
+          Image($r('app.media.icon_back'))
+            .width(14)
+            .height(14)
+            .objectFit(ImageFit.Contain)
+            .rotate({ angle: MANAGEMENT_DISCLOSURE_ARROW_ROTATION })
+            .opacity(0.55)
             .margin({ left: 7 })
         }
         .height(38)
@@ -879,9 +901,11 @@ export struct PublicPersonaPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(20)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
 
     Column() {
       this.ProfileSection('身份与经历', inference.identityAndExperience)
@@ -905,9 +929,11 @@ export struct PublicPersonaPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(18)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
     .margin({ top: 12 })
 
     Column() {
@@ -922,9 +948,11 @@ export struct PublicPersonaPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(18)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
     .margin({ top: 12 })
   }
 
@@ -975,8 +1003,9 @@ export struct PublicPersonaPage {
           .fontColor(COLOR_TEXT)
           .lineHeight(20)
           .padding(12)
-          .backgroundColor(COLOR_PANEL)
+          .backgroundColor(COLOR_FIELD)
           .borderRadius(10)
+          .border({ width: 1, color: COLOR_CARD_EDGE })
           .margin({ top: 10 })
           .onChange((value: string) => {
             this.draftMarkdown = value;
@@ -991,6 +1020,7 @@ export struct PublicPersonaPage {
           .padding(12)
           .backgroundColor(COLOR_PANEL)
           .borderRadius(10)
+          .border({ width: 1, color: COLOR_CARD_EDGE })
           .margin({ top: 10 })
       }
       Button(publicPersonaImportButtonViewState(
@@ -1025,9 +1055,11 @@ export struct PublicPersonaPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(16)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
     .margin({ top: 12 })
   }
 
@@ -1136,9 +1168,11 @@ export struct PublicPersonaPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(16)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(COLOR_CARD_RAISED)
     .borderRadius(16)
     .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: MANAGEMENT_CARD_SHADOW_RADIUS, color: COLOR_CARD_SHADOW,
+      offsetX: 0, offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y })
     .margin({ top: 12 })
   }
 
@@ -1165,7 +1199,7 @@ export struct PublicPersonaPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(COLOR_PANEL)
+    .backgroundColor(COLOR_PAGE)
     .animation({ duration: A2UI_MOTION_NORMAL_MS, curve: A2UI_MOTION_MOVE_CURVE })
   }
 }

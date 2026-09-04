@@ -11,6 +11,10 @@ import {
   callDirectModel
 } from '../model/LocalModelClient';
 import {
+  MemoryModelSchemaValidator,
+  MemoryModelTaskRunner
+} from '../memory/MemoryModelTaskRunner';
+import {
   PublicPersonaAccountEvidence,
   PublicPersonaCandidate,
   PublicPersonaIdentity,
@@ -89,6 +93,18 @@ const PUBLIC_PERSONA_MEMORY_REBUILD_SYSTEM_PROMPT: string = [
   'recent_focus 必须保留“近期”语义；宿主会使用 memoryObservedAt 绑定明确的观察日期。',
   '禁止输出 MBTI、性格或人格猜测、敏感信息，也不要把“暂无信息”当成事实。'
 ].join('\n');
+
+class PublicPersonaMemoryFactsSchemaValidator implements MemoryModelSchemaValidator<PublicPersonaMemoryFact[]> {
+  private readonly observedAt: string;
+
+  constructor(observedAt: string) {
+    this.observedAt = observedAt;
+  }
+
+  validate(raw: string): PublicPersonaMemoryFact[] | null {
+    return parsePublicPersonaMemoryFacts(raw, this.observedAt);
+  }
+}
 
 type PublicPersonaRecord = Record<string, Object | string | number | boolean | Object[]>;
 
@@ -830,12 +846,25 @@ export class PublicPersonaClient {
   async rebuildMemoryFacts(
     snapshot: PublicPersonaSnapshot,
     settings: LocalModelSettings,
-    observedAt: string
+    observedAt: string,
+    runner?: MemoryModelTaskRunner
   ): Promise<PublicPersonaMemoryFact[]> {
     const prompt = JSON.stringify({
       personaMarkdown: snapshot.personaMarkdown,
       memoryObservedAt: observedAt
     });
+    if (runner !== undefined) {
+      const result = await runner.run<PublicPersonaMemoryFact[]>({
+        taskType: 'public_persona_memory_extract',
+        prompt,
+        systemPrompt: PUBLIC_PERSONA_MEMORY_REBUILD_SYSTEM_PROMPT,
+        validator: new PublicPersonaMemoryFactsSchemaValidator(observedAt)
+      });
+      if (result.status !== 'success' || result.value === null) {
+        throw new Error(result.error?.message ?? '记忆候选模型返回了不可用的 JSON');
+      }
+      return result.value;
+    }
     const model = await this.modelCaller(settings, prompt, [], PUBLIC_PERSONA_MEMORY_REBUILD_SYSTEM_PROMPT);
     if (!model.ok) {
       throw new Error(model.error.length > 0 ? model.error : '记忆候选模型调用失败');

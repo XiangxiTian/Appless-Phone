@@ -29,10 +29,37 @@ jobs:
 
       - name: Reject machine-local signing config
         run: |
-          if grep -Eq '"signingConfigs?"|"(key|store)Password"|[A-Za-z]:\\\\Users\\\\|/Users/' build-profile.json5; then
-            echo "::error file=build-profile.json5::Keep signing material in a private local config; do not commit it."
+          /Applications/DevEco-Studio.app/Contents/tools/node/bin/node <<'NODE'
+          const fs = require('node:fs');
+          const JSON5 = require('/Applications/DevEco-Studio.app/Contents/tools/hvigor/hvigor-ohos-plugin/node_modules/json5');
+          const profile = JSON5.parse(fs.readFileSync('build-profile.json5', 'utf8'));
+          const app = profile.app || {};
+          const product = (app.products || []).find(({ name }) => name === 'default');
+          const fail = message => {
+            console.error(`::error file=build-profile.json5::${message}`);
+            process.exit(1);
+          };
+          if (!product || product.signingConfig !== 'default') {
+            fail('The default product must select the local default signing config.');
+          }
+          if (Object.prototype.hasOwnProperty.call(app, 'signingConfigs')) {
+            fail('Keep signingConfigs in a private local config; do not commit it.');
+          }
+          const forbidden = new Set(['keyPassword', 'storePassword', 'certpath', 'storeFile']);
+          const containsSigningMaterial = value => value && typeof value === 'object' && Object.entries(value).some(
+            ([key, child]) => forbidden.has(key) || containsSigningMaterial(child)
+          );
+          if (containsSigningMaterial(profile)) {
+            fail('Keep signing material in a private local config; do not commit it.');
+          }
+          NODE
+          if git ls-files | grep -Eiq '\.(p12|cer|p7b|jks|keystore)$'; then
+            echo "::error::Do not commit signing certificates, profiles, or keystores."
             exit 1
           fi
+
+      - name: Test public share server
+        run: /Applications/DevEco-Studio.app/Contents/tools/node/bin/node scripts/waterfall-share-server.test.mjs
 
       - name: Install dependencies
         run: /Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm install --all

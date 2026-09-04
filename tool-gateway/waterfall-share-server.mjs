@@ -6,6 +6,30 @@ import { fileURLToPath } from 'node:url';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MAX_BODY_BYTES = 1024 * 1024;
+const APP_ICONS = [
+  ['gmail.svg', 'Gmail'], ['qqmail.svg', 'QQ Mail'], ['outlook.svg', 'Outlook'],
+  ['google-calendar.svg', 'Google Calendar'], ['google-maps.svg', 'Google Maps'],
+  ['youtube.svg', 'YouTube'], ['bilibili.svg', 'Bilibili'], ['github.svg', 'GitHub'],
+  ['google-drive.svg', 'Google Drive'], ['google-docs.svg', 'Google Docs'], ['slack.svg', 'Slack'],
+  ['wecom.svg', 'WeCom'], ['x.svg', 'X'], ['notion.svg', 'Notion'], ['linear.svg', 'Linear'],
+  ['asana.svg', 'Asana'], ['trello.svg', 'Trello'], ['hubspot.svg', 'HubSpot'],
+  ['salesforce.svg', 'Salesforce'], ['discord.svg', 'Discord'], ['linkedin.svg', 'LinkedIn'],
+  ['whatsapp.svg', 'WhatsApp'], ['instagram.svg', 'Instagram'], ['spotify.svg', 'Spotify'],
+  ['tiktok.svg', 'TikTok'], ['ticketmaster.svg', 'Ticketmaster'], ['paypal.svg', 'PayPal'],
+  ['stripe.svg', 'Stripe'], ['google-pay.svg', 'Google Pay'], ['amap.jpg', 'Amap'],
+  ['baidu-maps.jpg', 'Baidu Maps'], ['tencent-maps.jpg', 'Tencent Maps'], ['meituan.jpg', 'Meituan'],
+  ['taobao.jpg', 'Taobao'], ['luckin.svg', 'Luckin Coffee'], ['mcdonalds.jpg', "McDonald's"],
+  ['kfc.jpg', 'KFC'], ['reddit.svg', 'Reddit'], ['hackernews.svg', 'Hacker News'],
+  ['zhihu.svg', 'Zhihu'], ['didi.svg', 'Didi']
+];
+const SITE_ASSETS = new Map([
+  ['/assets/appless.svg', path.resolve(MODULE_DIR, '../entry/src/main/resources/base/media/logo_appless.svg')],
+  ['/assets/appless-display-sc.woff2', path.resolve(MODULE_DIR, '../docs/assets/brand/appless-display-sc.woff2')],
+  ...APP_ICONS.map(([file]) => [
+    '/assets/app-icons/' + file,
+    path.resolve(MODULE_DIR, '../docs/assets/app-icons', file)
+  ])
+]);
 const shareRate = new Map();
 let shareRateStartedAt = Date.now();
 // ponytail: this deploy-only server mirrors the gateway contract until the full gateway is hosted here.
@@ -29,6 +53,18 @@ function sendHtml(res, statusCode, body) {
     'Referrer-Policy': 'strict-origin-when-cross-origin'
   });
   res.end(body);
+}
+
+function sendAsset(res, filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  const contentType = extension === '.svg' ? 'image/svg+xml; charset=utf-8' :
+    (extension === '.png' ? 'image/png' : (extension === '.woff2' ? 'font/woff2' : 'image/jpeg'));
+  res.writeHead(200, {
+    'Content-Type': contentType,
+    'Cache-Control': 'public, max-age=300',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.end(fs.readFileSync(filePath));
 }
 
 function readJson(req) {
@@ -201,20 +237,27 @@ function unavailablePage() {
 }
 
 function landingPage() {
+  const icons = (hidden = false) => APP_ICONS.map(([file, name]) =>
+    '<img data-app-icon src="/assets/app-icons/' + file + '" width="48" height="48" alt="' +
+    (hidden ? '' : escapeHtml(name)) + '" loading="eager" decoding="async">').join('');
   return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
-    '<title>Appless · 分享值得完整抵达</title>' +
-    '<meta name="description" content="从 Appless 分享 Waterfall 卡片，对方无需登录即可看到原卡内容。">' +
+    '<title>Appless · 少开应用，多完成事情</title>' +
+    '<meta name="description" content="告诉 Appless 你想完成什么。">' +
     '<meta property="og:type" content="website"><meta property="og:site_name" content="Appless">' +
-    '<meta property="og:title" content="Appless · 分享值得完整抵达">' +
-    '<meta property="og:description" content="从 Appless 分享 Waterfall 卡片，对方无需登录即可看到原卡内容。">' +
+    '<meta property="og:title" content="Appless · 少开应用，多完成事情">' +
+    '<meta property="og:description" content="告诉 Appless 你想完成什么。">' +
     '<meta property="og:url" content="https://jiuwenappless.com/">' +
-    '<style>:root{color-scheme:light;--paper:#f5f2ee;--ink:#211b17;--muted:#746b64;--accent:#995f4c}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -8%,#fff 0,transparent 42%),var(--paper);color:var(--ink);font-family:"HarmonyOS Sans SC","PingFang SC",system-ui,sans-serif}main{display:flex;width:min(100% - 40px,920px);min-height:100vh;margin:auto;flex-direction:column;padding:28px 0}.brand{display:flex;align-items:center;gap:10px;font-weight:760}.mark{display:grid;width:30px;height:30px;place-items:center;border-radius:10px;background:var(--accent);color:#fff}.hero{margin:auto 0;padding:72px 0 110px}.eyebrow{color:var(--accent);font-size:12px;font-weight:760;letter-spacing:.14em}h1{max-width:720px;margin:18px 0 0;font-size:clamp(48px,9vw,92px);font-weight:760;line-height:.96;letter-spacing:-.055em}p{max-width:560px;margin:26px 0 0;color:var(--muted);font-size:clamp(16px,2.2vw,20px);line-height:1.7}.note{display:flex;gap:9px;margin-top:32px;color:var(--muted);font-size:13px}.dot{width:7px;height:7px;margin-top:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 5px rgba(153,95,76,.1)}footer{padding-bottom:8px;color:var(--muted);font-size:11px}</style></head>' +
-    '<body><main><div class="brand"><span class="mark">A</span><span>Appless</span></div>' +
-    '<section class="hero"><div class="eyebrow">WATERFALL SHARING</div><h1>分享值得<br>完整抵达。</h1>' +
-    '<p>从 Appless 分享一张卡片，接收者打开链接即可看到原卡内容。无需登录，也不会只落到首页。</p>' +
-    '<div class="note"><span class="dot"></span><span>公开快照只保留卡片内容，不包含搜索词、推荐理由或个人偏好。</span></div>' +
-    '</section><footer>Appless · jiuwenappless.com</footer></main></body></html>';
+    '<style>@font-face{font-family:"Appless Display SC";src:url("/assets/appless-display-sc.woff2") format("woff2");font-style:normal;font-weight:540;font-display:swap}:root{color-scheme:light;--paper:#f7f8fa;--ink:#202124;--muted:#777b82;--accent:#a9634b}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-width:320px;background:var(--paper);color:var(--ink);font-family:"HarmonyOS Sans SC","PingFang SC","SF Pro Display",system-ui,sans-serif}.page{position:relative;display:grid;min-height:100svh;overflow:hidden;grid-template-rows:auto 1fr auto auto}.shell{width:min(calc(100% - 152px),1400px);margin-inline:auto}.brand{display:flex;align-items:center;gap:11px;padding-top:38px;color:var(--ink);font-size:18px;font-weight:650;letter-spacing:-.02em;text-decoration:none}.brand img{width:36px;height:36px}.ghost{position:absolute;z-index:-1;top:-5%;right:4vw;width:min(65vw,840px);height:auto;opacity:.045;pointer-events:none}.hero{align-self:center;padding:56px 0 36px 52px;transform:translateY(-38px)}.hero h1{max-width:790px;margin:0;font-family:"Appless Display SC","PingFang SC",sans-serif;font-size:clamp(62px,6vw,92px);font-weight:540;line-height:.98;letter-spacing:-.04em}.hero p{margin:30px 0 0;color:var(--muted);font-size:clamp(17px,1.45vw,21px);letter-spacing:-.02em}.learn{display:inline-flex;align-items:center;gap:10px;margin-top:34px;color:var(--accent);font-size:13px;text-decoration:none}.learn span{transition:transform 180ms ease}.learn:hover span{transform:translateX(4px)}.brand:focus-visible,.learn:focus-visible,footer a:focus-visible{outline:2px solid var(--accent);outline-offset:6px;border-radius:3px}.marquee{width:100%;overflow:hidden;padding:25px 0 29px;border-block:1px solid rgba(32,33,36,.06);background:rgba(255,255,255,.3);-webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent)}.track{display:flex;width:max-content;animation:marquee 96s linear infinite;will-change:transform}.icon-group{display:flex;flex:none;align-items:center;gap:32px;padding-right:32px}.icon-group img{display:block;width:40px;height:40px;object-fit:contain;filter:saturate(.9);opacity:.88}@keyframes marquee{to{transform:translate3d(-50%,0,0)}}footer{display:flex;align-items:center;justify-content:flex-start;gap:18px;padding:0 0 26px;color:#8a8d92;font-size:11px;letter-spacing:.01em}footer .divider{width:1px;height:11px;background:rgba(32,33,36,.16)}footer a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}footer a:hover{color:var(--ink)}@media(max-width:720px){.shell{width:min(calc(100% - 44px),1240px)}.brand{padding-top:24px;font-size:16px}.brand img{width:32px;height:32px}.ghost{top:19%;right:-46vw;width:112vw;opacity:.035}.hero{padding:54px 0 38px;transform:none}.hero h1{font-size:clamp(50px,15vw,72px);line-height:.98}.hero p{margin-top:22px;font-size:16px}.learn{margin-top:28px}.marquee{padding:18px 0 24px}.icon-group{gap:34px;padding-right:34px}.icon-group img{width:42px;height:42px}footer{gap:10px;padding-bottom:max(20px,env(safe-area-inset-bottom));font-size:10px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.track{animation:none}.learn span{transition:none}}</style></head>' +
+    '<body><main class="page"><img class="ghost" src="/assets/appless.svg" alt="">' +
+    '<header class="shell"><a class="brand" href="/" aria-label="Appless 首页"><img src="/assets/appless.svg" alt=""><span>Appless</span></a></header>' +
+    '<section class="hero shell"><h1>少开应用，<br>多完成事情。</h1><p>告诉 Appless 你想完成什么。</p>' +
+    '<a class="learn" href="#connected-apps">了解 Appless <span aria-hidden="true">→</span></a></section>' +
+    '<section class="marquee" id="connected-apps" aria-label="Appless 已接入的 41 个应用"><div class="track">' +
+    '<div class="icon-group">' + icons() + '</div><div class="icon-group" aria-hidden="true">' + icons(true) + '</div>' +
+    '</div></section><footer class="shell"><span>© 2026 Appless</span><span class="divider" aria-hidden="true"></span>' +
+    '<a href="https://beian.miit.gov.cn" rel="noopener noreferrer">粤ICP备2026124642号</a>' +
+    '</footer></main></body></html>';
 }
 
 export async function handleWaterfallShareRequest(req, res, url) {
@@ -224,6 +267,12 @@ export async function handleWaterfallShareRequest(req, res, url) {
   }
   if (url.pathname === '/') {
     if (req.method === 'GET') sendHtml(res, 200, landingPage());
+    else sendJson(res, 405, { ok: false, error: 'Method not allowed.' });
+    return true;
+  }
+  const asset = SITE_ASSETS.get(url.pathname);
+  if (asset) {
+    if (req.method === 'GET') sendAsset(res, asset);
     else sendJson(res, 405, { ok: false, error: 'Method not allowed.' });
     return true;
   }

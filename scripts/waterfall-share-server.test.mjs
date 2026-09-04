@@ -96,7 +96,26 @@ try {
 
   const landing = await fetch(baseUrl + '/');
   assert.equal(landing.status, 200);
-  assert.match(await landing.text(), /分享值得[\s\S]*完整抵达/);
+  const landingHtml = await landing.text();
+  assert.match(landingHtml, /少开应用，[\s\S]*多完成事情。/);
+  assert.match(landingHtml, /告诉 Appless 你想完成什么。/);
+  assert.match(landingHtml, /href="https:\/\/beian\.miit\.gov\.cn"[^>]*>粤ICP备2026124642号<\/a>/);
+  assert.doesNotMatch(landingHtml, /href="https:\/\/beian\.miit\.gov\.cn"[^>]*target="_blank"/);
+  assert.match(landingHtml, /animation:marquee 96s linear infinite/);
+  assert.match(landingHtml, /@media\(prefers-reduced-motion:reduce\)[\s\S]*animation:none/);
+  assert.equal((landingHtml.match(/data-app-icon/g) || []).length, 82);
+
+  const appIcon = await fetch(baseUrl + '/assets/app-icons/gmail.svg');
+  assert.equal(appIcon.status, 200);
+  assert.match(appIcon.headers.get('content-type'), /^image\/svg\+xml/);
+  assert.equal(appIcon.headers.get('cache-control'), 'public, max-age=300');
+
+  const displayFont = await fetch(baseUrl + '/assets/appless-display-sc.woff2');
+  assert.equal(displayFont.status, 200);
+  assert.match(displayFont.headers.get('content-type'), /^font\/woff2/);
+
+  const unknownAsset = await fetch(baseUrl + '/assets/app-icons/not-connected.svg');
+  assert.equal(unknownAsset.status, 404);
 
   const missing = await fetch(baseUrl + '/s/____________');
   assert.equal(missing.status, 404);

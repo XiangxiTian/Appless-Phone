@@ -1045,7 +1045,6 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   transition: transform 140ms var(--ease-out), background-color 180ms ease;
 }
 .waterfall-cinema-card a { border-color: var(--line-strong); background: var(--panel); color: #2f4e6f; }
-.waterfall-recommendation { min-width: 0; max-width: 26ch; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .waterfall-meta { margin-top: 7px; color: #747f8a; font-size: 12px; line-height: 1.35; }
 .waterfall-signal-rail { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; margin-top: 14px; }
 .waterfall-signal { display: inline-flex; min-width: 0; align-items: center; gap: 6px; color: var(--card-muted, var(--muted)); font-size: 12px; }
@@ -1380,12 +1379,13 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 }
 .waterfall-card--text p { font-size: 15px; line-height: 1.65; -webkit-line-clamp: 4; }
 .waterfall-copy-actions {
-  align-items: center; margin-top: 8px; padding-top: 8px; border-top: 0;
+  align-items: center; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 0;
 }
 .waterfall-card--text .waterfall-copy-actions { margin-top: auto; }
 .waterfall-action-group { margin-left: auto; }
-.waterfall-recommendation {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.waterfall-card-time {
+  flex: 0 0 auto; color: var(--muted); font-size: 11px; line-height: 1.4;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .waterfall-source-action {
   display: inline-grid; width: 44px !important; min-width: 44px; min-height: 44px;
@@ -1634,7 +1634,7 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 .waterfall-reader-context > span:last-child { flex: 0 0 auto; }
 .waterfall-reader-signals {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px;
-  margin: 0 0 26px; border-top: 1px solid var(--line); padding-top: 16px;
+  margin: 0 0 26px;
 }
 .waterfall-reader-signal {
   display: grid; min-width: 0; grid-template-columns: 14px minmax(0, 1fr); align-items: center; gap: 2px 4px;
@@ -1642,29 +1642,41 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 }
 .waterfall-reader-signal .waterfall-icon { width: 14px; height: 14px; color: var(--accent); }
 .waterfall-reader-signal .waterfall-icon svg { width: 14px; height: 14px; }
-.waterfall-reader-signal b { grid-column: 2; grid-row: 1; overflow-wrap: anywhere; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 760; }
+.waterfall-reader-signal b { grid-column: 2; grid-row: 1; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 760; white-space: nowrap; overflow-wrap: normal; }
 .waterfall-reader-signal-label { grid-column: 1 / -1; font-size: 10px; font-weight: 650; white-space: nowrap; }
 .waterfall-reader h2 {
-  max-width: 18ch; margin: 0 0 24px; color: var(--ink);
-  font-size: clamp(28px, 7.2vw, 38px); line-height: 1.08; letter-spacing: -0.035em;
+  max-width: 24ch; margin: 0 0 16px; color: var(--ink);
+  font-size: clamp(24px, 5.6vw, 28px); line-height: 1.18; letter-spacing: -0.025em;
 }
-.waterfall-reader p { max-width: 34em; margin: 0; color: #423d38; font-size: 17px; line-height: 1.78; overflow-wrap: anywhere; }
+.waterfall-reader p { max-width: 38em; margin: 0; color: #423d38; font-size: 16px; line-height: 1.72; overflow-wrap: anywhere; }
 .waterfall-reader p + p { margin-top: 1em; }
-.waterfall-comments { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 13px; }
+.waterfall-reader-intro--collapsible:not(.is-expanded) h2,
+.waterfall-reader-intro--collapsible:not(.is-expanded) .waterfall-reader-intro-copy {
+  display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical;
+}
+.waterfall-reader-intro--collapsible:not(.is-expanded) h2 { -webkit-line-clamp: 2; }
+.waterfall-reader-intro--collapsible:not(.is-expanded) .waterfall-reader-intro-copy { -webkit-line-clamp: 4; }
+.waterfall-reader-intro-toggle {
+  min-height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--accent);
+  padding: 0 2px; font: inherit; font-size: 13px; font-weight: 740; cursor: pointer;
+}
+.waterfall-reader-intro-toggle:active { opacity: 0.72; }
+.waterfall-comments { margin-top: 28px; }
 .waterfall-comments-head { display: flex; min-height: 24px; align-items: center; justify-content: space-between; }
 .waterfall-comments-head h3 { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.4; font-weight: 780; }
 .waterfall-comments-head span { color: var(--muted); font-size: 10px; font-weight: 650; }
 .waterfall-comments-list { display: grid; }
 .waterfall-comment-row {
   display: grid; width: 100%; min-width: 0; grid-template-columns: 24px minmax(0, 1fr); gap: 8px;
-  border: 0; border-bottom: 1px solid rgba(56, 65, 72, 0.07); border-radius: 0;
+  border: 0; border-radius: 0;
   background: transparent; color: inherit; padding: 9px 0; text-align: left; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.waterfall-comment-row:last-child { border-bottom: 0; padding-bottom: 2px; }
+.waterfall-comment-row:last-child { padding-bottom: 2px; }
 .waterfall-comment-row--no-avatar { grid-template-columns: minmax(0, 1fr); }
 .waterfall-comment-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: #e7e9e8; }
-.waterfall-comment-body { min-width: 0; }
+.waterfall-comment-body { display: block; min-width: 0; grid-column: 2; width: 100%; }
+.waterfall-comment-row--no-avatar .waterfall-comment-body { grid-column: 1 / -1; }
 .waterfall-comment-meta { display: flex; min-width: 0; align-items: center; gap: 6px; margin-bottom: 2px;
   color: var(--muted); font-size: 10.5px; line-height: 1.35; }
 .waterfall-comment-author { overflow: hidden; color: #56514c; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
@@ -1687,7 +1699,100 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   animation: waterfall-comment-shimmer 1.15s ease-in-out infinite;
 }
 @keyframes waterfall-comment-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-.waterfall-reader-copy > .waterfall-feedback-bar { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); }
+.waterfall-reader-copy > .waterfall-feedback-bar { margin-top: 28px; }
+.waterfall-related { margin-top: 38px; border-top: 1px solid var(--line); padding-top: 22px; }
+.waterfall-related-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.waterfall-related-head h3 { margin: 0; color: var(--ink); font-size: 16px; line-height: 1.35; font-weight: 780; }
+.waterfall-related-head span { color: var(--muted); font-size: 11px; }
+.waterfall-related-list { display: grid; }
+.waterfall-related-item {
+  display: grid; min-height: 104px; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 14px;
+  border: 0; border-bottom: 1px solid rgba(56, 65, 72, 0.08); background: transparent; color: inherit;
+  padding: 12px 0; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.waterfall-related-item:last-child { border-bottom: 0; }
+.waterfall-related-item--text { display: block; min-height: 0; padding: 15px 0; }
+.waterfall-related-media { position: relative; width: 112px; height: 76px; overflow: hidden; border-radius: 12px; background: #e7e9e8; }
+.waterfall-related-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.waterfall-related-badge {
+  position: absolute; right: 6px; bottom: 6px; border-radius: 7px; background: rgba(24, 28, 32, 0.72);
+  color: #fff; padding: 3px 6px; font-size: 10px; line-height: 1.2; backdrop-filter: blur(8px);
+}
+.waterfall-related-copy { min-width: 0; }
+.waterfall-related-meta { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 11px; font-weight: 720; }
+.waterfall-related-meta .waterfall-source-logo { width: 18px; height: 18px; border-radius: 6px; font-size: 8px; }
+.waterfall-related-copy h4 {
+  display: -webkit-box; margin: 5px 0 4px; overflow: hidden; color: var(--ink); font-size: 15px;
+  line-height: 1.38; font-weight: 720; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.waterfall-related-copy p { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: 12px;
+  line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.waterfall-related-item:active { opacity: 0.72; }
+.waterfall-ai-dock {
+  position: fixed; z-index: 12; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom));
+  display: flex; gap: 10px;
+  opacity: 0; transform: translate3d(-50%, 10px, 0); visibility: hidden; pointer-events: none;
+  transition: opacity 150ms var(--ease-out), transform 190ms var(--ease-out), visibility 0s linear 190ms;
+}
+.waterfall-ai-dock.is-visible { opacity: 1; transform: translate3d(-50%, 0, 0); visibility: visible; pointer-events: auto; transition-delay: 0s; }
+.waterfall-ai-trigger {
+  display: inline-flex; min-width: 116px; min-height: 46px; align-items: center; justify-content: center; gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.82); border-radius: 23px; background: rgba(255, 255, 255, 0.72);
+  color: var(--ink); padding: 0 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 12px 32px rgba(39, 34, 30, 0.16);
+  -webkit-backdrop-filter: blur(20px) saturate(1.18); backdrop-filter: blur(20px) saturate(1.18);
+  font: inherit; font-size: 13px; font-weight: 760; cursor: pointer;
+  transition: transform 150ms var(--ease-out), background-color 150ms ease, border-color 150ms ease;
+}
+.waterfall-ai-trigger .waterfall-icon { width: 17px; height: 17px; color: var(--accent); }
+.waterfall-ai-trigger--question:active,
+.waterfall-ai-trigger--summary:active { background: rgba(255, 255, 255, 0.88); transform: scale(0.97); }
+.waterfall-ai-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.waterfall-ai-layer { position: fixed; z-index: 13; inset: 0; visibility: hidden; opacity: 0; pointer-events: none;
+  transition: opacity 170ms var(--ease-out), visibility 0s linear 210ms; }
+.waterfall-ai-layer.is-open { visibility: visible; opacity: 1; pointer-events: auto; transition-delay: 0s; }
+.waterfall-ai-backdrop { position: absolute; inset: 0; width: 100%; border: 0;
+  background: rgba(25, 25, 24, 0.11); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.waterfall-ai-panel {
+  position: absolute; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); left: 14px;
+  display: flex; max-height: min(70dvh, 620px); flex-direction: column; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.78); border-radius: 28px;
+  background: rgba(249, 247, 243, 0.88); padding: 18px; box-shadow: 0 22px 64px rgba(37, 32, 28, 0.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.12); backdrop-filter: blur(28px) saturate(1.12);
+  transform: translate3d(0, 14px, 0); transition: transform 210ms var(--ease-out);
+}
+.waterfall-ai-layer.is-open .waterfall-ai-panel { transform: none; }
+.waterfall-ai-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.waterfall-ai-panel-head strong { color: var(--ink); font-size: 16px; font-weight: 790; }
+.waterfall-ai-panel-head button { display: grid; width: 38px; height: 38px; place-items: center; border: 0; border-radius: 19px;
+  background: rgba(56, 65, 72, 0.06); color: var(--muted); font-size: 20px; cursor: pointer; }
+.waterfall-ai-status { min-height: 18px; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.waterfall-ai-thread { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.waterfall-ai-answer { margin-top: 14px; color: #39342f; font-size: 14px; line-height: 1.68; overflow-wrap: anywhere; }
+.waterfall-ai-message { padding: 11px 13px; border-radius: 16px; background: rgba(255, 255, 255, 0.5); }
+.waterfall-ai-message + .waterfall-ai-message { margin-top: 9px; }
+.waterfall-ai-message--user { margin-left: 12%; background: rgba(56, 65, 72, 0.08); color: var(--ink); }
+.waterfall-ai-questions { display: grid; gap: 8px; margin-top: 14px; }
+.waterfall-ai-questions.is-loading::before { content: '正在生成相关问题…'; color: var(--muted); font-size: 12px; }
+.waterfall-ai-question { min-height: 42px; border: 1px solid rgba(153, 95, 76, 0.14); border-radius: 13px;
+  background: rgba(255, 255, 255, 0.46); color: var(--ink); padding: 8px 12px; font: inherit; font-size: 13px;
+  line-height: 1.4; text-align: left; cursor: pointer; }
+.waterfall-ai-compose { display: grid; min-height: 54px; grid-template-columns: minmax(0, 1fr) 40px; align-items: center;
+  gap: 6px; margin-top: 14px; border: 1px solid rgba(255, 255, 255, 0.82); border-radius: 27px;
+  background: rgba(255, 255, 255, 0.62); padding: 4px 6px 4px 16px; box-shadow: inset 0 0 0 1px rgba(56, 65, 72, 0.04); }
+.waterfall-ai-compose input { min-width: 0; height: 44px; border: 0; background: transparent; color: var(--ink);
+  padding: 0; font: inherit; font-size: 14px; outline: none; }
+.waterfall-ai-compose-action { display: grid; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 20px;
+  background: rgba(56, 65, 72, 0.08); color: var(--muted); padding: 0; cursor: pointer;
+  transition: transform 150ms var(--ease-out), background 150ms var(--ease-out), color 150ms var(--ease-out); }
+.waterfall-ai-compose-action .waterfall-icon { width: 18px; height: 18px; }
+.waterfall-ai-compose-action [data-waterfall-ai-send-icon] { display: none; }
+.waterfall-ai-compose-action.has-text { background: var(--accent); color: #fff; }
+.waterfall-ai-compose-action.has-text [data-waterfall-ai-mic-icon] { display: none; }
+.waterfall-ai-compose-action.has-text [data-waterfall-ai-send-icon] { display: inline-flex; }
+.waterfall-ai-compose-action:active { transform: scale(0.97); }
+.waterfall-ai-retry { min-height: 40px; margin-top: 12px; border: 1px solid rgba(153, 95, 76, 0.22); border-radius: 12px;
+  background: transparent; color: var(--accent); padding: 0 14px; font: inherit; font-size: 13px; font-weight: 760; }
 .waterfall-collection {
   position: fixed; z-index: 9; inset: 0; overflow-x: hidden; overflow-y: auto; visibility: hidden;
   background: var(--paper); color: var(--ink); pointer-events: none; opacity: 0;
@@ -1734,6 +1839,8 @@ body.waterfall-direct .waterfall-track { background: transparent; }
 }
 @media (max-width: 360px) {
   .waterfall-reader-signals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .waterfall-card-action { width: 38px; height: 44px; flex: 0 0 38px; }
+  .waterfall-feedback-bar .waterfall-source-action { width: 38px !important; min-width: 38px; min-height: 44px; }
 }
 @media (hover: hover) and (pointer: fine) {
   .waterfall-entry button:hover, .waterfall-toolbar button:hover, .waterfall-preferences label:hover {
@@ -1745,6 +1852,11 @@ body.waterfall-direct .waterfall-track { background: transparent; }
     background: rgba(248, 248, 246, 0.98);
     -webkit-backdrop-filter: none; backdrop-filter: none;
   }
+  .waterfall-ai-trigger, .waterfall-ai-panel, .waterfall-ai-compose {
+    background: rgba(248, 248, 246, 0.98);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .waterfall-ai-backdrop { background: rgba(25, 25, 24, 0.34); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .waterfall-overlay.active { animation: waterfall-overlay-in 140ms var(--ease-out) both !important; }
@@ -1753,7 +1865,8 @@ body.waterfall-direct .waterfall-track { background: transparent; }
   .waterfall-preferences label, .waterfall-empty button, .waterfall-status button,
   .waterfall-inline-play, .waterfall-card-action, .waterfall-card-action .waterfall-icon,
   .waterfall-comment-skeleton-avatar, .waterfall-comment-skeleton-line,
-  .waterfall-convergence-source, .waterfall-action-glint, .waterfall-action-spark { transition: none; animation: none; }
+  .waterfall-convergence-source, .waterfall-action-glint, .waterfall-action-spark,
+  .waterfall-ai-dock, .waterfall-ai-layer, .waterfall-ai-panel { transition: none; animation: none; }
   .waterfall-action-glint, .waterfall-action-spark { display: none; }
   .waterfall-search-form { transform: none; transition: opacity 140ms var(--ease-out), visibility 0s linear 140ms; }
   .waterfall-track.is-search-results-enter .waterfall-card-shell { animation: none; }
@@ -1811,6 +1924,7 @@ const WATERFALL_JS: string = `
   function disableArkWebDomTree(scanner) {
     if (!scanner) return;
     scanner.addDomTreeReportedAsync = function () {};
+    scanner.forceReport = function () {};
     if (typeof scanner.removeDomTreeReported === 'function') scanner.removeDomTreeReported();
   }
   var arkWebDomTree = window.__arkWebDomTree;
@@ -1839,6 +1953,18 @@ const WATERFALL_JS: string = `
   var state = window.__aiphoneWaterfallInitial || null;
   var directDiscovery = window.__aiphoneWaterfallDirect === true;
   var mode = directDiscovery ? 'discovering' : 'entry';
+  function setTreeHidden(node, hidden) {
+    if (!node || typeof node.setAttribute !== 'function') return;
+    if (hidden) {
+      node.setAttribute('aria-hidden', 'true');
+      node.setAttribute('inert', '');
+      return;
+    }
+    if (typeof node.removeAttribute === 'function') {
+      node.removeAttribute('aria-hidden');
+      node.removeAttribute('inert');
+    }
+  }
   var waterfallLayerState = directDiscovery ? 'feed' : 'false';
   var enabledSources = state && state.enabledSources ? state.enabledSources.slice() : [];
   var preferenceBaseline = '';
@@ -1888,6 +2014,21 @@ const WATERFALL_JS: string = `
   var readerStartedAt = 0;
   var readerDurationMs = 0;
   var readerReturnMode = 'discovering';
+  var readerHistoryIds = [];
+  var readerAiRequestId = 0;
+  var readerAiMode = '';
+  var readerAiQuery = '';
+  var readerAiLastSequence = 0;
+  var readerAiActive = false;
+  var readerAiHistory = [];
+  var readerAiStreamingNode = null;
+  var readerAiLastStreamScrollAt = 0;
+  var readerAiSuggestionsPending = false;
+  var readerAiSuggestionsLoaded = false;
+  var readerAiSummaryLoaded = false;
+  var relatedProfiles = {};
+  var readerLayoutsById = {};
+  var readerScrollTopById = {};
   var collectionFeedScrollTop = 0;
   var collectionQuery = '';
   var collectionSource = 'all';
@@ -1997,6 +2138,7 @@ const WATERFALL_JS: string = `
       sources: Array.isArray(patch.sources) ? patch.sources : [],
       cardStates: Array.isArray(patch.cardStates) ? patch.cardStates : [],
       savedCards: Array.isArray(patch.savedCards) ? patch.savedCards : [],
+      consumedCandidateIds: Array.isArray(patch.consumedCandidateIds) ? patch.consumedCandidateIds : [],
       replenishing: patch.replenishing === true,
       exhausted: patch.exhausted === true,
       __waterfallTransportRevision: Number(patch.revision)
@@ -2162,6 +2304,10 @@ const WATERFALL_JS: string = `
   var toastTimer = null;
   function text(value) { return value === null || value === undefined ? '' : String(value); }
   function escapeHtml(value) { return text(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+  function readerAiPlainText(value) {
+    return text(value).replace(/^#{1,3}\\s+/gm, '').replace(/^\\s*[-*]\\s+/gm, '• ')
+      .replace(/\\*\\*([^*\\n]+)\\*\\*/g, '$1').replace(/\\x60([^\\x60\\n]+)\\x60/g, '$1');
+  }
   function cleanSummary(value) {
     return text(value).trim().replace(/^[^：:\\n]{0,16}(?:搜索结果|检索结果|结果摘要)[ ：:]*/i, '').trim();
   }
@@ -2195,7 +2341,30 @@ const WATERFALL_JS: string = `
       return '<p>' + escapeHtml(paragraph) + '</p>';
     }).join('');
   }
-  function publishedLabel(value) { return text(value).trim().replace(/^(\\d{4}-\\d{2}-\\d{2})T.*$/, '$1'); }
+  function publishedLabel(value) {
+    var raw = text(value).trim();
+    var numeric = Number(raw);
+    var timestamp = raw && isFinite(numeric) ? numeric * (Math.abs(numeric) < 100000000000 ? 1000 : 1) :
+      (raw ? Date.parse(raw) : NaN);
+    if (!isFinite(timestamp)) return '';
+    var elapsed = Math.max(0, Date.now() - timestamp);
+    if (elapsed < 60000) return '刚刚';
+    if (elapsed < 3600000) return Math.max(1, Math.floor(elapsed / 60000)) + '分钟前';
+    if (elapsed < 86400000) return Math.max(1, Math.floor(elapsed / 3600000)) + '小时前';
+    if (elapsed <= 15 * 86400000) return Math.max(1, Math.floor(elapsed / 86400000)) + '天前';
+    var published = new Date(timestamp);
+    var current = new Date(Date.now());
+    return (published.getFullYear() === current.getFullYear() ? '' : published.getFullYear() + '年') +
+      (published.getMonth() + 1) + '月' + published.getDate() + '日';
+  }
+  function validSourceUrl(value) {
+    try {
+      var url = new URL(text(value).trim());
+      return url.protocol === 'https:' || url.protocol === 'http:';
+    } catch (_error) {
+      return false;
+    }
+  }
   function sourceLabel(source) {
     var labels = ${WATERFALL_SOURCE_LABELS_JSON};
     for (var index = 0; index < labels.length; index++) {
@@ -2242,16 +2411,194 @@ const WATERFALL_JS: string = `
       'data-waterfall-share="' + escapeHtml(item.id) + '" aria-label="分享">' + uiIcon('share') + '</button>';
   }
   function feedbackBarMarkup(item) {
-    var source = item.url ? '<a class="waterfall-source-action" href="' +
+    var source = validSourceUrl(item.url) ? '<a class="waterfall-source-action" href="' +
       escapeHtml(item.url) + '" rel="noopener noreferrer" aria-label="查看来源">' +
       uiIcon('external') + '</a>' : '';
-    var controls = [cardActionButton(item, 'like', '喜欢', 'thumbsUp'),
-      cardActionButton(item, 'dislike', '不喜欢', 'thumbsDown'),
-      cardActionButton(item, 'save', '收藏', 'bookmark'), shareButton(item)];
-    if (source) controls.push(source);
     var divider = '<span class="waterfall-feedback-divider" aria-hidden="true"></span>';
     return '<div class="waterfall-feedback-bar" role="group" aria-label="卡片操作">' +
-      controls.join(divider) + '</div>';
+      cardActionButton(item, 'like', '喜欢', 'thumbsUp') +
+      cardActionButton(item, 'dislike', '不喜欢', 'thumbsDown') +
+      cardActionButton(item, 'save', '收藏', 'bookmark') + divider + shareButton(item) + source + '</div>';
+  }
+  function relatedTokens(value) {
+    var tokens = [];
+    var append = function (token) {
+      if (token.length > 1 && tokens.indexOf(token) < 0) tokens.push(token);
+    };
+    (text(value).toLowerCase().match(/[a-z0-9]{2,}|[\\u4e00-\\u9fff]+/g) || []).forEach(function (chunk) {
+      if (/^[\\u4e00-\\u9fff]+$/.test(chunk)) {
+        if (chunk.length <= 6) append(chunk);
+        for (var index = 0; index < chunk.length - 1; index += 1) append(chunk.substring(index, index + 2));
+      } else append(chunk);
+    });
+    return tokens;
+  }
+  function candidateRelatedProfile(item) {
+    var key = text(item.id);
+    var signature = [text(item.title), (item.topics || []).join(' '), text(item.summary).substring(0, 1200),
+      text(item.searchQuery), text(item.url)].join('|');
+    if (relatedProfiles[key] && relatedProfiles[key].signature === signature) return relatedProfiles[key];
+    var profile = {
+      signature: signature,
+      tokens: relatedTokens([item.title, (item.topics || []).join(' '),
+        text(item.summary).substring(0, 1200)].join(' ')),
+      titleTokens: relatedTokens(item.title),
+      queryTokens: relatedTokens(item.searchQuery),
+      query: text(item.searchQuery).trim().toLowerCase(),
+      content: [text(item.title), text(item.summary)].join(' ').toLowerCase(),
+      url: normalizedRelatedUrl(item.url)
+    };
+    relatedProfiles[key] = profile;
+    return profile;
+  }
+  function tokenSimilarity(left, right) {
+    if (!left.length || !right.length) return 0;
+    var shared = left.filter(function (token) { return right.indexOf(token) >= 0; }).length;
+    return shared / Math.max(1, Math.max(left.length, right.length));
+  }
+  function normalizedRelatedUrl(value) {
+    if (!validSourceUrl(value)) return '';
+    try {
+      var url = new URL(text(value).trim());
+      url.hash = '';
+      ['utm_source', 'utm_medium', 'utm_campaign', 'spm', 'from'].forEach(function (key) {
+        url.searchParams.delete(key);
+      });
+      return url.toString().replace(/\\/$/, '');
+    } catch (_error) {
+      return '';
+    }
+  }
+  function relatedCandidates(anchor) {
+    var anchorProfile = candidateRelatedProfile(anchor);
+    var consumed = state && Array.isArray(state.consumedCandidateIds) ? state.consumedCandidateIds : [];
+    var scored = [];
+    var fallback = [];
+    candidates(state).forEach(function (item) {
+      if (text(item.id) === text(anchor.id) || consumed.indexOf(text(item.id)) >= 0 ||
+        cardStateById(item.id).reaction === 'dislike') return;
+      var itemProfile = candidateRelatedProfile(item);
+      var itemUrl = itemProfile.url;
+      if (!itemUrl || itemUrl === anchorProfile.url) return;
+      var itemTokens = itemProfile.tokens;
+      var titleSimilarity = tokenSimilarity(anchorProfile.titleTokens, itemProfile.titleTokens);
+      if (titleSimilarity > 0.86) return;
+      var bodySimilarity = tokenSimilarity(anchorProfile.tokens, itemTokens);
+      var sameRecallQuery = anchorProfile.query && anchorProfile.query === itemProfile.query;
+      var queryContentSimilarity = tokenSimilarity(anchorProfile.queryTokens, itemProfile.tokens);
+      var anchorTopics = Array.isArray(anchor.topics) ? anchor.topics : [];
+      var itemTopics = Array.isArray(item.topics) ? item.topics : [];
+      var sharedTopics = anchorTopics.filter(function (topic) { return itemTopics.indexOf(topic) >= 0; });
+      var anchoredTopic = sharedTopics.some(function (topic) {
+        var normalized = text(topic).trim().toLowerCase();
+        return normalized.length > 1 && anchorProfile.content.indexOf(normalized) >= 0 &&
+          itemProfile.content.indexOf(normalized) >= 0;
+      });
+      var topicScore = anchoredTopic ? 0.28 : 0;
+      var score = 0.62 * titleSimilarity + 0.24 * bodySimilarity + topicScore;
+      if (sameRecallQuery) score += 0.04;
+      if (emittedBehavior[text(item.id) + '|quick_skip']) score -= 0.04;
+      if (sameRecallQuery && queryContentSimilarity > 0) {
+        fallback.push({ item: item, score: score + 0.2 * queryContentSimilarity, tokens: itemTokens, url: itemUrl });
+      }
+      if (titleSimilarity < 0.08 && bodySimilarity < 0.16) return;
+      if (score >= 0.14) scored.push({ item: item, score: score, tokens: itemTokens, url: itemUrl });
+    });
+    fallback.sort(function (left, right) { return right.score - left.score; }).forEach(function (entry) {
+      if (!scored.some(function (scoredEntry) { return scoredEntry.item === entry.item; })) scored.push(entry);
+    });
+    scored.sort(function (left, right) { return right.score - left.score; });
+    var selected = [];
+    var usedUrls = [];
+    // ponytail: three bounded MMR passes over the in-memory feed; index native-side only if feeds grow beyond hundreds.
+    while (selected.length < 3 && scored.length > 0) {
+      var bestIndex = -1;
+      var bestValue = -1;
+      scored.forEach(function (entry, index) {
+        if (usedUrls.indexOf(entry.url) >= 0) return;
+        var redundancy = selected.reduce(function (maximum, picked) {
+          return Math.max(maximum, tokenSimilarity(entry.tokens, picked.tokens));
+        }, 0);
+        var diversity = selected.some(function (picked) {
+          return picked.item.source !== entry.item.source || picked.item.mediaType !== entry.item.mediaType;
+        }) ? 0.015 : 0;
+        var value = entry.score - 0.16 * redundancy + diversity;
+        if (value > bestValue) { bestValue = value; bestIndex = index; }
+      });
+      if (bestIndex < 0) break;
+      var picked = scored.splice(bestIndex, 1)[0];
+      selected.push(picked);
+      usedUrls.push(picked.url);
+    }
+    return selected.map(function (entry) { return entry.item; });
+  }
+  function relatedMarkup(anchor) {
+    var items = relatedCandidates(anchor);
+    if (!items.length) return '';
+    var rows = items.map(function (item) {
+      var isVideo = item.mediaType === 'video';
+      var images = Array.isArray(item.imageUrls) ? item.imageUrls.filter(function (url) {
+        return validSourceUrl(url);
+      }) : [];
+      var image = text(images[0] || item.coverUrl).trim();
+      var media = '';
+      if ((isVideo || item.mediaType === 'image_text') && image) {
+        var badge = isVideo ? '视频' : (images.length > 1 ? '共 ' + images.length + ' 图' : '图文');
+        media = '<div class="waterfall-related-media"><img src="' + escapeHtml(image) +
+          '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.hidden=true" />' +
+          (badge ? '<span class="waterfall-related-badge">' + escapeHtml(badge) + '</span>' : '') + '</div>';
+      }
+      var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
+      var summary = cleanSummary(item.summary);
+      var copy = '<div class="waterfall-related-copy"><span class="waterfall-related-meta">' +
+        sourceLogoMarkup(item.source) + '<span>' + escapeHtml(cardSourceLabel(item)) +
+        (publishedLabel(item.publishedAt) ? ' · ' + escapeHtml(publishedLabel(item.publishedAt)) : '') +
+        '</span></span><h4>' + escapeHtml(title) + '</h4>' +
+        (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') + '</div>';
+      return '<button type="button" class="waterfall-related-item' +
+        (!media ? ' waterfall-related-item--text' : '') + '" data-waterfall-related-open="' +
+        escapeHtml(item.id) + '">' + media + copy + '</button>';
+    }).join('');
+    return '<section class="waterfall-related" aria-label="相似内容"><div class="waterfall-related-head">' +
+      '<h3>相似内容</h3><span>与你正在看的内容相关</span></div><div class="waterfall-related-list">' +
+      rows + '</div></section>';
+  }
+  function scheduleReaderRelated(anchor, candidateId) {
+    var renderRelated = function () {
+      if (mode !== 'reading' || readerCandidateId !== candidateId || !reader ||
+        typeof reader.querySelector !== 'function') return;
+      var slot = reader.querySelector('[data-waterfall-related-slot]');
+      if (!slot) return;
+      var markup = relatedMarkup(anchor);
+      if (slot.innerHTML !== markup) slot.innerHTML = markup;
+    };
+    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(renderRelated);
+    else setTimeout(renderRelated, 600);
+  }
+  function readerAiMarkup() {
+    return '<div class="waterfall-ai-dock" data-waterfall-ai-dock role="group" aria-label="AI 阅读工具" ' +
+      'aria-hidden="true" inert>' +
+      '<button type="button" class="waterfall-ai-trigger waterfall-ai-trigger--question" data-waterfall-ai-action="question">' +
+      uiIcon('question') + '<span>继续提问</span></button>' +
+      '<button type="button" class="waterfall-ai-trigger waterfall-ai-trigger--summary" data-waterfall-ai-action="summary">' +
+      uiIcon('sparkles') + '<span>AI 总结</span></button></div>' +
+      '<div class="waterfall-ai-layer" data-waterfall-ai-layer aria-hidden="true" inert>' +
+      '<button type="button" class="waterfall-ai-backdrop" data-waterfall-ai-backdrop aria-label="关闭 AI 面板"></button>' +
+      '<section class="waterfall-ai-panel" role="dialog" aria-modal="true" aria-label="AI 阅读助手">' +
+      '<div class="waterfall-ai-panel-head"><strong>AI 阅读助手</strong><button type="button" ' +
+      'data-waterfall-ai-close aria-label="关闭">×</button></div>' +
+      '<div class="waterfall-ai-status" data-waterfall-ai-status></div>' +
+      '<div class="waterfall-ai-thread"><div class="waterfall-ai-answer" data-waterfall-ai-answer aria-live="polite">' +
+      new Array(17).join('<div class="waterfall-ai-message" data-waterfall-ai-message-slot hidden> </div>') +
+      '<button type="button" class="waterfall-ai-retry" data-waterfall-ai-retry hidden>重试</button></div>' +
+      '<div class="waterfall-ai-questions" data-waterfall-ai-questions>' +
+      new Array(4).join('<button type="button" class="waterfall-ai-question" data-waterfall-ai-question-slot hidden> </button>') +
+      '</div></div>' +
+      '<div class="waterfall-ai-compose"><input data-waterfall-ai-input maxlength="500" ' +
+      'placeholder="继续问这条内容" aria-label="继续提问" />' +
+      '<button type="button" class="waterfall-ai-compose-action" data-waterfall-ai-compose-action aria-label="语音输入">' +
+      '<span data-waterfall-ai-mic-icon>' + uiIcon('microphone') + '</span>' +
+      '<span data-waterfall-ai-send-icon>' + uiIcon('send') + '</span></button></div></section></div>';
   }
   function waterfallCommentsSupported(item) {
     return ['youtube', 'bilibili', 'x', 'hackernews', 'reddit'].indexOf(text(item && item.source)) >= 0 &&
@@ -2941,6 +3288,309 @@ const WATERFALL_JS: string = `
     var saved = state && Array.isArray(state.savedCards) ? state.savedCards : [];
     return saved.find(function (item) { return text(item.id) === text(id); }) || null;
   }
+  function readerAiNode(selector) {
+    return reader && typeof reader.querySelector === 'function' ? reader.querySelector(selector) : null;
+  }
+  function readerAiBasisLabel() {
+    var item = candidateById(readerCandidateId);
+    return item && item.mediaType === 'video' ? '基于视频简介生成' : '基于当前正文生成';
+  }
+  function setReaderAiStatus(message) {
+    var status = readerAiNode('[data-waterfall-ai-status]');
+    var nextStatus = text(message);
+    if (status && status.textContent !== nextStatus) status.textContent = nextStatus;
+  }
+  function ensureReaderAiMessageSlot(answer, index) {
+    var slots = answer.querySelectorAll('[data-waterfall-ai-message-slot]');
+    if (slots[index]) return slots[index];
+    // ponytail: normal card chats reuse 16 mounted slots; unusually long chats append only their overflow.
+    var slot = document.createElement('div');
+    slot.setAttribute('data-waterfall-ai-message-slot', '');
+    var retry = answer.querySelector('[data-waterfall-ai-retry]');
+    answer.insertBefore(slot, retry || null);
+    return slot;
+  }
+  function setReaderAiText(slot, content) {
+    if (slot.textContent === content) return;
+    if (slot.firstChild && slot.firstChild.nodeType === 3 && !slot.firstChild.nextSibling) {
+      slot.firstChild.data = content;
+      return;
+    }
+    slot.textContent = content;
+  }
+  function setReaderAiAnswer(message, retryable) {
+    var answer = readerAiNode('[data-waterfall-ai-answer]');
+    if (!answer) return;
+    readerAiStreamingNode = null;
+    readerAiLastStreamScrollAt = 0;
+    var entries = readerAiHistory.slice();
+    if (message) entries.push({ role: 'assistant', content: message });
+    for (var index = 0; index < entries.length; index += 1) {
+      var entry = entries[index];
+      var slot = ensureReaderAiMessageSlot(answer, index);
+      slot.className = 'waterfall-ai-message waterfall-ai-message--' + entry.role;
+      slot.style.whiteSpace = 'pre-wrap';
+      slot.removeAttribute('hidden');
+      var content = readerAiPlainText(entry.content);
+      setReaderAiText(slot, content);
+    }
+    var slots = answer.querySelectorAll('[data-waterfall-ai-message-slot]');
+    for (var hiddenIndex = entries.length; hiddenIndex < slots.length; hiddenIndex += 1) {
+      slots[hiddenIndex].setAttribute('hidden', '');
+      setReaderAiText(slots[hiddenIndex], '');
+    }
+    var retry = answer.querySelector('[data-waterfall-ai-retry]');
+    if (retry) {
+      if (retryable) retry.removeAttribute('hidden');
+      else retry.setAttribute('hidden', '');
+    }
+    if (answer.parentElement) answer.parentElement.scrollTop = answer.parentElement.scrollHeight;
+  }
+  function setReaderAiStreamingAnswer(message) {
+    var answer = readerAiNode('[data-waterfall-ai-answer]');
+    if (!answer) return;
+    var created = false;
+    if (!readerAiStreamingNode) setReaderAiAnswer('', false);
+    if (!readerAiStreamingNode) {
+      readerAiStreamingNode = ensureReaderAiMessageSlot(answer, readerAiHistory.length);
+      readerAiStreamingNode.className = 'waterfall-ai-message waterfall-ai-message--assistant';
+      readerAiStreamingNode.style.whiteSpace = 'pre-wrap';
+      readerAiStreamingNode.removeAttribute('hidden');
+      created = true;
+    }
+    var now = Date.now();
+    var thread = answer.parentElement;
+    var follow = thread && (created || now - readerAiLastStreamScrollAt >= 240) &&
+      thread.scrollHeight - thread.scrollTop - thread.clientHeight <= 72;
+    var content = readerAiPlainText(message);
+    setReaderAiText(readerAiStreamingNode, content);
+    if (thread && (created || now - readerAiLastStreamScrollAt >= 240)) {
+      if (follow) thread.scrollTop = thread.scrollHeight;
+      readerAiLastStreamScrollAt = now;
+    }
+  }
+  function setReaderAiSuggestions(message, loading) {
+    var questions = readerAiNode('[data-waterfall-ai-questions]');
+    if (!questions) return;
+    questions.classList.toggle('is-loading', loading);
+    var values = [];
+    var raw = loading ? '' : text(message).trim();
+    if (raw.charAt(0) === '[') {
+      try {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) values = parsed;
+      } catch (_error) {}
+    }
+    if (!values.length) values = raw.split(/\\n+/);
+    var normalized = [];
+    values.forEach(function (value) {
+      var question = text(value).replace(/^\\s*(?:[-*•]|\\d+[.)、])\\s*/, '').replace(/^['"]|['"]$/g, '').trim();
+      if (question.length >= 4 && question.length <= 160 && normalized.indexOf(question) < 0 && normalized.length < 3) {
+        normalized.push(question);
+      }
+    });
+    var slots = questions.querySelectorAll('[data-waterfall-ai-question-slot]');
+    for (var index = 0; index < slots.length; index += 1) {
+      if (normalized[index]) {
+        slots[index].setAttribute('data-waterfall-ai-question', normalized[index]);
+        setReaderAiText(slots[index], normalized[index]);
+        slots[index].removeAttribute('hidden');
+      } else {
+        slots[index].removeAttribute('data-waterfall-ai-question');
+        slots[index].setAttribute('hidden', '');
+        setReaderAiText(slots[index], '');
+      }
+    }
+    if (questions.parentElement) questions.parentElement.scrollTop = questions.parentElement.scrollHeight;
+  }
+  function syncReaderAiComposeAction() {
+    var input = readerAiNode('[data-waterfall-ai-input]');
+    var action = readerAiNode('[data-waterfall-ai-compose-action]');
+    if (!action) return;
+    var hasText = text(input && input.value).trim().length > 0;
+    action.classList.toggle('has-text', hasText);
+    if (typeof action.setAttribute === 'function') action.setAttribute('aria-label', hasText ? '发送问题' : '语音输入');
+  }
+  function showReaderAiDock() {
+    var dock = readerAiNode('[data-waterfall-ai-dock]');
+    var layer = readerAiNode('[data-waterfall-ai-layer]');
+    if (dock && (!layer || !layer.classList.contains('is-open'))) {
+      dock.classList.add('is-visible');
+      setTreeHidden(dock, false);
+    }
+  }
+  function hideReaderAiDock() {
+    var dock = readerAiNode('[data-waterfall-ai-dock]');
+    if (dock) {
+      dock.classList.remove('is-visible');
+      setTreeHidden(dock, true);
+    }
+  }
+  function postReaderAiCancel() {
+    if (!readerCandidateId || !state || !window.AIPhoneHome ||
+      typeof window.AIPhoneHome.postAction !== 'function') return;
+    window.AIPhoneHome.postAction(JSON.stringify({
+      id: 'waterfall.reader.ai.cancel', label: '取消 AI 阅读', prompt: '', variant: 'secondary', kind: 'client',
+      args: { surfaceId: state.surfaceId || '', candidateId: readerCandidateId }
+    }));
+  }
+  function dismissReaderAiPanel(resetSession) {
+    var layer = readerAiNode('[data-waterfall-ai-layer]');
+    if (layer) {
+      layer.classList.remove('is-open');
+      setTreeHidden(layer, true);
+    }
+    if (reader) reader.classList.remove('ai-open');
+    setTreeHidden(readerAiNode('.waterfall-reader-head'), false);
+    setTreeHidden(readerAiNode('.waterfall-reader-body'), false);
+    hideReaderAiDock();
+    if (!resetSession) return;
+    postReaderAiCancel();
+    readerAiActive = false;
+    readerAiRequestId += 1;
+    readerAiMode = '';
+    readerAiQuery = '';
+    readerAiHistory = [];
+    readerAiSuggestionsPending = false;
+    readerAiSuggestionsLoaded = false;
+    readerAiSummaryLoaded = false;
+    setReaderAiAnswer('', false);
+    setReaderAiSuggestions('', false);
+    var input = readerAiNode('[data-waterfall-ai-input]');
+    if (input) input.value = '';
+    syncReaderAiComposeAction();
+  }
+  function postReaderAiRequest(modeName, query) {
+    if (!readerCandidateId || !state || !window.AIPhoneHome ||
+      typeof window.AIPhoneHome.postAction !== 'function') return;
+    var trimmedQuery = text(query).trim();
+    var requestHistory = readerAiHistory.slice();
+    if (modeName === 'question') {
+      var lastEntry = readerAiHistory[readerAiHistory.length - 1];
+      if (lastEntry && lastEntry.role === 'user' && lastEntry.content === trimmedQuery) requestHistory.pop();
+      else readerAiHistory.push({ role: 'user', content: trimmedQuery });
+      setReaderAiSuggestions('', false);
+      readerAiSuggestionsPending = false;
+      readerAiSuggestionsLoaded = true;
+      var input = readerAiNode('[data-waterfall-ai-input]');
+      if (input) input.value = '';
+      syncReaderAiComposeAction();
+    }
+    readerAiRequestId += 1;
+    readerAiActive = true;
+    readerAiMode = modeName;
+    readerAiQuery = trimmedQuery;
+    if (modeName === 'suggestions') {
+      readerAiSuggestionsPending = true;
+      setReaderAiSuggestions('', true);
+      setReaderAiStatus(readerAiBasisLabel() + ' · 正在生成相关问题');
+    } else {
+      if (readerAiSuggestionsPending) setReaderAiSuggestions('', false);
+      readerAiSuggestionsPending = false;
+      setReaderAiStatus(readerAiBasisLabel() + ' · 正在生成');
+      setReaderAiAnswer('', false);
+    }
+    window.AIPhoneHome.postAction(JSON.stringify({
+      id: 'waterfall.reader.ai.request', label: modeName === 'summary' ? 'AI 总结' :
+        (modeName === 'suggestions' ? '生成追问' : '继续提问'),
+      prompt: readerAiQuery, variant: 'secondary', kind: 'client', args: {
+        surfaceId: state.surfaceId || '', candidateId: readerCandidateId,
+        requestId: readerAiRequestId, mode: modeName, query: readerAiQuery,
+        history: requestHistory.map(function (entry) {
+          return { role: entry.role, content: text(entry.content) };
+        })
+      }
+    }));
+  }
+  function showReaderAiPanel(modeName) {
+    var layer = readerAiNode('[data-waterfall-ai-layer]');
+    if (!layer) return;
+    hideReaderAiDock();
+    setTreeHidden(readerAiNode('.waterfall-reader-head'), true);
+    setTreeHidden(readerAiNode('.waterfall-reader-body'), true);
+    layer.classList.add('is-open');
+    setTreeHidden(layer, false);
+    reader.classList.add('ai-open');
+    if (modeName === 'summary') {
+      if (!readerAiSummaryLoaded && (!readerAiActive || readerAiMode === 'suggestions')) {
+        postReaderAiRequest('summary', '');
+      }
+    }
+    else {
+      if (!readerAiSuggestionsPending && !readerAiSuggestionsLoaded && !readerAiActive) {
+        postReaderAiRequest('suggestions', '');
+      }
+      var input = readerAiNode('[data-waterfall-ai-input]');
+      if (input && typeof input.focus === 'function') input.focus();
+      syncReaderAiComposeAction();
+    }
+  }
+  function postReaderAiVoice() {
+    if (!readerCandidateId || !state || !window.AIPhoneHome ||
+      typeof window.AIPhoneHome.postAction !== 'function') return;
+    window.AIPhoneHome.postAction(JSON.stringify({
+      id: 'waterfall.reader.ai.voice', label: '语音输入', prompt: '', variant: 'secondary', kind: 'client',
+      args: { surfaceId: state.surfaceId || '', candidateId: readerCandidateId }
+    }));
+  }
+  window.__aiphoneApplyWaterfallAiEvent = function (event) {
+    if (!event || !state || text(event.surfaceId) !== text(state.surfaceId) ||
+      text(event.candidateId) !== readerCandidateId || Number(event.sequence || 0) <= readerAiLastSequence) return false;
+    readerAiLastSequence = Number(event.sequence || 0);
+    if (event.status === 'voice-listening') {
+      setReaderAiStatus('我在听，再点一次结束');
+      return true;
+    }
+    if (event.status === 'voice' || event.status === 'voice-error') {
+      var input = readerAiNode('[data-waterfall-ai-input]');
+      if (event.status === 'voice' && input) input.value = text(event.text).trim();
+      syncReaderAiComposeAction();
+      setReaderAiStatus(event.status === 'voice' ? '已识别，可继续编辑' : '语音识别失败，请重试');
+      return true;
+    }
+    if (Number(event.requestId || 0) !== readerAiRequestId) return false;
+    if (event.status === 'loading') {
+      setReaderAiStatus(readerAiBasisLabel() + (readerAiMode === 'suggestions' ? ' · 正在生成相关问题' : ' · 正在生成'));
+      return true;
+    }
+    if (event.status === 'streaming') {
+      if (readerAiMode !== 'suggestions') {
+        setReaderAiStatus(readerAiBasisLabel() + ' · 正在生成');
+        setReaderAiStreamingAnswer(text(event.text));
+      }
+      return true;
+    }
+    if (event.status === 'complete') {
+      readerAiActive = false;
+      if (readerAiMode === 'suggestions') {
+        readerAiSuggestionsPending = false;
+        readerAiSuggestionsLoaded = true;
+        setReaderAiSuggestions(text(event.text), false);
+        setReaderAiStatus(readerAiBasisLabel());
+        return true;
+      }
+      var answer = text(event.text).trim();
+      if (answer) readerAiHistory.push({ role: 'assistant', content: answer });
+      if (readerAiMode === 'summary') readerAiSummaryLoaded = true;
+      setReaderAiAnswer('', false);
+      setReaderAiStatus(readerAiBasisLabel());
+      if (!readerAiSuggestionsLoaded && !readerAiSuggestionsPending) postReaderAiRequest('suggestions', '');
+      return true;
+    }
+    if (event.status === 'error') {
+      readerAiActive = false;
+      if (readerAiMode === 'suggestions') {
+        readerAiSuggestionsPending = false;
+        setReaderAiSuggestions('', false);
+        setReaderAiStatus('可直接输入问题');
+        return true;
+      }
+      setReaderAiStatus('生成失败');
+      setReaderAiAnswer(text(event.text) || '暂时无法生成，请稍后重试。', true);
+      return true;
+    }
+    return false;
+  };
   function syncCardActionControls(candidateId) {
     if (typeof document.querySelectorAll !== 'function') return;
     var cardState = cardStateById(candidateId);
@@ -3560,8 +4210,18 @@ const WATERFALL_JS: string = `
   }
   function closeReader() {
     if (!reader || reader.classList.contains('closing')) return;
+    if (reader.classList.contains('ai-open')) {
+      dismissReaderAiPanel(false);
+      return;
+    }
+    if (readerHistoryIds.length > 0) {
+      openReader(readerHistoryIds.pop(), false);
+      return;
+    }
     freezeFeedMotion();
     destroyInlinePlayer();
+    dismissReaderAiPanel(true);
+    setTreeHidden(reader, true);
     reader.classList.add('closing');
     readerReturnScrolled = false;
     ignoreNextFeedOpen = true;
@@ -3588,6 +4248,8 @@ const WATERFALL_JS: string = `
     readerCloseTimer = setTimeout(function () {
       reader.classList.remove('active');
       reader.classList.remove('closing');
+      readerLayoutsById = {};
+      readerScrollTopById = {};
       if (reader.style) reader.style.pointerEvents = '';
       readerCloseTimer = null;
       mode = completedReturnMode;
@@ -3597,13 +4259,17 @@ const WATERFALL_JS: string = `
         }, 0);
       }
       if (completedReturnMode === 'collection') {
+        setTreeHidden(collection, false);
         if (pendingPayload) {
           mergePayload(pendingPayload);
           pendingPayload = null;
         }
         renderCollection();
-      } else if (!readerReturnScrolled && track && track.scrollTop !== readerFeedScrollTop) {
-        track.scrollTop = readerFeedScrollTop;
+      } else {
+        setTreeHidden(track, false);
+        if (!readerReturnScrolled && track && track.scrollTop !== readerFeedScrollTop) {
+          track.scrollTop = readerFeedScrollTop;
+        }
       }
       if (completedReturnMode !== 'collection' && pendingPayload) {
         if (interactionActive || scrollActive) settleInteraction();
@@ -3624,23 +4290,66 @@ const WATERFALL_JS: string = `
       }
     }, 180);
   }
-  function openReader(id) {
+  function openReader(id, rememberCurrent) {
     if (!reader || !track) return;
     var item = candidateById(id);
     if (!item) return;
     postBehavior(item.id, 'open', 0);
-    readerReturnMode = mode === 'collection' ? 'collection' : 'discovering';
+    setTreeHidden(track, true);
+    setTreeHidden(collection, true);
+    setTreeHidden(reader, true);
+    var nextId = text(item.id);
+    var switchingReader = mode === 'reading' && readerCandidateId && readerCandidateId !== nextId;
+    if (switchingReader) {
+      if (rememberCurrent && readerHistoryIds.indexOf(readerCandidateId) < 0) readerHistoryIds.push(readerCandidateId);
+      if (readerStartedAt > 0) readerDurationMs += Math.max(0, Date.now() - readerStartedAt);
+      if (readerDurationMs >= 8000) postBehavior(readerCandidateId, 'read_complete', readerDurationMs);
+      readerStartedAt = 0;
+      readerDurationMs = 0;
+      dismissReaderAiPanel(true);
+      stopReaderMedia();
+    } else if (mode !== 'reading') {
+      readerHistoryIds = [];
+      readerLayoutsById = {};
+      readerScrollTopById = {};
+      readerReturnMode = mode === 'collection' ? 'collection' : 'discovering';
+    }
     stopStageMedia(track);
     destroyInlinePlayer();
-    var format = candidateFormat(item);
-    var summary = cleanSummary(item.summary) || cleanSummary(item.reason);
-    var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
     var requestComments = waterfallCommentsSupported(item) && item.commentLoadState === undefined &&
       (!Array.isArray(item.comments) || item.comments.length === 0);
     if (requestComments) item.commentLoadState = 'loading';
-    var readerClass = format === 'image_text' ? 'waterfall-reader--image-text' :
-      (item.mediaType === 'video' ? 'waterfall-reader--video waterfall-reader--' +
-        (format === 'portrait_video' ? 'portrait' : 'landscape') : 'waterfall-reader--text');
+    var cachedLayout = readerMountedId && readerMountedId !== nextId ? readerLayoutsById[nextId] : null;
+    var readerClass = '';
+    var content = '';
+    if (!readerMountedId || readerMountedId !== nextId && !cachedLayout) {
+      var format = candidateFormat(item);
+      var summary = cleanSummary(item.summary) || cleanSummary(item.reason);
+      var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
+      readerClass = format === 'image_text' ? 'waterfall-reader--image-text' :
+        (item.mediaType === 'video' ? 'waterfall-reader--video waterfall-reader--' +
+          (format === 'portrait_video' ? 'portrait' : 'landscape') : 'waterfall-reader--text');
+      var videoStage = item.mediaType === 'video' ? videoStageMarkup(item, title,
+        'waterfall-reader-media waterfall-reader-media--video', 'waterfall-reader-video-poster') : '';
+      var media = format === 'image_text' ?
+        imageCarouselMarkup(item, title, 'waterfall-reader-media') :
+        (item.mediaType === 'video' ? videoStage : '');
+      var published = publishedLabel(item.publishedAt);
+      var context = '<div class="waterfall-reader-context"><div class="waterfall-reader-source">' +
+        sourceLogoMarkup(item.source) + '<span>' + escapeHtml(cardSourceLabel(item)) + '</span>' +
+        authorMarkup(item) + '</div>' + (published ? '<span>' + escapeHtml(published) + '</span>' : '') + '</div>';
+      var collapsible = item.mediaType === 'video' && (title.length > 52 || summary.length > 220);
+      var intro = '<div class="waterfall-reader-intro' +
+        (collapsible ? ' waterfall-reader-intro--collapsible' : '') + '"><h2>' + escapeHtml(title) + '</h2>' +
+        '<div data-waterfall-reader-metrics>' + metricsMarkup(item, true) + '</div>' +
+        '<div class="waterfall-reader-intro-copy">' + readerParagraphs(summary) + '</div>' +
+        (collapsible ? '<button type="button" class="waterfall-reader-intro-toggle" ' +
+          'data-waterfall-reader-intro-toggle aria-expanded="false">展开</button>' : '') + '</div>';
+      var copy = '<div class="waterfall-reader-copy">' + context + intro +
+        '<div data-waterfall-comments-slot>' + commentsMarkup(item) + '</div>' + feedbackBarMarkup(item) +
+        '<div data-waterfall-related-slot></div></div>';
+      content = media + copy;
+    }
     if (readerCloseTimer !== null) clearTimeout(readerCloseTimer);
     readerCloseTimer = null;
     if (advanceTimer !== null) clearTimeout(advanceTimer);
@@ -3653,48 +4362,60 @@ const WATERFALL_JS: string = `
       reader.classList.remove('closing');
     }
     if (reader.style) reader.style.pointerEvents = '';
-    var videoStage = item.mediaType === 'video' ? videoStageMarkup(item, title,
-      'waterfall-reader-media waterfall-reader-media--video', 'waterfall-reader-video-poster') : '';
-    var media = format === 'image_text' ?
-      imageCarouselMarkup(item, title, 'waterfall-reader-media') :
-      (item.mediaType === 'video' ? videoStage : '');
-    var context = '<div class="waterfall-reader-context"><div class="waterfall-reader-source">' +
-      sourceLogoMarkup(item.source) + '<span>' + escapeHtml(cardSourceLabel(item)) + '</span>' +
-      authorMarkup(item) + '</div><span>' +
-      escapeHtml(publishedLabel(item.publishedAt)) + '</span></div>';
-    var copy = '<div class="waterfall-reader-copy">' + context + '<h2>' + escapeHtml(title) + '</h2>' +
-      '<div data-waterfall-reader-metrics>' + metricsMarkup(item, true) + '</div>' +
-      readerParagraphs(summary) +
-      '<div data-waterfall-comments-slot>' + commentsMarkup(item) + '</div>' + feedbackBarMarkup(item) + '</div>';
-    var content = media + copy;
-    var nextId = text(item.id);
-    if (readerMountedId !== nextId) {
+    if (!readerMountedId) {
       reader.innerHTML = '<div class="waterfall-reader-head">' +
         '<button type="button" class="waterfall-chrome-btn" data-waterfall-reader-close ' +
         'aria-label="返回发现流">' + uiIcon('back') +
         '<span class="waterfall-reader-head-label">返回</span></button>' +
         '<strong class="waterfall-reader-head-title">详情</strong><span></span>' +
         '</div><article class="waterfall-reader-body"><div class="waterfall-reader-layout ' +
-        readerClass + '">' + content + '</div></article>';
+        readerClass + '">' + content + '</div></article>' + readerAiMarkup();
       readerMountedId = nextId;
+    } else if (readerMountedId !== nextId && typeof reader.querySelector === 'function') {
+      var changedReaderBody = reader.querySelector('.waterfall-reader-body');
+      if (changedReaderBody) {
+        var currentLayout = changedReaderBody.querySelector('.waterfall-reader-layout');
+        if (currentLayout) {
+          readerScrollTopById[readerMountedId] = changedReaderBody.scrollTop;
+          changedReaderBody.removeChild(currentLayout);
+          readerLayoutsById[readerMountedId] = currentLayout;
+        }
+        var nextLayout = cachedLayout;
+        if (!nextLayout) {
+          nextLayout = document.createElement('div');
+          nextLayout.className = 'waterfall-reader-layout ' + readerClass;
+          nextLayout.innerHTML = content;
+          readerLayoutsById[nextId] = nextLayout;
+        }
+        changedReaderBody.appendChild(nextLayout);
+        changedReaderBody.scrollTop = Number(readerScrollTopById[nextId] || 0);
+        readerMountedId = nextId;
+      }
     } else if (typeof reader.querySelector === 'function') {
       var readerBody = reader.querySelector('.waterfall-reader-body');
       if (readerBody) readerBody.scrollTop = 0;
       syncCardActionControls(item.id);
     }
     pauseCurrentBehavior(false);
-    readerFeedScrollTop = track.scrollTop;
+    if (!switchingReader) readerFeedScrollTop = track.scrollTop;
     readerCandidateId = text(item.id);
     readerStartedAt = Date.now();
     readerDurationMs = 0;
     mode = 'reading';
-    if (directDiscovery && readerReturnMode !== 'collection') setFullscreen(true);
+    syncReaderComments();
+    if (!switchingReader && directDiscovery && readerReturnMode !== 'collection') setFullscreen(true);
     ignoreNextFeedOpen = false;
     var reveal = function () {
-      if (mode === 'reading' && !reader.classList.contains('active')) reader.classList.add('active');
+      if (mode === 'reading') {
+        setTreeHidden(reader, false);
+        if (!reader.classList.contains('active')) reader.classList.add('active');
+      }
+      if (mode === 'reading' && readerCandidateId === nextId && !readerAiActive &&
+        !readerAiSuggestionsPending && !readerAiSuggestionsLoaded) postReaderAiRequest('suggestions', '');
     };
     if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(reveal);
     else reveal();
+    scheduleReaderRelated(item, nextId);
     if (requestComments) setTimeout(function () { postCommentsLoad(nextId); }, 0);
   }
   function toggleVideoFullscreen(videoCard) {
@@ -3726,7 +4447,7 @@ const WATERFALL_JS: string = `
       '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="' + coverFailure + '" />' : '';
     var rawSummary = cleanSummary(item.summary);
     var summary = rawSummary || cleanSummary(item.reason);
-    var reasonText = rawSummary && cleanSummary(item.reason) !== rawSummary ? cleanSummary(item.reason) : '';
+    var published = publishedLabel(item.publishedAt);
     var title = text(item.title).trim() || sourceLabel(item.source) + ' 内容';
     var cardClass = cardClassName(item);
     var meta = '<div class="waterfall-cinema-meta">' + sourceLogoMarkup(item.source) + '<span>' +
@@ -3750,8 +4471,6 @@ const WATERFALL_JS: string = `
     var stage = item.mediaType === 'video' ? videoStageMarkup(item, title,
       'waterfall-cinema-stage', 'waterfall-media-cover') :
       (imageCarousel || ((cover || inlineControls) ? '<div class="waterfall-cinema-stage">' + cover + inlineControls + '</div>' : ''));
-    var reason = reasonText ? '<span class="waterfall-recommendation" aria-label="推荐理由" data-waterfall-reason>' +
-      escapeHtml(reasonText) + '</span>' : '<span></span>';
     var openAttr = ' data-waterfall-open="' + escapeHtml(item.id) + '"';
     var shellAttrs = item.mediaType === 'video' || sourceOnly ? '' : ' role="button" tabindex="0"' + openAttr;
     var copyAttrs = item.mediaType === 'video' || sourceOnly ? ' role="button" tabindex="0"' + openAttr : '';
@@ -3762,10 +4481,9 @@ const WATERFALL_JS: string = `
       '<div class="waterfall-cinema-copy"' + copyAttrs + '>' + meta +
       '<h2>' + escapeHtml(title) + '</h2>' +
       (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') +
-      (item.publishedAt ?
-        '<div class="waterfall-meta">' + escapeHtml(publishedLabel(item.publishedAt)) + '</div>' : '') +
       '<div data-waterfall-card-metrics>' + metricsMarkup(item, false) + '</div>' +
-      '<div class="waterfall-copy-actions">' + reason + feedbackBarMarkup(item) +
+      '<div class="waterfall-copy-actions">' +
+      (published ? '<span class="waterfall-card-time">' + escapeHtml(published) + '</span>' : '') + feedbackBarMarkup(item) +
       '</div></div></div></article>';
   }
   function savedTimeLabel(value) {
@@ -4636,11 +5354,68 @@ const WATERFALL_JS: string = `
     openReader(item.id);
   });
   if (reader) {
+    reader.addEventListener('scroll', function (event) {
+      if (mode === 'reading' && event.target && event.target.classList &&
+        event.target.classList.contains('waterfall-reader-body')) hideReaderAiDock();
+    }, true);
+    reader.addEventListener('input', function (event) {
+      if (event.target && typeof event.target.matches === 'function' &&
+        event.target.matches('[data-waterfall-ai-input]')) syncReaderAiComposeAction();
+    });
+    reader.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' || !event.target || typeof event.target.matches !== 'function' ||
+        !event.target.matches('[data-waterfall-ai-input]')) return;
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+      var query = text(event.target.value).trim();
+      if (query) postReaderAiRequest('question', query);
+    });
     bindFastTap(reader, function (event) {
       var target = event.target;
       if (!target || typeof target.closest !== 'function') return false;
       if (target.closest('[data-waterfall-reader-close]')) {
         closeReader();
+        return true;
+      }
+      if (target.closest('[data-waterfall-ai-close], [data-waterfall-ai-backdrop]')) {
+        dismissReaderAiPanel(false);
+        return true;
+      }
+      var introToggle = target.closest('[data-waterfall-reader-intro-toggle]');
+      if (introToggle) {
+        var intro = introToggle.closest('.waterfall-reader-intro');
+        var expanded = intro && !intro.classList.contains('is-expanded');
+        if (intro) intro.classList.toggle('is-expanded', expanded);
+        if (typeof introToggle.setAttribute === 'function') introToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        introToggle.textContent = expanded ? '收起' : '展开';
+        return true;
+      }
+      var aiAction = target.closest('[data-waterfall-ai-action]');
+      if (aiAction) {
+        showReaderAiPanel(text(aiAction.getAttribute('data-waterfall-ai-action')) === 'summary' ? 'summary' : 'question');
+        return true;
+      }
+      var aiQuestion = target.closest('[data-waterfall-ai-question]');
+      if (aiQuestion) {
+        postReaderAiRequest('question', aiQuestion.getAttribute('data-waterfall-ai-question'));
+        return true;
+      }
+      if (target.closest('[data-waterfall-ai-compose-action]')) {
+        var aiInput = readerAiNode('[data-waterfall-ai-input]');
+        var query = text(aiInput && aiInput.value).trim();
+        if (query) postReaderAiRequest('question', query);
+        else {
+          setReaderAiStatus('正在唤起语音输入');
+          postReaderAiVoice();
+        }
+        return true;
+      }
+      if (target.closest('[data-waterfall-ai-retry]')) {
+        postReaderAiRequest(readerAiMode || 'summary', readerAiQuery);
+        return true;
+      }
+      var related = target.closest('[data-waterfall-related-open]');
+      if (related) {
+        openReader(related.getAttribute('data-waterfall-related-open'), true);
         return true;
       }
       var cardAction = target.closest('[data-waterfall-card-action]');
@@ -4665,10 +5440,18 @@ const WATERFALL_JS: string = `
         return 'media';
       }
       if (!target.closest('.waterfall-reader-layout')) {
-        closeReader();
+        var aiLayer = readerAiNode('[data-waterfall-ai-layer]');
+        var aiDock = readerAiNode('[data-waterfall-ai-dock]');
+        if (aiLayer && aiLayer.classList.contains('is-open')) dismissReaderAiPanel(false);
+        else if (aiDock && aiDock.classList.contains('is-visible')) hideReaderAiDock();
+        else closeReader();
         return true;
       }
-      return false;
+      if (target.closest('a, button, input, video, iframe')) return false;
+      var dock = readerAiNode('[data-waterfall-ai-dock]');
+      if (dock && dock.classList.contains('is-visible')) hideReaderAiDock();
+      else showReaderAiDock();
+      return true;
     });
   }
   if (preferences) {
@@ -5003,6 +5786,67 @@ export function waterfallCommentsCandidateFromAction(action: A2uiAction, surface
   return candidateId.length > 0 ? candidateId : null;
 }
 
+export interface WaterfallReaderAiRequest {
+  surfaceId: string;
+  candidateId: string;
+  requestId: number;
+  mode: 'summary' | 'question' | 'suggestions';
+  query: string;
+  history: WaterfallReaderAiMessage[];
+}
+
+export interface WaterfallReaderAiMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export function waterfallReaderAiRequestFromAction(
+  action: A2uiAction,
+  surfaceId: string
+): WaterfallReaderAiRequest | null {
+  const args = waterfallArgsFromAction(action, 'waterfall.reader.ai.request', surfaceId);
+  if (args === null || Object.keys(args).sort().join(',') !== 'candidateId,history,mode,query,requestId,surfaceId' ||
+    typeof args['candidateId'] !== 'string' || (args['candidateId'] as string).trim().length === 0 ||
+    typeof args['requestId'] !== 'number' || !Number.isInteger(args['requestId'] as number) ||
+    (args['requestId'] as number) <= 0 || (args['mode'] !== 'summary' && args['mode'] !== 'question' &&
+      args['mode'] !== 'suggestions') || typeof args['query'] !== 'string' || !Array.isArray(args['history'])) return null;
+  const query = (args['query'] as string).trim();
+  if ((args['mode'] !== 'question' && query.length > 0) ||
+    (args['mode'] === 'question' && (query.length === 0 || query.length > 500))) return null;
+  const rawHistory = args['history'] as WaterfallActionValue[];
+  const history: WaterfallReaderAiMessage[] = [];
+  for (let index = 0; index < rawHistory.length; index += 1) {
+    const rawEntry = rawHistory[index];
+    if (typeof rawEntry !== 'object' || rawEntry === null || Array.isArray(rawEntry)) return null;
+    const entry = rawEntry as Record<string, WaterfallActionValue>;
+    if (Object.keys(entry).sort().join(',') !== 'content,role' ||
+      (entry['role'] !== 'user' && entry['role'] !== 'assistant') || typeof entry['content'] !== 'string') return null;
+    const content = (entry['content'] as string).trim();
+    if (content.length === 0) return null;
+    history.push({ role: entry['role'] as 'user' | 'assistant', content });
+  }
+  return {
+    surfaceId,
+    candidateId: (args['candidateId'] as string).trim(),
+    requestId: args['requestId'] as number,
+    mode: args['mode'] as 'summary' | 'question' | 'suggestions',
+    query,
+    history
+  };
+}
+
+export function waterfallReaderAiCandidateFromAction(
+  action: A2uiAction,
+  actionId: 'waterfall.reader.ai.cancel' | 'waterfall.reader.ai.voice',
+  surfaceId: string
+): string | null {
+  const args = waterfallArgsFromAction(action, actionId, surfaceId);
+  if (args === null || Object.keys(args).sort().join(',') !== 'candidateId,surfaceId' ||
+    typeof args['candidateId'] !== 'string') return null;
+  const candidateId = (args['candidateId'] as string).trim();
+  return candidateId.length > 0 ? candidateId : null;
+}
+
 export function waterfallAdvanceVisibleFromAction(action: A2uiAction, surfaceId: string): string | null {
   const args = waterfallArgsFromAction(action, 'waterfall.feed.advance', surfaceId);
   if (args === null || typeof args['visibleId'] !== 'string') {
@@ -5076,7 +5920,8 @@ export function buildWaterfallHomePayload(
   document: HtmlHomeDocument,
   isBusy: boolean,
   waterfallState: WaterfallFeedState | null = null,
-  cardRecords: WaterfallCardRecord[] = []
+  cardRecords: WaterfallCardRecord[] = [],
+  consumedCandidateIds: string[] = []
 ): WaterfallHomePayload | null {
   const state = waterfallState ?? document.waterfall;
   if (state === undefined) {
@@ -5098,6 +5943,7 @@ export function buildWaterfallHomePayload(
   append(state.current);
   state.stable.forEach(append);
   state.tail.forEach(append);
+  (state.reserve ?? []).forEach(append);
   const remainingCandidates: WaterfallRankedCandidate[] = [];
   if (state.current !== null) {
     remainingCandidates.push(state.current);
@@ -5164,6 +6010,8 @@ export function buildWaterfallHomePayload(
       };
       return savedCard;
     }),
+    consumedCandidateIds: consumedCandidateIds.filter((candidateId: string, index: number): boolean =>
+      candidateId.trim().length > 0 && consumedCandidateIds.indexOf(candidateId) === index),
     replenishing: replenishing,
     exhausted: exhausted
   };
@@ -5287,6 +6135,7 @@ export function buildWaterfallHomeUpdate(
     sources: current.sources,
     cardStates: current.cardStates,
     savedCards: current.savedCards,
+    consumedCandidateIds: current.consumedCandidateIds,
     replenishing: current.replenishing,
     exhausted: current.exhausted
   };
@@ -5385,6 +6234,16 @@ function waterfallUiIconMarkup(name: string): string {
     paths = '<rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 10h6M7 14h10M16 10h1" />';
   } else if (name === 'share') {
     paths = '<circle cx="18" cy="5" r="2" /><circle cx="6" cy="12" r="2" /><circle cx="18" cy="19" r="2" /><path d="m8 11 8-5m-8 7 8 5" />';
+  } else if (name === 'question') {
+    paths = '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />' +
+      '<path d="M9.7 9a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.3.9-1.3 1.8m0 3h.01" />';
+  } else if (name === 'sparkles') {
+    paths = '<path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Z" />' +
+      '<path d="m18.5 13 .7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7.7-2.3Z" /><path d="M5 14v5m-2.5-2.5h5" />';
+  } else if (name === 'microphone') {
+    paths = '<rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3m-4 0h8" />';
+  } else if (name === 'send') {
+    paths = '<path d="M12 19V5m-6 6 6-6 6 6" />';
   }
   return '<span class="waterfall-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">' +
     paths + '</svg></span>';
@@ -5432,7 +6291,11 @@ export function renderAggregateSearchHomeDocument(
     quote: waterfallUiIconMarkup('quote'),
     coin: waterfallUiIconMarkup('coin'),
     danmaku: waterfallUiIconMarkup('danmaku'),
-    share: waterfallUiIconMarkup('share')
+    share: waterfallUiIconMarkup('share'),
+    question: waterfallUiIconMarkup('question'),
+    sparkles: waterfallUiIconMarkup('sparkles'),
+    microphone: waterfallUiIconMarkup('microphone'),
+    send: waterfallUiIconMarkup('send')
   }).replace(/</g, '\\u003c');
   const waterfallStatus = waterfall !== null && waterfall.replenishing ? '<div class="waterfall-status">正在补充内容</div>' :
     (waterfall !== null && waterfall.exhausted ? '<div class="waterfall-status">本轮内容已结束</div>' : '');
@@ -5474,7 +6337,7 @@ export function renderAggregateSearchHomeDocument(
       '<div class="waterfall-edge-fade waterfall-edge-fade--top" aria-hidden="true"></div>' +
       '<div class="waterfall-edge-fade waterfall-edge-fade--bottom" aria-hidden="true"></div>' +
       '<div id="waterfall-preferences" class="waterfall-preferences"></div>' +
-      '<div id="waterfall-reader" class="waterfall-reader"></div>' +
+      '<div id="waterfall-reader" class="waterfall-reader" aria-hidden="true" inert></div>' +
       '<div id="waterfall-collection" class="waterfall-collection"></div>' +
       '<div id="waterfall-toast" class="waterfall-toast" role="status" aria-live="polite"></div></section>' : '',
     '<script>', AGGREGATE_JS, waterfall !== null ? 'window.__aiphoneWaterfallDirect=' +

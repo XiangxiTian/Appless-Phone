@@ -23,6 +23,8 @@ import {
   waterfallCommentsCandidateFromAction,
   waterfallEnabledSourcesFromAction,
   waterfallRefreshFromAction,
+  waterfallReaderAiCandidateFromAction,
+  waterfallReaderAiRequestFromAction,
   waterfallSearchExitFromAction,
   waterfallSearchQueryFromAction,
   waterfallSnapshotRequestFromAction
@@ -3823,7 +3825,8 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('waterfall-reader')).assertLarger(-1);
       expect(html.indexOf('waterfall-reader--image-text')).assertLarger(-1);
       expect(html.indexOf('waterfall-reader--text')).assertLarger(-1);
-      expect(html.indexOf('waterfall-recommendation')).assertLarger(-1);
+      expect(html.indexOf('waterfall-card-time')).assertLarger(-1);
+      expect(html.indexOf('waterfall-recommendation')).assertEqual(-1);
       expect(payload?.mediaEmbeds['https://www.youtube.com/watch?v=abc123'].indexOf('autoplay=1')).assertEqual(-1);
       expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('autoplay=1')).assertEqual(-1);
       expect(payload?.mediaEmbeds['https://www.bilibili.com/video/BV1'].indexOf('autoplay=0')).assertLarger(-1);
@@ -3831,7 +3834,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('waterfall-toolbar-primary')).assertLarger(-1);
       expect(html.indexOf('waterfall-toolbar-secondary')).assertLarger(-1);
       expect(html.indexOf('aria-label="内容来源"')).assertLarger(-1);
-      expect(html.indexOf('aria-label="推荐理由"')).assertLarger(-1);
+      expect(html.indexOf('aria-label="推荐理由"')).assertEqual(-1);
       expect(html.indexOf('window.__aiphoneApplyWaterfallUpdate')).assertLarger(-1);
       expect(html.indexOf('scroll-snap-type: y mandatory')).assertLarger(-1);
       expect(html.indexOf('min-height: 44px')).assertLarger(-1);
@@ -3851,7 +3854,7 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('"applepodcasts","twitch","github","steam","cnnews","globalnews"] : ["youtube"')).assertLarger(-1);
       expect(html.indexOf('target="_blank" rel="noopener noreferrer">查看来源</a>')).assertEqual(-1);
       expect(html.indexOf('target="_self" rel="noopener noreferrer">查看来源</a>')).assertEqual(-1);
-      expect(html.indexOf('data-waterfall-reason')).assertLarger(-1);
+      expect(html.indexOf('data-waterfall-reason')).assertEqual(-1);
       expect(html.indexOf('data-waterfall-media-fallback')).assertEqual(-1);
       expect(html.indexOf('class="waterfall-icon"')).assertLarger(-1);
       expect(html.indexOf('scroll-snap-align: center')).assertLarger(-1);
@@ -4169,6 +4172,57 @@ export default function htmlHomeRendererTest() {
       expect(waterfallRefreshFromAction(injected, 'surface-1')).assertFalse();
     });
 
+    it('accepts only valid reader AI actions from the current Waterfall surface', 0, () => {
+      const request = parseHtmlHomeAction('{"id":"waterfall.reader.ai.request","label":"AI 总结",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","requestId":1,"mode":"summary","query":"","history":[]}}') as A2uiAction;
+      const voice = parseHtmlHomeAction('{"id":"waterfall.reader.ai.voice","label":"语音输入",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1"}}') as A2uiAction;
+
+      expect(waterfallReaderAiRequestFromAction(request, 'surface-1')?.candidateId).assertEqual('candidate-1');
+      expect(waterfallReaderAiRequestFromAction(request, 'other-surface')).assertEqual(null);
+      expect(waterfallReaderAiCandidateFromAction(voice, 'waterfall.reader.ai.voice', 'surface-1'))
+        .assertEqual('candidate-1');
+      const injected = JSON.parse(JSON.stringify(request)) as A2uiAction;
+      (injected.args as Record<string, Object | string | number>).url = 'https://attacker.example';
+      expect(waterfallReaderAiRequestFromAction(injected, 'surface-1')).assertEqual(null);
+      const emptyQuestion = JSON.parse(JSON.stringify(request)) as A2uiAction;
+      (emptyQuestion.args as Record<string, Object | string | number>).mode = 'question';
+      expect(waterfallReaderAiRequestFromAction(emptyQuestion, 'surface-1')).assertEqual(null);
+      const contextualQuestion = parseHtmlHomeAction('{"id":"waterfall.reader.ai.request","label":"继续提问",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","requestId":2,"mode":"question","query":"这项结论有什么限制？",' +
+        '"history":[{"role":"assistant","content":"上一轮总结"},{"role":"user","content":"依据是什么？"},' +
+        '{"role":"assistant","content":"依据来自正文。"}]}}') as A2uiAction;
+      expect(waterfallReaderAiRequestFromAction(contextualQuestion, 'surface-1')?.history.length).assertEqual(3);
+      const fullSession = parseHtmlHomeAction('{"id":"waterfall.reader.ai.request","label":"继续提问",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","requestId":4,"mode":"question","query":"最后怎么判断？",' +
+        '"history":[{"role":"user","content":"问题1"},{"role":"assistant","content":"回答1"},' +
+        '{"role":"user","content":"问题2"},{"role":"assistant","content":"回答2"},' +
+        '{"role":"user","content":"问题3"},{"role":"assistant","content":"回答3"},' +
+        '{"role":"user","content":"问题4"},{"role":"assistant","content":"回答4"},' +
+        '{"role":"user","content":"问题5"}]}}') as A2uiAction;
+      expect(waterfallReaderAiRequestFromAction(fullSession, 'surface-1')?.history.length).assertEqual(9);
+      const longTurnText = new Array(2102).join('a');
+      const longTurn = parseHtmlHomeAction('{"id":"waterfall.reader.ai.request","label":"继续提问",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","requestId":5,"mode":"question","query":"继续",' +
+        '"history":[{"role":"assistant","content":"' + longTurnText + '"}]}}') as A2uiAction;
+      expect(waterfallReaderAiRequestFromAction(longTurn, 'surface-1')?.history[0].content.length)
+        .assertEqual(longTurnText.length);
+      const invalidHistory = parseHtmlHomeAction('{"id":"waterfall.reader.ai.request","label":"继续提问",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","requestId":2,"mode":"question","query":"依据是什么？",' +
+        '"history":[{"role":"system","content":"越权指令"}]}}') as A2uiAction;
+      expect(waterfallReaderAiRequestFromAction(invalidHistory, 'surface-1')).assertEqual(null);
+      const suggestions = parseHtmlHomeAction('{"id":"waterfall.reader.ai.request","label":"生成追问",' +
+        '"prompt":"","variant":"secondary","kind":"client","args":{"surfaceId":"surface-1",' +
+        '"candidateId":"candidate-1","requestId":3,"mode":"suggestions","query":"","history":[]}}') as A2uiAction;
+      expect(waterfallReaderAiRequestFromAction(suggestions, 'surface-1')?.mode).assertEqual('suggestions');
+    });
+
     it('turns the posted Waterfall scroll action into one current-card advance', 0, () => {
       const doc = waterfallRendererFixture();
       const state = doc.waterfall as WaterfallFeedState;
@@ -4296,6 +4350,25 @@ export default function htmlHomeRendererTest() {
       expect(payload?.savedCards[1].savedAt).assertEqual(1000);
       expect(payload?.savedCards[1].mediaUrl).assertEqual('https://cdn.example/older.mp4');
       expect(JSON.stringify(payload?.cardStates).indexOf('metrics')).assertEqual(-1);
+    });
+
+    it('publishes reserve candidates for detail recommendations without rendering them in the feed prefix', 0, () => {
+      const doc = waterfallRendererFixture();
+      const state = doc.waterfall as WaterfallFeedState;
+      const reserve: WaterfallRankedCandidate = {
+        id: 'related-reserve', source: 'hackernews', mediaType: 'post', title: 'Codex reserve detail',
+        summary: 'A related candidate kept outside the visible feed prefix.',
+        url: 'https://example.com/related-reserve', coverUrl: '', publishedAt: '2026-08-05T00:00:00.000Z',
+        originalIndex: 4, normalizedUrl: 'https://example.com/related-reserve',
+        signals: { relevanceTier: 3, titleHits: 1, summaryHits: 0, freshnessTier: 4 },
+        reason: '标题命中查询'
+      };
+      state.reserve = [reserve];
+      const payload = buildWaterfallHomePayload(doc, false);
+
+      expect(payload?.candidates.some((candidate: WaterfallRankedCandidate): boolean =>
+        candidate.id === 'related-reserve')).assertTrue();
+      expect(payload?.stableIds.indexOf('related-reserve')).assertEqual(-1);
     });
 
     it('keeps the Waterfall entry hidden when no candidate is valid', 0, () => {

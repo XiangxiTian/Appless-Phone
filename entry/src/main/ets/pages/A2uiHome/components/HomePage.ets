@@ -237,6 +237,7 @@ export struct HomePage {
   @Prop multiTaskPayloadTick: number = 0;
   @Prop waterfallPayloadJson: string = '';
   @Prop waterfallPayloadTick: number = 0;
+  @Prop waterfallAiEventJson: string = '';
   @Prop waterfallActive: boolean = true;
   @Prop waterfallBackRequestTick: number = 0;
   @Prop mailDetailEventJson: string = '';
@@ -935,6 +936,7 @@ export struct HomePage {
               multiTaskPayloadTick: this.multiTaskPayloadTick,
               waterfallPayloadJson: this.waterfallPayloadJson,
               waterfallPayloadTick: this.waterfallPayloadTick,
+              waterfallAiEventJson: this.waterfallAiEventJson,
               waterfallActive: this.waterfallActive,
               waterfallBackRequestTick: this.waterfallBackRequestTick,
               mailDetailEventJson: this.mailDetailEventJson,

@@ -188,6 +188,32 @@ assert.match(indexPage,
   'fullscreen tucks the already-mounted dock behind the WebView instead of covering it');
 assert.match(indexPage, /startVoiceInput\('waterfall'\)/,
   'the discovery dock must reuse ASR through its independent target');
+assert.match(surfaceView,
+  /@Prop @Watch\('onWaterfallAiEventChange'\) waterfallAiEventJson:\s*string/,
+  'small AI reader events must have a dedicated WebView push path');
+assert.match(surfaceView,
+  /waterfallAiEventPushInFlight[\s\S]*?runJavaScript\([\s\S]*?\.then\([\s\S]*?pushWaterfallAiEventIfNeeded/,
+  'reader AI bridge updates must coalesce behind one in-flight ArkWeb call');
+assert.match(indexPage, /waterfallAiEventJson:\s*this\.bimRootIndex === 0 \? this\.waterfallAiEventJson : ''/,
+  'reader AI events must reach only the active home Waterfall WebView');
+assert.match(indexPage, /waterfallAiEventJson:\s*this\.bimRootIndex === 1 \? this\.waterfallAiEventJson : ''/,
+  'reader AI events must reach only the active discovery WebView');
+assert.match(indexPage, /complete\([\s\S]*?onTextDelta/,
+  'reader AI must stream through the existing model instead of mutating normal chat history');
+assert.match(indexPage, /now - lastStreamPublishedAt < 180/,
+  'reader AI must throttle native-to-WebView streaming updates to avoid rendering every token');
+const readerAiStreamingSource = waterfallJs.slice(
+  waterfallJs.indexOf('function setReaderAiStreamingAnswer'),
+  waterfallJs.indexOf('function setReaderAiSuggestions')
+);
+assert.match(waterfallJs, /slot\.firstChild\.data = content/,
+  'streaming must update the mounted text node without replacing its DOM subtree');
+assert.doesNotMatch(readerAiStreamingSource, /innerHTML\s*=\s*readerAiMarkdown/,
+  'streaming must defer structural Markdown DOM writes until completion');
+assert.doesNotMatch(readerAiStreamingSource, /document\.createElement/,
+  'the common streaming path must reuse a message slot mounted with the AI panel');
+assert.match(waterfallJs, /new Array\(17\)\.join\('<div class="waterfall-ai-message/,
+  'the AI panel must prebuild enough message slots to avoid ArkWeb full-tree scans during normal conversations');
 assert.match(poolWorker, /waitForAvailable\(profile, enabledSources, preferredQuery\)/,
   'explicit tag recall must not spin on unrelated cached pool entries');
 const aboutToAppearSource = indexPage.slice(
@@ -786,6 +812,26 @@ assert.doesNotMatch(waterfallJs, /waterfall-reader-video-card/,
 assert.doesNotMatch(waterfallJs, /waterfall-reader-video-copy/,
   'detail copy must not fork into a video-only wrapper');
 assert.match(waterfallJs, /requestAnimationFrame/);
+assert.match(waterfallJs, /requestIdleCallback/,
+  'related recommendations must wait until the first detail frame is idle');
+assert.doesNotMatch(waterfallJs, /readerAiHistory\.slice\(-8\)/,
+  'the temporary reader conversation must not silently discard older turns');
+assert.doesNotMatch(waterfallJs, /entry\.content\)\.substring\(0, 2000\)/,
+  'the temporary reader conversation must not silently truncate a completed turn');
+assert.doesNotMatch(indexPage, /请仅依据下面内容回答问题/,
+  'follow-up answers may supplement the supplied material with clearly separated model knowledge');
+assert.match(indexPage, /以提供的内容和临时对话为主要依据/,
+  'follow-up answers must still treat the supplied material as the primary source');
+assert.doesNotMatch(indexPage, /必须区分材料事实、补充知识和推断/,
+  'reader answers must not be forced into repetitive defensive source disclaimers');
+const readerAiRequestSource = indexPage.slice(
+  indexPage.indexOf('private runWaterfallReaderAiRequest'),
+  indexPage.indexOf('private handleWaterfallReaderAiAction')
+);
+assert.match(readerAiRequestSource, /streamed \+= onTextDelta;\s*if \(request\.mode === 'suggestions'\) return;/,
+  'hidden suggestion generation must not publish unused streaming payloads across the ArkWeb bridge');
+assert.match(indexPage, /自然、直接回答/,
+  'reader answers should lead with a useful answer instead of a defensive preamble');
 assert.doesNotMatch(waterfallJs, /reader\.offsetWidth/,
   'opening details must not force a synchronous full-reader layout');
 assert.match(waterfallJs, /addEventListener\('touchstart'/,
@@ -858,8 +904,31 @@ assert.match(waterfallCss, /\n\.waterfall-cinema-copy\s*\{[^}]*display:\s*flex[^
 assert.match(waterfallCss, /\n\.waterfall-copy-actions\s*\{[^}]*margin-top:\s*auto/s);
 assert.match(waterfallCss, /\.waterfall-reader-body\s*\{[^}]*overflow-y:\s*auto/s);
 assert.match(waterfallCss,
-  /\.waterfall-reader-signal b\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1[^}]*overflow-wrap:\s*anywhere/s,
-  'detail metrics must use the value column and wrap instead of truncating');
+  /\.waterfall-reader-signal b\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1[^}]*white-space:\s*nowrap[^}]*overflow-wrap:\s*normal/s,
+  'a compact metric value and its Chinese unit must stay on the same line');
+assert.doesNotMatch(waterfallCss, /\.waterfall-reader-signals\s*\{[^}]*border-top/s,
+  'metrics must use spacing instead of adding a divider below the title');
+assert.doesNotMatch(waterfallCss, /\.waterfall-comments\s*\{[^}]*border-top/s,
+  'comments must not add another section divider');
+assert.doesNotMatch(waterfallCss, /\.waterfall-comment-row\s*\{[^}]*border-bottom/s,
+  'comment rows must use spacing instead of repeated horizontal rules');
+assert.match(waterfallCss,
+  /\.waterfall-comment-body\s*\{[^}]*display:\s*block[^}]*grid-column:\s*2[^}]*width:\s*100%/s,
+  'comment copy must occupy the explicit content column instead of collapsing to one character per line');
+assert.match(waterfallCss,
+  /\.waterfall-comment-row--no-avatar \.waterfall-comment-body\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/s,
+  'comments without an avatar must span the full row');
+assert.doesNotMatch(waterfallCss, /\.waterfall-reader-copy > \.waterfall-feedback-bar\s*\{[^}]*border-top/s,
+  'reader actions must not add a divider immediately before related content');
+assert.match(waterfallCss, /\.waterfall-related\s*\{[^}]*border-top:\s*1px solid var\(--line\)/s,
+  'related content keeps the single major section divider');
+assert.match(waterfallCss,
+  /\.waterfall-ai-trigger\s*\{[^}]*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.82\)[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.72\)[^}]*backdrop-filter:\s*blur\(20px\) saturate\(1\.18\)/s,
+  'both AI actions must share the same transparent white frosted-glass material');
+assert.doesNotMatch(waterfallCss, /\.waterfall-ai-trigger--summary\s*\{[^}]*background:/s,
+  'AI summary must not override the shared glass surface with a filled brand color');
+assert.doesNotMatch(waterfallCss, /\.waterfall-ai-trigger--summary \.waterfall-icon\s*\{/s,
+  'AI summary and follow-up icons must use the same contrast treatment');
 assert.match(waterfallCss,
   /\.waterfall-reader-source \.waterfall-author-name\s*\{[^}]*max-width:\s*none[^}]*overflow:\s*visible[^}]*text-overflow:\s*clip[^}]*white-space:\s*normal/s,
   'detail author data must wrap instead of inheriting card ellipsis');
@@ -870,8 +939,11 @@ const feedbackBarSource = waterfallJs.slice(
   waterfallJs.indexOf('function feedbackBarMarkup'),
   waterfallJs.indexOf('function waterfallCommentsSupported')
 );
-assert.match(feedbackBarSource, /controls\.join\(divider\)/,
-  'every adjacent card action must use the same divider');
+assert.match(feedbackBarSource,
+  /cardActionButton\(item, 'save'[\s\S]*?\+ divider \+ shareButton\(item\) \+ source/,
+  'the compact footer must keep its only divider between save and share');
+assert.doesNotMatch(feedbackBarSource, /controls\.join\(divider\)/,
+  'like, dislike, and save must not waste horizontal space on separators');
 assert.match(waterfallCss,
   /@media \(max-width:\s*480px\)[\s\S]*?\.waterfall-reader-context\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*gap:\s*6px/s,
   'phone details must place metadata on full-width rows instead of squeezing source, author, and date together');
@@ -1005,6 +1077,8 @@ assert.match(waterfallJs,
 assert.match(waterfallJs,
   /scanner\.addDomTreeReportedAsync = function \(\) \{\};/,
   'Waterfall must prevent ArkWeb from starting the full-DOM scanner');
+assert.match(waterfallJs, /scanner\.forceReport = function \(\) \{\};/,
+  'Waterfall must prevent DOM changes from forcing the full-DOM scanner');
 assert.match(waterfallJs,
   /disableArkWebDomTree[\s\S]*scanner\.removeDomTreeReported\(\)/,
   'Waterfall must also detach an ArkWeb scanner that was injected first');
@@ -1181,6 +1255,8 @@ assert.doesNotMatch(openReaderSource, /classList\.remove\('active'\)/,
   'reopening during the close transition must reverse from the current visual state');
 assert.match(openReaderSource, /requestAnimationFrame\(reveal\)/,
   'first entry must paint the mounted detail at its resting origin before starting the transition');
+assert.match(openReaderSource, /if \(!switchingReader && directDiscovery/,
+  'detail-to-detail navigation must not repeat the already-active native fullscreen bridge');
 const replaceRenderedCardSource = waterfallJs.slice(
   waterfallJs.indexOf('function replaceRenderedWaterfallCard'),
   waterfallJs.indexOf('function renderWaterfallIncrementalPatch')
@@ -1284,6 +1360,7 @@ assert.doesNotMatch(waterfallJs, /TWITCH_CLIENT_(?:ID|SECRET)|access_token/i);
 
 function element() {
   const classes = new Set();
+  const attributes = {};
   const listeners = {};
   const children = [];
   let html = '';
@@ -1297,13 +1374,27 @@ function element() {
     scrollTop: 0,
     clientHeight: 1000,
     rect: { top: 0, bottom: 1000 },
+    attributes,
     removedChildren,
     parentNode: { removeChild: (child) => { removedChildren.push(child); child.removed = true; } },
     style: {
       transform: '', opacity: '', values: {},
       setProperty(name, value) { this.values[name] = value; }
     },
-    get innerHTML() { return html; },
+    get innerHTML() {
+      const resolvedHtml = node.relatedSlot ? html.replace(
+        '<div data-waterfall-related-slot></div>',
+        '<div data-waterfall-related-slot>' + node.relatedSlot.innerHTML + '</div>'
+      ) : html;
+      if (node.composedChild?.currentLayout) {
+        return resolvedHtml.replace(/<article class="waterfall-reader-body">[\s\S]*?<\/article>/, '') +
+          '<div class="' + String(node.composedChild.currentLayout.className || '') + '">' +
+          node.composedChild.currentLayout.innerHTML + '</div>';
+      }
+      return node.composedChild && node.composedChild.innerHTMLWrites > 0 ?
+        resolvedHtml.replace(/<article class="waterfall-reader-body">[\s\S]*?<\/article>/, '') +
+          node.composedChild.innerHTML : resolvedHtml;
+    },
     set innerHTML(value) {
       html = value;
       htmlWrites += 1;
@@ -1316,7 +1407,12 @@ function element() {
     get appendedHtmlWrites() { return appendedHtmlWrites; },
     get insertedNodeWrites() { return insertedNodeWrites; },
     get classToggleWrites() { return classToggleWrites; },
+    get children() { return children; },
     get firstChild() { return children[0] || null; },
+    setAttribute: (name, value) => { attributes[name] = String(value); },
+    getAttribute: (name) => Object.hasOwn(attributes, name) ? attributes[name] : null,
+    hasAttribute: (name) => Object.hasOwn(attributes, name),
+    removeAttribute: (name) => { delete attributes[name]; },
     appendChild: (child) => {
       children.push(child);
       const tag = String(child.tagName || 'div').toLowerCase();
@@ -1352,7 +1448,11 @@ function element() {
     emit: (type, event = {}) => {
       listeners[type]?.(event);
     },
-    querySelector: () => null,
+    querySelector: (selector) => {
+      if (selector !== '[data-waterfall-related-slot]' || html.indexOf('data-waterfall-related-slot') < 0) return null;
+      if (!node.relatedSlot) node.relatedSlot = element();
+      return node.relatedSlot;
+    },
     getBoundingClientRect: () => node.rect,
     querySelectorAll: () => []
   };
@@ -1365,6 +1465,58 @@ const preferences = element();
 const reader = element();
 const collection = element();
 const readerHead = element();
+const readerBody = element();
+readerBody.classList.add('waterfall-reader-body');
+readerBody.currentLayout = null;
+const readerBodyQuerySelector = readerBody.querySelector;
+readerBody.querySelector = (selector) => selector === '.waterfall-reader-layout' ? readerBody.currentLayout :
+  readerBodyQuerySelector(selector);
+readerBody.removeChild = (child) => {
+  if (readerBody.currentLayout === child) readerBody.currentLayout = null;
+  child.parentNode = null;
+  return child;
+};
+readerBody.appendChild = (child) => {
+  readerBody.currentLayout = child;
+  child.parentNode = readerBody;
+  return child;
+};
+reader.composedChild = readerBody;
+const readerAiDock = element();
+const readerAiLayer = element();
+const readerAiStatus = element();
+const readerAiAnswer = element();
+const readerAiQuestions = element();
+const readerAiMessageSlots = Array.from({ length: 16 }, () => element());
+const readerAiQuestionSlots = Array.from({ length: 3 }, () => element());
+const readerAiRetry = element();
+readerAiMessageSlots.forEach((slot) => {
+  slot.setAttribute('data-waterfall-ai-message-slot', '');
+  slot.setAttribute('hidden', '');
+  readerAiAnswer.appendChild(slot);
+});
+readerAiRetry.setAttribute('data-waterfall-ai-retry', '');
+readerAiRetry.setAttribute('hidden', '');
+readerAiAnswer.appendChild(readerAiRetry);
+readerAiQuestionSlots.forEach((slot) => {
+  slot.setAttribute('data-waterfall-ai-question-slot', '');
+  slot.setAttribute('hidden', '');
+  readerAiQuestions.appendChild(slot);
+});
+readerAiAnswer.querySelectorAll = (selector) =>
+  selector === '[data-waterfall-ai-message-slot]' ? readerAiMessageSlots : [];
+readerAiAnswer.querySelector = (selector) =>
+  selector === '[data-waterfall-ai-retry]' ? readerAiRetry : null;
+readerAiQuestions.querySelectorAll = (selector) =>
+  selector === '[data-waterfall-ai-question-slot]' ? readerAiQuestionSlots : [];
+const readerAiThread = element();
+readerAiThread.scrollHeight = 900;
+readerAiAnswer.parentElement = readerAiThread;
+readerAiQuestions.parentElement = readerAiThread;
+const readerAiInput = element();
+readerAiInput.value = '';
+readerAiInput.matches = (selector) => selector === '[data-waterfall-ai-input]';
+const readerAiComposeAction = element();
 const readerAutoplayFrame = element();
 const readerAutoplayStage = element();
 readerAutoplayStage.getAttribute = (name) => name === 'data-waterfall-video-url' ?
@@ -1375,9 +1527,22 @@ readerAutoplayStage.querySelector = (selector) => selector === '.waterfall-reade
 const readerAutoplayControl = {
   closest: (selector) => selector === '.waterfall-reader-video-stage' ? readerAutoplayStage : null
 };
-reader.querySelector = (selector) => selector === '.waterfall-reader-head' ? readerHead :
+const readerQuerySelector = reader.querySelector;
+reader.querySelector = (selector) => ({
+  '.waterfall-reader-head': readerHead,
+  '.waterfall-reader-body': readerBody,
+  '[data-waterfall-ai-dock]': readerAiDock,
+  '[data-waterfall-ai-layer]': readerAiLayer,
+  '[data-waterfall-ai-status]': readerAiStatus,
+  '[data-waterfall-ai-answer]': readerAiAnswer,
+  '[data-waterfall-ai-questions]': readerAiQuestions,
+  '[data-waterfall-ai-input]': readerAiInput,
+  '[data-waterfall-ai-compose-action]': readerAiComposeAction
+})[selector] ??
   (selector === '[data-waterfall-video-play]' && reader.innerHTML.indexOf('waterfall-reader--video') >= 0 ?
-    readerAutoplayControl : null);
+    readerAutoplayControl :
+    (selector === '[data-waterfall-related-slot]' && readerBody.currentLayout ?
+      readerBody.currentLayout.querySelector(selector) : readerQuerySelector(selector)));
 reader.contains = (node) => node === readerAutoplayStage;
 const toolbar = element();
 const toast = element();
@@ -1420,7 +1585,9 @@ const openedSources = [];
 const sharedCards = [];
 const fullscreenStates = [];
 const timers = [];
+const idleTasks = [];
 const createdFrames = [];
+let createdReaderLayouts = 0;
 let videoVisibilityCallback = null;
 let observedVideoCards = [];
 let videoObserverResets = 0;
@@ -1429,8 +1596,13 @@ class FakeIntersectionObserver {
   disconnect() { observedVideoCards = []; videoObserverResets += 1; }
   observe(node) { observedVideoCards.push(node); }
 }
-let now = 1000;
-const FakeDate = { now: () => now };
+const NativeDate = Date;
+let now = NativeDate.parse('2026-09-03T04:00:00.000Z');
+class FakeDate extends NativeDate {
+  constructor(...args) { super(...(args.length > 0 ? args : [now])); }
+  static now() { return now; }
+  static parse(value) { return NativeDate.parse(value); }
+}
 const actionCount = (id) => actions.filter((action) => action.id === id).length;
 const schedule = (callback, delay) => {
   const timer = { callback, delay, canceled: false };
@@ -1443,6 +1615,12 @@ const runLatestTimer = (delay) => {
   assert.ok(timer, `expected an active ${delay}ms timer`);
   timer.canceled = true;
   timer.callback();
+};
+const runLatestIdle = () => {
+  const task = idleTasks.filter((item) => !item.canceled).at(-1);
+  assert.ok(task, 'expected an active idle task');
+  task.canceled = true;
+  task.callback();
 };
 const finishReaderClose = () => {
   const timer = timers.filter((item) => item.delay === 180 && !item.canceled).at(-1);
@@ -1495,6 +1673,12 @@ const document = {
     '[data-waterfall-collection-open]': [collectionButton]
   })[selector] ?? [],
   createElement: (tagName) => {
+    if (tagName === 'div') {
+      createdReaderLayouts += 1;
+      const layout = element();
+      layout.tagName = 'DIV';
+      return layout;
+    }
     assert.ok(tagName === 'iframe' || tagName === 'audio');
     const attributes = {};
     const listeners = {};
@@ -1540,6 +1724,7 @@ const imageCandidate = {
   mediaType: 'image_text',
   coverUrl: 'https://example.test/image.jpg',
   imageUrls: ['https://example.test/image.jpg', 'https://example.test/image-second.jpg'],
+  publishedAt: '2026-09-03T01:00:00.000Z',
   reason: '摘要命中查询'
 };
 const textCandidate = {
@@ -1548,6 +1733,7 @@ const textCandidate = {
   mediaType: 'post',
   coverUrl: '',
   summary: 'A long text summary for the dedicated reader. '.repeat(40) + 'DETAIL_BODY_END',
+  publishedAt: '2026-08-19T04:00:00.000Z',
   reason: '补充 HN 来源'
 };
 const noCoverImageCandidate = {
@@ -1561,13 +1747,39 @@ const cnNewsCandidate = {
   ...candidate('cnnews-current'),
   source: 'cnnews',
   provider: 'IT 之家',
-  mediaType: 'post'
+  mediaType: 'post',
+  title: '端侧人工智能手机加速落地',
+  summary: '手机厂商正在将人工智能模型部署到本地设备。',
+  searchQuery: '智能设备'
 };
+const cnNewsRelatedCandidates = [
+  {
+    ...candidate('cnnews-related-chip'), source: 'cnnews', provider: 'IT 之家', mediaType: 'post',
+    title: 'AI 手机芯片进入量产阶段', summary: '端侧大模型提升智能设备的本地推理速度。',
+    searchQuery: '智能设备', url: 'https://example.test/cnnews-related-chip'
+  },
+  {
+    ...imageCandidate, id: 'cnnews-related-camera', source: 'cnnews', provider: '少数派',
+    title: '新一代 AI 手机影像能力实测', summary: '智能设备借助本地模型改善夜景成像。',
+    searchQuery: '智能设备', url: 'https://example.test/cnnews-related-camera'
+  },
+  {
+    ...candidate('cnnews-related-app'), source: 'globalnews', provider: 'The Verge', mediaType: 'post',
+    title: 'On-device models reshape mobile apps', summary: '智能设备开始在离线环境运行生成式 AI。',
+    searchQuery: '智能设备', url: 'https://example.test/cnnews-related-app'
+  }
+];
 const globalNewsCandidate = {
   ...candidate('globalnews-current'),
   source: 'globalnews',
   provider: 'The Guardian',
   mediaType: 'post'
+};
+const unixSecondCandidate = {
+  ...candidate('unix-second-current'),
+  source: 'reddit',
+  mediaType: 'post',
+  publishedAt: '1780056000'
 };
 const githubCandidate = {
   ...candidate('github-current'),
@@ -1592,8 +1804,13 @@ const portraitCandidate = {
   url: 'https://www.bilibili.com/video/BV1xx411c7mD',
   authorName: '影像实验室',
   authorAvatarUrl: 'https://example.test/avatar.jpg',
+  title: '手机影像夜景算法实测与解析：从多帧合成到高光压制的完整观察'.repeat(2),
+  summary: '这期视频围绕手机影像夜景算法展开，逐项比较多帧合成、对焦速度、色彩还原和高光压制。'.repeat(8),
+  topics: ['手机影像', '夜景算法'],
+  searchQuery: '手机夜景算法',
+  publishedAt: '2025-12-31T04:00:00.000Z',
   metrics: [
-    { kind: 'view', value: 98659 },
+    { kind: 'view', value: 20037000 },
     { kind: 'like', value: 361 },
     { kind: 'favorite', value: 178 },
     { kind: 'comment', value: 186 },
@@ -1602,11 +1819,137 @@ const portraitCandidate = {
     { kind: 'share', value: 28 }
   ]
 };
+const relatedVideoCandidate = {
+  ...candidate('related-video'),
+  title: '手机夜景算法对焦实测',
+  summary: '比较多帧合成和暗光对焦表现',
+  topics: ['手机影像', '夜景算法'],
+  coverUrl: 'https://example.test/related-video.jpg',
+  duration: '08:24'
+};
+const relatedImageCandidate = {
+  ...imageCandidate,
+  id: 'related-image',
+  title: '手机夜景摄影样张与高光压制对比',
+  summary: '图文展示不同夜景算法的实际样张',
+  topics: ['手机影像', '夜景算法'],
+  coverUrl: 'https://example.test/related-image.jpg',
+  imageUrls: ['https://example.test/related-image.jpg', 'https://example.test/related-image-2.jpg'],
+  url: 'https://example.test/related-image'
+};
+const relatedTextCandidate = {
+  ...textCandidate,
+  id: 'related-text',
+  title: '夜景算法中的多帧合成原理',
+  summary: '解释手机影像如何降低噪点并保留高光',
+  topics: ['手机影像', '夜景算法'],
+  url: 'https://example.test/related-text'
+};
+const unrelatedCandidate = {
+  ...textCandidate,
+  id: 'unrelated-baking',
+  title: '家庭烘焙配方与面团发酵',
+  summary: '制作酸面包的基础步骤',
+  topics: ['烘焙'],
+  url: 'https://example.test/unrelated-baking'
+};
+const broadTopicCandidate = {
+  ...textCandidate,
+  id: 'unrelated-broad-topic',
+  title: 'Defense industry sees drone racing as a new frontier for AI',
+  summary: 'Military teams are testing autonomous racing drones.',
+  topics: ['industry', 'electric vehicle'],
+  searchQuery: 'consumer technology',
+  url: 'https://example.test/unrelated-broad-topic'
+};
+const broadTopicAnchor = {
+  ...textCandidate,
+  id: 'broad-topic-anchor',
+  title: 'Range Rover prepares its first electric SUV',
+  summary: 'Jaguar Land Rover is preparing a battery electric Range Rover for production.',
+  topics: ['industry', 'electric vehicle'],
+  searchQuery: 'consumer technology',
+  url: 'https://example.test/broad-topic-anchor'
+};
+const cnNewsBroadTopicAnchor = { ...broadTopicAnchor, id: 'cnnews-broad-topic-anchor', source: 'cnnews' };
+const polysemyAnchor = {
+  ...textCandidate,
+  id: 'polysemy-anchor',
+  title: 'Major programming project collection',
+  summary: 'A practical collection covering numbers strings networking files databases graphics security ' +
+    'data structures and classic algorithms for learners.',
+  topics: ['classic'],
+  searchQuery: 'programming projects',
+  url: 'https://example.test/polysemy-anchor'
+};
+const polysemyTrailer = {
+  ...candidate('polysemy-trailer'),
+  title: 'East of Eden Official Trailer',
+  summary: 'A Steinbeck classic gets a fresh interpretation on screen.',
+  topics: ['classic'],
+  searchQuery: 'entertainment',
+  url: 'https://example.test/polysemy-trailer'
+};
+const zhihuWeakAnchor = {
+  ...textCandidate,
+  source: 'zhihu',
+  id: 'zhihu-weak-anchor',
+  title: 'India Nepal border talks resume',
+  summary: 'Officials discussed customs routes and regional crossings.',
+  topics: ['South Asia'],
+  searchQuery: 'India Nepal border',
+  url: 'https://www.zhihu.com/question/zhihu-weak-anchor'
+};
+const zhihuWeakRelated = {
+  ...textCandidate,
+  source: 'globalnews',
+  id: 'zhihu-weak-related',
+  title: 'Kathmandu issues diplomatic response',
+  summary: 'Nepal answered a new border statement.',
+  topics: ['Diplomacy'],
+  searchQuery: 'India Nepal border',
+  url: 'https://example.test/zhihu-weak-related'
+};
+const metadataOnlyAnchor = {
+  ...textCandidate,
+  id: 'metadata-only-anchor',
+  title: 'Halloween game trailer',
+  summary: 'A horror game.',
+  topics: ['horror'],
+  searchQuery: '影视娱乐推荐',
+  url: 'https://example.test/metadata-only-anchor'
+};
+const metadataOnlyCandidate = {
+  ...textCandidate,
+  id: 'metadata-only-candidate',
+  title: 'Software complexity',
+  summary: '',
+  topics: [],
+  searchQuery: '影视娱乐推荐',
+  url: 'https://example.test/metadata-only-candidate'
+};
+const consumedRelatedCandidate = {
+  ...relatedTextCandidate,
+  id: 'consumed-related',
+  title: '手机夜景算法完整回顾',
+  url: 'https://example.test/consumed-related'
+};
+const dislikedRelatedCandidate = {
+  ...relatedTextCandidate,
+  id: 'disliked-related',
+  title: '手机夜景算法争议分析',
+  url: 'https://example.test/disliked-related'
+};
 const testUiIcon = '<span class="waterfall-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16" /></svg></span>';
 const window = {
   innerWidth: 400,
   innerHeight: 1000,
   IntersectionObserver: FakeIntersectionObserver,
+  requestIdleCallback: (callback) => {
+    const task = { callback, canceled: false };
+    idleTasks.push(task);
+    return task;
+  },
   matchMedia: () => ({ matches: false }),
   location: { hostname: 'aiphone.local' },
   __aiphoneWaterfallInitial: {
@@ -1616,8 +1959,13 @@ const window = {
       'cnnews', 'globalnews', 'unknown'],
     aggregateHtml: '',
     candidates: [candidate('current'), imageCandidate, textCandidate, portraitCandidate, noCoverImageCandidate,
+      relatedVideoCandidate, relatedImageCandidate, relatedTextCandidate, unrelatedCandidate,
+      broadTopicCandidate, broadTopicAnchor, cnNewsBroadTopicAnchor, polysemyAnchor, polysemyTrailer,
+      zhihuWeakAnchor, zhihuWeakRelated,
+      metadataOnlyAnchor, metadataOnlyCandidate,
+      consumedRelatedCandidate, dislikedRelatedCandidate,
       { ...candidate('x-current'), source: 'x', mediaType: 'post' }, githubCandidate, steamCandidate,
-      cnNewsCandidate, globalNewsCandidate,
+      cnNewsCandidate, ...cnNewsRelatedCandidates, globalNewsCandidate, unixSecondCandidate,
       { ...candidate('unknown-current'), source: 'unknown', mediaType: 'post' }],
     mediaEmbeds: {
       'https://www.youtube.com/watch?v=abc123': 'https://www.youtube.com/embed/abc123?playsinline=1'
@@ -1626,8 +1974,10 @@ const window = {
       { source: 'youtube', phase: 'success' },
       { source: 'twitch', phase: 'needs_auth', message: '未授权' }
     ]
-    ,cardStates: [{ candidateId: 'current', reaction: 'like', saved: true }]
+    ,cardStates: [{ candidateId: 'current', reaction: 'like', saved: true },
+      { candidateId: 'disliked-related', reaction: 'dislike', saved: false }]
     ,savedCards: [{ ...candidate('current'), savedAt: 1000 }]
+    ,consumedCandidateIds: ['consumed-related']
   },
   __aiphoneWaterfallSourceLogos: { youtube: 'data:image/png;base64,logo', reddit: 'data:image/png;base64,reddit' },
   __aiphoneWaterfallUiIcons: {
@@ -1650,6 +2000,10 @@ const window = {
     coin: testUiIcon,
     danmaku: testUiIcon,
     share: testUiIcon
+    ,question: testUiIcon
+    ,sparkles: testUiIcon
+    ,microphone: testUiIcon
+    ,send: testUiIcon
   },
   AIPhoneHome: {
     postAction: (value) => actions.push(JSON.parse(value)),
@@ -1677,9 +2031,12 @@ assert.equal(overlay.classList.contains('active'), true);
 assert.equal(overlay.classList.contains('closing'), false);
 assert.match(track.innerHTML, /waterfall-card--video waterfall-card--landscape/);
 assert.match(track.innerHTML, /waterfall-card--image-text/);
-assert.equal(track.innerHTML.match(/data-waterfall-image-slide/g)?.length, 2,
+const imageCurrentCardMarkup = track.innerHTML.match(
+  /<article[^>]*data-waterfall-id="image-current"[\s\S]*?<\/article>/
+)?.[0] ?? '';
+assert.equal(imageCurrentCardMarkup.match(/data-waterfall-image-slide/g)?.length, 2,
   'a two-image candidate must render both discovery slides');
-assert.equal(track.innerHTML.match(/data-waterfall-image-dot/g)?.length, 2,
+assert.equal(imageCurrentCardMarkup.match(/data-waterfall-image-dot/g)?.length, 2,
   'a two-image candidate must render one pagination dot per slide');
 assert.match(track.innerHTML, /https:\/\/example\.test\/image-second\.jpg/,
   'the discovery card must not collapse multiple images to the cover');
@@ -1727,6 +2084,8 @@ assert.match(track.innerHTML, />CNNews · IT 之家</,
   'CNNews cards must retain the internal publisher without exposing a second settings source');
 assert.match(track.innerHTML, />GlobalNews · The Guardian</,
   'GlobalNews cards must retain the publisher returned by the adapter');
+assert.match(track.innerHTML, /data-waterfall-id="unix-second-current"[\s\S]*?>5月29日</,
+  'Unix-second publication timestamps must remain visible on dynamic feed cards');
 assert.match(track.innerHTML, /data-waterfall-id="github-current"/);
 assert.match(track.innerHTML, /data-waterfall-id="steam-current"/);
 assert.match(track.innerHTML, /data-waterfall-metric="star" aria-label="星标 1,200"/,
@@ -1789,7 +2148,7 @@ assert.deepEqual(sharedCards, [{
   mediaUrl: 'https://example.test/current.mp4',
   format: 'landscape_video',
   originalUrl: 'https://www.youtube.com/watch?v=abc123',
-  publishedAt: '2026-08-17'
+  publishedAt: '8月17日'
 }], 'the native bridge receives only the immutable public card fields');
 window.__aiphoneWaterfallShareResult('fallback');
 assert.equal(toast.innerHTML, '已改为分享原文');
@@ -1855,22 +2214,31 @@ assert.match(track.innerHTML, /current summary tail/);
 const currentCardMarkup = track.innerHTML.match(
   /<article[^>]*data-waterfall-id="current"[\s\S]*?<\/article>/
 )?.[0] ?? '';
-assert.equal((currentCardMarkup.match(/waterfall-feedback-divider/g) ?? []).length, 4,
-  'like, dislike, save, share, and source actions need a divider between every pair');
+assert.equal((currentCardMarkup.match(/waterfall-feedback-divider/g) ?? []).length, 1,
+  'five compact actions must retain only the save/share divider');
 assert.match(currentCardMarkup, /aria-label="分享"/);
 assert.match(currentCardMarkup, /aria-label="查看来源"/);
-assert.match(track.innerHTML, /2026-08-17/);
+assert.match(currentCardMarkup, /class="waterfall-card-time"[^>]*>8月17日</,
+  'older same-year content must use a compact concrete date in the footer');
+assert.match(track.innerHTML, /class="waterfall-card-time"[^>]*>3小时前</,
+  'recent content must prefer relative hours');
+assert.match(track.innerHTML, /class="waterfall-card-time"[^>]*>15天前</,
+  'the relative day label must include the 15-day boundary');
+assert.match(track.innerHTML, /class="waterfall-card-time"[^>]*>2025年12月31日</,
+  'cross-year content must retain the year');
 assert.doesNotMatch(track.innerHTML, /2026-08-17T01:17:55/);
 assert.doesNotMatch(track.innerHTML, /B 站视频搜索结果：/);
-assert.match(track.innerHTML, /waterfall-recommendation/);
-assert.match(track.innerHTML, /标题命中查询/);
-assert.match(track.innerHTML, /data-waterfall-reason/);
+assert.doesNotMatch(track.innerHTML, /waterfall-recommendation|data-waterfall-reason/,
+  'the footer must show publication time instead of a visible recommendation reason');
+assert.match(waterfallCss,
+  /@media \(max-width: 360px\)[\s\S]*?\.waterfall-card-action \{ width: 38px;[\s\S]*?flex: 0 0 38px/,
+  'narrow cards must compact action widths without shrinking their 44px touch height');
 assert.match(track.innerHTML, /class="waterfall-author-avatar"[^>]*avatar\.jpg/);
 assert.match(track.innerHTML, /class="waterfall-author-name">影像实验室</);
 assert.match(track.innerHTML, /class="waterfall-signal-rail"/);
 assert.match(track.innerHTML, /data-waterfall-metric="like"/);
 assert.match(track.innerHTML, /data-waterfall-metric="favorite"/);
-assert.match(track.innerHTML, /aria-label="播放 98,659"/);
+assert.match(track.innerHTML, /aria-label="播放 20,037,000"/);
 assert.doesNotMatch(track.innerHTML, /waterfall-signal-label/,
   'feed cards must use icon and value only instead of adding metric labels');
 assert.doesNotMatch(track.innerHTML, /data-waterfall-media-fallback/);
@@ -2169,6 +2537,12 @@ assert.equal(reader.classList.contains('active'), true,
   'the first click after scrolling must not be swallowed');
 assert.equal(overlay.classList.contains('reading'), true,
   'open details must freeze the hidden feed through the overlay, not overflow');
+assert.equal(track.getAttribute('aria-hidden'), 'true',
+  'opening details must remove the retained discovery feed from the accessibility tree');
+assert.equal(track.hasAttribute('inert'), true,
+  'opening details must make the retained discovery feed inert');
+assert.equal(reader.hasAttribute('aria-hidden'), false,
+  'the reader must become accessible only after its content is mounted');
 assert.equal(videoCard.classList.contains('waterfall-card--video-fullscreen'), false,
   'the video card itself must not force fullscreen');
 assert.equal(reader.classList.contains('active'), true,
@@ -2273,6 +2647,10 @@ reader.emit('touchend', {
 });
 assert.equal(reader.classList.contains('closing'), true,
   'the first completed back tap after detail scrolling must close on touchend');
+assert.equal(reader.getAttribute('aria-hidden'), 'true',
+  'reader return must remove the outgoing detail tree before the transition work starts');
+assert.equal(track.getAttribute('aria-hidden'), 'true',
+  'reader return must keep the discovery tree hidden until the transition finishes');
 assert.equal(fullscreenStates.length, fullscreenStateCountBeforeReaderClose,
   'reader close must not raise and rerender the native composer while the return motion is starting');
 assert.equal(readerTapPrevented, true, 'reader back must commit on touchend after nested scrolling');
@@ -2293,6 +2671,11 @@ assert.equal(timers.filter((timer) => timer.delay === 96 && !timer.canceled).len
   returnScrollSettleCount + 1,
   'the feed must accept a new scroll while the reader is finishing its visual close');
 finishReaderClose();
+assert.equal(reader.getAttribute('aria-hidden'), 'true');
+assert.equal(reader.hasAttribute('inert'), true);
+assert.equal(track.hasAttribute('aria-hidden'), false,
+  'finishing reader return must restore the retained discovery tree');
+assert.equal(track.hasAttribute('inert'), false);
 assert.equal(fullscreenStates.length, fullscreenStateCountBeforeReaderClose,
   'the embedded mode must not publish native chrome state while revealing the retained card');
 assert.equal(track.scrollTop, 640,
@@ -2317,6 +2700,14 @@ assert.equal(track.scrollTop, 640,
   'a deferred rerank must keep the position reached by the return gesture');
 assert.doesNotMatch(waterfallCss, /\.waterfall-reader\s*\{[^}]*will-change:\s*transform/s,
   'a long scrolling reader must not stay promoted as one transformed layer');
+assert.match(waterfallCss,
+  /\.waterfall-card-time\s*\{[^}]*flex:\s*0 0 auto[^}]*white-space:\s*nowrap/s,
+  'the footer timestamp must never shrink or ellipsize');
+assert.match(waterfallCss,
+  /\.waterfall-reader h2\s*\{[^}]*font-size:\s*clamp\(24px,\s*5\.6vw,\s*28px\)/s,
+  'detail titles must use the approved reading scale');
+assert.match(waterfallCss, /\.waterfall-reader p\s*\{[^}]*font-size:\s*16px/s,
+  'detail body copy must stay at a readable 16px');
 assert.match(waterfallCss, /\.waterfall-reader\.active\s*\{[^}]*transform:\s*none/s,
   'the open reader must drop its transform so nested Bilibili iframes can play');
 const readerBodyCss = waterfallCss.slice(
@@ -2371,6 +2762,8 @@ assert.equal(track.scrollTop, 3000,
 const bilibiliOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'portrait-current' : '' };
 leftoverFeedClickMustNotOpen(bilibiliOpen);
 openFeedCard(bilibiliOpen);
+assert.equal(actions.at(-1)?.args?.mode, 'suggestions',
+  'the first detail frame must immediately start content-grounded follow-up generation in the background');
 assert.match(reader.innerHTML, /class="waterfall-reader-copy"/);
 assert.doesNotMatch(reader.innerHTML, /waterfall-reader-video-card|waterfall-reader-video-copy/);
 assert.match(reader.innerHTML, /player\.bilibili\.com\/player\.html\?bvid=BV1xx411c7mD/);
@@ -2380,16 +2773,311 @@ assert.match(reader.innerHTML, /data-waterfall-video-play/,
 assert.match(reader.innerHTML, />B 站</);
 assert.match(reader.innerHTML, /class="waterfall-author-avatar"[^>]*avatar\.jpg/);
 assert.match(reader.innerHTML, /class="waterfall-reader-signals"/);
-assert.match(reader.innerHTML, />9\.9万</,
-  'detail metrics must use the card-like compact value with one decimal');
-assert.doesNotMatch(reader.innerHTML, />98,659</,
+assert.match(reader.innerHTML, />2003\.7万</,
+  'detail metrics must keep the compact value and Chinese unit together');
+assert.doesNotMatch(reader.innerHTML, />20,037,000</,
   'detail metrics must not expose exact large counts');
 assert.match(reader.innerHTML, />投币</);
 assert.match(reader.innerHTML, />弹幕</);
 assert.match(reader.innerHTML, />分享</);
+assert.match(reader.innerHTML, /data-waterfall-reader-intro-toggle/,
+  'a long video title and description must expose one combined expand control');
+assert.ok(
+  reader.innerHTML.indexOf('<h2>') < reader.innerHTML.indexOf('data-waterfall-reader-metrics') &&
+    reader.innerHTML.indexOf('data-waterfall-reader-metrics') < reader.innerHTML.indexOf('waterfall-reader-intro-copy'),
+  'detail metrics must stay between the title and description');
+assert.equal(reader.innerHTML.match(/data-waterfall-related-open/g)?.length ?? 0, 0,
+  'the first detail frame must not synchronously rank and render related content');
+runLatestIdle();
+const firstRelatedMarkup = reader.querySelector('[data-waterfall-related-slot]')?.innerHTML ?? '';
+assert.equal(firstRelatedMarkup.match(/data-waterfall-related-open/g)?.length, 3,
+  'strongly related cross-media candidates must be capped at three');
+assert.match(firstRelatedMarkup, /data-waterfall-related-open="related-video"[\s\S]*?>视频</,
+  'related video must use a stable text badge');
+assert.doesNotMatch(firstRelatedMarkup, /waterfall-related-play/,
+  'related video must not render a misaligned play icon');
+assert.match(firstRelatedMarkup, /data-waterfall-related-open="related-image"[\s\S]*?共 2 图/,
+  'related image-text must show its first real image and multi-image count');
+assert.match(firstRelatedMarkup, /waterfall-related-item--text[^>]*data-waterfall-related-open="related-text"/,
+  'related text must render without inventing a cover');
+assert.doesNotMatch(firstRelatedMarkup, /unrelated-baking|家庭烘焙/,
+  'an unrelated item must not be used to fill the recommendation section');
+assert.doesNotMatch(firstRelatedMarkup, /unrelated-broad-topic|drone racing/,
+  'shared broad topics and a recall query must not qualify unrelated content');
+assert.doesNotMatch(firstRelatedMarkup, /consumed-related|disliked-related/,
+  'completed and explicitly disliked candidates must never return as related content');
+assert.match(firstRelatedMarkup,
+  /waterfall-related-meta[^>]*>[\s\S]*?waterfall-source-logo[\s\S]*?>YouTube</,
+  'each related row must show its source logo next to the source label');
+assert.match(reader.innerHTML, /data-waterfall-ai-dock/);
+assert.match(reader.innerHTML, />继续提问<[\s\S]*?>AI 总结</);
+assert.match(reader.innerHTML, /waterfall-ai-trigger--question[\s\S]*?waterfall-ai-trigger--summary/,
+  'summary and follow-up must be separate floating glass actions');
+assert.equal(reader.innerHTML.match(/data-waterfall-ai-question=/g)?.length ?? 0, 0,
+  'quick questions must not be hard-coded into every detail');
+assert.match(reader.innerHTML, /data-waterfall-ai-input/);
+assert.match(reader.innerHTML, /data-waterfall-ai-compose-action/);
+assert.doesNotMatch(reader.innerHTML, /data-waterfall-ai-voice(?:[ =])|data-waterfall-ai-send(?:[ =])/,
+  'the composer must reuse one contextual microphone/send control');
+
+const introRoot = element();
+const introToggle = element();
+introToggle.getAttribute = (name) => name === 'aria-expanded' ? 'false' : '';
+introToggle.setAttribute = (name, value) => { if (name === 'aria-expanded') introToggle.expanded = value; };
+introToggle.closest = (selector) => selector === '.waterfall-reader-intro' ? introRoot : null;
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-reader-intro-toggle]' ? introToggle : null }
+});
+assert.equal(introRoot.classList.contains('is-expanded'), true);
+assert.equal(introToggle.expanded, 'true');
+
+reader.emit('click', {
+  target: { closest: (selector) => selector === '.waterfall-reader-layout' ? {} : null }
+});
+assert.equal(readerAiDock.classList.contains('is-visible'), true,
+  'tapping readable body copy must reveal the compact AI dock');
+reader.emit('scroll', { target: readerBody });
+assert.equal(readerAiDock.classList.contains('is-visible'), false,
+  'reader scrolling must dismiss the AI dock without scheduling its return');
+const aiSummaryControl = {
+  getAttribute: (name) => name === 'data-waterfall-ai-action' ? 'summary' : '',
+  closest: () => null
+};
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-action]' ? aiSummaryControl : null }
+});
+assert.equal(readerAiLayer.classList.contains('is-open'), true);
+assert.equal(reader.classList.contains('ai-open'), true);
+assert.equal(readerHead.getAttribute('aria-hidden'), 'true',
+  'opening the AI dialog must hide reader chrome from accessibility scans');
+assert.equal(readerBody.getAttribute('aria-hidden'), 'true',
+  'opening the AI dialog must hide the retained article from accessibility scans');
+assert.equal(readerAiLayer.hasAttribute('aria-hidden'), false,
+  'the open AI dialog must remain the only accessible reader layer');
+assert.equal(actions.at(-1)?.id, 'waterfall.reader.ai.request');
+assert.equal(actions.at(-1)?.args?.candidateId, 'portrait-current');
+assert.equal(actions.at(-1)?.args?.mode, 'summary');
+assert.deepEqual(actions.at(-1)?.args?.history, []);
+const summaryRequestId = actions.at(-1)?.args?.requestId;
+window.__aiphoneApplyWaterfallAiEvent({
+  sequence: 1, surfaceId: 'surface-1', candidateId: 'portrait-current', requestId: summaryRequestId,
+  status: 'streaming', text: '**核心观点**\n\n- 正在总结第一点\n- 正在总结第二点'
+});
+assert.match(readerAiAnswer.firstChild?.textContent ?? '', /核心观点/,
+  'streaming AI output must remain readable without rebuilding Markdown DOM');
+assert.doesNotMatch(readerAiAnswer.firstChild?.textContent ?? '', /\*\*/,
+  'plain-text streaming must not expose Markdown control characters');
+assert.equal(readerAiAnswer.firstChild?.innerHTML ?? '', '',
+  'streaming must not create structural answer nodes for every cumulative update');
+const aiAnswerRootWritesBeforeStreamBurst = readerAiAnswer.innerHTMLWrites;
+for (let sequence = 2; sequence <= 21; sequence += 1) {
+  window.__aiphoneApplyWaterfallAiEvent({
+    sequence, surfaceId: 'surface-1', candidateId: 'portrait-current', requestId: summaryRequestId,
+    status: 'streaming', text: '**核心观点**\n\n' + '- 流式内容\n'.repeat(sequence)
+  });
+}
+assert.ok(readerAiAnswer.innerHTMLWrites - aiAnswerRootWritesBeforeStreamBurst <= 1,
+  'streaming must update only one live answer bubble instead of rebuilding the whole conversation for every chunk');
+window.__aiphoneApplyWaterfallAiEvent({
+  sequence: 22, surfaceId: 'surface-1', candidateId: 'portrait-current', requestId: summaryRequestId,
+  status: 'complete', text: '总结完成'
+});
+assert.equal(readerAiAnswer.innerHTMLWrites, aiAnswerRootWritesBeforeStreamBurst,
+  'completing a streamed reply must retain its live bubble instead of rebuilding the whole conversation');
+assert.equal(readerAiAnswer.firstChild?.textContent, '总结完成');
+assert.match(readerAiStatus.textContent, /基于视频简介生成/,
+  'video summaries must disclose that no transcript was used');
+assert.equal(actions.at(-1)?.args?.mode, 'suggestions',
+  'summary completion must asynchronously ask the model for content-grounded follow-ups');
+assert.deepEqual(actions.at(-1)?.args?.history, [{ role: 'assistant', content: '总结完成' }]);
+const suggestionRequestId = actions.at(-1)?.args?.requestId;
+window.__aiphoneApplyWaterfallAiEvent({
+  sequence: 23, surfaceId: 'surface-1', candidateId: 'portrait-current', requestId: suggestionRequestId,
+  status: 'complete', text: '夜景算法如何压制高光？\n样张能证明哪些结论？\n视频简介遗漏了什么信息？'
+});
+assert.equal(readerAiQuestionSlots.filter((slot) => !slot.hasAttribute('hidden')).length, 3);
+assert.equal(readerAiQuestionSlots[0].textContent, '夜景算法如何压制高光？');
+const generatedQuestion = {
+  getAttribute: (name) => name === 'data-waterfall-ai-question' ? '夜景算法如何压制高光？' : ''
+};
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-question]' ? generatedQuestion : null }
+});
+assert.equal(actions.at(-1)?.args?.mode, 'question');
+assert.equal(readerAiQuestionSlots.filter((slot) => !slot.hasAttribute('hidden')).length, 0,
+  'asking a question must remove stale presets so the active conversation stays visible');
+assert.deepEqual(actions.at(-1)?.args?.history, [{ role: 'assistant', content: '总结完成' }],
+  'the first follow-up must receive the completed summary as temporary context');
+const firstQuestionRequestId = actions.at(-1)?.args?.requestId;
+readerAiThread.scrollTop = 0;
+window.__aiphoneApplyWaterfallAiEvent({
+  sequence: 24, surfaceId: 'surface-1', candidateId: 'portrait-current', requestId: firstQuestionRequestId,
+  status: 'complete', text: '它通过多帧融合和局部曝光控制压制高光。'
+});
+assert.equal(readerAiThread.scrollTop, readerAiThread.scrollHeight,
+  'new AI replies must keep the latest conversational turn visible');
+readerAiInput.value = '那结论有什么限制？';
+reader.emit('input', { target: readerAiInput });
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-compose-action]' ? readerAiComposeAction : null }
+});
+assert.equal(actions.at(-1)?.args?.query, '那结论有什么限制？');
+assert.deepEqual(actions.at(-1)?.args?.history, [
+  { role: 'assistant', content: '总结完成' },
+  { role: 'user', content: '夜景算法如何压制高光？' },
+  { role: 'assistant', content: '它通过多帧融合和局部曝光控制压制高光。' }
+], 'later follow-ups must include the prior temporary conversation');
+assert.equal(readerAiInput.value, '', 'sending must clear the composer while leaving the conversation visible');
+const secondQuestionRequestId = actions.at(-1)?.args?.requestId;
+window.__aiphoneApplyWaterfallAiEvent({
+  sequence: 25, surfaceId: 'surface-1', candidateId: 'portrait-current', requestId: secondQuestionRequestId,
+  status: 'complete', text: '结论受视频简介信息量限制，还需要样张和实测数据验证。'
+});
+const actionsBeforeAiDismiss = actions.length;
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-backdrop]' ? {} : null }
+});
+assert.equal(readerAiLayer.classList.contains('is-open'), false);
+assert.equal(reader.classList.contains('ai-open'), false);
+assert.equal(readerAiLayer.getAttribute('aria-hidden'), 'true');
+assert.equal(readerAiLayer.hasAttribute('inert'), true);
+assert.equal(readerHead.hasAttribute('aria-hidden'), false,
+  'closing the AI dialog must restore reader chrome accessibility');
+assert.equal(readerBody.hasAttribute('aria-hidden'), false,
+  'closing the AI dialog must restore article accessibility');
+const aiQuestionControl = {
+  getAttribute: (name) => name === 'data-waterfall-ai-action' ? 'question' : ''
+};
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-action]' ? aiQuestionControl : null }
+});
+assert.equal(actions.length, actionsBeforeAiDismiss,
+  'reopening the AI panel in the same detail must reuse generated questions and conversation state');
+assert.match(readerAiAnswer.children.map((child) => child.textContent || child.innerHTML || '').join('\n'),
+  /结论受视频简介信息量限制/,
+  'summary and follow-up actions must share one temporary conversation');
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-backdrop]' ? {} : null }
+});
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-action]' ? aiSummaryControl : null }
+});
+assert.equal(actions.length, actionsBeforeAiDismiss,
+  'reopening a completed summary must not regenerate it');
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-compose-action]' ? readerAiComposeAction : null }
+});
+assert.equal(actions.at(-1)?.id, 'waterfall.reader.ai.voice');
+window.__aiphoneApplyWaterfallAiEvent({
+  sequence: 26, surfaceId: 'surface-1', candidateId: 'portrait-current', status: 'voice-listening'
+});
+const cancelsBeforeVoiceExit = actionCount('waterfall.reader.ai.cancel');
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-ai-backdrop]' ? {} : null }
+});
+
+const relatedOpen = {
+  getAttribute: (name) => name === 'data-waterfall-related-open' ? 'related-image' : ''
+};
+const mountedReaderLayout = element();
+mountedReaderLayout.relatedSlot = reader.querySelector('[data-waterfall-related-slot]');
+mountedReaderLayout.innerHTML = reader.innerHTML;
+mountedReaderLayout.parentNode = readerBody;
+readerBody.currentLayout = mountedReaderLayout;
+const readerRootWritesBeforeRelated = reader.innerHTMLWrites;
+const readerLayoutsBeforeRelated = createdReaderLayouts;
+const fullscreenStatesBeforeRelated = fullscreenStates.length;
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-related-open]' ? relatedOpen : null }
+});
+assert.equal(actionCount('waterfall.reader.ai.cancel'), cancelsBeforeVoiceExit + 1,
+  'leaving a completed AI conversation for another detail must cancel its active microphone');
+assert.equal(reader.innerHTMLWrites, readerRootWritesBeforeRelated,
+  'related navigation must keep the reader shell and AI controls mounted');
+assert.equal(createdReaderLayouts, readerLayoutsBeforeRelated + 1,
+  'a first visit may create one related detail layout');
+assert.match(reader.innerHTML, /手机夜景摄影样张与高光压制对比/);
+window.__aiphoneApplyWaterfallUpdate({
+  ...window.__aiphoneWaterfallInitial,
+  consumedCandidateIds: [...window.__aiphoneWaterfallInitial.consumedCandidateIds, 'related-image']
+});
+let cachedSummaryReads = 0;
+const portraitSummary = portraitCandidate.summary;
+Object.defineProperty(portraitCandidate, 'summary', {
+  configurable: true,
+  get: () => { cachedSummaryReads += 1; return portraitSummary; }
+});
+reader.emit('click', {
+  target: { closest: (selector) => selector === '[data-waterfall-reader-close]' ? {} : null }
+});
+assert.equal(reader.innerHTMLWrites, readerRootWritesBeforeRelated,
+  'returning to the previous detail must not rebuild the reader shell');
+assert.equal(createdReaderLayouts, readerLayoutsBeforeRelated + 1,
+  'returning must reuse the detached previous detail layout');
+assert.equal(cachedSummaryReads, 0,
+  'returning to a cached detail must not rebuild content that will be discarded');
+assert.equal(fullscreenStates.length, fullscreenStatesBeforeRelated);
+assert.equal(reader.classList.contains('active'), true,
+  'back from a related item must restore the previous detail before the feed');
+assert.match(reader.innerHTML, /手机影像夜景算法实测与解析/);
+runLatestIdle();
+assert.doesNotMatch(reader.querySelector('[data-waterfall-related-slot]')?.innerHTML ?? '', /related-image/,
+  'returning to a cached detail must drop recommendations consumed while another detail was open');
+documentListeners.keydown({ key: 'Escape' });
+finishReaderClose();
+
+const zhihuWeakOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'zhihu-weak-anchor' : '' };
+openFeedCard(zhihuWeakOpen);
+runLatestIdle();
+const zhihuRelatedMarkup = reader.querySelector('[data-waterfall-related-slot]')?.innerHTML ?? '';
+assert.match(zhihuRelatedMarkup, /data-waterfall-related-open="zhihu-weak-related"/,
+  'a Zhihu detail must fall back to the best candidate that matches its recall query in real content');
+assert.doesNotMatch(zhihuRelatedMarkup, /unrelated-broad-topic|drone racing/,
+  'weak recall must still reject candidates that only repeat a broad query in metadata');
 documentListeners.keydown({ key: 'Escape' });
 finishReaderClose();
 assert.equal(reader.classList.contains('active'), false);
+
+const cnNewsOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'cnnews-current' : '' };
+openFeedCard(cnNewsOpen);
+runLatestIdle();
+const cnNewsRelatedMarkup = reader.querySelector('[data-waterfall-related-slot]')?.innerHTML ?? '';
+assert.equal(cnNewsRelatedMarkup.match(/data-waterfall-related-open/g)?.length, 3,
+  'CNNews details must fill the related section from the same content-filtered recall batch');
+assert.match(cnNewsRelatedMarkup, /cnnews-related-chip/);
+assert.match(cnNewsRelatedMarkup, /cnnews-related-camera/);
+assert.match(cnNewsRelatedMarkup, /cnnews-related-app/);
+documentListeners.keydown({ key: 'Escape' });
+finishReaderClose();
+
+for (const anchorId of ['broad-topic-anchor', 'cnnews-broad-topic-anchor']) {
+  const broadTopicOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? anchorId : '' };
+  openFeedCard(broadTopicOpen);
+  runLatestIdle();
+  assert.doesNotMatch(reader.querySelector('[data-waterfall-related-slot]')?.innerHTML ?? '',
+    /unrelated-broad-topic|drone racing/,
+    'shared broad topics plus the same recall query must not manufacture relevance, including CNNews');
+  documentListeners.keydown({ key: 'Escape' });
+  finishReaderClose();
+}
+
+const polysemyOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'polysemy-anchor' : '' };
+openFeedCard(polysemyOpen);
+runLatestIdle();
+assert.doesNotMatch(reader.querySelector('[data-waterfall-related-slot]')?.innerHTML ?? '',
+  /polysemy-trailer|East of Eden/,
+  'one broad word shared by unrelated content must not manufacture a recommendation');
+documentListeners.keydown({ key: 'Escape' });
+finishReaderClose();
+
+const metadataOnlyOpen = { getAttribute: (name) => name === 'data-waterfall-open' ? 'metadata-only-anchor' : '' };
+openFeedCard(metadataOnlyOpen);
+runLatestIdle();
+assert.doesNotMatch(reader.querySelector('[data-waterfall-related-slot]')?.innerHTML ?? '',
+  /metadata-only-candidate|Organizing complexity/,
+  'matching recall metadata alone must not manufacture a related-content row');
+documentListeners.keydown({ key: 'Escape' });
+finishReaderClose();
 
 const portraitCard = element();
 portraitCard.classList.add('waterfall-card--landscape');
@@ -2439,8 +3127,15 @@ reader.emit('click', {
   preventDefault: () => { readerBackdropTapPrevented = true; },
   target: { closest: () => null }
 });
+assert.equal(reader.classList.contains('closing'), false,
+  'the first blank tap must dismiss the visible AI dock without leaving details');
+reader.emit('click', {
+  cancelable: true,
+  preventDefault: () => { readerBackdropTapPrevented = true; },
+  target: { closest: () => null }
+});
 assert.equal(reader.classList.contains('closing'), true,
-  'tapping outside the detail card must return to the discovery feed');
+  'a later outside tap must still return to the discovery feed');
 assert.equal(track.scrollTop, 880,
   'the close tap must not relayout the hidden feed on the same frame');
 assert.equal(readerBackdropTapPrevented, true);
@@ -3006,10 +3701,11 @@ window.__aiphoneApplyWaterfallUpdate(commentsPayload({
   commentLoadState: 'ready',
   metrics: [{ kind: 'like', value: 9876 }],
   comments: Array.from({ length: 6 }, (_, index) => ({
-    text: index === 0 ? '<b>第一条评论</b>' : `第 ${index + 1} 条评论`,
+    text: index === 0 ? '<b>第一条评论</b>' :
+      (index === 1 ? '我敢打赌，等塑料饼干出来烂尾后，国内的那帮艺人会讨论很久。' : `第 ${index + 1} 条评论`),
     authorName: index === 0 ? '评论者' : '',
     authorAvatarUrl: index === 0 ? 'https://img.example/avatar.png' : '',
-    publishedAt: index === 0 ? '2026-08-24T00:00:00.000Z' : '',
+    publishedAt: index <= 1 ? '2026-08-24T00:00:00.000Z' : '',
     likeCount: index === 0 ? 12 : undefined,
     replyCount: index === 0 ? 3 : undefined
   }))
@@ -3019,6 +3715,9 @@ assert.equal((commentsSlot.innerHTML.match(/data-waterfall-comment-toggle/g) ?? 
 assert.match(readerMetricSlot.innerHTML, /data-waterfall-metric="like"/,
   'detail metrics must update alongside an asynchronous comment payload');
 assert.match(commentsSlot.innerHTML, /&lt;b&gt;第一条评论&lt;\/b&gt;/);
+assert.match(commentsSlot.innerHTML,
+  /waterfall-comment-row--no-avatar[\s\S]*?我敢打赌，等塑料饼干出来烂尾后/,
+  'a dated Bilibili comment without identity metadata must keep the no-avatar full-width layout');
 assert.doesNotMatch(commentsSlot.innerHTML, /第 6 条评论/);
 let commentExpanded = 'false';
 const commentRow = {

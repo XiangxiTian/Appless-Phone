@@ -23,6 +23,7 @@ interface BilibiliVideoItem {
   coins?: string;
   danmaku?: string;
   shares?: string;
+  publishedAt?: string;
 }
 
 interface JsonStringValue {
@@ -62,6 +63,7 @@ interface BilibiliSearchApiItem {
   favorites?: string | number;
   review?: string | number;
   video_review?: string | number;
+  pubdate?: string | number;
 }
 
 interface BilibiliViewResponse {
@@ -75,6 +77,7 @@ interface BilibiliViewData {
   aid?: number;
   cid?: number;
   desc?: string;
+  pubdate?: number;
   owner?: BilibiliViewOwner;
   stat?: BilibiliViewStat;
 }
@@ -132,6 +135,11 @@ function textOf(value: Object | string | number | boolean | null | undefined): s
     return value.toString();
   }
   return JSON.stringify(value);
+}
+
+function publishedAtFromSeconds(value: Object | string | number | boolean | null | undefined): string {
+  const seconds = Number(textOf(value).trim());
+  return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : '';
 }
 
 export function bilibiliSearchUrl(query: string): string {
@@ -456,6 +464,7 @@ function resultFromItem(item: BilibiliVideoItem, query: string): DynamicGenericT
   appendRowIfMissing(rows, 'Coins', item.coins ?? '');
   appendRowIfMissing(rows, 'Danmaku', item.danmaku ?? '');
   appendRowIfMissing(rows, 'Shares', item.shares ?? '');
+  appendRowIfMissing(rows, 'Published', item.publishedAt ?? '');
   return {
     sourceTag: '哔哩哔哩',
     toolName: 'media.video.search',
@@ -511,6 +520,7 @@ async function hydrateBilibiliViewRow(result: DynamicGenericToolResult): Promise
     if (payload.code !== undefined && payload.code !== 0 || payload.data === undefined) return;
       appendRowIfMissing(result.rows, 'AID', textOf(payload.data.aid));
       appendRowIfMissing(result.rows, 'CID', textOf(payload.data.cid));
+      appendRowIfMissing(result.rows, 'Published', publishedAtFromSeconds(payload.data.pubdate));
       if (payload.data.owner !== undefined) {
         appendRowIfMissing(result.rows, 'Author', textOf(payload.data.owner.name));
         appendRowIfMissing(result.rows, 'Author Avatar', textOf(payload.data.owner.face));
@@ -616,7 +626,8 @@ export function bilibiliVideoResultsFromSearchPayload(rawJson: string, query: st
       likes: textOf(item.like),
       favorites: textOf(item.favorites),
       comments: textOf(item.review),
-      danmaku: textOf(item.video_review)
+      danmaku: textOf(item.video_review),
+      publishedAt: publishedAtFromSeconds(item.pubdate)
     }, query));
   }
   if (results.length > 0) {

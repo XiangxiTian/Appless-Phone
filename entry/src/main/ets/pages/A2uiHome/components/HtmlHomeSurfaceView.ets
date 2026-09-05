@@ -102,6 +102,7 @@ export struct HtmlHomeSurfaceView {
   @Prop @Watch('onMultiTaskPayloadChange') multiTaskPayloadTick: number = 0;
   @Prop waterfallPayloadJson: string = '';
   @Prop @Watch('onWaterfallPayloadChange') waterfallPayloadTick: number = 0;
+  @Prop @Watch('onWaterfallAiEventChange') waterfallAiEventJson: string = '';
   @Prop @Watch('onWaterfallActiveChange') waterfallActive: boolean = true;
   @Prop @Watch('onWaterfallBackRequest') waterfallBackRequestTick: number = 0;
   @Prop @Watch('onMailDetailEventChange') mailDetailEventJson: string = '';
@@ -129,6 +130,8 @@ export struct HtmlHomeSurfaceView {
   private lastMultiTaskPayloadTick: number = -1;
   private lastWaterfallPayloadJson: string = '';
   private lastWaterfallPayloadTick: number = -1;
+  private lastWaterfallAiEventJson: string = '';
+  private waterfallAiEventPushInFlight: boolean = false;
   private lastDeepSearchProgressJson: string = '';
   private appliedWaterfallBackRequestTick: number = 0;
   private waterfallPayloadPushInFlight: boolean = false;
@@ -315,6 +318,7 @@ export struct HtmlHomeSurfaceView {
       this.lastMultiTaskPayloadTick = -1;
       this.lastWaterfallPayloadJson = '';
       this.lastWaterfallPayloadTick = -1;
+      this.lastWaterfallAiEventJson = '';
       this.waterfallPayloadQueue = [];
       this.waterfallPayloadTickQueue = [];
       this.lastQueuedWaterfallPayloadTick = -1;
@@ -386,6 +390,36 @@ export struct HtmlHomeSurfaceView {
   onWaterfallPayloadChange(): void {
     this.enqueueWaterfallPayloadIfNeeded();
     this.pushWaterfallPayloadIfNeeded();
+  }
+
+  onWaterfallAiEventChange(): void {
+    this.pushWaterfallAiEventIfNeeded();
+  }
+
+  private pushWaterfallAiEventIfNeeded(): void {
+    if (!this.webReady || this.waterfallAiEventPushInFlight || this.waterfallAiEventJson.length === 0 ||
+      this.waterfallAiEventJson === this.lastWaterfallAiEventJson) return;
+    const eventJson = this.waterfallAiEventJson;
+    this.lastWaterfallAiEventJson = eventJson;
+    try {
+      this.waterfallAiEventPushInFlight = true;
+      this.controller.runJavaScript(
+        'if(window.__aiphoneApplyWaterfallAiEvent){window.__aiphoneApplyWaterfallAiEvent(JSON.parse(' +
+        JSON.stringify(eventJson) + '));}'
+      ).then((): void => {
+        this.waterfallAiEventPushInFlight = false;
+        this.pushWaterfallAiEventIfNeeded();
+      }).catch((error: Error): void => {
+        this.waterfallAiEventPushInFlight = false;
+        if (this.lastWaterfallAiEventJson === eventJson) this.lastWaterfallAiEventJson = '';
+        aiLogError('[AIPhone][HtmlHomeWaterfallAiEventError] ' + JSON.stringify(error));
+        if (this.waterfallAiEventJson !== eventJson) this.pushWaterfallAiEventIfNeeded();
+      });
+    } catch (error) {
+      this.waterfallAiEventPushInFlight = false;
+      if (this.lastWaterfallAiEventJson === eventJson) this.lastWaterfallAiEventJson = '';
+      aiLogError('[AIPhone][HtmlHomeWaterfallAiEventError] ' + JSON.stringify(error));
+    }
   }
 
   private enqueueWaterfallPayloadIfNeeded(): void {
@@ -683,6 +717,7 @@ export struct HtmlHomeSurfaceView {
           if (this.webReady && this.loadedKey === this.html) this.onCurrentHtmlReady();
           this.pushMultiTaskPayloadIfNeeded();
           this.pushWaterfallPayloadIfNeeded();
+          this.pushWaterfallAiEventIfNeeded();
           this.pushWaterfallActive();
           this.onWaterfallBackRequest();
           this.pushMailDetailEventIfNeeded();

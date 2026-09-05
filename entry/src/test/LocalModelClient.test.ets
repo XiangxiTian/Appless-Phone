@@ -47,7 +47,7 @@ export default function localModelClientTest() {
       const settings = defaultLocalModelSettings();
       expect(settings.provider).assertEqual('CSI.AI');
       expect(settings.baseUrl).assertEqual('https://model.example.test/v1/chat/completions');
-      expect(settings.model).assertEqual('Deepseek-V4-Flash-0731');
+      expect(settings.model).assertEqual('DeepSeek-V4-Flash-0731');
       expect(settings.apiKey).assertEqual('new-key');
       expect(settings.customParametersJson).assertEqual('{"enable_thinking":false}');
       expect(settings.ignoreToolSurfaceUpdates).assertFalse();
@@ -65,14 +65,15 @@ export default function localModelClientTest() {
     });
 
     it('restores selectable CSI chat models and falls back to default DSV4', 0, () => {
-      expect(resolvedCloudChatModel('Deepseek-V4-Flash-0731')).assertEqual('Deepseek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('DeepSeek-V4-Flash-0731')).assertEqual('DeepSeek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('Deepseek-V4-Flash-0731')).assertEqual('DeepSeek-V4-Flash-0731');
       expect(resolvedCloudChatModel('GLM-5.2')).assertEqual('GLM-5.2');
       expect(resolvedCloudChatModel('Qwen3.7-Plus')).assertEqual('Qwen3.7-Plus');
       expect(resolvedCloudChatModel('Qwen3.7-Max')).assertEqual('Qwen3.7-Max');
-      expect(resolvedCloudChatModel('deepseek')).assertEqual('Deepseek-V4-Flash-0731');
-      expect(resolvedCloudChatModel('dashscope-dsv4')).assertEqual('Deepseek-V4-Flash-0731');
-      expect(resolvedCloudChatModel('local-qwen')).assertEqual('Deepseek-V4-Flash-0731');
-      expect(resolvedCloudChatModel('')).assertEqual('Deepseek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('deepseek')).assertEqual('DeepSeek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('dashscope-dsv4')).assertEqual('DeepSeek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('local-qwen')).assertEqual('DeepSeek-V4-Flash-0731');
+      expect(resolvedCloudChatModel('')).assertEqual('DeepSeek-V4-Flash-0731');
     });
   });
 }

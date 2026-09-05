@@ -124,6 +124,7 @@ export interface WaterfallHomePayload {
   sources: WaterfallSourceState[];
   cardStates: WaterfallCardViewState[];
   savedCards: WaterfallSavedCardView[];
+  consumedCandidateIds: string[];
   replenishing: boolean;
   exhausted: boolean;
 }
@@ -152,6 +153,7 @@ export interface WaterfallHomePatchUpdate {
   sources: WaterfallSourceState[];
   cardStates: WaterfallCardViewState[];
   savedCards: WaterfallSavedCardView[];
+  consumedCandidateIds: string[];
   replenishing: boolean;
   exhausted: boolean;
 }

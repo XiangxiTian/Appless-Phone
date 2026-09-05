@@ -4,14 +4,14 @@ import { buildA2uiChatRequestJson, mergeOpenAiRequestJson } from '@loop/agent-co
 export default function openAiRequestJsonTest() {
   describe('OpenAiRequestJson', () => {
     it('merges safe provider parameters without changing protected request fields', 0, () => {
-      const baseJson = '{"model":"Deepseek-V4-Flash-0731","messages":[{"role":"user","content":"hello"}],' +
+      const baseJson = '{"model":"DeepSeek-V4-Flash-0731","messages":[{"role":"user","content":"hello"}],' +
         '"temperature":0.2,"stream":true}';
       const merged = JSON.parse(mergeOpenAiRequestJson(
         baseJson,
         '{"enable_thinking":false,"temperature":0}'
       )) as Record<string, Object | string | number | boolean>;
 
-      expect(merged['model'] as string).assertEqual('Deepseek-V4-Flash-0731');
+      expect(merged['model'] as string).assertEqual('DeepSeek-V4-Flash-0731');
       expect(merged['stream'] as boolean).assertTrue();
       expect(merged['enable_thinking'] as boolean).assertFalse();
       expect(merged['temperature'] as number).assertEqual(0);

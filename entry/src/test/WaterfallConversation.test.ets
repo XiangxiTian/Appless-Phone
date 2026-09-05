@@ -152,7 +152,7 @@ export default function waterfallConversationTest() {
     it('falls back only when tag generation hits a model permission error', 0, () => {
       const settings: LocalModelSettings = {
         provider: 'CSI.AI', baseUrl: 'https://model.example.test/v1/chat/completions',
-        model: 'Deepseek-V4-Flash-0731', apiKey: 'key',
+        model: 'DeepSeek-V4-Flash-0731', apiKey: 'key',
         customParametersJson: '{"enable_thinking":false}', ignoreToolSurfaceUpdates: false
       };
       expect(waterfallTagFallbackSettings(settings, 'HTTP 403')?.model).assertEqual('Qwen3.7-Plus');

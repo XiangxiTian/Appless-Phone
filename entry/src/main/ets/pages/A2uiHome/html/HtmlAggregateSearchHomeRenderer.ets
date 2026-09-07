@@ -857,7 +857,7 @@ const WATERFALL_CSS: string = `
 .waterfall-overlay.active.closing { opacity: 0; animation: none; transition: opacity 140ms var(--ease-out); }
 @keyframes waterfall-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 .waterfall-track {
-  height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: none;
+  position: relative; height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: none;
   scroll-snap-type: y mandatory; scrollbar-width: none; background: #eef0f2; touch-action: pan-y;
   padding: calc(64px + env(safe-area-inset-top) + 12px) 0 calc(96px + env(safe-area-inset-bottom));
   scroll-padding-top: calc(64px + env(safe-area-inset-top) + 12px);
@@ -3935,6 +3935,25 @@ const WATERFALL_JS: string = `
       videoVisibilityObserver.observe(nextNodes[index]);
     }
   }
+  var taskInsetAnimation = null;
+  window.__aiphoneSetWaterfallTaskInset = function (bottom, reduceMotion) {
+    if (!track || !track.style) return;
+    var padding = parseFloat(window.getComputedStyle(track).paddingTop) || 0;
+    var inset = Math.max(0, (Number(bottom) || 0) - padding);
+    var previous = parseFloat(track.style.marginTop) || 0;
+    if (Math.abs(inset - previous) < 0.5) return;
+    var before = track.getBoundingClientRect().top;
+    if (taskInsetAnimation) taskInsetAnimation.cancel();
+    track.style.marginTop = inset + 'px';
+    track.style.height = 'calc(100dvh - ' + inset + 'px)';
+    refreshCardMetrics();
+    if (!reduceMotion && typeof track.animate === 'function') {
+      taskInsetAnimation = track.animate([
+        { translate: '0 ' + (before - track.getBoundingClientRect().top) + 'px' },
+        { translate: '0 0' }
+      ], { duration: inset > previous ? 280 : 140, easing: 'cubic-bezier(0.23,1,0.32,1)' });
+    }
+  };
   window.__aiphoneSetWaterfallActive = function (active) {
     waterfallSurfaceActive = active === true;
     if (!waterfallSurfaceActive) {

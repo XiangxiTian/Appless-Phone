@@ -27,6 +27,40 @@ function looseObject(raw: string): Object {
 
 export default function dynamicToolDiscoveryTest() {
   describe('dynamicToolDiscovery', () => {
+    it('runs release weather through the existing Amap reader with resolved follow-up arguments', 0, async () => {
+      let requestedCity = '';
+      let requestedTool = '';
+      let requestedPrompt = '';
+      configureDynamicReadExecutorForTests(async (prompt: string, args: Object | null): Promise<DynamicReadExecution> => {
+        const record = args as DynamicArgRecord;
+        requestedCity = record.city as string;
+        requestedTool = record.qualifiedName as string;
+        requestedPrompt = prompt;
+        return {
+          results: [{ sourceTag: '高德地图', toolName: 'maps_weather', title: '苏州天气',
+            status: 'success', summary: '测试天气结果',
+            rows: [{ label: '预报日期', value: '2026-09-08' }], rawPreview: '' }],
+          registration: { provider: '高德地图', qualifiedName: 'maps_weather',
+            inputSchema: looseObject('{}'), outputSchema: looseObject('{}'), receipt: '' }
+        };
+      });
+      try {
+        const result = await callStructuredTool('weather.query', '那明天呢',
+          looseObject('{"city":"苏州","dayOffset":1,"qualifiedName":"OTHER_TOOL"}'));
+        expect(result.status).assertEqual('success');
+        expect(result.toolId).assertEqual('weather.query');
+        expect(result.outputSchema).assertEqual('weatherSummary');
+        expect(requestedCity).assertEqual('苏州');
+        expect(requestedTool).assertEqual('maps_weather');
+        expect(requestedPrompt).assertEqual('苏州明天天气');
+        expect((result.data as DynamicStructuredData).results[0].summary).assertEqual('测试天气结果');
+        const invalid = await callStructuredTool('weather.query', '天气', looseObject('{"dayOffset":7}'));
+        expect(invalid.error?.code).assertEqual('WEATHER_INPUT_INVALID');
+      } finally {
+        configureDynamicReadExecutorForTests(null);
+      }
+    });
+
     it('discovers the statistics MCP candidate from a user query', 0, () => {
       configureDefaultDynamicToolSamplesForTests();
       const result = discoverDynamicToolForPrompt('帮我查一下最近的统计局GDP数据') as DynamicToolDiscoveryResult;

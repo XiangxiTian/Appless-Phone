@@ -305,7 +305,7 @@ const coreRegressionCases = [
     expectedToolId: 'food.search', verifyMemoryRecall: true, expectMemoryPreferenceAbsent: 'oat_milk'
   },
   { id: 'C12', query: '我想看世界杯下一场比赛和赛程', expectsTool: true, expectedToolId: 'worldcup.open' },
-  { id: 'C13', query: '帮我查明天深圳天气', expectsTool: true, expectedToolId: 'dynamic.search', expectedDiscoveredToolId: 'weather.query' },
+  { id: 'C13', query: '帮我查明天深圳天气', expectsTool: true, expectedToolId: 'weather.query' },
   { id: 'C14', query: '帮我看从深圳湾万象城到深圳北站打车多少钱', expectsTool: true, expectedToolId: 'ride.estimate' },
   { id: 'C15', query: '帮我点一杯瑞幸生椰拿铁，半糖少冰', expectsTool: true, expectedToolId: 'luckin.order.preview' },
   { id: 'C17', query: '用 PayPal 给罗一格转 1 美元', expectsTool: true, expectedToolId: 'payment.send' },
@@ -430,7 +430,7 @@ const coreScenarioManifest = [
   ['C08', []], ['C09', ['social.feed.search']],
   ['C10', ['x.post.search']],
   ['C11', ['food.search', 'memory.remember', 'memory.forget']],
-  ['C12', ['worldcup.open']], ['C13', ['dynamic.search']],
+  ['C12', ['worldcup.open']], ['C13', ['weather.query']],
   ['C14', ['ride.estimate']], ['C15', ['luckin.order.preview']],
   ['C17', ['payment.send']],
   ['C18', ['whatsapp.message.send']],
@@ -914,8 +914,7 @@ function expectedCaseForQuery(query) {
   if (/天气|气温|下雨|降雨/.test(query)) {
     return {
       expectsTool: true,
-      expectedToolId: 'dynamic.search',
-      expectedDiscoveredToolId: 'weather.query'
+      expectedToolId: 'weather.query'
     };
   }
   if (/统计局|GDP|CPI|人口|经济数据/.test(query)) {
@@ -2480,7 +2479,7 @@ function layoutExpectationsForQuery(query) {
     return ['接入工具', 'dynamic.search', '没有找到'];
   }
   if (/天气|气温|下雨|降雨/.test(query)) {
-    return ['接入工具', 'weather.query', 'AMAP_MAPS_API_KEY', '高德天气预报', '预报日期'];
+    return ['高德天气', '高德地图', '气温', '湿度', '预报日期'];
   }
   if (/统计局|GDP|CPI|人口|经济数据/.test(query)) {
     return ['接入工具', 'statistics.search', 'Authorization', '中国国家统计局'];
@@ -5830,6 +5829,7 @@ if (finalSummary !== null && finalSummary.expectedToolId === 'gmail.mail.search'
 }
 const allowsVisibleDate = finalSummary !== null &&
   (finalSummary.expectedToolId.startsWith('calendar.') || finalSummary.expectedToolId.startsWith('hotel.') ||
+    (finalSummary.expectedToolId === 'weather.query' && finalSummary.toolOk && finalLayoutText.includes('高德天气')) ||
     (finalSummary.expectedToolId === 'dynamic.search' &&
       finalSummary.expectedDiscoveredToolId === 'weather.query' && finalLayoutText.includes('高德天气')));
 if (finalSummary !== null && finalSummary.expectedToolId === 'daily.brief.open') {

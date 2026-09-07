@@ -1,5 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  allToolDefinitions,
+  allAiphoneToolDefinitions,
   ActionOffer,
   A2uiAction,
   A2uiRuntimeDataModel,
@@ -1939,6 +1941,16 @@ export default function multiAgentCanaryRuntimeTest() {
       const homeRuntime = new MultiAgentCanaryRuntime(homeOptions);
       await homeRuntime.submit('你好', { text: '' });
       expect(homeModel.systemPrompts[0].indexOf('waterfall.preference.adjust')).assertEqual(-1);
+      const prompt = homeModel.systemPrompts[0];
+      const availableIds = allAiphoneToolDefinitions().map((tool): string => tool.toolId);
+      allToolDefinitions().filter((tool): boolean => availableIds.indexOf(tool.toolId) < 0).forEach((tool): void => {
+        const reference = tool.toolId.indexOf('.') >= 0 ? tool.toolId : '"toolId":"' + tool.toolId + '"';
+        expect(prompt.indexOf(reference) < 0 ? '' : reference).assertEqual('');
+      });
+      expect(prompt.indexOf('dynamic.search')).assertEqual(-1);
+      expect(prompt.indexOf('media.aggregate.search')).assertEqual(-1);
+      expect(prompt.indexOf('stay in ordinary')).assertLarger(-1);
+      expect(prompt.indexOf('weather.query')).assertLarger(-1);
       homeRuntime.dispose();
 
       const waterfallModel = new QueueModel([WATERFALL_PREFERENCE_DECISION]);

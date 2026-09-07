@@ -201,6 +201,8 @@ export default function a2uiHomeStateTest() {
       expect(explicitDeepSearchRouteDecision('不要普通搜索，请深度搜索')).assertEqual('deepsearch');
       expect(explicitDeepSearchRouteDecision('今天深圳天气怎么样')).assertEqual(null);
       expect(explicitDeepSearchRouteDecision('查深圳到上海的出行方案，也告诉我深圳天气')).assertEqual(null);
+      expect(explicitDeepSearchRouteDecision('查询全球极端天气最新研究')).assertEqual(null);
+      expect(explicitDeepSearchRouteDecision('深度搜索最近的极端天气研究')).assertEqual('deepsearch');
       expect(explicitDeepSearchRouteDecision('比较两款芯片的最新进展')).assertEqual(null);
     });
 

@@ -105,6 +105,8 @@ export struct HtmlHomeSurfaceView {
   @Prop @Watch('onWaterfallAiEventChange') waterfallAiEventJson: string = '';
   @Prop @Watch('onWaterfallActiveChange') waterfallActive: boolean = true;
   @Prop @Watch('onWaterfallBackRequest') waterfallBackRequestTick: number = 0;
+  @Prop @Watch('pushWaterfallTaskInset') waterfallTaskBottom: number = 0;
+  @Prop waterfallTaskReduceMotion: boolean = false;
   @Prop @Watch('onMailDetailEventChange') mailDetailEventJson: string = '';
   @Prop @Watch('onMailReplyEventChange') mailReplyEventJson: string = '';
   @Prop @Watch('onMailCalendarEventChange') mailCalendarEventJson: string = '';
@@ -236,7 +238,7 @@ export struct HtmlHomeSurfaceView {
   }
 
   private loadHtmlIfNeeded(): void {
-    if (!this.webReady) {
+    if (!this.webReady || !this.waterfallActive) {
       return;
     }
     const patchPending = this.luckinInlinePatchTick > this.appliedLuckinPatchTick &&
@@ -344,7 +346,7 @@ export struct HtmlHomeSurfaceView {
   }
 
   private pushConversationStreamIfNeeded(): void {
-    if (!this.webReady || this.conversationStreamPushInFlight ||
+    if (!this.webReady || !this.waterfallActive || this.conversationStreamPushInFlight ||
       this.conversationStreamText.length === 0 ||
       this.conversationStreamTick <= this.appliedConversationStreamTick) {
       return;
@@ -432,6 +434,10 @@ export struct HtmlHomeSurfaceView {
 
   onWaterfallActiveChange(): void {
     this.pushWaterfallActive();
+    if (this.waterfallActive) {
+      this.loadHtmlIfNeeded();
+      this.pushConversationStreamIfNeeded();
+    }
   }
 
   private pushWaterfallActive(): void {
@@ -445,6 +451,21 @@ export struct HtmlHomeSurfaceView {
       });
     } catch (error) {
       aiLogError('[AIPhone][HtmlHomeWaterfallActiveError] ' + JSON.stringify(error));
+    }
+  }
+
+  private pushWaterfallTaskInset(): void {
+    if (!this.webReady) return;
+    // Area.globalPosition already excludes the system top inset, like the Web content coordinates.
+    try {
+      this.controller.runJavaScript(
+        'if(window.__aiphoneSetWaterfallTaskInset){window.__aiphoneSetWaterfallTaskInset(' +
+        this.waterfallTaskBottom.toString() + ',' + (this.waterfallTaskReduceMotion ? 'true' : 'false') + ');}'
+      ).catch((error: Error): void => {
+        aiLogError('[AIPhone][HtmlHomeWaterfallTaskInsetError] ' + JSON.stringify(error));
+      });
+    } catch (error) {
+      aiLogError('[AIPhone][HtmlHomeWaterfallTaskInsetError] ' + JSON.stringify(error));
     }
   }
 
@@ -719,6 +740,7 @@ export struct HtmlHomeSurfaceView {
           this.pushWaterfallPayloadIfNeeded();
           this.pushWaterfallAiEventIfNeeded();
           this.pushWaterfallActive();
+          this.pushWaterfallTaskInset();
           this.onWaterfallBackRequest();
           this.pushMailDetailEventIfNeeded();
           this.pushMailReplyEventIfNeeded();

@@ -350,6 +350,42 @@ function mutatedLayoutCandidate(
 
 export default function structuredToolUiRendererTest() {
   describe('structuredToolUiRenderer', () => {
+    it('keeps weather in conversation text with source time and no dynamic result component', 0, async () => {
+      const planner = new RecordingPlanner();
+      const renderer = new StructuredToolUiRenderer(planner);
+      const weather = dataResult('weather.query', 'weatherSummary', genericResult(
+        'maps_weather', '高德天气查询',
+        '[{"label":"湿度","value":"70%"},{"label":"发布时间","value":"2026-09-07 14:00:00"}]',
+        '[]', 'PRIVATE_RAW_PAYLOAD', '深圳当前天气：多云，30°C。'
+      ));
+      const rendered = await renderer.result(uiTask(), [weather], [], 'weather-chat');
+      expect(rendered.jsonl.indexOf('深圳当前天气：多云，30°C。')).assertLarger(-1);
+      expect(rendered.jsonl.indexOf('湿度 70%')).assertLarger(-1);
+      expect(rendered.jsonl.indexOf('2026-09-07 14:00:00')).assertLarger(-1);
+      expect(rendered.jsonl.indexOf('"dataLabel":"weather.query"')).assertLarger(-1);
+      expect(rendered.jsonl.indexOf('GenericToolResults')).assertEqual(-1);
+      expect(rendered.jsonl.indexOf('PRIVATE_RAW_PAYLOAD')).assertEqual(-1);
+      expect(rendered.jsonl.indexOf('"child"')).assertEqual(-1);
+      expect(planner.prompt).assertEqual('');
+      weather.status = 'error';
+      weather.error = { code: 'WEATHER_PROVIDER_ERROR', message: 'provider unavailable' };
+      const failed = await renderer.result(uiTask(), [weather], [], 'weather-error');
+      expect(failed.jsonl.indexOf('provider unavailable')).assertLarger(-1);
+      expect(failed.jsonl.indexOf('深圳当前天气')).assertEqual(-1);
+      expect(failed.jsonl.indexOf('GenericToolResults')).assertEqual(-1);
+      weather.error = { code: 'AUTH_REQUIRED', message: 'Dynamic read requires configured credentials.' };
+      const missingConfig = await renderer.result(uiTask(), [weather], [], 'weather-auth');
+      expect(missingConfig.jsonl.indexOf('凭据配置')).assertLarger(-1);
+      weather.error = { code: 'WEATHER_INPUT_INVALID', message: '请提供要查询的城市，以及今天到大后天之间的日期。' };
+      const invalidInput = await renderer.result(uiTask(), [weather], [], 'weather-input');
+      expect(invalidInput.jsonl.indexOf('今天到大后天之间的日期')).assertLarger(-1);
+      weather.error = { code: 'WEATHER_PROVIDER_ERROR',
+        message: 'CITY_NOT_FOUND https://weather.test/?key=PRIVATE_URL "api_key":"PRIVATE_KEY" Bearer PRIVATE_TOKEN' };
+      const rejected = await renderer.result(uiTask(), [weather], [], 'weather-rejected');
+      expect(rejected.jsonl.indexOf('CITY_NOT_FOUND')).assertLarger(-1);
+      expect(rejected.jsonl.indexOf('PRIVATE_')).assertEqual(-1);
+    });
+
     it('uses a domain-neutral skeleton before structured results arrive', 0, async () => {
       const rendered = await new StructuredToolUiRenderer().skeleton(uiTask(), 'surface-pending');
 

@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { http } from '@kit.NetworkKit';
+import { image } from '@kit.ImageKit';
 import { systemShare } from '@kit.ShareKit';
 
 const WATERFALL_SHARE_ENDPOINT: string = 'https://jiuwenappless.com/v1/waterfall/shares';
@@ -109,22 +110,62 @@ export async function shareWaterfallCard(
 ): Promise<WaterfallShareStatus> {
   const snapshot = parseWaterfallShareRequest(raw);
   if (snapshot === null) throw new Error('waterfall_share_invalid_card');
+  const thumbnailRequest = loadWaterfallShareThumbnail(snapshot.coverUrl).catch((): undefined => undefined);
   let link = '';
   try {
     link = await createWaterfallShareLink(snapshot);
   } catch (_error) {
   }
   const status: WaterfallShareStatus = link.length > 0 ? 'ready' : 'fallback';
-  const sharedData = new systemShare.SharedData({
-    utd: utd.UniformDataType.HYPERLINK,
-    content: link.length > 0 ? link : snapshot.originalUrl,
-    title: snapshot.title,
-    description: snapshot.summary
-  });
+  const sharedData = new systemShare.SharedData(waterfallShareRecord(snapshot, link, await thumbnailRequest));
   const controller = new systemShare.ShareController(sharedData);
   await controller.show(context, {
     selectionMode: systemShare.SelectionMode.SINGLE,
     previewMode: systemShare.SharePreviewMode.DETAIL
   });
   return status;
+}
+
+export function waterfallShareRecord(
+  snapshot: WaterfallShareRequest, link: string, thumbnail?: Uint8Array
+): systemShare.SharedRecord {
+  return {
+    utd: utd.UniformDataType.HYPERLINK,
+    content: link.length > 0 ? link : snapshot.originalUrl,
+    title: snapshot.title,
+    description: snapshot.summary,
+    thumbnail: thumbnail !== undefined && thumbnail.byteLength > 0 && thumbnail.byteLength < 32768 ?
+      thumbnail : undefined
+  };
+}
+
+async function loadWaterfallShareThumbnail(url: string): Promise<Uint8Array | undefined> {
+  if (url.length === 0) return undefined;
+  const request = http.createHttp();
+  let source: image.ImageSource | undefined;
+  let pixels: image.PixelMap | undefined;
+  let packer: image.ImagePacker | undefined;
+  try {
+    const response = await request.request(url, {
+      expectDataType: http.HttpDataType.ARRAY_BUFFER, maxLimit: 2097152,
+      connectTimeout: 2500, readTimeout: 2500
+    });
+    if (response.responseCode !== 200 || !(response.result instanceof ArrayBuffer)) return undefined;
+    source = image.createImageSource(response.result);
+    const size = (await source.getImageInfo()).size;
+    const scale = Math.min(1, 192 / Math.max(size.width, size.height));
+    pixels = await source.createPixelMap({ desiredSize: {
+      width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale))
+    } });
+    packer = image.createImagePacker();
+    let packed = await packer.packing(pixels, { format: 'image/jpeg', quality: 75 });
+    // ShareKit requires an encoded thumbnail smaller than 32 KB.
+    if (packed.byteLength >= 32768) packed = await packer.packing(pixels, { format: 'image/jpeg', quality: 40 });
+    return new Uint8Array(packed);
+  } finally {
+    request.destroy();
+    if (packer !== undefined) await packer.release();
+    if (pixels !== undefined) await pixels.release();
+    if (source !== undefined) await source.release();
+  }
 }

@@ -733,7 +733,7 @@ assert.match(canaryRuntime,
   /!focusedRelease \|\|[\s\S]*?definition\.toolId !== 'media\.aggregate\.search'/,
   'natural conversation must not advertise aggregate search in the focused release');
 assert.match(leaderPlanner,
-  /registeredCapability\(context, 'media\.aggregate\.search'\)[\s\S]*?Aggregate media search is discovery-only/,
+  /registeredCapability\(context, 'media\.aggregate\.search'\) \?\s*AGGREGATE_MEDIA_SELECTION_CONTRACT : ''/,
   'the leader must not be prompted to invent the discovery-only search capability');
 assert.match(waterfallJs, /searchFeedScrollTop/,
   'exiting search must restore the exact pre-search discovery position');

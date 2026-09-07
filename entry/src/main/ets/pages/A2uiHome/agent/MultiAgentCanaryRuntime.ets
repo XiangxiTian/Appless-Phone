@@ -1767,7 +1767,7 @@ function canaryPlanningContext(
   }
   return {
     tools,
-    personas: scopedLeaderPersonas(previousPersonaId, tools, memoryAvailable)
+    personas: scopedLeaderPersonas(previousPersonaId, tools, memoryAvailable, focusedRelease)
   };
 }
 
@@ -1807,12 +1807,18 @@ function instructionsWithoutMemoryCapabilityIds(value: string): string {
 function scopedLeaderPersonas(
   previousPersonaId: string,
   tools: LeaderToolMetadata[],
-  memoryAvailable: boolean = true
+  memoryAvailable: boolean = true,
+  focusedRelease: boolean = false
 ): LeaderPersonaMetadata[] {
   const visibleToolIds: Set<string> = new Set<string>();
   for (let index = 0; index < tools.length; index++) {
     visibleToolIds.add(tools[index].toolId);
   }
+  // Legacy skills.md files can mention tools without declaring any toolIds.
+  const hiddenToolIds: string[] = focusedRelease ? allToolDefinitions().map(
+    (tool: ToolDefinition): string => tool.toolId
+  ).concat(['dynamic.search']).filter((toolId: string): boolean =>
+    toolId.indexOf('.') >= 0 && !visibleToolIds.has(toolId)) : [];
   return leaderPersonaContext(previousPersonaId).map((persona: LeaderPersonaMetadata): LeaderPersonaMetadata => ({
     personaId: persona.personaId,
     name: persona.name,
@@ -1828,7 +1834,9 @@ function scopedLeaderPersonas(
         (toolId: string): boolean => MEMORY_ACTION_IDS.indexOf(toolId) < 0
       )
     })).filter((skill: LeaderSkillMetadata): boolean =>
-      skill.toolIds.every((toolId: string): boolean => visibleToolIds.has(toolId))
+      skill.toolIds.every((toolId: string): boolean => visibleToolIds.has(toolId)) &&
+        hiddenToolIds.every((toolId: string): boolean =>
+          (skill.description + ' ' + skill.instructions).indexOf(toolId) < 0)
     )
   }));
 }

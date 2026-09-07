@@ -306,7 +306,7 @@ export struct HomePage {
   onCloseFoodStoreMap: () => void = () => {};
   onFoodStoreMapLocationConfirm: (longitude: number, latitude: number, name: string, address: string) => void =
     (_longitude: number, _latitude: number, _name: string, _address: string): void => {};
-  onDeepSearchComplete: (answer: string) => void = (_answer: string): void => {};
+  onDeepSearchComplete: (answer: string, error: string) => void = (_answer: string, _error: string): void => {};
   onCloseCheckoutWeb: (taskId: string) => void = (_taskId: string): void => {};
   onCheckoutWebReturn: (url: string) => void = (_url: string): void => {};
   onTrainPresaleConfirm: (submission: TrainPresalePanelSubmission) => void =
@@ -971,7 +971,7 @@ export struct HomePage {
           if (this.showDeepSearch) {
             DeepSearchPanel({
               query: this.deepSearchQuery,
-              startReady: this.deepSearchLoadingReady,
+              startReady: this.deepSearchLoadingReady || !this.waterfallActive,
               settingsJson: this.deepSearchSettingsJson,
               contextJson: this.deepSearchContextJson,
               onProgress: (progressJson: string): void => {

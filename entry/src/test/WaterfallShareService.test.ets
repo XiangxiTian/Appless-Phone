@@ -1,7 +1,8 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   parseWaterfallShareRequest,
-  waterfallShareLinkFromResponse
+  waterfallShareLinkFromResponse,
+  waterfallShareRecord
 } from '../main/ets/pages/A2uiHome/waterfall/WaterfallShareService';
 import { waterfallShareUrlFromWant } from '../main/ets/entryability/EntryAbility';
 
@@ -75,6 +76,18 @@ export default function waterfallShareServiceTest(): void {
       expect(waterfallShareUrlFromWant({
         uri: 'https://lookalike.example/s/AbCdEf0123_-'
       })).assertEqual('');
+    });
+
+    it('attaches bounded thumbnail bytes without changing the shared link', 0, (): void => {
+      const card = parseWaterfallShareRequest('{"title":"有封面的内容","originalUrl":"https://example.test/card"}');
+      if (card === null) throw new Error('invalid test card');
+      const thumbnail = new Uint8Array([255, 216, 255, 217]);
+      const record = waterfallShareRecord(card, 'https://jiuwenappless.com/s/AbCdEf0123_-', thumbnail);
+      expect(record.thumbnail).assertEqual(thumbnail);
+      expect(record.content).assertEqual('https://jiuwenappless.com/s/AbCdEf0123_-');
+      expect(waterfallShareRecord(card, '', new Uint8Array(32768)).thumbnail === undefined).assertTrue();
+      expect(waterfallShareRecord(card, '', new Uint8Array(0)).thumbnail === undefined).assertTrue();
+      expect(waterfallShareRecord(card, '').content).assertEqual(card.originalUrl);
     });
   });
 }

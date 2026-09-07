@@ -77,7 +77,7 @@ export default function toolDefinitionRegistryTest() {
         'travel.search,train.search,flight.search,hotel.search,hotel.detail,hotel.navigate,' +
         'hotel.booking.open,food.search,luckin.order.preview,luckin.order.create,luckin.order.status,' +
         'media.aggregate.search,ride.estimate,ride.app.link,ride.order.create,ride.order.cancel,' +
-        'ride.driver.location,web.research.search,web.page.read'
+        'ride.driver.location,web.research.search,web.page.read,weather.query'
       );
       expect(isRegisteredAiphoneToolId('maps.place.search')).assertFalse();
       expect(isRegisteredAiphoneToolId('maps.place.details')).assertFalse();
@@ -85,6 +85,8 @@ export default function toolDefinitionRegistryTest() {
       expect(isRegisteredAiphoneToolId('ride.estimate')).assertTrue();
       expect(isRegisteredAiphoneToolId('payment.send')).assertFalse();
       expect(isRegisteredAiphoneToolId('dynamic.search')).assertFalse();
+      expect(isRegisteredAiphoneToolId('weather.query')).assertTrue();
+      expect(toolDefinitionForToolId('weather.query')?.riskLevel).assertEqual('read');
       expect(isRegisteredAiphoneToolId('memory.update')).assertFalse();
     });
 
@@ -713,10 +715,10 @@ export default function toolDefinitionRegistryTest() {
       const action: ToolDefinition[] = actionAgentToolDefinitions();
       const ids: string[] = data.concat(action).map((item: ToolDefinition): string => item.toolId);
 
-      expect(all.length).assertEqual(56);
-      expect(data.length).assertEqual(32);
+      expect(all.length).assertEqual(57);
+      expect(data.length).assertEqual(33);
       expect(action.length).assertEqual(24);
-      expect(new Set<string>(ids).size).assertEqual(56);
+      expect(new Set<string>(ids).size).assertEqual(57);
       expect(all.filter((item: ToolDefinition): boolean => item.riskLevel === 'blocked').length)
         .assertEqual(0);
       expect(ids.indexOf('hotel.navigate') >= 0).assertTrue();

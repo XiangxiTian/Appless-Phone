@@ -681,6 +681,18 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     outputSchema: 'genericToolResults',
     a2uiComponent: 'GenericToolResults',
     actions: []
+  },
+  {
+    toolId: 'weather.query',
+    domain: 'weather',
+    intent: 'weather.query',
+    riskLevel: 'read',
+    backendPriority: ['local_adapter'],
+    authModes: ['provider_key'],
+    inputSchema: 'weatherQuery',
+    outputSchema: 'weatherSummary',
+    a2uiComponent: 'Text',
+    actions: []
   }
 ];
 
@@ -703,7 +715,8 @@ const RELEASE_TOOL_IDS: string[] = [
   'ride.order.cancel',
   'ride.driver.location',
   'web.research.search',
-  'web.page.read'
+  'web.page.read',
+  'weather.query'
 ];
 
 export function isReleaseToolId(toolId: string): boolean {
@@ -776,7 +789,9 @@ export function toolPlanningDescriptionForToolId(
       'adjust requires 1-8 items shaped as {dimension: topic|source|format, key, state: ' +
       'boost|downweight|neutral}; undo and reset require an empty preferences array.';
   } else if (definition.toolId === 'travel.search') {
-    description += '. Use for general train/flight travel options. Before selecting execute, the query must contain an exact departure date, origin, and destination grounded in the current message or standard conversation context. If any is missing or ambiguous, select clarify and ask the user in your own words instead of calling the tool. Do not use for ferry or boat tickets; use dynamic.search for those unsupported transport domains.';
+    description += '. Use for general train/flight travel options. Before selecting execute, the query must contain an exact departure date, origin, and destination grounded in the current message or standard conversation context. If any is missing or ambiguous, select clarify and ask the user in your own words instead of calling the tool. Do not use for ferry or boat tickets; explain the unsupported transport mode in ordinary conversation.';
+  } else if (definition.toolId === 'weather.query') {
+    description += '. Query real weather through Amap. Input must be {city: string, dayOffset: number}: city is a Chinese city name or adcode, dayOffset is 0 for current weather, 1 for tomorrow, 2 for the day after tomorrow, or 3. Resolve city and dayOffset from the user and standard conversation context, including follow-ups such as 那明天呢. If city is unknown or the requested date is outside this range, clarify rather than inventing a location or forecast. Use this tool for weather and temperature; never answer current weather from model memory.';
   } else if (definition.toolId === 'time') {
     description += '. Use only when the current device date or time is explicitly required. Input must be {}. It reads the device clock and never calls a network provider.';
   } else if (definition.toolId === 'train.search') {

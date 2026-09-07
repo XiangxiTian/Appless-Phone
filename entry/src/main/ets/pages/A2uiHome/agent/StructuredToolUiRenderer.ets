@@ -314,7 +314,51 @@ function mailThreadDynamic(data: DataResult): DynamicGenericToolResult | null {
   };
 }
 
+function weatherJsonl(data: DataResult, surfaceId: string, conversationOnly: boolean): string {
+  const weather = data.status === 'success' || data.status === 'partial' ?
+    genericData(data)?.results.find((item: DynamicGenericToolResult): boolean =>
+      item.status === 'success' && item.summary.trim().length > 0) : undefined;
+  let text = '这次没有查到实时天气，请稍后重试。';
+  if (data.error !== undefined) {
+    const reason = data.error.message
+      .replace(/https?:\/\/\S+/gi, '[服务地址]')
+      .replace(/\bBearer\s+\S+/gi, 'Bearer [已隐藏]')
+      .replace(/((?:api[_-]?key|key|token|authorization|secret|password)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;，。]+)/gi, '$1[已隐藏]')
+      .trim().substring(0, 280);
+    if (reason.length > 0) text = '天气查询未完成：' + reason;
+    if (data.error.code === 'AUTH_REQUIRED' || data.error.code === 'DYNAMIC_CONFIG_MISSING') {
+      text = '天气服务缺少访问配置，请完成天气服务的凭据配置后再查询。';
+    }
+  }
+  if (weather !== undefined) {
+    const details = weather.rows.filter((row: A2uiLabelValueData): boolean =>
+      ['风向', '风力', '湿度', '白天风向', '白天风力', '夜间风向', '夜间风力'].indexOf(row.label) >= 0
+    ).map((row: A2uiLabelValueData): string => row.label + ' ' + row.value);
+    const updated = weather.rows.find((row: A2uiLabelValueData): boolean =>
+      row.label === '发布时间' || row.label === '预报发布时间');
+    text = weather.summary + (details.length > 0 ? '\n' + details.join('，') + '。' : '') +
+      '\n\n来源：高德天气' + (updated === undefined ? '' : ' · ' + updated.value);
+  }
+  const components: A2uiComponent[] = [{ id: 'root', component: A2UI_COMPONENT_SURFACE_ROOT }];
+  if (!conversationOnly) {
+    components[0].child = 'weather';
+    components.push({ id: 'weather', component: A2UI_COMPONENT_TEXT, text });
+  }
+  const summary: A2uiSummaryData = {
+    text, toolName: 'weather.query', dataLabel: 'weather.query', count: weather === undefined ? 0 : 1
+  };
+  const envelopes: A2uiEnvelope[] = [
+    { version: A2UI_VERSION, createSurface: {
+      surfaceId, root: 'root', title: '天气', intent: 'general', status: 'ready', sendDataModel: true
+    } },
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    { version: A2UI_VERSION, updateDataModel: { surfaceId, path: '/summary', value: summary } }
+  ];
+  return envelopes.map((envelope: A2uiEnvelope): string => JSON.stringify(envelope)).join('\n') + '\n';
+}
+
 function canonicalJsonl(data: DataResult, offers: ActionOffer[], surfaceId: string): string {
+  if (data.toolId === 'weather.query') return weatherJsonl(data, surfaceId, false);
   const record = recordOf(data.data);
   switch (data.outputSchema) {
     case 'travelOptions':
@@ -828,6 +872,9 @@ export class StructuredToolUiRenderer implements UiTaskRenderer {
     try {
       const safeData = cloneDataResults(data);
       const safeOffers = cloneOffers(offers);
+      if (safeData.length === 1 && safeData[0].toolId === 'weather.query') {
+        return rendered(weatherJsonl(safeData[0], surfaceId, true));
+      }
       const jsonls: string[] = [];
       for (let index = 0; index < safeData.length; index++) {
         const auth = authJsonl(safeData[index], surfaceId);
@@ -836,7 +883,8 @@ export class StructuredToolUiRenderer implements UiTaskRenderer {
         ) : auth);
       }
       const baseline = aggregateJsonl(jsonls, safeData, surfaceId, serialRoundTask(task));
-      return rendered(await this.layout(safeData, safeOffers, surfaceId, baseline));
+      return rendered(safeData.some((item: DataResult): boolean => item.toolId === 'weather.query') ?
+        baseline : await this.layout(safeData, safeOffers, surfaceId, baseline));
     } catch (_error) {
       return rendered(errorJsonl(surfaceId, '结构化结果格式无效或暂不受支持。'));
     }

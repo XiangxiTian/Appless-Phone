@@ -12805,6 +12805,7 @@ function dynamicArgsFromPrompt(prompt: string): DynamicPromptArgs {
 }
 
 interface DynamicReadRequestArgs {
+  city?: Object | string | number | boolean | null;
   operation?: Object | string | number | boolean | null;
   qualifiedName?: Object | string | number | boolean | null;
   toolSlug?: Object | string | number | boolean | null;
@@ -12953,7 +12954,8 @@ function dynamicManifestReadAllowed(tool: DynamicMcpTool, transport: DynamicTool
 async function dynamicManifestReadExecution(
   discovery: DynamicToolDiscoveryResult,
   prompt: string,
-  selectedToolName: string = ''
+  selectedToolName: string = '',
+  requestArgs: Object | null = null
 ): Promise<DynamicReadExecution> {
   const manifest = discovery.manifest;
   const transport = selectBestRemoteTransport(manifest);
@@ -12997,7 +12999,7 @@ async function dynamicManifestReadExecution(
   const registration = dynamicToolRegistry.registrationForToolId(discovery.toolId) ?? candidate;
   let result: DynamicGenericToolResult;
   if (transport.type === 'http_api') {
-    result = await callDynamicHttpApiTool(registration, credentialValue, prompt);
+    result = await callDynamicHttpApiTool(registration, credentialValue, prompt, requestArgs);
   } else {
     const preflight = await genericMcpClient.preflight(registration, credentialValue);
     if (!preflight.ok) {
@@ -13037,7 +13039,7 @@ async function defaultDynamicReadExecutor(
   if (selected.length > 0) {
     const selectedManifest = selectedDynamicManifest(selected);
     if (selectedManifest !== null) {
-      return dynamicManifestReadExecution(selectedManifest, prompt, selected);
+      return dynamicManifestReadExecution(selectedManifest, prompt, selected, args);
     }
   }
   const discovery = selected.length === 0 ? discoverDynamicToolForPrompt(prompt) : null;
@@ -13396,13 +13398,18 @@ function dynamicHttpApiResultFromJson(registration: DynamicToolRegistration, res
   };
 }
 
-async function callDynamicHttpApiTool(registration: DynamicToolRegistration, credentialValue: string, prompt: string): Promise<DynamicGenericToolResult> {
+async function callDynamicHttpApiTool(
+  registration: DynamicToolRegistration, credentialValue: string, prompt: string,
+  requestArgs: Object | null = null
+): Promise<DynamicGenericToolResult> {
   const method = transportOption(registration.transport, 'method', 'GET').toUpperCase();
   if (method !== 'GET') {
     return dynamicErrorResult(registration.displayName, registration.mcpToolName, 'HTTP API 暂不支持', '当前 HAP 动态 HTTP API 只支持 GET。');
   }
   try {
     const args = dynamicArgsFromPrompt(prompt);
+    const city = textOf(dynamicReadRequestArgs(requestArgs).city).trim();
+    if (city.length > 0) args.city = city;
     const url = dynamicHttpApiUrl(registration.transport, credentialValue, args);
     const response = await requestDynamicHttpApiGet(url, dynamicHttpApiHeaders(registration.transport, credentialValue));
     return dynamicHttpApiResultFromJson(registration, response, args);
@@ -17709,6 +17716,33 @@ async function callStructuredFirecrawlTool(
   }
 }
 
+interface WeatherQueryArgs {
+  city?: string;
+  dayOffset?: number;
+}
+
+async function callStructuredWeatherTool(args: Object | null): Promise<DataResult> {
+  const query = args as WeatherQueryArgs | null;
+  if (query === null || typeof query.city !== 'string' || query.city.trim().length === 0 ||
+    query.city.length > 80 || typeof query.dayOffset !== 'number' ||
+    !Number.isInteger(query.dayOffset) || query.dayOffset < 0 || query.dayOffset > 3) {
+    return errorDataResult('weather.query', 'weatherSummary', 'WEATHER_INPUT_INVALID',
+      '请提供要查询的城市，以及今天到大后天之间的日期。');
+  }
+  const city = query.city.trim();
+  const day = ['今天', '明天', '后天', '大后天'][query.dayOffset];
+  const request: DynamicReadRequestArgs = { qualifiedName: 'maps_weather', city };
+  try {
+    const result = dynamicStructuredDataResult(await dynamicReadExecutor(city + day + '天气', request));
+    result.toolId = 'weather.query';
+    result.outputSchema = 'weatherSummary';
+    return result;
+  } catch (error) {
+    return errorDataResult('weather.query', 'weatherSummary', 'WEATHER_PROVIDER_ERROR',
+      describeThrown(error));
+  }
+}
+
 export async function callStructuredTool(
   toolId: string,
   prompt: string,
@@ -17729,6 +17763,9 @@ export async function callStructuredTool(
       'TOOL_NOT_ALLOWED',
       'DataAgent cannot execute ' + toolId + '.'
     );
+  }
+  if (toolId === 'weather.query') {
+    return callStructuredWeatherTool(args);
   }
   if (toolId === 'hotel.search' || toolId === 'hotel.detail') {
     return callStructuredHotelTool(toolId, args);

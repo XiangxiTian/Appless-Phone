@@ -153,8 +153,11 @@ export function explicitDeepSearchRouteDecision(query: string): DeepSearchRouteD
 export function deepSearchRouteDecisionPrompt(query: string): string {
   return '判断用户请求应由普通 Agent 处理还是进入 DeepSearch。只输出 JSON：' +
     '{"route":"agent"} 或 {"route":"deepsearch"}。' +
-    '普通问答、闲聊、出行、餐饮、地图、打车、酒店、媒体聚合搜索走 agent；' +
-    '需要最新或实时外部信息（如天气），或需要开放网页多来源检索、深读与事实查证的问题走 deepsearch。' +
+    '普通问答、闲聊、出行、餐饮、地图、打车、酒店、天气查询（已有天气工具）、媒体聚合搜索走 agent；' +
+    '只有需要公开网页的最新信息、多来源检索、深读与事实查证的问题才走 deepsearch。' +
+    '个人邮件、日历日程、社交消息、发帖、转账收款等账户读取或操作，以及当前未接入的工具请求，' +
+    '都走 agent，以普通对话解释能力限制并提供文字帮助；不能用网页搜索替代未接入的工具，' +
+    '不能因为请求出现今天、最新、查询等词就进入 deepsearch。' +
     '用户明确要求或拒绝深度搜索时优先服从。用户请求：' + JSON.stringify(query.trim());
 }
 

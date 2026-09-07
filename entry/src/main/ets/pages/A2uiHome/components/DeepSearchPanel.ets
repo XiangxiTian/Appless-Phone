@@ -20,7 +20,7 @@ export struct DeepSearchPanel {
   @Prop settingsJson: string = '';
   @Prop contextJson: string = '';
   onProgress: (progressJson: string) => void = (_progressJson: string) => {};
-  onComplete: (answer: string) => void = (_answer: string) => {};
+  onComplete: (answer: string, error: string) => void = (_answer: string, _error: string) => {};
   private engine: DeepSearchEngine | null = null;
   private completionNotified: boolean = false;
   private startedQuery: string = '';
@@ -43,10 +43,10 @@ export struct DeepSearchPanel {
     this.startIfReady();
   }
 
-  private notifyComplete(answer: string): void {
+  private notifyComplete(answer: string, error: string = ''): void {
     if (this.completionNotified) return;
     this.completionNotified = true;
-    this.onComplete(answer.trim());
+    this.onComplete(answer.trim(), error);
   }
 
   private publish(progress: DeepSearchProgress): void {
@@ -89,7 +89,7 @@ export struct DeepSearchPanel {
     if (settings === null) {
       const message = '模型配置缺失，无法开始深度搜索。';
       this.publishError(message);
-      this.notifyComplete(message);
+      this.notifyComplete(message, message);
       return;
     }
     let context: DeepSearchContext | null = null;
@@ -105,12 +105,12 @@ export struct DeepSearchPanel {
     engine.run(trimmed, (progress: DeepSearchProgress): void => {
       if (this.engine !== engine) return;
       this.publish(progress);
-      if (!progress.running) this.notifyComplete(deepSearchCompletionText(progress));
+      if (!progress.running) this.notifyComplete(deepSearchCompletionText(progress), progress.error);
     }, context).catch((error: Error): void => {
       if (this.engine !== engine) return;
       const message = error.message.length > 0 ? error.message : JSON.stringify(error);
       this.publishError(message);
-      this.notifyComplete(message);
+      this.notifyComplete(message, message);
       aiLogError('[AIPhone][DeepSearchPanelRunError] ' + message.substring(0, 240));
     });
   }

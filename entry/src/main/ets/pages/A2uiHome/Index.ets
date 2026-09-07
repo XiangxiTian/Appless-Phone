@@ -129,6 +129,7 @@ import {
   actionsOf,
   componentById,
   genericToolResults,
+  summaryData,
   A2uiTrainData,
   A2uiTravelOptionData
 } from '@loop/agent-core';
@@ -263,6 +264,8 @@ import { ComposioAuthPage } from './components/ComposioAuthPage';
 import { BimRememberState, HomePage } from './components/HomePage';
 import { HtmlHomeSurfaceView } from './components/HtmlHomeSurfaceView';
 import { WaterfallVoiceDock } from './components/WaterfallVoiceDock';
+import { WaterfallTaskOverlay } from './components/WaterfallTaskOverlay';
+import { taskNoticeSnapshot } from './waterfall/WaterfallTaskNotice';
 import {
   applyWaterfallPreferenceAdjustment,
   mergeWaterfallPreferenceTagSuggestions,
@@ -1292,6 +1295,13 @@ struct Index {
   @State htmlHomeDebugExportPath: string = '';
   @State didiMcpSandboxEnabled: boolean = rideDidiMcpSandboxEnabledForRuntime();
   @State isBusy: boolean = false;
+  @State private waterfallTaskMessageId: string = '';
+  @State private waterfallTaskRunning: boolean = false;
+  @State private waterfallTaskError: string = '';
+  @State private waterfallTaskResult: string = '';
+  @State private waterfallTaskProgress: string = '';
+  private waterfallTaskBackgroundTouch: (event: TouchEvent) => void = (_event: TouchEvent): void => {};
+  @State private waterfallTaskBottom: number = 0;
   @State connectionStatus: string = initialConnectionState.connectionStatus;
   @State connectionMessage: string = initialConnectionState.connectionMessage;
   @State lastModelRequest: string = initialConnectionState.lastModelRequest;
@@ -1484,7 +1494,7 @@ struct Index {
   private waterfallTagLastAttemptedDirtyRevision: number = -1;
   private waterfallTagGenerationInFlight: boolean = false;
   private waterfallTagGenerationPending: boolean = false;
-  private waterfallPageVisible: boolean = false;
+  @State private waterfallPageVisible: boolean = false;
   private waterfallConversationGeneration: number = 0;
   private waterfallPreferencesStoreInstance: WaterfallPreferencesStore | null = null;
   private discoveryMemoryProjectionStoreInstance: DiscoveryMemoryProjectionStore | null = null;
@@ -4168,6 +4178,7 @@ struct Index {
   }
 
   private syncHtmlHomeStableHtml(): void {
+    if (this.bimRootIndex === 1) return;
     const document = this.withMultiTaskActiveSection(this.currentHtmlHomeDocument());
     if (document.kind === 'multi-task') {
       this.ensureMultiTaskShellHtml(document);
@@ -4254,6 +4265,8 @@ struct Index {
   }
 
   private htmlHomeHtmlForView(): string {
+    // Keep the hidden main WebView stable; the runtime still commits messages and surfaces.
+    if (this.bimRootIndex === 1 && this.htmlHomeCacheHtml.length > 0) return this.htmlHomeCacheHtml;
     return htmlHomeHtmlForViewValue(
       this.showDeepSearch,
       this.currentSurface.intent,
@@ -6377,8 +6390,12 @@ struct Index {
         if (toolId === WATERFALL_PREFERENCE_TOOL_ID) {
           return this.executeWaterfallPreferenceTool(args);
         }
+        const taskId = this.waterfallTaskMessageId;
+        this.waterfallTaskProgress = toolId === 'weather.query' ? '正在查询天气' : '正在执行工具';
         const callArgs = await this.argsWithCurrentLocationForTool(toolId, prompt, args);
-        return callStructuredTool(toolId, prompt, callArgs, onPartial);
+        const result = await callStructuredTool(toolId, prompt, callArgs, onPartial);
+        if (this.waterfallTaskMessageId === taskId) this.waterfallTaskProgress = '正在整理结果';
+        return result;
       },
       onSurface: (surface: A2uiSurfaceState, generation: number): boolean => {
         const accepted = this.applyRuntimeSurface(surface, 'multi_agent', generation);
@@ -6389,6 +6406,10 @@ struct Index {
         return accepted;
       },
       onAnswerStream: (answer: string, generation: number): void => {
+        if (answer.length > 0 && this.waterfallTaskProgress !== '正在生成回答' &&
+          runtimeCallbackIsCurrent(this.activeRuntimeOwner, this.runtimeGeneration, 'multi_agent', generation)) {
+          this.waterfallTaskProgress = '正在生成回答';
+        }
         this.updateStreamingAssistantAnswer(answer, generation);
       },
       onMemorySideEffectResult: (result: LeaderMemoryToolResult): void => {
@@ -7930,9 +7951,12 @@ struct Index {
     this.presentPendingMemoryForgetOverlay();
   }
 
-  private completeDeepSearch(answer: string): void {
+  private completeDeepSearch(answer: string, error: string = ''): void {
     const content = answer.trim();
     if (content.length > 0) this.appendMessage('assistant', content);
+    this.waterfallTaskResult = content;
+    this.waterfallTaskError = error;
+    this.waterfallTaskRunning = false;
     this.isBusy = false;
     this.isAwaitingFirstSurface = false;
     if (content.length > 0) {
@@ -8020,7 +8044,8 @@ struct Index {
     visibleText: string,
     actionId: string = '',
     actionArgs: Object | null = null,
-    sourceBimId: string = ''
+    sourceBimId: string = '',
+    preserveHomeDraft: boolean = false
   ): Promise<void> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || this.isBusy) {
@@ -8037,12 +8062,17 @@ struct Index {
     this.clearStreamingAssistantMessage();
     this.showRestoredConversationOnLanding = false;
     const currentUserMessageId: string = this.appendMessage('user', visibleText);
-    this.inputText = inputTextAfterPromptSubmit(this.inputText);
+    this.waterfallTaskMessageId = currentUserMessageId;
+    this.waterfallTaskRunning = true;
+    this.waterfallTaskError = '';
+    this.waterfallTaskResult = '';
+    this.waterfallTaskProgress = '正在理解你的问题';
+    if (!preserveHomeDraft) this.inputText = inputTextAfterPromptSubmit(this.inputText);
     this.isAwaitingFirstSurface = true;
     this.promptSubmitMotionGeneration++;
     this.isBusy = true;
     if (this.showDeepSearch) this.closeDeepSearch();
-    const waterfallQuery = actionId.length === 0 && sourceBimId.length === 0 ?
+    const waterfallQuery = !preserveHomeDraft && actionId.length === 0 && sourceBimId.length === 0 ?
       waterfallSearchQueryForHomePrompt(trimmed) : '';
     if (waterfallQuery.length > 0) {
       try {
@@ -8055,6 +8085,7 @@ struct Index {
         this.bimRootController.changeIndex(1, !this.bimReduceMotion);
         aiLogInfo('[AIPhone][WaterfallSearchAutoRouted] queryChars=' + waterfallQuery.length.toString());
       } finally {
+        this.waterfallTaskRunning = false;
         this.isBusy = false;
       }
       return;
@@ -8095,6 +8126,8 @@ struct Index {
         assistantDebug: this.lastModelOutput,
         error: 'Base URL 为空'
       }));
+      this.waterfallTaskError = '请先填写 Base URL。';
+      this.waterfallTaskRunning = false;
       this.isAwaitingFirstSurface = false;
       this.isBusy = false;
       return;
@@ -8151,11 +8184,15 @@ struct Index {
           turnGeneration
         );
       }
-      const readyMessage: string = result.message.length > 0 ?
-        result.message : this.currentSurface.title;
-      this.completeStreamingAssistantMessage(readyMessage, turnGeneration);
       const hasCurrentTurnSurface = this.currentSurface.runtimeOwner === 'multi_agent' &&
         this.currentSurface.runtimeGeneration === turnGeneration;
+      const surfaceSummary = summaryData(this.currentSurface);
+      const readyMessage: string = hasCurrentTurnSurface && surfaceSummary.dataLabel === 'weather.query' ?
+        surfaceSummary.text : (result.message.length > 0 ? result.message : this.currentSurface.title);
+      this.completeStreamingAssistantMessage(readyMessage, turnGeneration);
+      if (hasCurrentTurnSurface) {
+        this.waterfallTaskResult = summaryData(this.currentSurface).text.trim();
+      }
       if (!hasCurrentTurnSurface) {
         this.applyRuntimeSurface(
           createTurnConversationSurface(turnGeneration),
@@ -8178,7 +8215,12 @@ struct Index {
       }
       const message = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][A2uiHomeModelException] ' + logSnippet(message));
-      const visibleError = visibleTurnFailureMessage(message);
+      const failedSummary = summaryData(this.currentSurface);
+      const visibleError = this.currentSurface.runtimeOwner === 'multi_agent' &&
+        this.currentSurface.runtimeGeneration === turnGeneration && failedSummary.dataLabel === 'weather.query' &&
+        failedSummary.count === 0 && failedSummary.text.trim().length > 0 ?
+        failedSummary.text : visibleTurnFailureMessage(message);
+      this.waterfallTaskError = visibleError;
       this.completeStreamingAssistantMessage(visibleError, turnGeneration);
       this.applyRuntimeSurface(
         createTurnFailureSurface(visibleError, turnGeneration),
@@ -8195,6 +8237,7 @@ struct Index {
       }));
       void this.sessionContextCompactor.compactAfterTurn(this.messages);
     } finally {
+      if (this.waterfallTaskMessageId === currentUserMessageId) this.waterfallTaskRunning = false;
       if (this.runtimeGeneration === turnGeneration) {
         this.isAwaitingFirstSurface = false;
         this.finishForegroundTurn();
@@ -8503,6 +8546,12 @@ struct Index {
       return;
     }
     this.applyInterestWaterfallUpdate(profileUpdate);
+  }
+
+  private async submitWaterfallTaskReply(text: string, taskId: string): Promise<boolean> {
+    if (this.isBusy || taskId !== this.waterfallTaskMessageId || text.trim().length === 0) return false;
+    await this.submitPrompt(text.trim(), text.trim(), '', null, '', true);
+    return this.waterfallTaskMessageId !== taskId;
   }
 
   private showWaterfallFeedback(message: string): void {
@@ -13343,8 +13392,8 @@ struct Index {
             this.presentPendingMemoryForgetOverlay();
           }
         },
-        onDeepSearchComplete: (answer: string): void => {
-          this.completeDeepSearch(answer);
+        onDeepSearchComplete: (answer: string, error: string): void => {
+          this.completeDeepSearch(answer, error);
         },
         onCancelTrainPresaleTask: () => {
           void this.cancelTrainPresaleTask();
@@ -13382,6 +13431,8 @@ struct Index {
           waterfallAiEventJson: this.bimRootIndex === 1 ? this.waterfallAiEventJson : '',
           waterfallActive: this.bimRootIndex === 1,
           waterfallBackRequestTick: this.interestWaterfallBackRequestTick,
+          waterfallTaskBottom: this.waterfallTaskBottom,
+          waterfallTaskReduceMotion: this.bimReduceMotion,
           isBusy: false,
           onAction: (action: A2uiAction): void => {
             this.handleInterestWaterfallClientAction(action);
@@ -13432,10 +13483,31 @@ struct Index {
         .margin({ bottom: 20 })
       .zIndex(this.interestWaterfallComposerHidden ? 0 : 2)
 
+        WaterfallTaskOverlay({
+          onBottomChange: (bottom: number): void => { this.waterfallTaskBottom = bottom; },
+          task: taskNoticeSnapshot(this.messages, this.waterfallTaskMessageId, this.waterfallTaskRunning,
+            this.waterfallTaskError, this.waterfallTaskResult),
+          active: this.bimRootIndex === 1 && this.waterfallPageVisible &&
+            !this.interestWaterfallComposerHidden && !this.showConfigPage && !this.showBimPage &&
+            !this.showUserManagementPage && !this.showLongTermMemoryPage &&
+            !this.showComposioAuthPage && !this.showPublicPersonaPage,
+          onBindBackgroundTouch: (handler: (event: TouchEvent) => void): void => {
+            this.waterfallTaskBackgroundTouch = handler;
+          },
+          reduceMotion: this.bimReduceMotion,
+          progress: this.waterfallTaskProgress,
+          onOpenHome: (): void => { this.bimRootController.changeIndex(0, !this.bimReduceMotion); },
+          onSubmit: (text: string, taskId: string): Promise<boolean> =>
+            this.submitWaterfallTaskReply(text, taskId)
+        })
+          .position({ x: 0, y: 96 }).zIndex(3)
       }
       .width('100%')
       .height('100%')
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      .onTouch((event: TouchEvent): void => {
+        this.waterfallTaskBackgroundTouch(event);
+      })
       }
       .width('100%')
       .height('100%')
@@ -13454,6 +13526,7 @@ struct Index {
           this.commitInterestWaterfallDisplay();
         }
         else {
+          this.syncHtmlHomeStableHtml();
           this.scheduleWaterfallTagGenerationIfSafe();
           inputMethod.getController().hideTextInput().catch((_error: BusinessError): void => {});
         }

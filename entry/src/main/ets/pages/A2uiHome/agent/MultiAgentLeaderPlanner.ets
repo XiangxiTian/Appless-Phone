@@ -132,9 +132,8 @@ const REQUEST_SCOPE_CONTRACT: string =
   'Persona, active Skill, saved Memory, defaults, and available tools may shape behavior but must not add an ' +
   'unrequested capability, provider, account, source, or channel. Every Data task and Action must directly serve ' +
   'an explicit current-user request or a real dependency from prior current-turn observations. When the user names ' +
-  'platforms or sources, select only those sources; do not add channels. X or Slack inbox/message requests use ' +
-  'social.feed.search, and mail.search may run in parallel only when the current request also explicitly asks for ' +
-  'mail or email. Explicit multi-domain requests remain valid and should keep independent tasks in the same round. ' +
+  'platforms or sources, select only those sources; do not add channels. ' +
+  'Explicit multi-domain requests remain valid and should keep independent tasks in the same round. ' +
   'Before returning JSON, silently scope-check every requestedCapabilityId, Data task, allowed tool, and Action ' +
   'against that closed set; do not output the check.';
 const EXECUTION_READINESS_CONTRACT: string =
@@ -374,9 +373,11 @@ const FOOD_SEARCH_INTENT_CONTRACT: string =
   'for a generic nearby request such as 附近的咖啡, set place to empty and locationMode=device_nearby. ' +
   'Treat a brand or restaurant name such as 南京大牌档 as keyword, not as place. Do not use a city allowlist; preserve arbitrary explicit places. ' +
   'A valid user-selected searchArea always has precedence over both place and device location.';
-const C10_C11_SELECTION_CONTRACT: string =
+const C10_C11_SOCIAL_PREFIX: string =
   'C10/C11 selection contract: Explicit X/Twitter public post searches use x.post.search. X or Slack inbox/message ' +
-  'requests use social.feed.search. A generic request to 点一杯咖啡 uses food.search. Stable preference text such as ' +
+  'requests use social.feed.search. ';
+const C10_C11_SELECTION_CONTRACT: string =
+  'A generic request to 点一杯咖啡 uses food.search. Stable preference text such as ' +
   '我只喝瑞幸咖啡, 以后只喝..., or an explicit remember-preference request uses memory.remember for a new ' +
   'fact. Use memory.update only to replace one to five unique exact recalled memoryIds. Use ' +
   'luckin.order.preview only for an explicit Luckin/Ruixing order request with a concrete product or specification, ' +
@@ -398,7 +399,7 @@ const SOCIAL_SELECTION_CONTRACT: string =
   'never infer or invoke a provider publish write from the preview request.';
 const AGGREGATE_MEDIA_SELECTION_CONTRACT: string =
   'Aggregate media selection contract: A request for both 新闻 and 讨论 about the same topic uses exactly ' +
-  'media.aggregate.search, not social.community.search.';
+  'media.aggregate.search.';
 const OBSERVATION_REUSE_CONTRACT: string =
   'Never schedule a listed tool again in a later round, regardless of success, partial, empty, or error status. ' +
   'Data Agent owns same-tool adapter fallback and retry. A different later-round tool is allowed only when it ' +
@@ -1890,10 +1891,15 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
         'Use skillId="" when no single active skill declares the complete requested capability set.',
       'requestedCapabilityIds is mandatory, unique, and contains exact registered tool/action IDs. ' +
         'Use [] only for ordinary direct conversation that needs no tool-backed fact.',
-      'Mail, weather, travel, and other capability-backed answer or clarify decisions must name ' +
+      'Answers or clarifications that match an available registry capability must name ' +
         'their requested registered capability. For execute, requestedCapabilityIds must be exactly ' +
         'the unique union of every selected Data tool, allowed tool, and Action ID. In other words, ' +
         'requestedCapabilityIds is the exact current-round execution union, not a list of future-round tools.',
+      'The registry is exhaustive for this turn. If a request needs an unavailable capability, stay in ordinary ' +
+        'conversation: return answer with requestedCapabilityIds=[], dataTasks=[], and no actionIntent. ' +
+        'Explain the limitation and help with text or advice; never invent a tool, send the user to a tool panel, ' +
+        'claim an action completed, or substitute an unrelated capability. For mixed requests execute only the ' +
+        'supported parts and explain the unsupported parts in the answer.',
       'Tasks in this round must be independent. Put dependent work in a later round.',
       'Every dataTasks[].goal must be a self-contained execution request synthesized from the current user message, ' +
         'recentMessages, and trusted context. Do not make an executor reconstruct missing facts from chat history.',
@@ -1910,21 +1916,25 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
       'When an Action requires a real provider ID, plan the necessary Data-owned read task first and the ' +
         'Action-owned capability in actionIntent. Use only a real observed ID in a later round; never invent one.',
       'Maximum Data tasks in one round: ' + MAX_LEADER_DATA_TASKS_PER_ROUND.toString() + '.',
-      FOOD_SEARCH_INTENT_CONTRACT,
-      TRAVEL_SELECTION_CONTRACT,
-      VIDEO_SELECTION_CONTRACT,
+      this.registeredCapability(context, 'food.search') ? FOOD_SEARCH_INTENT_CONTRACT : '',
+      this.registeredCapability(context, 'travel.search') && this.registeredCapability(context, 'train.search') &&
+        this.registeredCapability(context, 'flight.search') ? TRAVEL_SELECTION_CONTRACT : '',
+      this.registeredCapability(context, 'media.video.search') && this.registeredCapability(context, 'youtube.video.search') ?
+        VIDEO_SELECTION_CONTRACT : '',
       this.registeredCapability(context, 'maps.place.search') ? MAPS_SELECTION_CONTRACT : '',
       this.registeredCapability(context, 'waterfall.preference.adjust') ?
         WATERFALL_PREFERENCE_SELECTION_CONTRACT : '',
-      memoryAvailable ? C10_C11_SELECTION_CONTRACT : C10_C11_SELECTION_CONTRACT_WITHOUT_MEMORY,
-      SOCIAL_SELECTION_CONTRACT,
+      (this.registeredCapability(context, 'x.post.search') && this.registeredCapability(context, 'social.feed.search') ?
+        C10_C11_SOCIAL_PREFIX : '') +
+        (memoryAvailable ? C10_C11_SELECTION_CONTRACT : C10_C11_SELECTION_CONTRACT_WITHOUT_MEMORY),
+      this.registeredCapability(context, 'social.community.search') && this.registeredCapability(context, 'social.post.preview') ?
+        SOCIAL_SELECTION_CONTRACT : '',
       this.registeredCapability(context, 'media.aggregate.search') ?
-        AGGREGATE_MEDIA_SELECTION_CONTRACT :
-        'Aggregate media search is discovery-only. Never name or schedule media.aggregate.search. ' +
-          'For a news or discussion search request, answer with requestedCapabilityIds=[], dataTasks=[], ' +
-          'no actionIntent, and direct the user to swipe to Discovery and use its search button.',
-      CALENDAR_UPDATE_SELECTION_CONTRACT,
-      CALENDAR_DELETE_SELECTION_CONTRACT,
+        AGGREGATE_MEDIA_SELECTION_CONTRACT : '',
+      this.registeredCapability(context, 'calendar.events.search') && this.registeredCapability(context, 'calendar.event.update') ?
+        CALENDAR_UPDATE_SELECTION_CONTRACT : '',
+      this.registeredCapability(context, 'calendar.events.search') && this.registeredCapability(context, 'calendar.event.delete') ?
+        CALENDAR_DELETE_SELECTION_CONTRACT : '',
       OBSERVATION_REUSE_CONTRACT,
       DATA_SCOPE_CONTRACT,
       EXPLICIT_SERIAL_SEQUENCE_CONTRACT,
@@ -1941,7 +1951,7 @@ export class MultiAgentLeaderPlanner implements LeaderPlanner {
         'A recall-only decision uses roundAction="execute", continuationMode="complete", ' +
         'requestedCapabilityIds=[], dataTasks=[], and omits actionIntent, memoryMutation, memoryClarification, and answer.' : '',
       'Never emit provider facts, action args, A2UI, credentials, or unregistered tool IDs.',
-      hotelSearchPlanningContract(currentLocalDate),
+      this.registeredCapability(context, 'hotel.search') ? hotelSearchPlanningContract(currentLocalDate) : '',
       'Maximum planning rounds: 3.',
       EXECUTION_READINESS_CONTRACT
     ].filter((value: string): boolean => value.length > 0).join('\n');

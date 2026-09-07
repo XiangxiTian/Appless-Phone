@@ -10,7 +10,6 @@ import { waterfallPreferencePromptExample } from '../waterfall/WaterfallConversa
 const HOME_GLASS_BACKGROUND: string = '#B8FFFFFF';
 const HOME_GLASS_EDGE: string = '#E9DED5';
 const HOME_GLASS_SHADOW: string = '#248C6A53';
-const HOME_SEND_INACTIVE_BACKGROUND: string = '#C9C4BF';
 const HOME_SEND_ACTIVE_BACKGROUND: string = '#995F4C';
 const HOME_SEND_SHADOW: string = '#38995F4C';
 
@@ -20,7 +19,7 @@ export struct WaterfallVoiceDock {
   @Prop isListening: boolean = false;
   @Prop isBusy: boolean = false;
   @Prop reduceMotion: boolean = false;
-  @Prop message: string = '';
+  @Prop voiceMessage: string = '';
   @Prop tags: string[] = [];
   @Prop selectedTags: string[] = [];
   @State private pressed: boolean = false;
@@ -33,9 +32,8 @@ export struct WaterfallVoiceDock {
 
   private placeholder(): string {
     if (this.addingTag) return '输入一个兴趣标签';
-    if (this.isListening) return this.message.trim().length > 0 ? this.message.trim() : '我在听';
+    if (this.isListening) return this.voiceMessage.trim().length > 0 ? this.voiceMessage.trim() : '我在听';
     if (this.isBusy) return '正在理解';
-    if (this.message.trim().length > 0) return this.message.trim();
     return waterfallPreferencePromptExample(this.selectedTags, this.tags);
   }
 
@@ -115,6 +113,7 @@ export struct WaterfallVoiceDock {
 
       Row() {
         TextArea({ placeholder: this.placeholder(), text: this.inputText })
+          .maxLength(240)
           .layoutWeight(1)
           .height(44)
           .maxLines(2)
@@ -146,8 +145,7 @@ export struct WaterfallVoiceDock {
         .width(38)
         .height(38)
         .borderRadius(19)
-        .backgroundColor(this.inputText.trim().length > 0 || this.addingTag ? HOME_SEND_ACTIVE_BACKGROUND :
-          (this.isListening || this.pressed ? COLOR_ACCENT_SOFT : HOME_SEND_INACTIVE_BACKGROUND))
+        .backgroundColor(this.isListening || this.pressed ? COLOR_ACCENT_SOFT : HOME_SEND_ACTIVE_BACKGROUND)
         .shadow({
           radius: this.inputText.trim().length > 0 || this.addingTag ? 10 : 0,
           color: this.inputText.trim().length > 0 || this.addingTag ? HOME_SEND_SHADOW : '#00000000'

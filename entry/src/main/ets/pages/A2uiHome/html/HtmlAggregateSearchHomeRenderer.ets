@@ -1998,6 +1998,7 @@ const WATERFALL_JS: string = `
   var presentedIndex = -1;
   var interactionActive = false;
   var imageCarouselGesture = false;
+  var backSwipe = null;
   var scrollActive = false;
   var afterPaintPending = false;
   var afterPaintTimer = null;
@@ -5206,7 +5207,46 @@ const WATERFALL_JS: string = `
     resetPullRefreshVisual(true);
     return shouldRefresh ? requestFullRefresh() : false;
   }
+  function trackBackSwipe(event) {
+    if (!backSwipe) return;
+    if (!event.touches || event.touches.length !== 1) {
+      backSwipe = null;
+      return;
+    }
+    var dx = Math.abs(event.touches[0].clientX - backSwipe.x);
+    var dy = Math.abs(event.touches[0].clientY - backSwipe.y);
+    if (!backSwipe.horizontal && Math.max(dx, dy) >= 12) {
+      if (dx <= dy * 1.5) {
+        backSwipe = null;
+        return;
+      }
+      backSwipe.horizontal = true;
+      resetPullRefreshVisual(false);
+    }
+    if (backSwipe.horizontal && event.cancelable) event.preventDefault();
+  }
+  function finishBackSwipe(event) {
+    var gesture = backSwipe;
+    backSwipe = null;
+    var touch = event && event.changedTouches && event.changedTouches[0];
+    if (!gesture || !touch || !waterfallSurfaceActive || gesture.mode !== mode) return false;
+    var dx = touch.clientX - gesture.x;
+    var dy = Math.abs(touch.clientY - gesture.y);
+    if (dx < 80 || dx <= dy * 1.5) return false;
+    resetPullRefreshVisual(false);
+    ignoreNextFeedOpen = true;
+    if (event.cancelable) event.preventDefault();
+    return window.__aiphoneHandleWaterfallBack();
+  }
   document.addEventListener('touchstart', function (event) {
+    backSwipe = null;
+    var target = event && event.target;
+    if (waterfallSurfaceActive && overlay.classList.contains('active') && target && overlay.contains(target) &&
+      event.touches && event.touches.length === 1 && typeof target.closest === 'function' &&
+      !target.closest('input, textarea, select, [contenteditable], video, audio, iframe, ' +
+        '.waterfall-image-track, .waterfall-collection-sources')) {
+      backSwipe = { x: event.touches[0].clientX, y: event.touches[0].clientY, mode: mode, horizontal: false };
+    }
     imageCarouselGesture = !!(event && event.target && typeof event.target.closest === 'function' &&
       event.target.closest('.waterfall-image-track'));
     if (imageCarouselGesture) return;
@@ -5224,18 +5264,20 @@ const WATERFALL_JS: string = `
     }
   }, true);
   document.addEventListener('touchmove', function (event) {
-    trackPullRefresh(event);
+    trackBackSwipe(event);
+    if (!backSwipe || !backSwipe.horizontal) trackPullRefresh(event);
   }, { passive: false });
-  document.addEventListener('touchend', function () {
+  document.addEventListener('touchend', function (event) {
     if (imageCarouselGesture) {
       imageCarouselGesture = false;
       return;
     }
-    finishPullRefresh();
+    if (!finishBackSwipe(event)) finishPullRefresh();
     interactionActive = false;
     if (scrollActive || pendingPayload || pageAnchorIndex >= 0) settleInteraction();
-  }, { passive: true });
+  });
   document.addEventListener('touchcancel', function () {
+    backSwipe = null;
     if (imageCarouselGesture) {
       imageCarouselGesture = false;
       return;
@@ -6319,8 +6361,6 @@ export function renderAggregateSearchHomeDocument(
       '<button type="button" id="waterfall-toolbar-title" class="waterfall-toolbar-title" ' +
       'aria-label="发现" data-waterfall-title-refresh>发现</button>' +
       '<div class="waterfall-toolbar-tools">' +
-      (startInDiscovery ? '<button type="button" class="waterfall-toolbar-secondary" ' +
-        'aria-label="搜索" data-waterfall-search-open>' + waterfallUiIconMarkup('search') + '</button>' : '') +
       '<button type="button" class="waterfall-toolbar-secondary" ' +
       'aria-label="收藏" data-waterfall-collection-open>' + waterfallUiIconMarkup('bookmark') + '</button>' +
       '<button type="button" class="waterfall-toolbar-secondary" ' +

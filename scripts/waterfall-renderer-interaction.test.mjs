@@ -590,7 +590,7 @@ for (const token of ['COLOR_ACCENT', 'COLOR_ACCENT_DEEP', 'COLOR_ACCENT_SOFT',
   'COLOR_MUTED', 'COLOR_TEXT']) {
   assert.match(voiceDock, new RegExp(`\\b${token}\\b`), `voice dock must use ${token}`);
 }
-for (const color of ['#B8FFFFFF', '#E9DED5', '#248C6A53', '#C9C4BF', '#995F4C', '#38995F4C']) {
+for (const color of ['#B8FFFFFF', '#E9DED5', '#248C6A53', '#995F4C', '#38995F4C']) {
   assert.match(voiceDock, new RegExp(color), `voice dock must match the home composer color ${color}`);
 }
 assert.doesNotMatch(voiceDock, /#252522|#E9E8E3|#F8F7F3|#DAD9D3/,
@@ -706,8 +706,8 @@ assert.match(waterfallCss, /\.waterfall-card-action \.waterfall-icon svg\s*\{[^}
   'card actions must not compete with card content');
 assert.match(renderer, /data-waterfall-collection-open/,
   'the discovery toolbar needs an icon-only collection entry');
-assert.match(renderer, /data-waterfall-search-open/,
-  'direct discovery needs one explicit search entry in its existing toolbar');
+assert.doesNotMatch(renderer, /aria-label="搜索" data-waterfall-search-open/,
+  'discovery must hide the toolbar search entry while retaining the existing search implementation');
 assert.match(renderer, /id="waterfall-search-form"/,
   'search must expand in the discovery toolbar instead of opening another page');
 assert.match(renderer, /id="waterfall-toolbar-title"/,
@@ -4067,3 +4067,114 @@ assert.equal(timers.filter((timer) => timer.delay === 240 && !timer.canceled).le
 runLatestTimer(0);
 assert.equal(readerCoverNode.appendedHtmlWrites, appendsBeforeReaderCover,
   'returning from details must preserve the existing feed card node');
+
+// Run discovery gestures against the emitted script with a fresh native bridge.
+{
+  const nodes = Object.fromEntries(['discovery', 'track', 'refresh-indicator', 'preferences', 'reader',
+    'collection', 'toolbar', 'toast'].map((name) => ['waterfall-' + name, element()]));
+  const listeners = {};
+  const posted = [];
+  const sourceButton = element();
+  const savedButton = element();
+  const outside = { closest: () => null };
+  const feedTarget = { closest: () => null };
+  const feed = nodes['waterfall-track'];
+  const discovery = nodes['waterfall-discovery'];
+  discovery.contains = (target) => target !== outside;
+  feed.contains = (target) => target === feedTarget;
+  const gestureWindow = {
+    innerWidth: 400, innerHeight: 1000,
+    __aiphoneWaterfallDirect: true,
+    __aiphoneWaterfallInitial: {
+      surfaceId: 'waterfall-interest-home', mode: 'interest', currentId: 'swipe-card', feedRevision: 1,
+      enabledSources: ['hackernews'], candidates: [{ ...textCandidate, id: 'swipe-card' }], sources: []
+    },
+    AIPhoneHome: { postAction: (value) => posted.push(JSON.parse(value)), setWaterfallFullscreen: () => {} }
+  };
+  const gestureDocument = {
+    ...document,
+    getElementById: (id) => nodes[id] ?? null,
+    querySelector: () => null,
+    querySelectorAll: (selector) => ({
+      '[data-waterfall-preferences]': [sourceButton], '[data-waterfall-collection-open]': [savedButton]
+    })[selector] ?? [],
+    addEventListener: (type, listener) => {
+      (listeners[type] ??= []).push(listener);
+    }
+  };
+  vm.runInNewContext(emittedWaterfallJs, {
+    window: gestureWindow, document: gestureDocument, URL, Date: FakeDate,
+    setTimeout: schedule, clearTimeout: cancel
+  });
+  const emit = (type, event) => listeners[type]?.forEach((listener) => listener(event));
+  const count = (id) => posted.filter((action) => action.id === id).length;
+  const swipe = (dx, dy, { target = feedTarget, initialMove, cancel = false, fingers = 1 } = {}) => {
+    const touch = { clientX: 120, clientY: 300 };
+    let prevented = 0;
+    const event = { target, cancelable: true, preventDefault: () => { prevented += 1; } };
+    emit('touchstart', { ...event, touches: Array(fingers).fill(touch) });
+    if (initialMove) emit('touchmove', { ...event,
+      touches: [{ clientX: touch.clientX + initialMove[0], clientY: touch.clientY + initialMove[1] }] });
+    const end = { clientX: touch.clientX + dx, clientY: touch.clientY + dy };
+    emit('touchmove', { ...event, touches: Array(fingers).fill(end) });
+    const backsBeforeRelease = count('waterfall.home.back');
+    emit(cancel ? 'touchcancel' : 'touchend', { ...event, touches: [], changedTouches: [end] });
+    return { prevented, backsBeforeRelease };
+  };
+  gestureWindow.__aiphoneSetWaterfallActive(true);
+  feed.scrollTop = 100;
+  for (const [dx, dy] of [[30, 0], [-150, 5], [5, 150], [100, 100]]) {
+    swipe(dx, dy);
+    assert.equal(count('waterfall.home.back'), 0, 'short, left, vertical and diagonal swipes must stay in discovery');
+  }
+  swipe(180, 40, { initialMove: [2, 25] });
+  swipe(180, 5, { cancel: true });
+  swipe(180, 5, { fingers: 2 });
+  swipe(180, 5, { target: outside });
+  assert.equal(count('waterfall.home.back'), 0,
+    'vertical intent, cancellation, multi-touch and gestures outside discovery must never navigate');
+  for (const excluded of ['input', 'textarea', 'select', '[contenteditable]', 'video', 'audio', 'iframe',
+    '.waterfall-image-track', '.waterfall-collection-sources']) {
+    swipe(180, 5, { target: { closest: (selector) =>
+      selector.split(',').some((part) => part.trim() === excluded) ? {} : null } });
+    assert.equal(count('waterfall.home.back'), 0, `${excluded} must retain its own horizontal gestures`);
+  }
+  gestureWindow.__aiphoneSetWaterfallActive(false);
+  swipe(180, 5);
+  assert.equal(count('waterfall.home.back'), 0, 'the cached inactive WebView must not navigate');
+  gestureWindow.__aiphoneSetWaterfallActive(true);
+  feed.scrollTop = 0;
+  const completed = swipe(180, 40);
+  assert.equal(completed.backsBeforeRelease, 0, 'back must commit only when the finger is released');
+  assert.ok(completed.prevented > 0, 'a committed horizontal swipe must consume scrolling and its synthetic click');
+  assert.equal(count('waterfall.home.back'), 1, 'right swipe must invoke the existing native home route once');
+  assert.equal(count('waterfall.feed.refresh'), 0, 'right swipe at the top must not also pull to refresh');
+  assert.equal(feed.scrollTop, 0, 'right swipe must preserve the feed position');
+  feed.emit('click', { target: { closest: (selector) => selector === '[data-waterfall-open]' ?
+    { getAttribute: () => 'swipe-card' } : null } });
+  assert.equal(nodes['waterfall-reader'].classList.contains('active'), false,
+    'the leftover click from a completed back swipe must not open the card');
+  sourceButton.emit('click');
+  swipe(180, 5);
+  assert.equal(nodes['waterfall-preferences'].classList.contains('active'), false,
+    'right swipe from source settings must use the existing nested back route');
+  savedButton.emit('click');
+  assert.equal(nodes['waterfall-collection'].classList.contains('active'), true);
+  swipe(180, 5);
+  assert.equal(nodes['waterfall-collection'].classList.contains('active'), false,
+    'right swipe from saved content must close that layer first');
+  runLatestTimer(160);
+  emit('touchstart', { target: feedTarget, touches: [{ clientX: 120, clientY: 300 }] });
+  feed.emit('click', { target: { closest: (selector) => selector === '[data-waterfall-open]' ?
+    { getAttribute: () => 'swipe-card' } : null } });
+  emit('touchend', {});
+  assert.equal(nodes['waterfall-reader'].classList.contains('active'), true);
+  swipe(180, 5);
+  assert.equal(nodes['waterfall-reader'].classList.contains('closing'), true,
+    'right swipe from a reader must close the reader before returning home');
+  assert.equal(count('waterfall.home.back'), 1, 'nested layer swipes must never skip straight to home');
+  runLatestTimer(180);
+  swipe(5, 100);
+  assert.equal(count('waterfall.feed.refresh'), 1, 'a vertical pull at the top must still refresh discovery');
+  assert.equal(count('waterfall.home.back'), 1, 'pull refresh must not navigate home');
+}

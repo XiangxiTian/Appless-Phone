@@ -321,25 +321,23 @@ import { HuaweiAccountLoginPage } from '../../account/HuaweiAccountLoginPage';
 import { configuredHuaweiAccountClientId } from '../../account/HuaweiAccountService';
 import { DefaultLegacyAccountClaimCoordinator } from '../../account/LegacyAccountMigration';
 import { ConfigPage } from './components/ConfigPage';
-import {
-  LONG_TERM_MEMORY_CORRECTION_SUCCESS_TOAST,
-  LongTermMemoryPage,
-  LongTermMemoryPageStatus,
-  shouldScrollLongTermMemoryApplyResultToTop
-} from './components/LongTermMemoryPage';
-import { PublicPersonaPage } from './components/PublicPersonaPage';
 import { UserManagementPage } from './components/UserManagementPage';
+import { AboutYouPage } from './components/AboutYouPage';
+import {
+  AboutYouAction, AboutYouAccount, AboutYouCandidate, AboutYouSection,
+  AboutYouViewModel, emptyAboutYouViewModel
+} from './components/AboutYouPageModel';
 import { PublicPersonaClient } from '../../publicpersona/PublicPersonaClient';
+import {
+  parsePublicPersonaViewModel,
+  aboutYouSocialOperationIsCurrent,
+  serializePublicPersonaViewModel
+} from '../../publicpersona/PublicPersonaOperationState';
 import {
   PhoneLocalMemoryMutationEvent,
   PhoneLocalMemoryRuntime
 } from '../../memory/PhoneLocalMemoryRuntime';
-import {
-  LongTermMemoryCorrectionApplyResult,
-  LongTermMemoryCorrectionPlanResult,
-  LongTermMemoryOverviewCoordinator,
-  LongTermMemoryOverviewGenerationResult
-} from '../../memory/LongTermMemoryOverviewCoordinator';
+import { LongTermMemoryOverviewCoordinator } from '../../memory/LongTermMemoryOverviewCoordinator';
 import { MemoryModelTaskRunner } from '../../memory/MemoryModelTaskRunner';
 import {
   MEMORY_OVERVIEW_CACHE_STORE_NAME,
@@ -347,9 +345,9 @@ import {
   memoryOverviewCacheStoreNameForOwner
 } from '../../memory/MemoryOverviewCacheStore';
 import {
-  MemoryCorrectionPlan,
   MemoryOverview,
-  MemoryOverviewEvidenceIndex
+  MEMORY_OVERVIEW_CATEGORIES,
+  memoryOverviewCategoryLabel
 } from '../../memory/MemoryOverview';
 import {
   PhoneLocalMemoryAvailabilityPort,
@@ -357,18 +355,17 @@ import {
 } from '../../memory/PhoneLocalMemoryAvailability';
 import {
   PublicPersonaCandidate,
-  PublicPersonaPhase,
   PublicPersonaProgress,
   PublicPersonaSearchMode,
+  PublicPersonaSourceRef,
   PublicPersonaSnapshot,
   isPublicPersonaImported,
   markPublicPersonaImported,
   parsePublicPersonaMarkdown,
   publicPersonaImportFacts,
-  publicPersonaMemoryFactsAreCurrent,
+  publicPersonaPlatformLabel,
   publicPersonaSnapshotAfterMarkdownEdit,
   publicPersonaSnapshotWithMemoryFacts,
-  replacePublicPersonaMbti,
   sanitizePublicPersonaSnapshot,
   validPublicPersonaInference
 } from '../../publicpersona/PublicPersonaModel';
@@ -1260,19 +1257,22 @@ class PublicPersonaMemoryCommitGuard implements MemoryCommitGuard {
 @Entry
 @Component
 struct Index {
+  private pageAlive: boolean = false;
+  private pageLifecycleGeneration: number = 0;
   @State accountSessionStatus: AccountSessionStatus = AccountSessionStatus.UNINITIALIZED;
   @State accountOwnerId: string = '';
   @State showUserManagementPage: boolean = false;
-  @State showLongTermMemoryPage: boolean = false;
-  @State longTermMemoryPageStatus: LongTermMemoryPageStatus = 'loading';
-  @State longTermMemoryOverview: MemoryOverview | null = null;
-  @State longTermMemoryEvidenceIndex: MemoryOverviewEvidenceIndex = { entries: [] };
-  @State longTermMemoryMessage: string = '';
-  @State longTermMemoryCorrectionInput: string = '';
-  @State longTermMemoryCorrectionPlan: MemoryCorrectionPlan | null = null;
-  @State longTermMemoryPlanning: boolean = false;
-  @State longTermMemoryApplying: boolean = false;
-  @State longTermMemoryScrollTopTick: number = 0;
+  @State showAboutYouPage: boolean = false;
+  @State aboutYouViewModelJson: string = '';
+  private aboutYouModel: AboutYouViewModel = emptyAboutYouViewModel();
+  private aboutYouOverview: MemoryOverview | null = null;
+  private aboutYouCoordinatorInstance: LongTermMemoryOverviewCoordinator | null = null;
+  private aboutYouGeneration: number = 0;
+  private aboutYouSocialGeneration: number = 0;
+  private aboutYouCandidates: PublicPersonaCandidate[] = [];
+  private aboutYouDraft: PublicPersonaSnapshot | null = null;
+  private aboutYouCorrectionDisabled: boolean = false;
+  private aboutYouPersonaBaseline: string = '';
   @State showLogoutConfirmation: boolean = false;
   @State accountDisplayName: string = effectiveAccountDisplayName(emptyAccountProfileSnapshot());
   @State accountNameSaveMessage: string = '';
@@ -1368,16 +1368,8 @@ struct Index {
   @State composioAuthItems: ComposioAuthConfigItem[] = [];
   @State composioAuthMessage: string = '';
   @State composioAuthBusy: boolean = false;
-  @State showPublicPersonaPage: boolean = false;
-  @State publicPersonaPhase: PublicPersonaPhase = 'input';
-  @State publicPersonaCandidates: PublicPersonaCandidate[] = [];
-  @State publicPersonaProgress: PublicPersonaProgress | null = null;
   @State publicPersonaSnapshot: PublicPersonaSnapshot | null = null;
-  @State publicPersonaRenderTick: number = 0;
-  @State publicPersonaError: string = '';
-  @State publicPersonaImporting: boolean = false;
-  private publicPersonaJobId: number = 0;
-  private publicPersonaImportGeneration: number = 0;
+  @State publicPersonaViewModelJson: string = '';
   private publicPersonaInitialized: boolean = false;
   private accountSessionStoreInstance: AccountSessionStore | null = null;
   private accountProfileStoreInstance: AccountProfileStore | null = null;
@@ -1388,7 +1380,6 @@ struct Index {
   private accountDataInitializedOwnerId: string = '';
   private navigationCardAccountRefreshGeneration: number = 0;
   private navigationCardAccountRefreshQueue: Promise<void> = Promise.resolve();
-  private publicPersonaReturnToUserManagement: boolean = false;
   private readonly publicPersonaClient: PublicPersonaClient = new PublicPersonaClient();
   @State mailDetailEventJson: string = '';
   @State mailReplyEventJson: string = '';
@@ -1537,8 +1528,6 @@ struct Index {
   private phoneLocalMemoryRuntime: PhoneLocalMemoryRuntime | null = null;
   private memoryModelTaskRunnerInstance: MemoryModelTaskRunner | null = null;
   private memoryOverviewCacheStoreInstance: MemoryOverviewCacheStore | null = null;
-  private longTermMemoryOverviewCoordinatorInstance: LongTermMemoryOverviewCoordinator | null = null;
-  private longTermMemoryPageGeneration: number = 0;
   private phoneLocalMemoryAvailability: PhoneLocalMemoryAvailabilityPort | null = null;
   private bimStoreInstance: BimStore | null = null;
   private bimCuratorTail: Promise<void> = Promise.resolve();
@@ -4391,8 +4380,341 @@ struct Index {
   private openUserManagement(): void {
     this.refreshAccountProfile();
     this.showUserManagementPage = true;
-    this.showLongTermMemoryPage = false;
     this.showLogoutConfirmation = false;
+  }
+
+  private publishAboutYou(): void {
+    this.aboutYouModel.displayName = this.accountDisplayName;
+    this.aboutYouModel.correctionDisabled = this.aboutYouCorrectionDisabled;
+    const accounts: AboutYouAccount[] = [];
+    if (this.publicPersonaSnapshot !== null && isPublicPersonaImported(this.publicPersonaSnapshot)) {
+      this.publicPersonaSnapshot.sources.forEach((source: PublicPersonaSourceRef): void => {
+        const username = (source.username ?? '').trim();
+        const profilePath = source.profileUrl.split('?')[0].split('#')[0].replace(/\/+$/, '');
+        const handle = (username.length > 0 ? username : profilePath.substring(profilePath.lastIndexOf('/') + 1))
+          .replace(/^@+/, '').trim();
+        accounts.push({ id: source.profileUrl, platform: source.platform,
+          displayName: (source.displayName ?? '').trim().length > 0 ? (source.displayName ?? '').trim() :
+            publicPersonaPlatformLabel(source.platform), handle, avatarUrl: source.avatarUrl ?? '' });
+      });
+    }
+    this.aboutYouModel.accounts = accounts;
+    this.aboutYouViewModelJson = JSON.stringify(this.aboutYouModel);
+  }
+
+  private setAboutYouOverview(overview: MemoryOverview | null): void {
+    this.aboutYouOverview = overview;
+    this.aboutYouModel.overviewRevision++;
+    this.aboutYouModel.summary = overview === null ? '' : overview.summary;
+    this.aboutYouModel.tagList = overview === null ? [] : overview.tagList;
+    this.aboutYouModel.mbtiType = overview === null ? '' : overview.mbtiType;
+    this.aboutYouModel.mbtiConfidence = overview === null ? 0 : overview.mbtiConfidence;
+    const sections: AboutYouSection[] = [];
+    if (overview !== null) {
+      for (let categoryIndex = 0; categoryIndex < MEMORY_OVERVIEW_CATEGORIES.length; categoryIndex++) {
+        const category = MEMORY_OVERVIEW_CATEGORIES[categoryIndex];
+        const section: AboutYouSection = { id: category, title: memoryOverviewCategoryLabel(category),
+          inferred: category === 'personality', claims: [] };
+        for (let index = 0; index < overview.claims.length; index++) {
+          const claim = overview.claims[index];
+          if (claim.category === category) section.claims.push({ index, heading: claim.heading, body: claim.body });
+        }
+        if (section.claims.length > 0) sections.push(section);
+      }
+    }
+    this.aboutYouModel.sections = sections;
+  }
+
+  private aboutYouCoordinator(): LongTermMemoryOverviewCoordinator {
+    if (this.aboutYouCoordinatorInstance === null) {
+      const ownerId = this.requireAccountOwnerId();
+      const ownerGeneration = this.accountOwnerGeneration;
+      const pageGeneration = this.pageLifecycleGeneration;
+      const runtime = this.localMemoryRuntime();
+      this.aboutYouCoordinatorInstance = new LongTermMemoryOverviewCoordinator({
+        source: runtime, runtime, runner: this.memoryModelTaskRunner(), cacheStore: this.memoryOverviewCacheStore(),
+        isActive: (): boolean => this.pageAlive && this.pageLifecycleGeneration === pageGeneration &&
+          this.showAboutYouPage && this.accountOwnerId === ownerId &&
+          this.accountOwnerGeneration === ownerGeneration &&
+          this.accountSessionStatus === AccountSessionStatus.AUTHENTICATED
+      });
+    }
+    return this.aboutYouCoordinatorInstance;
+  }
+
+  private openAboutYou(): void {
+    if (!this.pageAlive) return;
+    this.loadPublicPersona();
+    this.aboutYouModel = emptyAboutYouViewModel();
+    this.aboutYouCorrectionDisabled = false;
+    this.showUserManagementPage = false;
+    this.showAboutYouPage = true;
+    const cached = this.aboutYouCoordinator().cachedOverviewResult();
+    this.setAboutYouOverview(cached === null ? null : cached.overview);
+    this.aboutYouModel.overviewState = cached === null ? 'loading' : 'ready';
+    this.publishAboutYou();
+    void this.refreshAboutYou(cached === null);
+  }
+
+  private invalidateAboutYou(): void {
+    this.aboutYouGeneration++;
+    this.aboutYouSocialGeneration++;
+    if (this.aboutYouCoordinatorInstance !== null) this.aboutYouCoordinatorInstance.invalidate();
+    this.aboutYouCoordinatorInstance = null;
+    this.aboutYouCandidates = [];
+    this.aboutYouDraft = null;
+    this.aboutYouOverview = null;
+    this.aboutYouModel = emptyAboutYouViewModel();
+    this.aboutYouViewModelJson = '';
+    this.showAboutYouPage = false;
+  }
+
+  private closeAboutYou(): void {
+    if (this.aboutYouModel.social.importing) {
+      this.getUIContext().getPromptAction().showToast({ message: '正在导入长期记忆，请稍候。' });
+      return;
+    }
+    this.invalidateAboutYou();
+    this.showUserManagementPage = true;
+  }
+
+  private async refreshAboutYou(showLoading: boolean = true): Promise<void> {
+    if (!this.pageAlive || !this.showAboutYouPage || this.aboutYouModel.social.importing ||
+      this.aboutYouModel.updating) return;
+    const coordinator = this.aboutYouCoordinator();
+    coordinator.invalidate();
+    const generation = ++this.aboutYouGeneration;
+    if (showLoading) this.aboutYouModel.overviewState = 'loading';
+    this.aboutYouModel.overviewError = '';
+    this.aboutYouModel.updateError = '';
+    this.publishAboutYou();
+    const result = await coordinator.generateOverview();
+    if (!this.pageAlive || generation !== this.aboutYouGeneration || !this.showAboutYouPage ||
+      result.status === 'inactive') return;
+    this.setAboutYouOverview(result.overview);
+    this.aboutYouModel.overviewState = result.status;
+    this.aboutYouModel.overviewError = result.status === 'error' ? '长期记忆概览暂时无法整理，请重试。' : result.message;
+    this.aboutYouCorrectionDisabled = result.status === 'error';
+    this.publishAboutYou();
+  }
+
+  private async correctAboutYou(text: string, claimIndex: number): Promise<void> {
+    if (!this.pageAlive || !this.showAboutYouPage || this.aboutYouModel.updating || this.aboutYouModel.social.importing ||
+      this.aboutYouCorrectionDisabled || this.aboutYouModel.overviewState !== 'ready' || text.trim().length === 0) return;
+    if (claimIndex >= 0 && (this.aboutYouOverview === null || claimIndex >= this.aboutYouOverview.claims.length)) return;
+    const generation = this.aboutYouGeneration;
+    this.aboutYouModel.updating = true;
+    this.aboutYouModel.updateError = '';
+    this.publishAboutYou();
+    const currentOverview = this.aboutYouOverview;
+    const feedback = claimIndex < 0 || currentOverview === null ? text : '针对概览章节“' +
+      currentOverview.claims[claimIndex].heading + '”（claimIndex ' + (claimIndex + 1).toString() + '）：' + text;
+    const result = await this.aboutYouCoordinator().correct(feedback);
+    if (!this.pageAlive || generation !== this.aboutYouGeneration || !this.showAboutYouPage ||
+      result.status === 'inactive') return;
+    this.aboutYouModel.updating = false;
+    this.aboutYouModel.updateError = result.status === 'error' ? '修改未完成，请检查长期记忆设置后重试。' : result.message;
+    if (result.status === 'success' || result.status === 'presentation_only') {
+      this.setAboutYouOverview(result.overview);
+      this.aboutYouModel.overviewState = result.overview === null ? 'empty' : 'ready';
+      this.aboutYouModel.updateError = '';
+      this.aboutYouModel.correctionRevision++;
+      this.getUIContext().getPromptAction().showToast({ message: result.message });
+    } else if (result.status === 'partial' || (result.status === 'error' && result.overview === null)) {
+      this.setAboutYouOverview(null);
+      this.aboutYouModel.overviewState = 'error';
+      this.aboutYouModel.overviewError = result.message;
+      this.aboutYouCorrectionDisabled = true;
+    }
+    this.publishAboutYou();
+  }
+
+  private aboutYouSocialIsCurrent(generation: number, ownerGeneration: number): boolean {
+    return aboutYouSocialOperationIsCurrent(this.pageAlive && this.showAboutYouPage,
+      this.accountSessionStatus === AccountSessionStatus.AUTHENTICATED, generation,
+      this.aboutYouSocialGeneration, ownerGeneration, this.accountOwnerGeneration);
+  }
+
+  private async searchAboutYouAccounts(username: string, mode: PublicPersonaSearchMode): Promise<void> {
+    if (!this.showAboutYouPage || this.aboutYouModel.social.importing ||
+      this.aboutYouModel.social.phase === 'searching' || this.aboutYouModel.social.phase === 'generating') return;
+    const generation = ++this.aboutYouSocialGeneration;
+    const ownerGeneration = this.accountOwnerGeneration;
+    this.aboutYouCandidates = [];
+    this.aboutYouDraft = null;
+    this.aboutYouPersonaBaseline = this.publicPersonaViewModelJson;
+    this.aboutYouModel.social = { phase: 'searching', username, mode, candidates: [],
+      progress: '正在查找公开账号', error: '', markdown: '', draftId: '', importing: false };
+    this.publishAboutYou();
+    try {
+      const candidates = await this.publicPersonaClient.discover(username, mode, (progress: PublicPersonaProgress): void => {
+        if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+        this.aboutYouModel.social.progress = progress.message;
+        this.publishAboutYou();
+      });
+      if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+      this.aboutYouCandidates = candidates;
+      this.aboutYouModel.social.candidates = candidates.map((candidate: PublicPersonaCandidate): AboutYouCandidate => ({
+        id: candidate.id, platform: candidate.platform, displayName: candidate.displayName,
+        handle: candidate.username, summary: candidate.ownershipBand === 'high' ? '较高匹配，请确认是你的账号' : '可能匹配，请确认',
+        selected: candidate.selected
+      }));
+      this.aboutYouModel.social.phase = 'confirm';
+      this.aboutYouModel.social.progress = '';
+    } catch (error) {
+      if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+      this.aboutYouModel.social.phase = 'error';
+      this.aboutYouModel.social.error = '公开账号查找失败，请检查网络后重试。';
+    }
+    this.publishAboutYou();
+  }
+
+  private async buildAboutYouDraft(ids: string[], displayName: string): Promise<void> {
+    if (!this.showAboutYouPage || this.aboutYouModel.social.phase !== 'confirm' ||
+      this.aboutYouModel.social.importing) return;
+    const selected = this.aboutYouCandidates.filter((candidate: PublicPersonaCandidate): boolean =>
+      ids.indexOf(candidate.id) >= 0).map((candidate: PublicPersonaCandidate): PublicPersonaCandidate => ({
+        id: candidate.id, platform: candidate.platform, profileUrl: candidate.profileUrl,
+        displayName: candidate.displayName, username: candidate.username, avatarUrl: candidate.avatarUrl,
+        exists: true, ownershipConfidence: candidate.ownershipConfidence, ownershipBand: candidate.ownershipBand,
+        selected: true, providerState: candidate.providerState, fetchedAt: candidate.fetchedAt, sourceUrl: candidate.sourceUrl
+      }));
+    if (selected.length === 0 || displayName.trim().length === 0) {
+      this.aboutYouModel.social.error = '请确认姓名，并选择至少一个自己的账号。';
+      this.publishAboutYou();
+      return;
+    }
+    const generation = ++this.aboutYouSocialGeneration;
+    const ownerGeneration = this.accountOwnerGeneration;
+    this.aboutYouModel.social.phase = 'generating';
+    this.aboutYouModel.social.error = '';
+    this.publishAboutYou();
+    try {
+      const snapshot = await this.publicPersonaClient.buildSnapshot(selected, this.getSettings(),
+        (progress: PublicPersonaProgress): void => {
+          if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+          this.aboutYouModel.social.progress = progress.message;
+          this.publishAboutYou();
+        }, displayName.trim());
+      if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+      this.aboutYouDraft = snapshot;
+      this.aboutYouModel.social.phase = 'draft';
+      this.aboutYouModel.social.markdown = snapshot.personaMarkdown;
+      this.aboutYouModel.social.draftId = generation.toString();
+      this.aboutYouModel.social.progress = '';
+    } catch (error) {
+      if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+      this.aboutYouModel.social.phase = 'confirm';
+      this.aboutYouModel.social.error = '公开画像生成失败，已保留账号选择，请重试。';
+    }
+    this.publishAboutYou();
+  }
+
+  private async importAboutYouDraft(markdown: string): Promise<void> {
+    if (!this.showAboutYouPage || this.aboutYouModel.social.importing || this.aboutYouModel.updating ||
+      this.aboutYouModel.social.phase !== 'draft' || this.aboutYouDraft === null) return;
+    if (this.aboutYouPersonaBaseline !== this.publicPersonaViewModelJson) {
+      this.aboutYouModel.social.error = '已保存的公开画像发生变化，请丢弃本轮结果后重新查找账号。';
+      this.publishAboutYou();
+      return;
+    }
+    const store = this.publicPersonaStore();
+    const snapshot = sanitizePublicPersonaSnapshot(publicPersonaSnapshotAfterMarkdownEdit(this.aboutYouDraft, markdown) as Object);
+    if (store === null || parsePublicPersonaMarkdown(markdown) === null || snapshot === null) {
+      this.aboutYouModel.social.error = '请保留姓名、摘要和画像固定章节，确认后重试。';
+      this.publishAboutYou();
+      return;
+    }
+    const generation = ++this.aboutYouSocialGeneration;
+    const ownerGeneration = this.accountOwnerGeneration;
+    this.aboutYouDraft = snapshot;
+    this.aboutYouModel.social.markdown = markdown;
+    this.aboutYouModel.social.importing = true;
+    this.aboutYouModel.social.error = '';
+    this.publishAboutYou();
+    let importedSuccessfully = false;
+    let importError = '画像导入失败，草稿已保留，请检查网络和长期记忆设置后重试。';
+    try {
+      if (!this.localMemoryAvailability().isAvailable()) throw new Error('长期记忆当前不可用，画像未导入。');
+      const importedAt = new Date().toISOString();
+      const rebuiltFacts = await this.publicPersonaClient.rebuildMemoryFacts(snapshot, this.getSettings(),
+        importedAt, this.memoryModelTaskRunner());
+      if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+      const rebuilt = sanitizePublicPersonaSnapshot(publicPersonaSnapshotWithMemoryFacts(snapshot, rebuiltFacts) as Object);
+      if (rebuilt === null) throw new Error('画像记忆候选无效，请检查内容后重试。');
+      const projected = publicPersonaImportFacts(rebuilt, importedAt);
+      const facts: string[] = [];
+      for (let index = 0; index < projected.length; index++) facts.push(projected[index].fact);
+      const guard = new PublicPersonaMemoryCommitGuard((): boolean =>
+        this.aboutYouSocialIsCurrent(generation, ownerGeneration) &&
+        this.aboutYouPersonaBaseline === this.publicPersonaViewModelJson);
+      const result = facts.length > 0 ? await this.localMemoryRuntime().replacePublicPersonaFacts(facts,
+        'public-persona-' + Date.now().toString(), guard) : await this.localMemoryRuntime().deletePublicPersonaFacts(guard);
+      if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+      if (result.status !== 'success') throw new Error(result.error?.message ?? '画像记忆同步失败，请重试。');
+      if (this.aboutYouPersonaBaseline !== this.publicPersonaViewModelJson) throw new Error('公开画像已变化');
+      const imported = sanitizePublicPersonaSnapshot(markPublicPersonaImported(rebuilt) as Object);
+      const previous = store.load();
+      if (imported === null || !store.save(imported)) {
+        const restored = this.restorePublicPersonaSnapshot(store, previous);
+        importError = restored ? '长期记忆已更新，但关联账号保存失败；草稿已保留，请重试。' :
+          '长期记忆已更新，关联账号保存状态暂时无法确认；草稿已保留，请重新进入页面检查。';
+        throw new Error(importError);
+      }
+      this.updatePublicPersonaSnapshot(imported);
+      this.aboutYouDraft = null;
+      this.aboutYouCandidates = [];
+      this.aboutYouModel.social = emptyAboutYouViewModel().social;
+      importedSuccessfully = true;
+      this.getUIContext().getPromptAction().showToast({ message: '已导入长期记忆' });
+    } catch (error) {
+      if (!this.aboutYouSocialIsCurrent(generation, ownerGeneration)) return;
+      this.aboutYouModel.social.error = importError;
+    } finally {
+      if (this.aboutYouSocialIsCurrent(generation, ownerGeneration)) {
+        this.aboutYouModel.social.importing = false;
+        this.publishAboutYou();
+      }
+    }
+    if (importedSuccessfully) await this.refreshAboutYou();
+  }
+
+  private handleAboutYouAction(action: AboutYouAction): void {
+    if (!this.pageAlive || !this.showAboutYouPage) return;
+    if (action.type === 'back') { this.closeAboutYou(); return; }
+    if (action.type === 'ready') { this.publishAboutYou(); return; }
+    if (action.type === 'correct') {
+      if (action.overviewRevision !== this.aboutYouModel.overviewRevision) {
+        this.aboutYouModel.updateError = '概览已更新，请重新确认需要修改的章节后提交。';
+        this.publishAboutYou();
+        return;
+      }
+      void this.correctAboutYou(action.text ?? '', action.claimIndex ?? -1);
+      return;
+    }
+    if (action.type === 'overview_refresh') { void this.refreshAboutYou(); return; }
+    if (this.aboutYouModel.social.importing) return;
+    if (action.type === 'social_open') {
+      if (this.aboutYouModel.social.phase === 'idle') this.aboutYouModel.social.phase = 'input';
+    } else if (action.type === 'social_search') {
+      void this.searchAboutYouAccounts(action.username ?? '', action.mode ?? 'fuzzy');
+    } else if (action.type === 'social_confirm') {
+      void this.buildAboutYouDraft(action.candidateIds ?? [], action.displayName ?? '');
+    } else if (action.type === 'social_import') {
+      void this.importAboutYouDraft(action.markdown ?? '');
+    } else if (action.type === 'social_edit' && this.aboutYouDraft !== null) {
+      this.aboutYouModel.social.markdown = action.markdown ?? '';
+    } else if (action.type === 'social_discard') {
+      this.aboutYouSocialGeneration++;
+      this.aboutYouDraft = null;
+      this.aboutYouCandidates = [];
+      this.aboutYouModel.social = emptyAboutYouViewModel().social;
+    } else if (action.type === 'social_retry') {
+      this.aboutYouSocialGeneration++;
+      this.aboutYouModel.social.phase = this.aboutYouDraft !== null ? 'draft' : 'input';
+      this.aboutYouModel.social.error = '';
+    }
+    this.publishAboutYou();
   }
 
   private memoryModelTaskRunner(): MemoryModelTaskRunner {
@@ -4402,24 +4724,6 @@ struct Index {
       });
     }
     return this.memoryModelTaskRunnerInstance;
-  }
-
-  private longTermMemoryOverviewCoordinator(): LongTermMemoryOverviewCoordinator {
-    if (this.longTermMemoryOverviewCoordinatorInstance === null) {
-      const ownerId = this.requireAccountOwnerId();
-      const accountGeneration = this.accountOwnerGeneration;
-      const runtime = this.localMemoryRuntime();
-      this.longTermMemoryOverviewCoordinatorInstance = new LongTermMemoryOverviewCoordinator({
-        source: runtime,
-        runtime,
-        runner: this.memoryModelTaskRunner(),
-        cacheStore: this.memoryOverviewCacheStore(),
-        isActive: (): boolean => this.showLongTermMemoryPage &&
-          this.accountSessionStatus === AccountSessionStatus.AUTHENTICATED &&
-          this.accountOwnerId === ownerId && this.accountOwnerGeneration === accountGeneration
-      });
-    }
-    return this.longTermMemoryOverviewCoordinatorInstance;
   }
 
   private memoryOverviewCacheStore(): MemoryOverviewCacheStore {
@@ -4437,133 +4741,11 @@ struct Index {
     return MemoryOverviewCacheStore.fromContext(context, memoryOverviewCacheStoreNameForOwner(ownerId));
   }
 
-  private resetLongTermMemoryPageState(clearInput: boolean): void {
-    this.longTermMemoryPageStatus = 'loading';
-    this.longTermMemoryOverview = null;
-    this.longTermMemoryEvidenceIndex = { entries: [] };
-    this.longTermMemoryMessage = '';
-    this.longTermMemoryCorrectionPlan = null;
-    this.longTermMemoryPlanning = false;
-    this.longTermMemoryApplying = false;
-    if (clearInput) this.longTermMemoryCorrectionInput = '';
-  }
-
-  private invalidateLongTermMemoryOverviewForAccount(): void {
-    this.longTermMemoryPageGeneration += 1;
-    if (this.longTermMemoryOverviewCoordinatorInstance !== null) {
-      this.longTermMemoryOverviewCoordinatorInstance.invalidate();
-    }
+  private invalidateMemoryModelTaskRunnerForAccount(): void {
     if (this.memoryModelTaskRunnerInstance !== null) {
       this.memoryModelTaskRunnerInstance.invalidate();
     }
-    this.longTermMemoryOverviewCoordinatorInstance = null;
     this.memoryModelTaskRunnerInstance = null;
-    this.resetLongTermMemoryPageState(true);
-  }
-
-  private openLongTermMemoryOverview(): void {
-    this.showUserManagementPage = false;
-    this.showLongTermMemoryPage = true;
-    this.resetLongTermMemoryPageState(true);
-    const cached = this.longTermMemoryOverviewCoordinator().cachedOverviewResult();
-    if (cached !== null) {
-      this.longTermMemoryOverview = cached.overview;
-      this.longTermMemoryEvidenceIndex = cached.evidenceIndex;
-      this.longTermMemoryPageStatus = 'ready';
-    }
-    void this.refreshLongTermMemoryOverview(cached === null);
-  }
-
-  private closeLongTermMemoryOverview(): void {
-    this.longTermMemoryPageGeneration += 1;
-    if (this.longTermMemoryOverviewCoordinatorInstance !== null) {
-      this.longTermMemoryOverviewCoordinatorInstance.invalidate();
-    }
-    this.longTermMemoryPlanning = false;
-    this.longTermMemoryApplying = false;
-    this.longTermMemoryCorrectionPlan = null;
-    this.showLongTermMemoryPage = false;
-    this.showUserManagementPage = true;
-  }
-
-  private async refreshLongTermMemoryOverview(showLoading: boolean = true): Promise<void> {
-    if (!this.showLongTermMemoryPage) return;
-    const coordinator = this.longTermMemoryOverviewCoordinator();
-    coordinator.invalidate();
-    const generation = ++this.longTermMemoryPageGeneration;
-    if (showLoading) {
-      this.longTermMemoryPageStatus = 'loading';
-      this.longTermMemoryMessage = '';
-    }
-    this.longTermMemoryCorrectionPlan = null;
-    this.longTermMemoryPlanning = false;
-    this.longTermMemoryApplying = false;
-    const result: LongTermMemoryOverviewGenerationResult = await coordinator.generateOverview();
-    if (generation !== this.longTermMemoryPageGeneration || result.status === 'inactive' ||
-      !this.showLongTermMemoryPage) return;
-    this.longTermMemoryOverview = result.overview;
-    this.longTermMemoryEvidenceIndex = result.evidenceIndex;
-    this.longTermMemoryMessage = result.message;
-    if (result.status === 'ready') this.longTermMemoryPageStatus = 'ready';
-    if (result.status === 'empty') this.longTermMemoryPageStatus = 'empty';
-    if (result.status === 'error') this.longTermMemoryPageStatus = 'error';
-  }
-
-  private async planLongTermMemoryCorrection(): Promise<void> {
-    if (this.longTermMemoryPlanning || this.longTermMemoryApplying ||
-      this.longTermMemoryCorrectionInput.trim().length === 0) return;
-    const coordinator = this.longTermMemoryOverviewCoordinator();
-    const generation = this.longTermMemoryPageGeneration;
-    this.longTermMemoryPlanning = true;
-    this.longTermMemoryMessage = '';
-    const result: LongTermMemoryCorrectionPlanResult = await coordinator.planCorrection(
-      this.longTermMemoryCorrectionInput
-    );
-    if (generation !== this.longTermMemoryPageGeneration || result.status === 'inactive' ||
-      !this.showLongTermMemoryPage) return;
-    this.longTermMemoryPlanning = false;
-    this.longTermMemoryMessage = result.message;
-    if (result.status === 'ready' || result.status === 'needs_clarification') {
-      this.longTermMemoryCorrectionPlan = result.plan;
-      this.longTermMemoryScrollTopTick += 1;
-    }
-  }
-
-  private async applyLongTermMemoryCorrection(): Promise<void> {
-    if (this.longTermMemoryApplying || this.longTermMemoryCorrectionPlan === null ||
-      this.longTermMemoryCorrectionPlan.status !== 'ready') return;
-    const coordinator = this.longTermMemoryOverviewCoordinator();
-    const generation = this.longTermMemoryPageGeneration;
-    const plan = this.longTermMemoryCorrectionPlan;
-    this.longTermMemoryApplying = true;
-    const result: LongTermMemoryCorrectionApplyResult = await coordinator.applyPlan(plan);
-    if (generation !== this.longTermMemoryPageGeneration || result.status === 'inactive' ||
-      !this.showLongTermMemoryPage) return;
-    this.longTermMemoryApplying = false;
-    this.longTermMemoryMessage = result.status === 'success' ? '' : result.message;
-    if (shouldScrollLongTermMemoryApplyResultToTop(result.status)) {
-      this.longTermMemoryScrollTopTick += 1;
-    }
-    if (result.status === 'conflict') {
-      this.longTermMemoryCorrectionPlan = null;
-      this.longTermMemoryPageStatus = 'ready';
-      return;
-    }
-    this.longTermMemoryCorrectionPlan = null;
-    this.longTermMemoryOverview = result.overview;
-    this.longTermMemoryEvidenceIndex = result.evidenceIndex;
-    if (result.status === 'success' || result.status === 'presentation_only' ||
-      result.status === 'partial') {
-      if (result.status === 'success') {
-        this.getUIContext().getPromptAction().showToast({
-          message: LONG_TERM_MEMORY_CORRECTION_SUCCESS_TOAST
-        });
-      }
-      this.longTermMemoryPageStatus = result.overview === null ? 'empty' : 'ready';
-      this.longTermMemoryCorrectionInput = '';
-      return;
-    }
-    this.longTermMemoryPageStatus = result.overview === null ? 'error' : 'ready';
   }
 
   private requireAccountOwnerId(): string {
@@ -4628,7 +4810,8 @@ struct Index {
   private invalidateAccountScopedState(preserveInput: boolean): void {
     const pendingInput: string = preserveInput ? this.inputText : '';
     this.invalidateWaterfallLlmBatchLifecycle();
-    this.invalidateLongTermMemoryOverviewForAccount();
+    this.invalidateMemoryModelTaskRunnerForAccount();
+    this.invalidateAboutYou();
     this.accountOwnerGeneration += 1;
     this.unsubscribeTrainPresaleHandoff();
     this.disposeHotelRuntime();
@@ -4646,20 +4829,10 @@ struct Index {
     this.accountNameSaveMessage = '';
     this.accountNameSaving = false;
     this.showUserManagementPage = false;
-    this.showLongTermMemoryPage = false;
     this.showLogoutConfirmation = false;
-    this.publicPersonaJobId++;
-    this.publicPersonaImportGeneration++;
-    this.showPublicPersonaPage = false;
-    this.publicPersonaReturnToUserManagement = false;
     this.trainPresaleResumeDrain = null;
     this.publicPersonaInitialized = false;
-    this.publicPersonaSnapshot = null;
-    this.publicPersonaPhase = 'input';
-    this.publicPersonaCandidates = [];
-    this.publicPersonaProgress = null;
-    this.publicPersonaError = '';
-    this.publicPersonaImporting = false;
+    this.updatePublicPersonaSnapshot(null);
     this.dailyBriefSnapshot = null;
     this.bimRecords = [];
     this.foodSavedAddresses = [];
@@ -4762,6 +4935,8 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    this.pageLifecycleGeneration += 1;
+    this.pageAlive = true;
     this.loadModelPreset();
     this.loadAggregateSearchPolicy();
     this.loadBimMotionPreference();
@@ -4788,6 +4963,9 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    // Destruction, unlike onPageHide/backgrounding, retires this page's memory tasks.
+    this.pageAlive = false;
+    this.invalidateAboutYou();
     this.waterfallConversationGeneration += 1;
     this.accountLifecycleGeneration += 1;
     this.accountRestorePromise = null;
@@ -4870,8 +5048,9 @@ struct Index {
   }
 
   private updatePublicPersonaSnapshot(snapshot: PublicPersonaSnapshot | null): void {
-    this.publicPersonaSnapshot = snapshot;
-    this.publicPersonaRenderTick = this.publicPersonaRenderTick + 1;
+    const viewModelJson = serializePublicPersonaViewModel(snapshot);
+    this.publicPersonaSnapshot = parsePublicPersonaViewModel(viewModelJson);
+    this.publicPersonaViewModelJson = viewModelJson;
   }
 
   private loadPublicPersona(): void {
@@ -4882,397 +5061,19 @@ struct Index {
     const store = this.publicPersonaStore();
     if (store === null) {
       this.updatePublicPersonaSnapshot(null);
-      this.publicPersonaPhase = 'input';
       return;
     }
     this.updatePublicPersonaSnapshot(store.load());
-    this.publicPersonaPhase = this.publicPersonaSnapshot !== null ? 'complete' :
-      (store.onboardingSeen() ? 'input' : 'welcome');
-  }
-
-  private openPublicPersona(returnToUserManagement: boolean = false): void {
-    aiLogInfo('[AIPhone][PublicPersonaEntry] open=true');
-    this.loadPublicPersona();
-    this.publicPersonaReturnToUserManagement = returnToUserManagement;
-    this.showUserManagementPage = false;
-    this.showPublicPersonaPage = true;
-  }
-
-  private closePublicPersona(): void {
-    const returnToUserManagement: boolean = this.publicPersonaReturnToUserManagement;
-    this.publicPersonaReturnToUserManagement = false;
-    this.showPublicPersonaPage = false;
-    if (returnToUserManagement) this.showUserManagementPage = true;
-  }
-
-  private skipPublicPersonaOnboarding(): void {
-    const store = this.publicPersonaStore();
-    if (store !== null) {
-      store.markOnboardingSeen();
-    }
-    this.publicPersonaPhase = 'input';
-    this.showPublicPersonaPage = false;
-  }
-
-  private async runPublicPersonaDiscovery(
-    jobId: number,
-    username: string,
-    mode: PublicPersonaSearchMode
-  ): Promise<void> {
-    try {
-      const candidates = await this.publicPersonaClient.discover(username, mode, (progress: PublicPersonaProgress): void => {
-        if (jobId === this.publicPersonaJobId) {
-          this.publicPersonaProgress = progress;
-          const probeResult = progress.message === '已找到公开账号' ? 'found' :
-            progress.message === '未找到该用户名' ? 'not_found' :
-              progress.message === '平台暂时无法确认' ? 'unknown' : '';
-          if (probeResult.length > 0) {
-            aiLogInfo(`[AIPhone][PublicPersonaProbe] platform=${progress.platform} result=${probeResult} ` +
-              `provider=${progress.state} completed=${progress.completed}/${progress.total}`);
-          }
-        }
-      });
-      if (jobId !== this.publicPersonaJobId) {
-        return;
-      }
-      this.publicPersonaCandidates = candidates;
-      this.publicPersonaPhase = 'awaiting_confirmation';
-    } catch (error) {
-      if (jobId !== this.publicPersonaJobId) {
-        return;
-      }
-      this.publicPersonaError = error instanceof Error ? error.message : '公开账号查找失败';
-      this.publicPersonaPhase = 'error';
-    }
-  }
-
-  private startPublicPersonaDiscovery(username: string, mode: PublicPersonaSearchMode): void {
-    const store = this.publicPersonaStore();
-    if (store !== null) {
-      store.markOnboardingSeen();
-    }
-    this.publicPersonaJobId++;
-    this.publicPersonaPhase = 'discovering';
-    this.publicPersonaCandidates = [];
-    this.publicPersonaProgress = null;
-    this.publicPersonaError = '';
-    const jobId = this.publicPersonaJobId;
-    void this.runPublicPersonaDiscovery(jobId, username, mode);
-  }
-
-  private publicPersonaMemoryGuard(jobId: number, ownerGeneration: number): MemoryCommitGuard {
-    return new PublicPersonaMemoryCommitGuard((): boolean => jobId === this.publicPersonaJobId &&
-        ownerGeneration === this.accountOwnerGeneration &&
-        this.accountSessionStatus === AccountSessionStatus.AUTHENTICATED);
-  }
-
-  private async importPublicPersonaMemory(): Promise<boolean> {
-    if (this.publicPersonaImporting || this.publicPersonaSnapshot === null) return false;
-    if (isPublicPersonaImported(this.publicPersonaSnapshot)) return true;
-    let snapshot = this.publicPersonaSnapshot;
-    const store = this.publicPersonaStore();
-    if (store === null) {
-      this.publicPersonaError = '画像导入状态暂时无法保存。';
-      return false;
-    }
-    const jobId = ++this.publicPersonaJobId;
-    const importGeneration = ++this.publicPersonaImportGeneration;
-    const ownerGeneration = this.accountOwnerGeneration;
-    this.publicPersonaImporting = true;
-    this.publicPersonaError = '';
-    try {
-      if (!this.localMemoryAvailability().isAvailable()) {
-        throw new Error('长期记忆当前不可用，画像未导入。');
-      }
-      const importedAt = new Date().toISOString();
-      if (!publicPersonaMemoryFactsAreCurrent(snapshot)) {
-        const rebuiltFacts = await this.publicPersonaClient.rebuildMemoryFacts(
-          snapshot,
-          this.getSettings(),
-          importedAt,
-          this.memoryModelTaskRunner()
-        );
-        if (jobId !== this.publicPersonaJobId || ownerGeneration !== this.accountOwnerGeneration) return false;
-        const rebuiltSnapshot = sanitizePublicPersonaSnapshot(
-          publicPersonaSnapshotWithMemoryFacts(snapshot, rebuiltFacts) as Object
-        );
-        if (rebuiltSnapshot === null || !store.save(rebuiltSnapshot)) {
-          throw new Error('画像记忆候选保存失败，请重试。');
-        }
-        snapshot = rebuiltSnapshot;
-        this.updatePublicPersonaSnapshot(rebuiltSnapshot);
-      }
-      const projectedFacts = publicPersonaImportFacts(snapshot, importedAt);
-      const facts: string[] = [];
-      for (let index = 0; index < projectedFacts.length; index += 1) {
-        facts.push(projectedFacts[index].fact);
-      }
-      const guard = this.publicPersonaMemoryGuard(jobId, ownerGeneration);
-      const result = facts.length > 0 ? await this.localMemoryRuntime().replacePublicPersonaFacts(
-        facts,
-        'public-persona-' + Date.now().toString(),
-        guard
-      ) : await this.localMemoryRuntime().deletePublicPersonaFacts(guard);
-      if (result.status !== 'success') {
-        throw new Error(result.error?.message ?? '画像记忆同步失败，请重试。');
-      }
-      if (jobId !== this.publicPersonaJobId || ownerGeneration !== this.accountOwnerGeneration) return false;
-      const imported = sanitizePublicPersonaSnapshot(markPublicPersonaImported(snapshot) as Object);
-      if (imported === null || !store.save(imported)) {
-        this.publicPersonaError = '长期记忆已更新，但导入状态保存失败，请重试。';
-        return false;
-      }
-      this.updatePublicPersonaSnapshot(imported);
-      return true;
-    } catch (error) {
-      if (jobId === this.publicPersonaJobId && ownerGeneration === this.accountOwnerGeneration) {
-        this.publicPersonaError = error instanceof Error ? error.message : '画像导入长期记忆失败。';
-      }
-      return false;
-    } finally {
-      if (importGeneration === this.publicPersonaImportGeneration &&
-        ownerGeneration === this.accountOwnerGeneration) {
-        this.publicPersonaImporting = false;
-      }
-    }
   }
 
   private restorePublicPersonaSnapshot(
     store: PublicPersonaStore,
     previous: PublicPersonaSnapshot | null
-  ): void {
+  ): boolean {
     if (previous === null) {
-      store.deleteSnapshot();
-    } else {
-      store.save(previous);
+      return store.deleteSnapshot();
     }
-  }
-
-  private async runPublicPersonaBuild(
-    jobId: number,
-    selected: PublicPersonaCandidate[],
-    confirmedDisplayName: string
-  ): Promise<void> {
-    try {
-      const snapshot = await this.publicPersonaClient.buildSnapshot(selected, this.getSettings(), (progress: PublicPersonaProgress): void => {
-        if (jobId === this.publicPersonaJobId) {
-          this.publicPersonaProgress = progress;
-          this.publicPersonaPhase = 'reading';
-        }
-      }, confirmedDisplayName);
-      if (jobId !== this.publicPersonaJobId) {
-        return;
-      }
-      const store = this.publicPersonaStore();
-      if (store === null) {
-        throw new Error('画像保存失败');
-      }
-      if (!store.save(snapshot)) throw new Error('画像保存失败');
-      this.updatePublicPersonaSnapshot(snapshot);
-      this.publicPersonaProgress = null;
-      this.publicPersonaPhase = 'complete';
-    } catch (error) {
-      if (jobId !== this.publicPersonaJobId) {
-        return;
-      }
-      this.publicPersonaError = error instanceof Error ? error.message : '画像生成失败';
-      this.publicPersonaPhase = 'error';
-    }
-  }
-
-  private confirmPublicPersona(candidateIds: string[], confirmedDisplayName: string): void {
-    const normalizedDisplayName: string = confirmedDisplayName.trim();
-    const selected = this.publicPersonaCandidates.map((candidate: PublicPersonaCandidate): PublicPersonaCandidate => ({
-      id: candidate.id,
-      platform: candidate.platform,
-      profileUrl: candidate.profileUrl,
-      displayName: candidate.displayName,
-      username: candidate.username,
-      avatarUrl: candidate.avatarUrl,
-      exists: true,
-      ownershipConfidence: candidate.ownershipConfidence,
-      ownershipBand: candidate.ownershipBand,
-      selected: candidateIds.indexOf(candidate.id) >= 0,
-      providerState: candidate.providerState,
-      fetchedAt: candidate.fetchedAt,
-      sourceUrl: candidate.sourceUrl
-    }));
-    if (candidateIds.length === 0) {
-      this.publicPersonaError = '至少选择一个已确认账号';
-      return;
-    }
-    if (normalizedDisplayName.length === 0) {
-      this.publicPersonaError = '请先确认用户姓名';
-      return;
-    }
-    this.publicPersonaJobId++;
-    this.publicPersonaPhase = 'reading';
-    this.publicPersonaProgress = null;
-    this.publicPersonaError = '';
-    void this.runPublicPersonaBuild(this.publicPersonaJobId, selected, normalizedDisplayName);
-  }
-
-  private savePublicPersonaMarkdown(markdown: string): boolean {
-    if (this.publicPersonaSnapshot === null) {
-      return false;
-    }
-    if (parsePublicPersonaMarkdown(markdown) === null) {
-      this.publicPersonaError = 'Markdown 缺少姓名、摘要或画像固定章节，未保存。';
-      return false;
-    }
-    const updated = publicPersonaSnapshotAfterMarkdownEdit(this.publicPersonaSnapshot, markdown);
-    const safe = sanitizePublicPersonaSnapshot(updated as Object);
-    if (safe === null) {
-      this.publicPersonaError = 'Markdown 缺少画像固定章节，未保存。';
-      return false;
-    }
-    this.publicPersonaJobId++;
-    const store = this.publicPersonaStore();
-    if (store === null || !store.save(safe)) {
-      this.publicPersonaError = 'Markdown 保存失败，请重试。';
-      return false;
-    }
-    this.updatePublicPersonaSnapshot(safe);
-    this.publicPersonaError = '';
-    return true;
-  }
-
-  private async runPublicPersonaReinference(jobId: number, snapshot: PublicPersonaSnapshot): Promise<void> {
-    try {
-      const result = await this.publicPersonaClient.reinferMbti(snapshot, this.getSettings());
-      if (jobId !== this.publicPersonaJobId || this.publicPersonaSnapshot === null) {
-        return;
-      }
-      const markdown = replacePublicPersonaMbti(snapshot.personaMarkdown, result.mbtiType, result.mbtiConfidence);
-      const updated: PublicPersonaSnapshot = {
-        schemaVersion: 1,
-        personaMarkdown: markdown,
-        primaryAvatarUrl: snapshot.primaryAvatarUrl,
-        sources: snapshot.sources,
-        generatedAt: snapshot.generatedAt,
-        mbtiHidden: false,
-        memoryFacts: snapshot.memoryFacts?.slice() ?? [],
-        memoryFactsMarkdownFingerprint: snapshot.memoryFactsMarkdownFingerprint,
-        importedMarkdownFingerprint: snapshot.importedMarkdownFingerprint
-      };
-      let safe = sanitizePublicPersonaSnapshot(updated as Object);
-      if (safe === null) {
-        throw new Error('重新推测结果未通过本地校验');
-      }
-      if (isPublicPersonaImported(snapshot)) {
-        safe = sanitizePublicPersonaSnapshot(markPublicPersonaImported(safe) as Object);
-        if (safe === null) throw new Error('重新推测后的导入状态未通过本地校验');
-      }
-      const store = this.publicPersonaStore();
-      if (store === null || !store.save(safe)) {
-        throw new Error('MBTI 保存失败');
-      }
-      this.updatePublicPersonaSnapshot(safe);
-      this.publicPersonaError = '';
-    } catch (error) {
-      if (jobId === this.publicPersonaJobId) {
-        this.publicPersonaError = error instanceof Error ? error.message : 'MBTI 重新推测失败';
-      }
-    }
-  }
-
-  private reinferPublicPersonaMbti(): void {
-    if (this.publicPersonaSnapshot === null) {
-      return;
-    }
-    this.publicPersonaJobId++;
-    const jobId = this.publicPersonaJobId;
-    void this.runPublicPersonaReinference(jobId, this.publicPersonaSnapshot);
-  }
-
-  private setPublicPersonaMbtiHidden(hidden: boolean): boolean {
-    if (this.publicPersonaSnapshot === null) {
-      return false;
-    }
-    const updated: PublicPersonaSnapshot = {
-      schemaVersion: 1,
-      personaMarkdown: this.publicPersonaSnapshot.personaMarkdown,
-      primaryAvatarUrl: this.publicPersonaSnapshot.primaryAvatarUrl,
-      sources: this.publicPersonaSnapshot.sources,
-      generatedAt: this.publicPersonaSnapshot.generatedAt,
-      mbtiHidden: hidden,
-      memoryFacts: this.publicPersonaSnapshot.memoryFacts?.slice() ?? [],
-      memoryFactsMarkdownFingerprint: this.publicPersonaSnapshot.memoryFactsMarkdownFingerprint,
-      importedMarkdownFingerprint: this.publicPersonaSnapshot.importedMarkdownFingerprint
-    };
-    const safe = sanitizePublicPersonaSnapshot(updated as Object);
-    if (safe === null) {
-      this.publicPersonaError = 'MBTI 状态未通过本地校验。';
-      return false;
-    }
-    this.publicPersonaJobId++;
-    const store = this.publicPersonaStore();
-    if (store === null || !store.save(safe)) {
-      this.publicPersonaError = 'MBTI 状态保存失败，请重试。';
-      return false;
-    }
-    this.updatePublicPersonaSnapshot(safe);
-    this.publicPersonaError = '';
-    return true;
-  }
-
-  private async deletePublicPersona(): Promise<boolean> {
-    this.publicPersonaJobId++;
-    const jobId = this.publicPersonaJobId;
-    const ownerGeneration = this.accountOwnerGeneration;
-    const store = this.publicPersonaStore();
-    if (store === null) {
-      this.publicPersonaError = '画像删除失败，请重试。';
-      return false;
-    }
-    const previousSnapshot = store.load();
-    if (!store.deleteSnapshot()) {
-      this.publicPersonaError = '画像删除失败，请重试。';
-      return false;
-    }
-    this.publicPersonaImporting = false;
-    try {
-      if (!this.localMemoryAvailability().isAvailable()) {
-        throw new Error('长期记忆当前不可用，画像未删除。');
-      }
-      const result = await this.localMemoryRuntime().deletePublicPersonaFacts(
-        this.publicPersonaMemoryGuard(jobId, ownerGeneration)
-      );
-      if (result.status !== 'success') {
-        throw new Error(result.error?.message ?? '画像记忆删除失败，请重试。');
-      }
-    } catch (error) {
-      if (jobId === this.publicPersonaJobId && ownerGeneration === this.accountOwnerGeneration) {
-        this.restorePublicPersonaSnapshot(store, previousSnapshot);
-        this.publicPersonaError = error instanceof Error ? error.message : '画像删除失败，请重试。';
-      }
-      return false;
-    }
-    if (jobId !== this.publicPersonaJobId || ownerGeneration !== this.accountOwnerGeneration) return true;
-    this.updatePublicPersonaSnapshot(null);
-    this.publicPersonaCandidates = [];
-    this.publicPersonaProgress = null;
-    this.publicPersonaError = '';
-    this.publicPersonaPhase = 'input';
-    return true;
-  }
-
-  private publicPersonaBusy(): boolean {
-    return this.publicPersonaPhase === 'discovering' || this.publicPersonaPhase === 'reading' ||
-      this.publicPersonaPhase === 'summarizing';
-  }
-
-  private publicPersonaStatus(): string {
-    if (this.publicPersonaBusy()) {
-      return this.publicPersonaProgress === null ? '正在建立画像' : this.publicPersonaProgress.message;
-    }
-    if (this.publicPersonaSnapshot !== null) {
-      return '画像已生成';
-    }
-    if (this.publicPersonaPhase === 'error') {
-      return '画像暂未完成';
-    }
-    return '';
+    return store.save(previous);
   }
 
   private paymentAccountPreferences(): preferences.Preferences | null {
@@ -6043,14 +5844,31 @@ struct Index {
   }
 
   private onPhoneLocalMemoryMutation(event: PhoneLocalMemoryMutationEvent, ownerId: string): void {
-    try {
-      this.memoryOverviewCacheStoreForOwner(ownerId).clear();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : `${error}`;
-      aiLogError('[AIPhone][MemoryOverviewCache] code=mutation_clear_failed operation=' +
-        event.operation + ' detail=' + message.substring(0, 200));
+    const applyingCurrentOverviewCorrection = this.accountOwnerId === ownerId &&
+      this.showAboutYouPage && this.aboutYouCoordinatorInstance !== null &&
+      this.aboutYouCoordinatorInstance.isApplyingCorrection();
+    if (!applyingCurrentOverviewCorrection) {
+      try {
+        this.memoryOverviewCacheStoreForOwner(ownerId).clear();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `${error}`;
+        aiLogError('[AIPhone][MemoryOverviewCache] code=mutation_clear_failed operation=' +
+          event.operation + ' detail=' + message.substring(0, 200));
+      }
     }
     if (this.accountOwnerId !== ownerId) return;
+    if (this.showAboutYouPage && !applyingCurrentOverviewCorrection && this.aboutYouCoordinatorInstance !== null) {
+      this.aboutYouCoordinatorInstance.invalidate();
+      this.aboutYouGeneration++;
+      this.aboutYouModel.updating = false;
+      if (this.aboutYouModel.overviewState === 'loading' && !this.aboutYouModel.social.importing) {
+        void this.refreshAboutYou();
+      } else {
+        this.aboutYouCorrectionDisabled = true;
+        this.aboutYouModel.updateError = '长期记忆已变化，点击刷新查看最新概览。';
+        this.publishAboutYou();
+      }
+    }
     try {
       this.discoveryMemoryProjectionCoordinator().notify(event);
     } catch (error) {
@@ -12860,16 +12678,8 @@ struct Index {
       this.showConfigPage = false;
       return true;
     }
-    if (this.showLongTermMemoryPage) {
-      if (this.longTermMemoryCorrectionPlan !== null) {
-        this.longTermMemoryCorrectionPlan = null;
-      } else {
-        this.closeLongTermMemoryOverview();
-      }
-      return true;
-    }
-    if (this.showPublicPersonaPage) {
-      this.closePublicPersona();
+    if (this.showAboutYouPage) {
+      this.closeAboutYou();
       return true;
     }
     if (this.showUserManagementPage) {
@@ -12918,11 +12728,8 @@ struct Index {
       onResetDisplayName: (): void => {
         this.saveAccountDisplayName('');
       },
-      onOpenSocialPersona: (): void => {
-        this.openPublicPersona(true);
-      },
-      onOpenLongTermMemory: (): void => {
-        this.openLongTermMemoryOverview();
+      onOpenAboutYou: (): void => {
+        this.openAboutYou();
       },
       onRequestLogoutConfirmation: (): void => {
         this.showLogoutConfirmation = true;
@@ -12937,39 +12744,11 @@ struct Index {
   }
 
   @Builder
-  private LongTermMemoryPageContent() {
-    LongTermMemoryPage({
-      status: this.longTermMemoryPageStatus,
-      overview: this.longTermMemoryOverview,
-      message: this.longTermMemoryMessage,
-      plan: this.longTermMemoryCorrectionPlan,
-      correctionInput: this.longTermMemoryCorrectionInput,
-      planning: this.longTermMemoryPlanning,
-      applying: this.longTermMemoryApplying,
-      scrollToTopTick: this.longTermMemoryScrollTopTick,
-      onBack: (): void => {
-        if (this.longTermMemoryCorrectionPlan !== null) {
-          this.longTermMemoryCorrectionPlan = null;
-          this.longTermMemoryScrollTopTick += 1;
-        } else {
-          this.closeLongTermMemoryOverview();
-        }
-      },
-      onRetry: (): void => {
-        void this.refreshLongTermMemoryOverview();
-      },
-      onCorrectionInputChange: (value: string): void => {
-        this.longTermMemoryCorrectionInput = value;
-      },
-      onPlanCorrection: (): void => {
-        void this.planLongTermMemoryCorrection();
-      },
-      onConfirmPlan: (): void => {
-        void this.applyLongTermMemoryCorrection();
-      },
-      onCancelPlan: (): void => {
-        this.longTermMemoryCorrectionPlan = null;
-        this.longTermMemoryScrollTopTick += 1;
+  private AboutYouPageContent() {
+    AboutYouPage({
+      viewModelJson: this.aboutYouViewModelJson,
+      onAction: (action: AboutYouAction): void => {
+        this.handleAboutYouAction(action);
       }
     })
   }
@@ -13147,52 +12926,6 @@ struct Index {
     .backgroundColor('#F9FAFB')
   }
 
-  @Builder
-  private PublicPersonaPageContent() {
-    PublicPersonaPage({
-      phase: this.publicPersonaPhase,
-      candidates: this.publicPersonaCandidates,
-      progress: this.publicPersonaProgress,
-      snapshot: this.publicPersonaSnapshot,
-      errorMessage: this.publicPersonaError,
-      imported: this.publicPersonaSnapshot !== null && isPublicPersonaImported(this.publicPersonaSnapshot),
-      importing: this.publicPersonaImporting,
-      defaultDisplayName: this.accountDisplayName,
-      onBack: (): void => {
-        this.closePublicPersona();
-      },
-      onChooseSetup: (): void => {
-        this.publicPersonaPhase = 'input';
-      },
-      onSkip: (): void => {
-        const returnToUserManagement: boolean = this.publicPersonaReturnToUserManagement;
-        this.skipPublicPersonaOnboarding();
-        this.publicPersonaReturnToUserManagement = false;
-        if (returnToUserManagement) this.showUserManagementPage = true;
-      },
-      onStartDiscovery: (username: string, mode: PublicPersonaSearchMode): void => {
-        this.startPublicPersonaDiscovery(username, mode);
-      },
-      onConfirm: (candidateIds: string[], confirmedDisplayName: string): void => {
-        this.confirmPublicPersona(candidateIds, confirmedDisplayName);
-      },
-      onSaveMarkdown: (markdown: string): boolean => {
-        return this.savePublicPersonaMarkdown(markdown);
-      },
-      onReinferMbti: (): void => {
-        this.reinferPublicPersonaMbti();
-      },
-      onSetMbtiHidden: (hidden: boolean): void => {
-        this.setPublicPersonaMbtiHidden(hidden);
-      },
-      onImport: (): Promise<boolean> => {
-        return this.importPublicPersonaMemory();
-      },
-      onDelete: (): Promise<boolean> => {
-        return this.deletePublicPersona();
-      }
-    })
-  }
 
   build() {
     if (this.accountSessionStatus === AccountSessionStatus.UNINITIALIZED ||
@@ -13290,9 +13023,6 @@ struct Index {
         },
         onOpenUserManagement: () => {
           this.openUserManagement();
-        },
-        onOpenPublicPersona: () => {
-          this.openPublicPersona();
         },
         onToggleHistory: () => {
           this.showHistory = !this.showHistory;
@@ -13489,8 +13219,8 @@ struct Index {
             this.waterfallTaskError, this.waterfallTaskResult),
           active: this.bimRootIndex === 1 && this.waterfallPageVisible &&
             !this.interestWaterfallComposerHidden && !this.showConfigPage && !this.showBimPage &&
-            !this.showUserManagementPage && !this.showLongTermMemoryPage &&
-            !this.showComposioAuthPage && !this.showPublicPersonaPage,
+            !this.showUserManagementPage && !this.showAboutYouPage &&
+            !this.showComposioAuthPage,
           onBindBackgroundTouch: (handler: (event: TouchEvent) => void): void => {
             this.waterfallTaskBackgroundTouch = handler;
           },
@@ -13539,9 +13269,9 @@ struct Index {
           .width('100%')
           .height('100%')
           .zIndex(2)
-      } else if (this.showLongTermMemoryPage) {
+      } else if (this.showAboutYouPage) {
         Stack() {
-          this.LongTermMemoryPageContent()
+          this.AboutYouPageContent()
         }
           .width('100%')
           .height('100%')
@@ -13573,13 +13303,6 @@ struct Index {
       } else if (this.showConfigPage) {
         Stack() {
           this.ConfigPageContent()
-        }
-          .width('100%')
-          .height('100%')
-          .zIndex(2)
-      } else if (this.showPublicPersonaPage) {
-        Stack() {
-          this.PublicPersonaPageContent()
         }
           .width('100%')
           .height('100%')

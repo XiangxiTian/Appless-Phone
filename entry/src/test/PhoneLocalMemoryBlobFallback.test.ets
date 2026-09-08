@@ -200,21 +200,21 @@ export default function phoneLocalMemoryBlobFallbackTest() {
       expect(store.rollBackCalls).assertEqual(1);
     });
 
-    it('uses the legacy BLOB lifecycle and skips history when conditional mutation affects zero rows',
+    it('uses the legacy BLOB lifecycle and ignores the mutation execute return value',
       0, async () => {
       const store = new BlobTransactionSpy();
-      store.firstResult = 0;
+      store.firstResult = null;
       const changed = await executePhoneLocalMemoryBlobConditionalTransaction(store,
         { sql: 'BLOB CAS', args: ['owner', 'memory'] },
         [{ sql: 'BLOB history', args: ['history'] }]);
 
-      expect(changed).assertFalse();
+      expect(changed).assertTrue();
       expect(store.beginTransactionCalls).assertEqual(1);
       expect(store.beginTransCalls).assertEqual(0);
       expect(store.threeArgumentExecuteCalls).assertEqual(0);
-      expect(store.executeSql.length).assertEqual(1);
-      expect(store.commitCalls).assertEqual(0);
-      expect(store.rollBackCalls).assertEqual(1);
+      expect(store.executeSql.length).assertEqual(2);
+      expect(store.commitCalls).assertEqual(1);
+      expect(store.rollBackCalls).assertEqual(0);
     });
 
     it('rolls back once when BLOB CAS succeeds but its history write fails', 0, async () => {

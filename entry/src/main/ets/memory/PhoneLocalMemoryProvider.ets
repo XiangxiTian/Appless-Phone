@@ -27,7 +27,7 @@ import {
   PHONE_LOCAL_MEMORY_VECTOR_DIMENSION
 } from './PhoneLocalMemoryStore';
 
-const DEFAULT_MEMORY_MAX_FACT_LENGTH: number = 240;
+export const PHONE_LOCAL_MEMORY_MAX_FACT_LENGTH: number = 240;
 export const PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE: string = 'memory_write_conflict';
 
 const MEMORY_LOG_DOMAIN: number = 0x0000;
@@ -156,7 +156,7 @@ export class PhoneLocalMemoryProvider implements ConversationMemoryPort {
     this.store = store;
     this.embedder = embedder;
     this.allowedSceneIds = options.allowedSceneIds?.slice() ?? [];
-    this.maxFactLength = options.maxFactLength ?? DEFAULT_MEMORY_MAX_FACT_LENGTH;
+    this.maxFactLength = options.maxFactLength ?? PHONE_LOCAL_MEMORY_MAX_FACT_LENGTH;
     this.clock = options.clock ?? (() => Date.now());
     this.idFactory = options.idFactory ?? (() => util.generateRandomUUID(false));
     this.logger = options.logger ?? new HilogPhoneLocalMemoryLogger();

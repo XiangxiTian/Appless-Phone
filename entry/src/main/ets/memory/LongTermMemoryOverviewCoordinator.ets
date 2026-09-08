@@ -1,12 +1,13 @@
 import {
   MemoryBatchResult,
   MemoryCommitGuard,
-  MemoryError
+  MemoryError,
+  MemoryRecord
 } from '@loop/agent-core';
 import {
   MemoryCorrectionOperation,
   MemoryCorrectionPlan,
-  MemoryCorrectionPresentationOperation,
+  MemoryCorrectionClaimPatch,
   MemoryCorrectionUpdateOperation,
   MemoryCorrectionDeleteOperation,
   MemoryCorrectionAddOperation,
@@ -21,6 +22,8 @@ import {
   memoryOverviewEvidenceFingerprint,
   memoryCorrectionPrompt,
   memoryOverviewPrompt,
+  isMemoryOverviewCategory,
+  normalizeMemoryOverviewTags,
   parseMemoryCorrectionPlanModelOutput,
   parseMemoryOverviewModelOutput
 } from './MemoryOverview';
@@ -42,9 +45,9 @@ import {
 } from './PhoneLocalMemoryRuntime';
 
 export type LongTermMemoryOverviewGenerationStatus = 'ready' | 'empty' | 'error' | 'inactive';
-export type LongTermMemoryCorrectionPlanStatus = 'ready' | 'needs_clarification' | 'error' | 'inactive';
+export type LongTermMemoryCorrectionPlanStatus = 'ready' | 'no_change' | 'error' | 'inactive';
 export type LongTermMemoryCorrectionApplyStatus =
-  'success' | 'presentation_only' | 'conflict' | 'partial' | 'error' | 'inactive';
+  'success' | 'no_change' | 'presentation_only' | 'conflict' | 'partial' | 'error' | 'inactive';
 
 export interface LongTermMemoryOverviewGenerationResult {
   status: LongTermMemoryOverviewGenerationStatus;
@@ -113,14 +116,16 @@ class OverviewModelValidator implements MemoryModelSchemaValidator<MemoryOvervie
 class CorrectionPlanModelValidator implements MemoryModelSchemaValidator<MemoryCorrectionPlan> {
   private readonly index: MemoryOverviewEvidenceIndex;
   private readonly overview: MemoryOverview;
+  private readonly userFeedback: string;
 
-  constructor(index: MemoryOverviewEvidenceIndex, overview: MemoryOverview) {
+  constructor(index: MemoryOverviewEvidenceIndex, overview: MemoryOverview, userFeedback: string) {
     this.index = index;
     this.overview = overview;
+    this.userFeedback = userFeedback;
   }
 
   validate(raw: string): MemoryCorrectionPlan | null {
-    return parseMemoryCorrectionPlanModelOutput(raw, this.index, this.overview);
+    return parseMemoryCorrectionPlanModelOutput(raw, this.index, this.overview, this.userFeedback);
   }
 }
 
@@ -155,7 +160,7 @@ class MemoryModelTaskRunnerOverviewPort implements LongTermMemoryOverviewTaskPor
       taskType: 'memory_correction_plan',
       prompt: memoryCorrectionPrompt(userFeedback, overview, index),
       systemPrompt: MEMORY_CORRECTION_SYSTEM_PROMPT,
-      validator: new CorrectionPlanModelValidator(index, overview),
+      validator: new CorrectionPlanModelValidator(index, overview, userFeedback),
       isActive
     });
     return {
@@ -183,13 +188,6 @@ function emptyEvidenceIndex(): MemoryOverviewEvidenceIndex {
   return { entries: [] };
 }
 
-function snapshotsMatch(expectedMemoryId: string, expectedUpdatedAt: number,
-  expectedFact: string, expectedPersonaTag: string, actual: PhoneLocalMemorySnapshot | null): boolean {
-  return actual !== null && actual.memoryId === expectedMemoryId &&
-    actual.updatedAt === expectedUpdatedAt && actual.fact === expectedFact &&
-    actual.personaTag === expectedPersonaTag;
-}
-
 function successfulSingleWrite(result: MemoryBatchResult): boolean {
   return result.status === 'success' && result.succeededCount === 1 && result.failedCount === 0;
 }
@@ -202,25 +200,97 @@ function memoryBatchHasWriteConflict(result: MemoryBatchResult): boolean {
   return false;
 }
 
-function copyOverviewWithPresentationOperations(overview: MemoryOverview,
-  operations: MemoryCorrectionOperation[]): MemoryOverview | null {
+interface AddedMemoryReference {
+  localRef: string;
+  memoryId: string;
+}
+
+interface CommittedMemoryRecord {
+  operationIndex: number;
+  record: MemoryRecord;
+}
+
+function claimPatchForIndex(patches: MemoryCorrectionClaimPatch[], claimIndex: number):
+  MemoryCorrectionClaimPatch | null {
+  for (let position = 0; position < patches.length; position += 1) {
+    if (patches[position].claimIndex === claimIndex) return patches[position];
+  }
+  return null;
+}
+
+function addedMemoryId(references: AddedMemoryReference[], localRef: string): string | null {
+  for (let position = 0; position < references.length; position += 1) {
+    if (references[position].localRef === localRef) return references[position].memoryId;
+  }
+  return null;
+}
+
+function copyOverviewWithCorrectionPlan(overview: MemoryOverview, plan: MemoryCorrectionPlan,
+  addedReferences: AddedMemoryReference[]): MemoryOverview | null {
   const claims: MemoryOverviewClaim[] = overview.claims.map(
     (claim: MemoryOverviewClaim): MemoryOverviewClaim => ({
+    category: claim.category,
     heading: claim.heading,
     body: claim.body,
     evidenceMemoryIds: claim.evidenceMemoryIds.slice()
     })
   );
-  for (let position = 0; position < operations.length; position += 1) {
-    const operation = operations[position];
-    if (operation.type !== 'presentation_only') return null;
-    const presentation = operation as MemoryCorrectionPresentationOperation;
-    const claimPosition = presentation.claimIndex - 1;
-    if (claimPosition < 0 || claimPosition >= claims.length) return null;
-    claims[claimPosition].heading = presentation.replacementHeading;
-    claims[claimPosition].body = presentation.replacementBody;
+  for (let operationPosition = 0; operationPosition < plan.operations.length; operationPosition += 1) {
+    const operation = plan.operations[operationPosition];
+    if (operation.type === 'delete') {
+      for (let claimPosition = 0; claimPosition < claims.length; claimPosition += 1) {
+        claims[claimPosition].evidenceMemoryIds = claims[claimPosition].evidenceMemoryIds.filter(
+          (memoryId: string): boolean => memoryId !== operation.memoryId
+        );
+      }
+      continue;
+    }
+    if (operation.type === 'add') {
+      const memoryId = addedMemoryId(addedReferences, operation.localRef);
+      const targetPosition = operation.targetClaimIndex - 1;
+      if (memoryId === null || targetPosition < 0 || targetPosition > claims.length) return null;
+      if (targetPosition < claims.length && claims[targetPosition].evidenceMemoryIds.indexOf(memoryId) < 0) {
+        claims[targetPosition].evidenceMemoryIds.push(memoryId);
+      }
+    }
   }
-  return { title: overview.title, summary: overview.summary, claims };
+  const patchedClaims: MemoryOverviewClaim[] = [];
+  for (let claimPosition = 0; claimPosition < claims.length; claimPosition += 1) {
+    const patch = claimPatchForIndex(plan.claimPatches, claimPosition + 1);
+    if (patch !== null && patch.type === 'delete') continue;
+    if (patch !== null) {
+      claims[claimPosition].category = patch.replacementCategory;
+      claims[claimPosition].heading = patch.replacementHeading;
+      claims[claimPosition].body = patch.replacementBody;
+    }
+    if (claims[claimPosition].evidenceMemoryIds.length < 1) return null;
+    patchedClaims.push(claims[claimPosition]);
+  }
+  const appendPatch = claimPatchForIndex(plan.claimPatches, claims.length + 1);
+  if (appendPatch !== null) {
+    if (appendPatch.type !== 'append') return null;
+    const appendEvidenceIds: string[] = [];
+    for (let position = 0; position < plan.operations.length; position += 1) {
+      const operation = plan.operations[position];
+      if (operation.type !== 'add' || operation.targetClaimIndex !== claims.length + 1) continue;
+      const memoryId = addedMemoryId(addedReferences, operation.localRef);
+      if (memoryId === null) return null;
+      if (appendEvidenceIds.indexOf(memoryId) < 0) appendEvidenceIds.push(memoryId);
+    }
+    if (appendEvidenceIds.length < 1) return null;
+    patchedClaims.push({
+      category: appendPatch.replacementCategory,
+      heading: appendPatch.replacementHeading,
+      body: appendPatch.replacementBody,
+      evidenceMemoryIds: appendEvidenceIds
+    });
+  }
+  if (patchedClaims.length < 1) return null;
+  return {
+    title: overview.title, summary: plan.replacementSummary,
+    mbtiType: plan.replacementMbtiType, mbtiConfidence: plan.replacementMbtiConfidence,
+    tagList: plan.replacementTagList.slice(), claims: patchedClaims
+  };
 }
 
 /**
@@ -236,6 +306,7 @@ export class LongTermMemoryOverviewCoordinator {
   private readonly cacheStore: MemoryOverviewCacheStorePort | null;
   private generation: number = 0;
   private writeSequence: number = 0;
+  private applyingCorrection: boolean = false;
   private currentOverview: MemoryOverview | null = null;
   private currentEvidenceIndex: MemoryOverviewEvidenceIndex = emptyEvidenceIndex();
 
@@ -256,6 +327,10 @@ export class LongTermMemoryOverviewCoordinator {
 
   invalidate(): void {
     this.generation += 1;
+  }
+
+  isApplyingCorrection(): boolean {
+    return this.applyingCorrection;
   }
 
   async generateOverview(): Promise<LongTermMemoryOverviewGenerationResult> {
@@ -299,116 +374,212 @@ export class LongTermMemoryOverviewCoordinator {
         modelCallCount: outcome.modelCallCount
       };
     }
-    if (outcome.value.status === 'needs_clarification') {
+    if (outcome.value.status === 'no_change') {
       return {
-        status: 'needs_clarification', plan: outcome.value,
-        message: outcome.value.clarificationQuestion, modelCallCount: outcome.modelCallCount
+        status: 'no_change', plan: outcome.value,
+        message: outcome.value.message, modelCallCount: outcome.modelCallCount
       };
     }
     return {
-      status: 'ready', plan: outcome.value, message: '修正方案已生成，请确认后再写入。',
+      status: 'ready', plan: outcome.value, message: '',
       modelCallCount: outcome.modelCallCount
     };
+  }
+
+  async correct(userFeedback: string): Promise<LongTermMemoryCorrectionApplyResult> {
+    const generation = this.generation;
+    const planned = await this.planCorrection(userFeedback);
+    if (!this.active(generation) || planned.status === 'inactive') return this.inactiveApplyResult();
+    if (planned.status === 'error' || planned.plan === null) {
+      const failed = this.applyError(planned.message);
+      failed.modelCallCount = planned.modelCallCount;
+      return failed;
+    }
+    if (planned.status === 'no_change') {
+      return {
+        status: 'no_change', overview: this.currentOverview, evidenceIndex: this.currentEvidenceIndex,
+        message: planned.message, succeededWriteCount: 0, failedWriteCount: 0,
+        modelCallCount: planned.modelCallCount
+      };
+    }
+    this.applyingCorrection = true;
+    try {
+      const applied = await this.applyPlan(planned.plan);
+      applied.modelCallCount += planned.modelCallCount;
+      return applied;
+    } finally {
+      this.applyingCorrection = false;
+    }
   }
 
   async applyPlan(plan: MemoryCorrectionPlan): Promise<LongTermMemoryCorrectionApplyResult> {
     const generation = this.generation;
     if (!this.active(generation)) return this.inactiveApplyResult();
-    if (plan.status !== 'ready' || plan.operations.length === 0) {
-      return this.applyError('没有可确认的修正操作。');
-    }
-    if (plan.writeOperationCount === 0) {
-      if (this.currentOverview === null) return this.applyError('当前概览已失效，请刷新后重试。');
-      const updated = copyOverviewWithPresentationOperations(this.currentOverview, plan.operations);
-      if (updated === null) return this.applyError('概览措辞修正方案无效，请重新生成。');
-      if (!this.active(generation)) return this.inactiveApplyResult();
-      this.currentOverview = updated;
+    if (plan.status === 'no_change') {
       return {
-        status: 'presentation_only', overview: updated,
-        evidenceIndex: this.currentEvidenceIndex,
-        message: '已修改当前概览的展示措辞，未改动长期记忆。',
-        succeededWriteCount: 0, failedWriteCount: 0, modelCallCount: 0
+        status: 'no_change', overview: this.currentOverview, evidenceIndex: this.currentEvidenceIndex,
+        message: plan.message, succeededWriteCount: 0, failedWriteCount: 0, modelCallCount: 0
       };
+    }
+    if (plan.status !== 'ready' || plan.claimPatches.length === 0 || this.currentOverview === null) {
+      return this.applyError('没有可执行的修正。');
     }
     const actualWriteOperationCount = this.writeOperationCount(plan.operations);
     if (plan.writeOperationCount !== actualWriteOperationCount ||
-      actualWriteOperationCount < 1 || actualWriteOperationCount > 5) {
-      return this.applyError('一次最多确认五项长期记忆写入。');
+      actualWriteOperationCount < 0 || actualWriteOperationCount > 5) {
+      return this.applyError('一次最多执行五项长期记忆写入。');
     }
-    const hasOnlyWrites = this.writeOperationsOnly(plan.operations);
-    if (!hasOnlyWrites) return this.applyError('展示修正不能与长期记忆写入同时执行。');
-    const conflict = await this.hasFreshnessConflict(plan.operations, generation);
+    const freshIndex = await this.readEvidenceIndex(generation);
     if (!this.active(generation)) return this.inactiveApplyResult();
-    if (conflict) {
+    if (freshIndex === null || memoryOverviewEvidenceFingerprint(freshIndex) !== plan.baseEvidenceFingerprint) {
+      this.clearCacheBestEffort();
       return {
         status: 'conflict', overview: this.currentOverview,
         evidenceIndex: this.currentEvidenceIndex,
-        message: '长期记忆已发生变化，本次方案未写入。请重新进入页面后重试。',
+        message: '长期记忆已发生变化，本次修改未执行。请重新进入页面后再修改。',
         succeededWriteCount: 0, failedWriteCount: 0, modelCallCount: 0
       };
     }
-    this.clearCacheBestEffort();
+    const symbolicReferences: AddedMemoryReference[] = [];
+    const projectedMemoryIds: Set<string> = new Set<string>();
+    for (let position = 0; position < freshIndex.entries.length; position += 1) {
+      projectedMemoryIds.add(freshIndex.entries[position].memoryId);
+    }
+    for (let position = 0; position < plan.operations.length; position += 1) {
+      const operation = plan.operations[position];
+      if (operation.type === 'delete') projectedMemoryIds.delete(operation.memoryId);
+      if (operation.type === 'add') {
+        const symbolicId = '__memory_correction_' + operation.localRef;
+        projectedMemoryIds.add(symbolicId);
+        symbolicReferences.push({ localRef: operation.localRef, memoryId: symbolicId });
+      }
+    }
+    const projectedOverview = copyOverviewWithCorrectionPlan(
+      this.currentOverview, plan, symbolicReferences
+    );
+    if ((projectedMemoryIds.size > 0 &&
+      (projectedOverview === null || !this.validOverviewForMemoryIds(projectedOverview, projectedMemoryIds))) ||
+      (projectedMemoryIds.size === 0 && projectedOverview !== null)) {
+      return this.applyError('概览修正结果无法完整对应长期记忆，请重新提交修改意见。');
+    }
+    if (actualWriteOperationCount === 0) {
+      const updated = copyOverviewWithCorrectionPlan(this.currentOverview, plan, []);
+      if (updated === null || !this.validOverviewForIndex(updated, freshIndex)) {
+        return this.applyError('概览修正结果无效，请重新提交修改意见。');
+      }
+      this.saveCacheBestEffort(updated, plan.baseEvidenceFingerprint);
+      if (!this.active(generation)) return this.inactiveApplyResult();
+      this.currentOverview = updated;
+      this.currentEvidenceIndex = freshIndex;
+      return {
+        status: 'presentation_only', overview: updated, evidenceIndex: freshIndex,
+        message: '概览已更新。', succeededWriteCount: 0, failedWriteCount: 0, modelCallCount: 0
+      };
+    }
     let succeededWriteCount = 0;
     let failedWriteCount = 0;
     let atomicConflict = false;
+    const addedReferences: AddedMemoryReference[] = [];
+    const committedRecords: CommittedMemoryRecord[] = [];
     const guard = new OverviewMemoryCommitGuard((): boolean => this.active(generation));
     for (let position = 0; position < plan.operations.length; position += 1) {
-      if (!this.active(generation)) return this.inactiveApplyResult();
+      if (!this.active(generation)) {
+        return succeededWriteCount > 0 ?
+          this.committedButInactive(succeededWriteCount, plan.writeOperationCount - succeededWriteCount) :
+          this.inactiveApplyResult();
+      }
       const result = await this.applyWriteOperation(plan.operations[position], generation, guard);
-      if (!this.active(generation)) return this.inactiveApplyResult();
       if (successfulSingleWrite(result)) {
         succeededWriteCount += 1;
+        const operation = plan.operations[position];
+        const record = result.records.length > 0 ? result.records[0].record : undefined;
+        if (record === undefined) {
+          failedWriteCount = plan.writeOperationCount - succeededWriteCount;
+          break;
+        }
+        committedRecords.push({ operationIndex: position, record });
+        if (operation.type === 'add') {
+          addedReferences.push({ localRef: operation.localRef, memoryId: record.memoryId });
+        }
       } else {
+        if (!this.active(generation)) {
+          return succeededWriteCount > 0 ?
+            this.committedButInactive(succeededWriteCount, plan.writeOperationCount - succeededWriteCount) :
+            this.inactiveApplyResult();
+        }
         atomicConflict = memoryBatchHasWriteConflict(result);
         failedWriteCount = plan.writeOperationCount - succeededWriteCount;
         break;
       }
+      if (!this.active(generation)) {
+        return succeededWriteCount > 0 ?
+          this.committedButInactive(succeededWriteCount, plan.writeOperationCount - succeededWriteCount) :
+          this.inactiveApplyResult();
+      }
     }
     if (atomicConflict && succeededWriteCount === 0) {
+      this.clearCacheBestEffort();
       return {
         status: 'conflict', overview: this.currentOverview,
         evidenceIndex: this.currentEvidenceIndex,
-        message: '长期记忆已发生变化，本次方案未写入。请重新进入页面后重试。',
+        message: '长期记忆已发生变化，本次修改未执行。请重新进入页面后再修改。',
         succeededWriteCount: 0, failedWriteCount, modelCallCount: 0
       };
     }
     if (failedWriteCount === 0) {
-      const refreshed = await this.generateOverviewForGeneration(generation);
-      if (refreshed.status === 'inactive') return this.inactiveApplyResult();
-      if (refreshed.status === 'error') {
+      const resultingIndex = await this.readEvidenceIndex(generation);
+      if (!this.active(generation)) {
+        return this.committedButInactive(succeededWriteCount, 0);
+      }
+      const expectedIndex = this.expectedEvidenceIndexAfterWrites(plan, committedRecords);
+      if (resultingIndex !== null && expectedIndex !== null && resultingIndex.entries.length === 0 &&
+        expectedIndex.entries.length === 0) {
+        this.clearCacheBestEffort();
+        this.currentOverview = null;
+        this.currentEvidenceIndex = resultingIndex;
         return {
-          status: 'partial', overview: refreshed.overview,
-          evidenceIndex: refreshed.evidenceIndex,
-          message: '长期记忆已修改，但概览暂时无法更新；下次打开时将重新生成概览。',
-          succeededWriteCount, failedWriteCount: 0, modelCallCount: refreshed.modelCallCount
+          status: 'success', overview: null, evidenceIndex: resultingIndex,
+          message: '已更新 ' + succeededWriteCount.toString() + ' 条长期记忆。',
+          succeededWriteCount, failedWriteCount: 0, modelCallCount: 0
         };
       }
+      const updated = resultingIndex === null ? null :
+        copyOverviewWithCorrectionPlan(this.currentOverview, plan, addedReferences);
+      if (resultingIndex === null || expectedIndex === null ||
+        memoryOverviewEvidenceFingerprint(resultingIndex) !== memoryOverviewEvidenceFingerprint(expectedIndex) ||
+        updated === null || !this.validOverviewForIndex(updated, resultingIndex)) {
+        this.clearCacheBestEffort();
+        this.currentOverview = null;
+        this.currentEvidenceIndex = emptyEvidenceIndex();
+        return {
+          status: 'partial', overview: null, evidenceIndex: emptyEvidenceIndex(),
+          message: '长期记忆已修改，概览将在下次进入时重新整理。',
+          succeededWriteCount, failedWriteCount: 0, modelCallCount: 0
+        };
+      }
+      const resultingFingerprint = memoryOverviewEvidenceFingerprint(resultingIndex);
+      this.saveCacheBestEffort(updated, resultingFingerprint);
+      this.currentOverview = updated;
+      this.currentEvidenceIndex = resultingIndex;
       return {
-        status: 'success', overview: refreshed.overview,
-        evidenceIndex: refreshed.evidenceIndex,
-        message: '长期记忆已按确认方案修改。',
-        succeededWriteCount, failedWriteCount: 0, modelCallCount: refreshed.modelCallCount
+        status: 'success', overview: updated, evidenceIndex: resultingIndex,
+        message: '已更新 ' + succeededWriteCount.toString() + ' 条长期记忆。',
+        succeededWriteCount, failedWriteCount: 0, modelCallCount: 0
       };
     }
-    const refreshed = await this.generateOverviewForGeneration(generation);
-    if (refreshed.status === 'inactive') return this.inactiveApplyResult();
-    const refreshFailed = refreshed.status === 'error';
+    this.clearCacheBestEffort();
+    this.currentOverview = null;
+    this.currentEvidenceIndex = emptyEvidenceIndex();
     return {
       status: succeededWriteCount > 0 ? 'partial' : 'error',
-      overview: refreshed.overview,
-      evidenceIndex: refreshed.evidenceIndex,
+      overview: null,
+      evidenceIndex: emptyEvidenceIndex(),
       message: succeededWriteCount > 0 ?
-        (atomicConflict ? (refreshFailed ?
-          '部分长期记忆已修改，后续因记忆变化未写入，且概览暂时无法更新；下次打开时将重新生成概览。' :
-          '部分长期记忆已修改，后续因记忆变化未写入；概览已按当前数据重新生成。') :
-          (refreshFailed ?
-            '部分长期记忆已修改，其余操作失败，且概览暂时无法更新；下次打开时将重新生成概览。' :
-            '部分长期记忆已修改，其余操作失败；概览已按当前数据重新生成。')) :
-        (refreshFailed ?
-          '长期记忆修改失败，且概览暂时无法更新；下次打开时将重新生成概览。' :
-          '长期记忆修改失败，概览已按当前数据重新生成。'),
+        '部分记忆已修改，概览将在下次进入时重新整理。' :
+        (atomicConflict ? '长期记忆已发生变化，本次修改未执行。请重新进入页面后再修改。' :
+          '长期记忆修改失败，请重试。'),
       succeededWriteCount, failedWriteCount,
-      modelCallCount: refreshed.modelCallCount
+      modelCallCount: 0
     };
   }
 
@@ -544,56 +715,97 @@ export class LongTermMemoryOverviewCoordinator {
 
   private validOverviewForIndex(overview: MemoryOverview,
     index: MemoryOverviewEvidenceIndex): boolean {
-    if (overview === null || !Array.isArray(overview.claims) || overview.claims.length < 1) return false;
     const currentIds: Set<string> = new Set<string>();
     for (let position = 0; position < index.entries.length; position += 1) {
       currentIds.add(index.entries[position].memoryId);
     }
+    return this.validOverviewForMemoryIds(overview, currentIds);
+  }
+
+  private validOverviewForMemoryIds(overview: MemoryOverview, currentIds: Set<string>): boolean {
+    if (overview === null || overview.title.trim().length === 0 || overview.summary.trim().length === 0 ||
+      !Array.isArray(overview.claims) || overview.claims.length < 1 || overview.claims.length > 24 ||
+      normalizeMemoryOverviewTags(overview.tagList) === null) return false;
     const coveredIds: Set<string> = new Set<string>();
     for (let position = 0; position < overview.claims.length; position += 1) {
+      if (!isMemoryOverviewCategory(overview.claims[position].category) ||
+        overview.claims[position].heading.trim().length === 0 ||
+        overview.claims[position].body.trim().length === 0) return false;
       const ids = overview.claims[position].evidenceMemoryIds;
       if (!Array.isArray(ids) || ids.length < 1) return false;
+      const claimIds: Set<string> = new Set<string>();
       for (let evidencePosition = 0; evidencePosition < ids.length; evidencePosition += 1) {
         const memoryId = ids[evidencePosition];
-        if (!currentIds.has(memoryId)) return false;
+        if (!currentIds.has(memoryId) || claimIds.has(memoryId)) return false;
+        claimIds.add(memoryId);
         coveredIds.add(memoryId);
       }
     }
     return coveredIds.size === currentIds.size;
   }
 
-  private writeOperationsOnly(operations: MemoryCorrectionOperation[]): boolean {
-    for (let position = 0; position < operations.length; position += 1) {
-      if (operations[position].type === 'presentation_only') return false;
-    }
-    return true;
-  }
-
   private writeOperationCount(operations: MemoryCorrectionOperation[]): number {
-    let count = 0;
-    for (let position = 0; position < operations.length; position += 1) {
-      if (operations[position].type !== 'presentation_only') count += 1;
-    }
-    return count;
+    return operations.length;
   }
 
-  private async hasFreshnessConflict(operations: MemoryCorrectionOperation[],
-    generation: number): Promise<boolean> {
-    for (let position = 0; position < operations.length; position += 1) {
-      const operation = operations[position];
-      if (operation.type !== 'update' && operation.type !== 'delete') continue;
-      const target = operation as MemoryCorrectionUpdateOperation | MemoryCorrectionDeleteOperation;
-      let snapshot: PhoneLocalMemorySnapshot | null;
-      try {
-        snapshot = await this.source.getMemorySnapshot(target.memoryId);
-      } catch (_error) {
-        return true;
-      }
-      if (!this.active(generation)) return false;
-      if (!snapshotsMatch(target.memoryId, target.expectedUpdatedAt, target.beforeFact,
-        target.personaTag, snapshot)) return true;
+  private async readEvidenceIndex(generation: number): Promise<MemoryOverviewEvidenceIndex | null> {
+    try {
+      const snapshots = await this.source.listAllMemorySnapshots();
+      if (!this.active(generation)) return null;
+      return buildMemoryOverviewEvidenceIndex(snapshots);
+    } catch (_error) {
+      return null;
     }
-    return false;
+  }
+
+  private expectedEvidenceIndexAfterWrites(plan: MemoryCorrectionPlan,
+    committedRecords: CommittedMemoryRecord[]): MemoryOverviewEvidenceIndex | null {
+    const snapshots: PhoneLocalMemorySnapshot[] = [];
+    for (let position = 0; position < this.currentEvidenceIndex.entries.length; position += 1) {
+      const entry = this.currentEvidenceIndex.entries[position];
+      snapshots.push({
+        memoryId: entry.memoryId, fact: entry.fact, personaTag: entry.personaTag,
+        authority: entry.authority, createdAt: entry.createdAt, updatedAt: entry.updatedAt
+      });
+    }
+    for (let position = 0; position < plan.operations.length; position += 1) {
+      const operation = plan.operations[position];
+      let committed: MemoryRecord | null = null;
+      for (let recordPosition = 0; recordPosition < committedRecords.length; recordPosition += 1) {
+        if (committedRecords[recordPosition].operationIndex === position) {
+          committed = committedRecords[recordPosition].record;
+          break;
+        }
+      }
+      if (committed === null) return null;
+      if (operation.type === 'delete') {
+        for (let snapshotPosition = snapshots.length - 1; snapshotPosition >= 0; snapshotPosition -= 1) {
+          if (snapshots[snapshotPosition].memoryId === operation.memoryId) snapshots.splice(snapshotPosition, 1);
+        }
+        continue;
+      }
+      const next: PhoneLocalMemorySnapshot = {
+        memoryId: committed.memoryId,
+        fact: committed.fact,
+        personaTag: committed.personaTag,
+        authority: committed.authority,
+        createdAt: committed.createdAt,
+        updatedAt: committed.updatedAt
+      };
+      let replaced = false;
+      for (let snapshotPosition = 0; snapshotPosition < snapshots.length; snapshotPosition += 1) {
+        if (snapshots[snapshotPosition].memoryId !== next.memoryId) continue;
+        snapshots[snapshotPosition] = next;
+        replaced = true;
+        break;
+      }
+      if (!replaced) snapshots.push(next);
+    }
+    try {
+      return buildMemoryOverviewEvidenceIndex(snapshots);
+    } catch (_error) {
+      return null;
+    }
   }
 
   private async applyWriteOperation(operation: MemoryCorrectionOperation, generation: number,
@@ -696,6 +908,24 @@ export class LongTermMemoryOverviewCoordinator {
       status: 'error', overview: this.currentOverview,
       evidenceIndex: this.currentEvidenceIndex, message,
       succeededWriteCount: 0, failedWriteCount: 0, modelCallCount: 0
+    };
+  }
+
+  private committedButInactive(succeededWriteCount: number,
+    failedWriteCount: number): LongTermMemoryCorrectionApplyResult {
+    // A newly opened page may already have cached the post-commit evidence while
+    // this retired task awaited its final read. Only invalidate our old basis.
+    const cached = this.loadCache();
+    if (cached !== null && cached.evidenceFingerprint ===
+      memoryOverviewEvidenceFingerprint(this.currentEvidenceIndex)) {
+      this.clearCacheBestEffort();
+    }
+    this.currentOverview = null;
+    this.currentEvidenceIndex = emptyEvidenceIndex();
+    return {
+      status: 'partial', overview: null, evidenceIndex: emptyEvidenceIndex(),
+      message: '部分记忆已修改，概览将在下次进入时重新整理。',
+      succeededWriteCount, failedWriteCount, modelCallCount: 0
     };
   }
 }

@@ -1,12 +1,14 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   canSaveUserDisplayName,
-  LONG_TERM_MEMORY_ENTRY_SUBTITLE,
-  LONG_TERM_MEMORY_ENTRY_TITLE,
   normalizedUserDisplayName,
   userDisplayNameSaveAction
 } from '../main/ets/pages/A2uiHome/components/UserManagementPage';
 import {
+  MANAGEMENT_CARD_BACKGROUND,
+  MANAGEMENT_CARD_EDGE,
+  MANAGEMENT_CARD_RADIUS,
+  MANAGEMENT_CARD_SHADOW,
   MANAGEMENT_CARD_SHADOW_OFFSET_Y,
   MANAGEMENT_CARD_SHADOW_RADIUS,
   MANAGEMENT_DISCLOSURE_ARROW_ROTATION
@@ -30,14 +32,13 @@ export default function userManagementPageTest(): void {
       expect(userDisplayNameSaveAction('小罗', '华为用户')).assertEqual('save');
     });
 
-    it('exports the long-term memory overview entry copy', 0, () => {
-      expect(LONG_TERM_MEMORY_ENTRY_TITLE).assertEqual('长期记忆');
-      expect(LONG_TERM_MEMORY_ENTRY_SUBTITLE).assertEqual('查看概览并修正 Appless 记住的内容');
-    });
-
     it('shares the raised-card depth and right-arrow direction across management pages', 0, () => {
-      expect(MANAGEMENT_CARD_SHADOW_RADIUS).assertEqual(16);
-      expect(MANAGEMENT_CARD_SHADOW_OFFSET_Y).assertEqual(6);
+      expect(MANAGEMENT_CARD_BACKGROUND).assertEqual('#FAFFFFFF');
+      expect(MANAGEMENT_CARD_EDGE).assertEqual('#7AFFFFFF');
+      expect(MANAGEMENT_CARD_SHADOW).assertEqual('#21000000');
+      expect(MANAGEMENT_CARD_RADIUS).assertEqual(30);
+      expect(MANAGEMENT_CARD_SHADOW_RADIUS).assertEqual(22);
+      expect(MANAGEMENT_CARD_SHADOW_OFFSET_Y).assertEqual(12);
       expect(MANAGEMENT_DISCLOSURE_ARROW_ROTATION).assertEqual(180);
     });
   });

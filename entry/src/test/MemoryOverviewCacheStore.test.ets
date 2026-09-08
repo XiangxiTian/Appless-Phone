@@ -34,6 +34,36 @@ class MemoryPreferences {
 
 export default function memoryOverviewCacheStoreTest(): void {
   describe('MemoryOverviewCacheStore', () => {
+    it('invalidates pre-MBTI v3 caches and preserves inference separately from tags', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new MemoryOverviewCacheStore(native as Object as preferences.Preferences);
+      const entry: MemoryOverviewCacheEntry = {
+        schemaVersion: MEMORY_OVERVIEW_CACHE_SCHEMA_VERSION,
+        promptVersion: MEMORY_OVERVIEW_PROMPT_VERSION,
+        outputSchemaVersion: MEMORY_OVERVIEW_OUTPUT_SCHEMA_VERSION,
+        generatedAt: 123,
+        evidenceFingerprint: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        overview: {
+          title: '关于你', summary: '喜欢咖啡', tagList: ['咖啡迷'],
+          mbtiType: 'INTP', mbtiConfidence: 68,
+          claims: [{ category: 'interests', heading: '偏好', body: '喜欢咖啡', evidenceMemoryIds: ['memory-1'] }]
+        }
+      };
+      expect(store.save(entry)?.overview.claims[0].category).assertEqual('interests');
+      entry.overview.tagList[0] = '已改变';
+      entry.overview.mbtiType = 'ENFP';
+      entry.overview.mbtiConfidence = 90;
+      expect(store.load()?.overview.tagList[0]).assertEqual('咖啡迷');
+      expect(store.load()?.overview.mbtiType).assertEqual('INTP');
+      expect(store.load()?.overview.mbtiConfidence).assertEqual(68);
+      entry.overview.mbtiConfidence = 101;
+      expect(store.save(entry)?.overview.mbtiType).assertEqual('');
+      expect(store.load()?.overview.mbtiConfidence).assertEqual(0);
+      entry.schemaVersion = 3;
+      native.putSync(MEMORY_OVERVIEW_CACHE_KEY, JSON.stringify(entry));
+      expect(store.load()).assertNull();
+    });
+
     it('persists only the overview and evidence IDs and fails safe on malformed data', 0, () => {
       const native = new MemoryPreferences();
       const store = new MemoryOverviewCacheStore(native as Object as preferences.Preferences);
@@ -45,7 +75,8 @@ export default function memoryOverviewCacheStoreTest(): void {
         evidenceFingerprint: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
         overview: {
           title: '长期记忆', summary: '概览',
-          claims: [{ heading: '偏好', body: '喜欢咖啡', evidenceMemoryIds: ['memory-1'] }]
+          mbtiType: '', mbtiConfidence: 0,
+          tagList: [], claims: [{ category: 'interests', heading: '偏好', body: '喜欢咖啡', evidenceMemoryIds: ['memory-1'] }]
         }
       });
       expect(saved?.overview.claims[0].evidenceMemoryIds[0]).assertEqual('memory-1');
@@ -70,7 +101,8 @@ export default function memoryOverviewCacheStoreTest(): void {
         evidenceFingerprint: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
         overview: {
           title: '长期记忆', summary: '概览',
-          claims: [{ heading: '偏好', body: '喜欢咖啡', evidenceMemoryIds: ['memory-1'] }]
+          mbtiType: '', mbtiConfidence: 0,
+          tagList: [], claims: [{ category: 'interests', heading: '偏好', body: '喜欢咖啡', evidenceMemoryIds: ['memory-1'] }]
         }
       };
       native.putSync(MEMORY_OVERVIEW_CACHE_KEY, JSON.stringify(stale));
@@ -97,6 +129,26 @@ export default function memoryOverviewCacheStoreTest(): void {
       expect(first === second).assertFalse();
       expect(first.indexOf('__owner_owner-a')).assertLarger(-1);
       expect(second.indexOf('__owner_owner-b')).assertLarger(-1);
+    });
+
+    it('persists a claim with more than 24 evidence IDs', 0, () => {
+      const native = new MemoryPreferences();
+      const store = new MemoryOverviewCacheStore(native as Object as preferences.Preferences);
+      const ids: string[] = [];
+      for (let position = 0; position < 25; position += 1) ids.push('memory-' + position.toString());
+      const saved = store.save({
+        schemaVersion: MEMORY_OVERVIEW_CACHE_SCHEMA_VERSION,
+        promptVersion: MEMORY_OVERVIEW_PROMPT_VERSION,
+        outputSchemaVersion: MEMORY_OVERVIEW_OUTPUT_SCHEMA_VERSION,
+        generatedAt: 123,
+        evidenceFingerprint: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        overview: {
+          title: '长期记忆', summary: '概览',
+          mbtiType: '', mbtiConfidence: 0,
+          tagList: [], claims: [{ category: 'interests', heading: '偏好', body: '很多依据', evidenceMemoryIds: ids }]
+        }
+      });
+      expect(saved?.overview.claims[0].evidenceMemoryIds.length).assertEqual(25);
     });
   });
 }

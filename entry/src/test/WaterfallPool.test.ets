@@ -834,16 +834,23 @@ export default function waterfallPoolTest() {
         topicWeights: [], sourceWeights: [], formatWeights: [], explicitRules: []
       };
       const callbacks = new PoolTestTakeCallbacks(pool, profile, false);
+      const startedAtMs = Date.now();
 
       const result = await coordinateWaterfallPoolTake(callbacks, {
         maxAttempts: 3,
         maxWaitMs: 5,
-        retryDelaysMs: [0, 0, 0]
+        retryDelaysMs: [0, 0, 0],
+        startedAtMs
       });
 
       expect(result.entries.length).assertEqual(0);
-      expect(result.attempts).assertEqual(1);
+      // Timer rounding may wake before Date.now() reaches the deadline, allowing another bounded wait.
+      expect(result.attempts >= 1 && result.attempts <= 3).assertTrue();
+      expect(result.waitCycles).assertEqual(result.attempts);
+      expect(callbacks.supplyCalls).assertEqual(result.attempts);
+      expect(result.cancelled).assertFalse();
       expect(result.deadlineReached).assertTrue();
+      expect(Date.now() >= startedAtMs + 5).assertTrue();
     });
 
     it('refills pull discovery until the source watermark is reached', 0, async () => {

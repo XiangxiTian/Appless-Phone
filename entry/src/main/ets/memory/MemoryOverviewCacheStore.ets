@@ -5,12 +5,15 @@ import {
   MEMORY_OVERVIEW_OUTPUT_SCHEMA_VERSION,
   MEMORY_OVERVIEW_PROMPT_VERSION,
   MemoryOverview,
-  MemoryOverviewClaim
+  MemoryOverviewClaim,
+  isMemoryOverviewCategory,
+  normalizeMemoryOverviewMbti,
+  normalizeMemoryOverviewTags
 } from './MemoryOverview';
 
 export const MEMORY_OVERVIEW_CACHE_STORE_NAME: string = 'aiphone_memory_overview_cache';
 export const MEMORY_OVERVIEW_CACHE_KEY: string = 'overview.v1';
-export const MEMORY_OVERVIEW_CACHE_SCHEMA_VERSION: number = 2;
+export const MEMORY_OVERVIEW_CACHE_SCHEMA_VERSION: number = 4;
 
 export function memoryOverviewCacheStoreNameForOwner(ownerId: string): string {
   const normalizedOwnerId = ownerId.trim();
@@ -20,7 +23,6 @@ export function memoryOverviewCacheStoreNameForOwner(ownerId: string): string {
 
 const MAX_CACHE_TEXT_CHARS: number = 4000;
 const MAX_CACHE_CLAIMS: number = 24;
-const MAX_CACHE_EVIDENCE_IDS: number = 24;
 
 export interface MemoryOverviewCacheEntry {
   schemaVersion: number;
@@ -47,6 +49,7 @@ function validEvidenceFingerprint(value: string): boolean {
 
 function copyClaim(claim: MemoryOverviewClaim): MemoryOverviewClaim {
   return {
+    category: claim.category,
     heading: claim.heading,
     body: claim.body,
     evidenceMemoryIds: claim.evidenceMemoryIds.slice()
@@ -57,6 +60,9 @@ function copyOverview(overview: MemoryOverview): MemoryOverview {
   return {
     title: overview.title,
     summary: overview.summary,
+    tagList: overview.tagList.slice(),
+    mbtiType: overview.mbtiType,
+    mbtiConfidence: overview.mbtiConfidence,
     claims: overview.claims.map((claim: MemoryOverviewClaim): MemoryOverviewClaim => copyClaim(claim))
   };
 }
@@ -66,11 +72,14 @@ function safeOverview(value: MemoryOverview): MemoryOverview | null {
     !validText(value.summary, MAX_CACHE_TEXT_CHARS) || !Array.isArray(value.claims) ||
     value.claims.length < 1 || value.claims.length > MAX_CACHE_CLAIMS) return null;
   const claims: MemoryOverviewClaim[] = [];
+  const tagList = normalizeMemoryOverviewTags(value.tagList);
+  if (tagList === null) return null;
   for (let position = 0; position < value.claims.length; position += 1) {
     const claim = value.claims[position];
-    if (claim === null || typeof claim !== 'object' || !validText(claim.heading, MAX_CACHE_TEXT_CHARS) ||
+    if (claim === null || typeof claim !== 'object' || !isMemoryOverviewCategory(claim.category) ||
+      !validText(claim.heading, MAX_CACHE_TEXT_CHARS) ||
       !validText(claim.body, MAX_CACHE_TEXT_CHARS) || !Array.isArray(claim.evidenceMemoryIds) ||
-      claim.evidenceMemoryIds.length < 1 || claim.evidenceMemoryIds.length > MAX_CACHE_EVIDENCE_IDS) return null;
+      claim.evidenceMemoryIds.length < 1) return null;
     const ids: string[] = [];
     const seen: Set<string> = new Set<string>();
     for (let evidencePosition = 0; evidencePosition < claim.evidenceMemoryIds.length;
@@ -80,9 +89,11 @@ function safeOverview(value: MemoryOverview): MemoryOverview | null {
       seen.add(memoryId);
       ids.push(memoryId);
     }
-    claims.push({ heading: claim.heading, body: claim.body, evidenceMemoryIds: ids });
+    claims.push({ category: claim.category, heading: claim.heading, body: claim.body, evidenceMemoryIds: ids });
   }
-  return { title: value.title, summary: value.summary, claims };
+  const mbti = normalizeMemoryOverviewMbti(value.mbtiType, value.mbtiConfidence);
+  return { title: value.title, summary: value.summary, tagList,
+    mbtiType: mbti.mbtiType, mbtiConfidence: mbti.mbtiConfidence, claims };
 }
 
 export function sanitizeMemoryOverviewCacheEntry(

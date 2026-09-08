@@ -22,6 +22,7 @@ import {
   classifyPublicPersonaProbe,
   normalizePublicPersonaUsername,
   parsePublicPersonaInference,
+  parsePublicPersonaTagList,
   parsePublicPersonaMarkdown,
   publicPersonaEditableMarkdown,
   parsePublicProfileUrl,
@@ -36,11 +37,13 @@ import {
   publicPersonaPreviewMarkdown,
   publicPersonaUsernameFromProfileUrl,
   publicPersonaUsernameAliases,
-  projectPublicPersonaMemoryFacts,
   isPublicPersonaImported,
   markPublicPersonaImported,
   publicPersonaSnapshotAfterMarkdownEdit,
   publicPersonaSnapshotWithMemoryFacts,
+  publicPersonaSnapshotWithTagList,
+  publicPersonaTagList,
+  sanitizePublicPersonaTagList,
   parsePublicPersonaMemoryFacts,
   renderPublicPersonaMarkdown,
   replacePublicPersonaMbti,
@@ -59,6 +62,12 @@ import {
   PublicPersonaToolCaller
 } from '../main/ets/publicpersona/PublicPersonaClient';
 import {
+  parsePublicPersonaViewModel,
+  publicPersonaTagGenerationIsCurrent,
+  publicPersonaResetFailureMessage,
+  serializePublicPersonaViewModel
+} from '../main/ets/publicpersona/PublicPersonaOperationState';
+import {
   PublicPersonaRequestHeaders,
   PublicPersonaHttpCaller,
   PublicPersonaHttpResult,
@@ -71,11 +80,6 @@ import {
   MemoryModelTaskRunner,
   MemoryModelTaskRunnerLogger
 } from '../main/ets/memory/MemoryModelTaskRunner';
-import {
-  publicPersonaDraftAfterDefaultChange,
-  publicPersonaImportButtonViewState,
-  publicPersonaMarkdownSurfaceKind
-} from '../main/ets/pages/A2uiHome/components/PublicPersonaPage';
 
 class MemoryPreferences {
   private values: Map<string, preferences.ValueType> = new Map();
@@ -209,7 +213,8 @@ function modelSettings(): LocalModelSettings {
 
 function modelInferenceResult(
   mbtiType: string = 'ENTP',
-  memoryCandidates: PublicPersonaMemoryCandidate[] = []
+  memoryCandidates: PublicPersonaMemoryCandidate[] = [],
+  tagList: string[] = ['AI', '开源', 'ENTP']
 ): DirectModelCallResult {
   return {
     ok: true,
@@ -218,6 +223,7 @@ function modelInferenceResult(
       identityAndExperience: ['软件先驱'], expertise: ['算法'],
       interestsAndPreferences: ['数学'], communicationStyle: ['结构化'],
       recentFocus: ['公开技术写作'], personalityInference: ['偏好探索新想法'],
+      tagList: tagList,
       mbtiType: mbtiType, mbtiConfidence: 68, memoryCandidates: memoryCandidates
     }),
     error: '', requestDebug: '', assistantDebug: ''
@@ -304,27 +310,37 @@ interface PublicPersonaMemoryCandidatesFixture {
 
 export default function publicPersonaTest() {
   describe('publicPersonaModel', () => {
-    it('prefills untouched drafts without overwriting user input on later account-name updates', 0, () => {
-      expect(publicPersonaDraftAfterDefaultChange('', false, '  小罗  ')).assertEqual('小罗');
-      expect(publicPersonaDraftAfterDefaultChange('用户手动输入', true, '新账号名'))
-        .assertEqual('用户手动输入');
-      expect(publicPersonaDraftAfterDefaultChange('', true, '新账号名')).assertEqual('');
+
+
+
+
+    it('roundtrips the primitive persona view model and changes it when tags change', 0, () => {
+      const legacyJson = serializePublicPersonaViewModel(validSnapshot());
+      const tagged = publicPersonaSnapshotWithTagList(validSnapshot(), ['AI', '开源']);
+      const taggedJson = serializePublicPersonaViewModel(tagged);
+
+      expect(legacyJson.length > 0).assertTrue();
+      expect(parsePublicPersonaViewModel(legacyJson) === null).assertFalse();
+      expect(taggedJson === legacyJson).assertFalse();
+      expect(publicPersonaTagList(parsePublicPersonaViewModel(taggedJson) as PublicPersonaSnapshot)[1])
+        .assertEqual('开源');
+      expect(serializePublicPersonaViewModel(null)).assertEqual('');
+      expect(serializePublicPersonaViewModel(new Object() as PublicPersonaSnapshot)).assertEqual('');
+      expect(parsePublicPersonaViewModel('')).assertEqual(null);
+      expect(parsePublicPersonaViewModel('{')).assertEqual(null);
     });
 
-    it('uses a parent-scroll-friendly text surface until persona markdown enters edit mode', 0, () => {
-      expect(publicPersonaMarkdownSurfaceKind(false)).assertEqual('readonly_text');
-      expect(publicPersonaMarkdownSurfaceKind(true)).assertEqual('editable_area');
+
+
+    it('keeps tag regeneration completion scoped to its own generation', 0, () => {
+      expect(publicPersonaTagGenerationIsCurrent(4, 4)).assertTrue();
+      expect(publicPersonaTagGenerationIsCurrent(3, 4)).assertFalse();
     });
 
-    it('disables explicit persona import while editing, importing, or already imported', 0, () => {
-      expect(publicPersonaImportButtonViewState(false, false, false).label)
-        .assertEqual('将画像导入长期记忆');
-      expect(publicPersonaImportButtonViewState(false, false, false).enabled).assertTrue();
-      expect(publicPersonaImportButtonViewState(false, false, true).enabled).assertFalse();
-      expect(publicPersonaImportButtonViewState(false, true, false).label).assertEqual('导入中');
-      expect(publicPersonaImportButtonViewState(false, true, false).enabled).assertFalse();
-      expect(publicPersonaImportButtonViewState(true, false, false).label).assertEqual('已导入长期记忆');
-      expect(publicPersonaImportButtonViewState(true, false, false).enabled).assertFalse();
+    it('reports when reset compensation cannot restore the persona snapshot', 0, () => {
+      expect(publicPersonaResetFailureMessage('画像记忆删除失败', true)).assertEqual('画像记忆删除失败');
+      expect(publicPersonaResetFailureMessage('画像记忆删除失败', false))
+        .assertEqual('画像记忆删除失败 当前画像恢复失败，请重新进入页面确认。');
     });
 
     it('accepts a username but rejects the old profile URL input contract', 0, () => {
@@ -1127,7 +1143,7 @@ export default function publicPersonaTest() {
       expect(publicPersonaOwnershipBand(confidence)).assertEqual('possible');
     });
 
-    it('renders fixed markdown sections and a revocable MBTI line', 0, () => {
+    it('renders fixed markdown sections while keeping tags outside persona markdown', 0, () => {
       const inference = parsePublicPersonaInference(JSON.stringify({
         titleName: 'Ada Lovelace',
         oneLineSummary: '喜欢把复杂问题讲清楚。',
@@ -1137,6 +1153,7 @@ export default function publicPersonaTest() {
         communicationStyle: ['结构化'],
         recentFocus: ['公开技术写作'],
         personalityInference: ['偏好探索新想法'],
+        tagList: ['AI', '开源', 'ENTP'],
         mbtiType: 'ENTP',
         mbtiConfidence: 68
       }));
@@ -1153,7 +1170,7 @@ export default function publicPersonaTest() {
       expect(inference === null).assertFalse();
       const markdown = renderPublicPersonaMarkdown(inference as never, sources);
       expect(hasRequiredPublicPersonaSections(markdown)).assertTrue();
-      expect(markdown).assertContain('ENTP · 68%');
+      expect(markdown.indexOf('ENTP · 68%')).assertEqual(-1);
       expect(markdown.indexOf('基于公开资料的推测')).assertEqual(-1);
       expect(markdown).assertContain('## 已确认账号');
       expect(markdown).assertContain('ada-public');
@@ -1162,15 +1179,12 @@ export default function publicPersonaTest() {
         titleName: 'Ada Lovelace', oneLineSummary: '公开资料摘要',
         identityAndExperience: [], expertise: [], interestsAndPreferences: [],
         communicationStyle: [], recentFocus: [], personalityInference: [],
+        tagList: [],
         mbtiType: 'ENTP', mbtiConfidence: 68
       }) + '\n```';
       expect(parsePublicPersonaInference(fenced) === null).assertFalse();
 
-      const replaced = replacePublicPersonaMbti(markdown, 'INFJ', 72);
-      expect(replaced).assertContain('INFJ · 72%');
-      expect(replaced).assertContain('## 已确认账号');
-
-      const unavailable = markdown.replace('ENTP · 68%', 'MBTI 暂无');
+      const unavailable = markdown.replace('## 已确认账号', 'MBTI 暂无\n\n## 已确认账号');
       const inferred = replacePublicPersonaMbti(unavailable, 'INTJ', 64);
       expect(inferred).assertContain('INTJ · 64%');
       expect(inferred.indexOf('MBTI 暂无')).assertEqual(-1);
@@ -1201,6 +1215,7 @@ export default function publicPersonaTest() {
         titleName: 'Ada Lovelace', oneLineSummary: '公开资料摘要',
         identityAndExperience: [], expertise: [], interestsAndPreferences: [],
         communicationStyle: [], recentFocus: [], personalityInference: [],
+        tagList: [],
         mbtiType: '', mbtiConfidence: 0
       };
       const parsed: PublicPersonaInference | null = parsePublicPersonaMarkdown(
@@ -1265,12 +1280,14 @@ export default function publicPersonaTest() {
         titleName: 'Ada Lovelace', oneLineSummary: '公开资料摘要',
         identityAndExperience: [], expertise: [], interestsAndPreferences: [],
         communicationStyle: [], recentFocus: [], personalityInference: [],
+        tagList: [],
         mbtiType: 'ENTP', mbtiConfidence: 0
       }));
       const missingExpertise = parsePublicPersonaInference(JSON.stringify({
         titleName: 'Ada Lovelace', oneLineSummary: '公开资料摘要',
         identityAndExperience: [], interestsAndPreferences: [],
         communicationStyle: [], recentFocus: [], personalityInference: [],
+        tagList: [],
         mbtiType: 'ENTP', mbtiConfidence: 0
       }));
 
@@ -1278,7 +1295,7 @@ export default function publicPersonaTest() {
       expect(missingExpertise).assertEqual(null);
     });
 
-    it('projects every high-confidence self-contained public fact without deduplication or a product count cap', 0, () => {
+    it('ignores memory candidates embedded in the main persona response', 0, () => {
       const memoryCandidates: PublicPersonaMemoryCandidate[] = [];
       for (let index = 0; index < 7; index++) {
         memoryCandidates.push({
@@ -1297,18 +1314,11 @@ export default function publicPersonaTest() {
         titleName: 'Ada', oneLineSummary: '公开资料摘要',
         identityAndExperience: [], expertise: [], interestsAndPreferences: [],
         communicationStyle: [], recentFocus: [], personalityInference: [],
+        tagList: ['AI'],
         mbtiType: 'ENTP', mbtiConfidence: 68, memoryCandidates: memoryCandidates
       })) as PublicPersonaInference;
 
-      const facts = projectPublicPersonaMemoryFacts(inference, '2026-09-01T08:30:00.000Z');
-
-      expect(facts.length).assertEqual(10);
-      expect(facts[7].fact).assertEqual('用户喜欢数学');
-      expect(facts[8].fact).assertEqual('用户对数学感兴趣');
-      expect(facts[9].fact).assertContain('截至 2026-09-01');
-      expect(facts[9].fact).assertContain('用户近期关注多智能体工具');
-      expect(facts[9].source).assertEqual('public_persona');
-      expect(facts[9].observedAt).assertEqual('2026-09-01T08:30:00.000Z');
+      expect(JSON.stringify(inference).indexOf('memoryCandidates')).assertEqual(-1);
     });
 
     it('loads a legacy snapshot without public-persona memory facts', 0, () => {
@@ -1316,7 +1326,46 @@ export default function publicPersonaTest() {
 
       expect(safe === null).assertFalse();
       expect(publicPersonaMemoryFacts(safe as PublicPersonaSnapshot).length).assertEqual(0);
+      expect(publicPersonaTagList(safe as PublicPersonaSnapshot).length).assertEqual(0);
       expect(isPublicPersonaImported(safe as PublicPersonaSnapshot)).assertFalse();
+    });
+
+    it('sanitizes model tags by trimming, deduplicating, limiting length, count, and sensitivity', 0, () => {
+      const tags = sanitizePublicPersonaTagList([
+        ' AI ', 'ai', '开源', 'INTJ', '多智能体系统开发', '政治立场', '', '音乐', '摄影', '旅行'
+      ] as Object);
+
+      expect(tags.length).assertEqual(5);
+      expect(tags[0]).assertEqual('AI');
+      expect(tags[1]).assertEqual('开源');
+      expect(tags[2]).assertEqual('INTJ');
+      expect(tags.indexOf('多智能体系统开发')).assertEqual(-1);
+      expect(tags.indexOf('政治立场')).assertEqual(-1);
+      expect(parsePublicPersonaTagList('{"tagList":"invalid"}')).assertEqual(null);
+    });
+
+    it('keeps tags fingerprinted to markdown and independent from memory/import state', 0, () => {
+      const snapshot = validSnapshot();
+      snapshot.memoryFacts = [{
+        fact: '用户长期关注算法', confidence: 0.93, kind: 'expertise',
+        source: 'public_persona', observedAt: snapshot.generatedAt
+      }];
+      snapshot.memoryFactsMarkdownFingerprint = publicPersonaMarkdownFingerprint(snapshot.personaMarkdown);
+      snapshot.importedMarkdownFingerprint = publicPersonaMarkdownFingerprint(snapshot.personaMarkdown);
+      const tagged = publicPersonaSnapshotWithTagList(snapshot, ['AI', '开源']);
+      const withMemory = publicPersonaSnapshotWithMemoryFacts(tagged, snapshot.memoryFacts);
+
+      expect(publicPersonaTagList(withMemory).length).assertEqual(2);
+      expect(publicPersonaMemoryFacts(withMemory).length).assertEqual(1);
+      expect(isPublicPersonaImported(withMemory)).assertTrue();
+      const retagged = publicPersonaSnapshotWithTagList(withMemory, ['编曲']);
+      expect(publicPersonaTagList(retagged)[0]).assertEqual('编曲');
+      expect(publicPersonaMemoryFacts(retagged).length).assertEqual(1);
+      expect(isPublicPersonaImported(retagged)).assertTrue();
+      const edited = publicPersonaSnapshotAfterMarkdownEdit(
+        retagged, retagged.personaMarkdown.replace('- 数学', '- 音乐'));
+      expect(publicPersonaTagList(edited).length).assertEqual(0);
+      expect((edited.tagListMarkdownFingerprint ?? '').length).assertEqual(0);
     });
 
     it('tracks explicit import against a stable normalized Markdown fingerprint', 0, () => {
@@ -1375,16 +1424,19 @@ export default function publicPersonaTest() {
         titleName: 'Ada Lovelace', oneLineSummary: '公开资料摘要',
         identityAndExperience: [], expertise: ['一', '二', '三', '四'], interestsAndPreferences: [],
         communicationStyle: [], recentFocus: [], personalityInference: [],
+        tagList: [],
         mbtiType: 'ENTP', mbtiConfidence: 68
       };
       const tooLong: PublicPersonaInference = {
         titleName: 'Ada Lovelace', oneLineSummary: '公开资料摘要', identityAndExperience: [],
         expertise: ['这是一个明显超过三十二个字符并且不应被写入本地画像的模型输出字段内容'], interestsAndPreferences: [],
-        communicationStyle: [], recentFocus: [], personalityInference: [], mbtiType: 'ENTP', mbtiConfidence: 68
+        communicationStyle: [], recentFocus: [], personalityInference: [], tagList: [],
+        mbtiType: 'ENTP', mbtiConfidence: 68
       };
       const sensitive: PublicPersonaInference = {
         titleName: 'Ada Lovelace', oneLineSummary: '公开资料摘要', identityAndExperience: [], expertise: [],
         interestsAndPreferences: [], communicationStyle: [], recentFocus: [], personalityInference: ['政治立场偏保守'],
+        tagList: [],
         mbtiType: 'ENTP', mbtiConfidence: 68
       };
 
@@ -1582,6 +1634,9 @@ export default function publicPersonaTest() {
       expect(modelCalls).assertEqual(1);
       expect(modelPrompt).assertContain('"personaMarkdown"');
       expect(modelPrompt).assertContain('"memoryObservedAt":"2026-09-04T08:00:00.000Z"');
+      expect(modelPrompt.indexOf('tagList')).assertEqual(-1);
+      expect(modelPrompt.indexOf('primaryAvatarUrl')).assertEqual(-1);
+      expect(modelPrompt.indexOf('sources')).assertEqual(-1);
       expect(systemPrompt).assertContain('用户已保存并确认');
       expect(systemPrompt).assertContain('不设固定上限');
       expect(facts.length).assertEqual(2);
@@ -1620,6 +1675,9 @@ export default function publicPersonaTest() {
       expect(validCaller.calls).assertEqual(1);
       expect(validCaller.prompt).assertContain('"personaMarkdown"');
       expect(validCaller.prompt).assertContain('"memoryObservedAt":"2026-09-04T08:00:00.000Z"');
+      expect(validCaller.prompt.indexOf('tagList')).assertEqual(-1);
+      expect(validCaller.prompt.indexOf('primaryAvatarUrl')).assertEqual(-1);
+      expect(validCaller.prompt.indexOf('sources')).assertEqual(-1);
       expect(validCaller.systemPrompt).assertContain('用户已保存并确认');
       expect(validLogger.lines[0].indexOf('modelCallCount=1')).assertLarger(-1);
       expect(legacyModelCalls).assertEqual(0);
@@ -1671,12 +1729,14 @@ export default function publicPersonaTest() {
 
     it('builds from native probe evidence without calling Firecrawl', 0, async () => {
       const toolIds: string[] = [];
+      let modelCalls = 0;
       let modelPrompt = '';
       let systemPrompt = '';
       const client = new PublicPersonaClient(async (toolId: string): Promise<DataResult> => {
         toolIds.push(toolId);
         return dataResult(toolId, new Object(), 'empty');
       }, async (_settings: LocalModelSettings, prompt: string, _history: A2uiMessage[], system?: string): Promise<DirectModelCallResult> => {
+        modelCalls++;
         modelPrompt = prompt;
         systemPrompt = system ?? '';
         return modelInferenceResult('ENTP', [{
@@ -1693,16 +1753,20 @@ export default function publicPersonaTest() {
       const snapshot = await client.buildSnapshot(candidates, modelSettings(), (_progress): void => {}, '用户确认姓名');
 
       expect(toolIds.length).assertEqual(0);
+      expect(modelCalls).assertEqual(1);
       expect(modelPrompt).assertContain('Native public bio');
       expect(modelPrompt).assertContain('"confirmedDisplayName":"用户确认姓名"');
-      expect(modelPrompt).assertContain('"memoryObservedAt":"2026-08-10T00:00:00.000Z"');
+      expect(modelPrompt.indexOf('memoryObservedAt')).assertEqual(-1);
       expect(systemPrompt).assertContain('"titleName"');
       expect(systemPrompt).assertContain('"personalityInference"');
-      expect(systemPrompt).assertContain('"mbtiConfidence"');
+      expect(systemPrompt).assertContain('"tagList"');
+      expect(systemPrompt).assertContain('只能概括同一响应里的 oneLineSummary 和六个画像数组');
+      expect(systemPrompt).assertContain('不得引入这些字段中未出现的信息');
+      expect(systemPrompt.indexOf('memoryCandidates')).assertEqual(-1);
       expect(snapshot.sources.length).assertEqual(1);
       expect(snapshot.sources[0].platform).assertEqual('github');
-      expect(publicPersonaMemoryFacts(snapshot).length).assertEqual(1);
-      expect(publicPersonaMemoryFacts(snapshot)[0].fact).assertEqual('用户长期关注算法与软件工程');
+      expect(publicPersonaMemoryFacts(snapshot).length).assertEqual(0);
+      expect(publicPersonaTagList(snapshot).length).assertEqual(3);
       expect((parsePublicPersonaMarkdown(snapshot.personaMarkdown) as PublicPersonaInference).titleName)
         .assertEqual('用户确认姓名');
     });
@@ -1809,49 +1873,50 @@ export default function publicPersonaTest() {
       expect(modelCalls).assertEqual(0);
     });
 
-    it('reinfers MBTI with at most one plain Markdown page read', 0, async () => {
+    it('regenerates tags from persona Markdown without rereading public accounts', 0, async () => {
       const calls: string[] = [];
       let modelCalls = 0;
+      let modelPrompt = '';
+      let systemPrompt = '';
       const snapshot = validSnapshot();
-      snapshot.sources.unshift({
-        platform: 'npm', profileUrl: 'https://www.npmjs.com/~ada', avatarUrl: '',
-        displayName: 'Ada on NPM', username: 'ada',
-        sourceUrls: ['https://www.npmjs.com/~ada'], fetchedAt: '2026-08-10T00:00:00.000Z'
-      });
       const client = new PublicPersonaClient(async (toolId: string, _prompt: string, args: Object | null): Promise<DataResult> => {
         calls.push(toolId + ':' + JSON.stringify(args));
-        return dynamicDataResult(toolId, [dynamicResult(toolId, 'success', '# Ada\n\n![avatar](https://github.com/ada.png)\n\nPublic profile biography.')]);
-      }, async (): Promise<DirectModelCallResult> => {
+        return dataResult(toolId, new Object(), 'empty');
+      }, async (_settings: LocalModelSettings, prompt: string, _history: A2uiMessage[],
+        system?: string): Promise<DirectModelCallResult> => {
         modelCalls++;
-        return modelInferenceResult('INFJ');
+        modelPrompt = prompt;
+        systemPrompt = system ?? '';
+        return { ok: true, raw: '{"tagList":["AI","开源","AI"]}', error: '', requestDebug: '', assistantDebug: '' };
       }, (): string => '2026-08-10T00:00:00.000Z');
 
-      const result = await client.reinferMbti(snapshot, modelSettings());
+      const result = await client.regenerateTags(snapshot, modelSettings());
 
-      expect(calls.length).assertEqual(1);
-      expect(calls[0]).assertContain('"question":""');
-      expect(calls[0]).assertContain('https://github.com/ada');
-      expect(calls[0].indexOf('npmjs.com')).assertEqual(-1);
-      expect(result.mbtiType).assertEqual('INFJ');
+      expect(calls.length).assertEqual(0);
       expect(modelCalls).assertEqual(1);
+      expect(modelPrompt).assertContain('"personaMarkdown"');
+      expect(modelPrompt).assertContain('Ada Lovelace');
+      expect(modelPrompt.indexOf('tagList')).assertEqual(-1);
+      expect(systemPrompt).assertContain('不可信数据');
+      expect(result.tagList.length).assertEqual(2);
+      expect(result.tagList[1]).assertEqual('开源');
     });
 
-    it('reinfers MBTI from a legacy source without saved display fields', 0, async () => {
+    it('rejects malformed tag-only model output', 0, async () => {
       const snapshot = validSnapshot();
-      snapshot.sources[0].displayName = undefined;
-      snapshot.sources[0].username = undefined;
-      let requestedUrl = '';
-      const client = new PublicPersonaClient(async (_toolId: string, _prompt: string,
-        args: Object | null): Promise<DataResult> => {
-        requestedUrl = JSON.stringify(args);
-        return dynamicDataResult('web.page.read', [dynamicResult('web.page.read', 'success',
-          '# Ada\n\n![avatar](https://github.com/ada.png)\n\nPublic profile biography.')]);
-      }, async (): Promise<DirectModelCallResult> => modelInferenceResult('INTJ'));
+      const client = new PublicPersonaClient(async (toolId: string): Promise<DataResult> =>
+        dataResult(toolId, new Object(), 'empty'), async (): Promise<DirectModelCallResult> => ({
+          ok: true, raw: '{"tagList":"invalid"}', error: '', requestDebug: '', assistantDebug: ''
+        }));
+      let rejected = false;
 
-      const result = await client.reinferMbti(snapshot, modelSettings());
+      try {
+        await client.regenerateTags(snapshot, modelSettings());
+      } catch (_error) {
+        rejected = true;
+      }
 
-      expect(requestedUrl).assertContain('https://github.com/ada');
-      expect(result.mbtiType).assertEqual('INTJ');
+      expect(rejected).assertTrue();
     });
 
   });

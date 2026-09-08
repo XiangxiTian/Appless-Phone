@@ -2,6 +2,9 @@ import { common } from '@kit.AbilityKit';
 import { relationalStore } from '@kit.ArkData';
 import util from '@ohos.util';
 import { MemoryAuthority, MemoryCommitGuard, MemoryHit, MemoryRecord } from '@loop/agent-core';
+import {
+  PhoneLocalMemoryDatabaseWriteMutex, phoneLocalMemoryDatabaseWriteMutex
+} from './PhoneLocalMemoryDatabaseWriteMutex';
 
 export const PHONE_LOCAL_MEMORY_VECTOR_DB_NAME: string = 'pocketagent_conversation_memory_vector_v2.db';
 export const PHONE_LOCAL_MEMORY_TABLE: string = 'conversation_memory';
@@ -210,34 +213,6 @@ function requireActiveCommit(guard?: MemoryCommitGuard): void {
   if (!active) throw new Error(PHONE_LOCAL_MEMORY_OPERATION_CANCELED);
 }
 
-interface WriteWaiter {
-  resolve: () => void;
-}
-
-class RdbWriteMutex {
-  private busy: boolean = false;
-  private waiters: WriteWaiter[] = [];
-
-  async acquire(): Promise<void> {
-    if (!this.busy) {
-      this.busy = true;
-      return;
-    }
-    await new Promise<void>((resolve: () => void): void => {
-      this.waiters.push({ resolve });
-    });
-  }
-
-  release(): void {
-    const next = this.waiters.shift();
-    if (next !== undefined) {
-      next.resolve();
-      return;
-    }
-    this.busy = false;
-  }
-}
-
 function float32Vector(values: number[]): Float32Array {
   const vector = new Float32Array(values.length);
   for (let index = 0; index < values.length; index += 1) vector[index] = values[index];
@@ -334,16 +309,20 @@ export class ArkDataPhoneLocalMemoryConditionalTransactionAdapter implements
 export async function executePhoneLocalMemoryConditionalTransaction(
   store: PhoneLocalMemoryConditionalTransactionPort,
   mutation: PhoneLocalMemoryConditionalStatement,
-  afterMutation: PhoneLocalMemoryConditionalStatement[]
+  afterMutation: PhoneLocalMemoryConditionalStatement[],
+  guard?: MemoryCommitGuard
 ): Promise<boolean> {
+  requireActiveCommit(guard);
   const txId = await store.beginTrans();
   let committed = false;
   try {
-    const affected = await store.execute(mutation.sql, txId, mutation.args);
-    if (typeof affected !== 'number' || affected !== 1) return false;
+    requireActiveCommit(guard);
+    await store.execute(mutation.sql, txId, mutation.args);
     for (let position = 0; position < afterMutation.length; position += 1) {
+      requireActiveCommit(guard);
       await store.execute(afterMutation[position].sql, txId, afterMutation[position].args);
     }
+    requireActiveCommit(guard);
     await store.commit(txId);
     committed = true;
     return true;
@@ -435,10 +414,11 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
   private context: common.Context;
   private store: relationalStore.RdbStore | null = null;
   private initializing: Promise<void> | null = null;
-  private writeMutex: RdbWriteMutex = new RdbWriteMutex();
+  private writeMutex: PhoneLocalMemoryDatabaseWriteMutex;
 
   constructor(context: common.Context) {
     this.context = context;
+    this.writeMutex = phoneLocalMemoryDatabaseWriteMutex(context.databaseDir, PHONE_LOCAL_MEMORY_VECTOR_DB_NAME);
   }
 
   static isSupported(): boolean {
@@ -465,6 +445,15 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
   }
 
   private async openAndMigrate(): Promise<void> {
+    await this.writeMutex.acquire();
+    try {
+      await this.openAndMigrateUnderWriteLock();
+    } finally {
+      this.writeMutex.release();
+    }
+  }
+
+  private async openAndMigrateUnderWriteLock(): Promise<void> {
     if (!relationalStore.isVectorSupported()) {
       throw new Error('ArkData vector RDB is not supported on this device.');
     }
@@ -615,8 +604,11 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
       requireActiveCommit(guard);
       const txId = await store.beginTrans();
       try {
+        requireActiveCommit(guard);
         await store.execute(PHONE_LOCAL_MEMORY_INSERT_SQL, txId, recordValues(record));
+        requireActiveCommit(guard);
         await this.insertHistory(store, txId, record, 'add');
+        requireActiveCommit(guard);
         await store.commit(txId);
       } catch (error) {
         await store.rollback(txId);
@@ -638,8 +630,11 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
       requireActiveCommit(guard);
       const txId = await store.beginTrans();
       try {
+        requireActiveCommit(guard);
         await store.execute(PHONE_LOCAL_MEMORY_UPDATE_SQL, txId, updateValues(ownerId, record));
+        requireActiveCommit(guard);
         await this.insertHistory(store, txId, record, 'update');
+        requireActiveCommit(guard);
         await store.commit(txId);
       } catch (error) {
         await store.rollback(txId);
@@ -659,11 +654,16 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
     const store = await this.readyStore();
     await this.writeMutex.acquire();
     try {
+      const existing = await this.get(ownerId, record.memoryId);
+      if (existing === null) return { status: 'not_found', record: null };
+      if (!phoneLocalMemoryExpectedRecordMatches(existing, expected)) {
+        return { status: 'conflict', record: existing };
+      }
       requireActiveCommit(guard);
       try {
         const mutation: PhoneLocalMemoryConditionalStatement = {
-          sql: PHONE_LOCAL_MEMORY_CONDITIONAL_UPDATE_SQL,
-          args: phoneLocalMemoryConditionalUpdateValues(ownerId, record, expected)
+          sql: PHONE_LOCAL_MEMORY_UPDATE_SQL,
+          args: updateValues(ownerId, record)
         };
         const history: PhoneLocalMemoryConditionalStatement = {
           sql: PHONE_LOCAL_MEMORY_INSERT_HISTORY_SQL,
@@ -671,7 +671,7 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
             'update', record.fact, Date.now()]
         };
         const changed = await executePhoneLocalMemoryConditionalTransaction(
-          new ArkDataPhoneLocalMemoryConditionalTransactionAdapter(store), mutation, [history]
+          new ArkDataPhoneLocalMemoryConditionalTransactionAdapter(store), mutation, [history], guard
         );
         return changed ? { status: 'success', record } : { status: 'conflict', record: null };
       } catch (error) {
@@ -693,8 +693,11 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
       requireActiveCommit(guard);
       const txId = await store.beginTrans();
       try {
+        requireActiveCommit(guard);
         await store.execute(PHONE_LOCAL_MEMORY_DELETE_SQL, txId, [ownerId, memoryId]);
+        requireActiveCommit(guard);
         await store.execute(PHONE_LOCAL_MEMORY_DELETE_HISTORY_SQL, txId, [ownerId, memoryId]);
+        requireActiveCommit(guard);
         await store.commit(txId);
         return existing;
       } catch (error) {
@@ -713,18 +716,23 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
     const store = await this.readyStore();
     await this.writeMutex.acquire();
     try {
+      const existing = await this.get(ownerId, memoryId);
+      if (existing === null) return { status: 'not_found', record: null };
+      if (!phoneLocalMemoryExpectedRecordMatches(existing, expected)) {
+        return { status: 'conflict', record: existing };
+      }
       requireActiveCommit(guard);
       try {
         const mutation: PhoneLocalMemoryConditionalStatement = {
-          sql: PHONE_LOCAL_MEMORY_CONDITIONAL_DELETE_SQL,
-          args: phoneLocalMemoryConditionalDeleteValues(ownerId, expected)
+          sql: PHONE_LOCAL_MEMORY_DELETE_SQL,
+          args: [ownerId, memoryId]
         };
         const historyDelete: PhoneLocalMemoryConditionalStatement = {
           sql: PHONE_LOCAL_MEMORY_DELETE_HISTORY_SQL,
           args: [ownerId, memoryId]
         };
         const changed = await executePhoneLocalMemoryConditionalTransaction(
-          new ArkDataPhoneLocalMemoryConditionalTransactionAdapter(store), mutation, [historyDelete]
+          new ArkDataPhoneLocalMemoryConditionalTransactionAdapter(store), mutation, [historyDelete], guard
         );
         return changed ? { status: 'success', record: null } : { status: 'conflict', record: null };
       } catch (error) {
@@ -760,13 +768,18 @@ export class ArkDataPhoneLocalMemoryStore implements PhoneLocalMemoryStore {
       requireActiveCommit(guard);
       const txId = await store.beginTrans();
       try {
+        requireActiveCommit(guard);
         await store.execute(PHONE_LOCAL_MEMORY_DELETE_PERSONA_TAG_HISTORY_SQL, txId,
           [ownerId, ownerId, sceneId, personaTag]);
+        requireActiveCommit(guard);
         await store.execute(PHONE_LOCAL_MEMORY_DELETE_PERSONA_TAG_SQL, txId, [ownerId, sceneId, personaTag]);
         for (let index = 0; index < replacements.length; index += 1) {
+          requireActiveCommit(guard);
           await store.execute(PHONE_LOCAL_MEMORY_INSERT_SQL, txId, recordValues(replacements[index]));
+          requireActiveCommit(guard);
           await this.insertHistory(store, txId, replacements[index], 'add');
         }
+        requireActiveCommit(guard);
         await store.commit(txId);
         return existing;
       } catch (error) {

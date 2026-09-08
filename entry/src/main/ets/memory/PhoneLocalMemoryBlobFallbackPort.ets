@@ -3,7 +3,11 @@ import { relationalStore } from '@kit.ArkData';
 import util from '@ohos.util';
 import { MemoryAuthority, MemoryCommitGuard, MemoryHit, MemoryRecord } from '@loop/agent-core';
 import {
+  PhoneLocalMemoryDatabaseWriteMutex, phoneLocalMemoryDatabaseWriteMutex
+} from './PhoneLocalMemoryDatabaseWriteMutex';
+import {
   PHONE_LOCAL_MEMORY_OPERATION_CANCELED,
+  phoneLocalMemoryExpectedRecordMatches,
   PHONE_LOCAL_MEMORY_VECTOR_DIMENSION,
   PhoneLocalMemoryHistoryOperation,
   PhoneLocalMemoryConditionalWriteResult,
@@ -121,14 +125,17 @@ export interface PhoneLocalMemoryBlobStatement {
 
 /** Ordinary RDB uses the legacy transaction lifecycle; txId APIs are reserved for vector RDB. */
 export async function executePhoneLocalMemoryBlobTransaction(store: PhoneLocalMemoryBlobTransactionPort,
-  statements: PhoneLocalMemoryBlobStatement[]): Promise<void> {
+  statements: PhoneLocalMemoryBlobStatement[], guard?: MemoryCommitGuard): Promise<void> {
+  requireActiveCommit(guard);
   store.beginTransaction();
   try {
     for (let index = 0; index < statements.length; index += 1) {
+      requireActiveCommit(guard);
       const statement = statements[index];
       if (statement.args === undefined) await store.execute(statement.sql);
       else await store.execute(statement.sql, statement.args);
     }
+    requireActiveCommit(guard);
     store.commit();
   } catch (error) {
     store.rollBack();
@@ -158,31 +165,6 @@ class ArkDataBlobTransactionAdapter implements PhoneLocalMemoryBlobTransactionPo
 
   rollBack(): void {
     this.store.rollBack();
-  }
-}
-
-interface WriteWaiter {
-  resolve: () => void;
-}
-
-class BlobWriteMutex {
-  private busy: boolean = false;
-  private waiters: WriteWaiter[] = [];
-
-  async acquire(): Promise<void> {
-    if (!this.busy) {
-      this.busy = true;
-      return;
-    }
-    await new Promise<void>((resolve: () => void): void => {
-      this.waiters.push({ resolve });
-    });
-  }
-
-  release(): void {
-    const next = this.waiters.shift();
-    if (next !== undefined) next.resolve();
-    else this.busy = false;
   }
 }
 
@@ -347,19 +329,23 @@ function updateValues(ownerId: string, record: MemoryRecord): relationalStore.Va
 export async function executePhoneLocalMemoryBlobConditionalTransaction(
   store: PhoneLocalMemoryBlobTransactionPort,
   mutation: PhoneLocalMemoryBlobStatement,
-  afterMutation: PhoneLocalMemoryBlobStatement[]
+  afterMutation: PhoneLocalMemoryBlobStatement[],
+  guard?: MemoryCommitGuard
 ): Promise<boolean> {
+  requireActiveCommit(guard);
   store.beginTransaction();
   let committed = false;
   try {
-    const affected = mutation.args === undefined ? await store.execute(mutation.sql) :
-      await store.execute(mutation.sql, mutation.args);
-    if (typeof affected !== 'number' || affected !== 1) return false;
+    requireActiveCommit(guard);
+    if (mutation.args === undefined) await store.execute(mutation.sql);
+    else await store.execute(mutation.sql, mutation.args);
     for (let position = 0; position < afterMutation.length; position += 1) {
+      requireActiveCommit(guard);
       const statement = afterMutation[position];
       if (statement.args === undefined) await store.execute(statement.sql);
       else await store.execute(statement.sql, statement.args);
     }
+    requireActiveCommit(guard);
     store.commit();
     committed = true;
     return true;
@@ -397,11 +383,12 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
   private databaseName: string;
   private store: relationalStore.RdbStore | null = null;
   private initializing: Promise<void> | null = null;
-  private writeMutex: BlobWriteMutex = new BlobWriteMutex();
+  private writeMutex: PhoneLocalMemoryDatabaseWriteMutex;
 
   constructor(context: common.Context, databaseName: string = PHONE_LOCAL_MEMORY_BLOB_DB_NAME) {
     this.context = context;
     this.databaseName = databaseName;
+    this.writeMutex = phoneLocalMemoryDatabaseWriteMutex(context.databaseDir, databaseName);
   }
 
   getDatabaseName(): string {
@@ -420,6 +407,15 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
   }
 
   private async openAndMigrate(): Promise<void> {
+    await this.writeMutex.acquire();
+    try {
+      await this.openAndMigrateUnderWriteLock();
+    } finally {
+      this.writeMutex.release();
+    }
+  }
+
+  private async openAndMigrateUnderWriteLock(): Promise<void> {
     const config: relationalStore.StoreConfig = {
       name: this.databaseName,
       securityLevel: relationalStore.SecurityLevel.S1
@@ -532,7 +528,7 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
       try {
         await executePhoneLocalMemoryBlobTransaction(new ArkDataBlobTransactionAdapter(store), [
           { sql: BLOB_INSERT_SQL, args: insertValues(record) }, historyStatement(record, 'add')
-        ]);
+        ], guard);
       } catch (error) {
         throw error instanceof Error ? error : new Error('BLOB memory insert failed.');
       }
@@ -553,7 +549,7 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
       try {
         await executePhoneLocalMemoryBlobTransaction(new ArkDataBlobTransactionAdapter(store), [
           { sql: BLOB_UPDATE_SQL, args: updateValues(ownerId, record) }, historyStatement(record, 'update')
-        ]);
+        ], guard);
       } catch (error) {
         throw error instanceof Error ? error : new Error('BLOB memory update failed.');
       }
@@ -570,18 +566,23 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
     const store = await this.readyStore();
     await this.writeMutex.acquire();
     try {
+      const existing = await this.get(ownerId, record.memoryId);
+      if (existing === null) return { status: 'not_found', record: null };
+      if (!phoneLocalMemoryExpectedRecordMatches(existing, expected)) {
+        return { status: 'conflict', record: existing };
+      }
       requireActiveCommit(guard);
       try {
         const mutation: PhoneLocalMemoryBlobStatement = {
-          sql: PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_UPDATE_SQL,
-          args: phoneLocalMemoryBlobConditionalUpdateValues(ownerId, record, expected)
+          sql: BLOB_UPDATE_SQL,
+          args: updateValues(ownerId, record)
         };
         const history = historyStatement(record, 'update');
         const historyAfter: PhoneLocalMemoryBlobStatement = {
           sql: history.sql, args: history.args ?? []
         };
         const changed = await executePhoneLocalMemoryBlobConditionalTransaction(
-          new ArkDataBlobTransactionAdapter(store), mutation, [historyAfter]
+          new ArkDataBlobTransactionAdapter(store), mutation, [historyAfter], guard
         );
         return changed ? { status: 'success', record } : { status: 'conflict', record: null };
       } catch (error) {
@@ -607,7 +608,7 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
         }, {
           sql: 'DELETE FROM conversation_memory_blob_history WHERE owner_id = ? AND memory_id = ?',
           args: [ownerId, memoryId]
-        }]);
+        }], guard);
         return existing;
       } catch (error) {
         throw error instanceof Error ? error : new Error('BLOB memory delete failed.');
@@ -623,18 +624,23 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
     const store = await this.readyStore();
     await this.writeMutex.acquire();
     try {
+      const existing = await this.get(ownerId, memoryId);
+      if (existing === null) return { status: 'not_found', record: null };
+      if (!phoneLocalMemoryExpectedRecordMatches(existing, expected)) {
+        return { status: 'conflict', record: existing };
+      }
       requireActiveCommit(guard);
       try {
         const mutation: PhoneLocalMemoryBlobStatement = {
-          sql: PHONE_LOCAL_MEMORY_BLOB_CONDITIONAL_DELETE_SQL,
-          args: phoneLocalMemoryBlobConditionalDeleteValues(ownerId, expected)
+          sql: 'DELETE FROM conversation_memory_blob WHERE owner_id = ? AND memory_id = ?',
+          args: [ownerId, memoryId]
         };
         const historyDelete: PhoneLocalMemoryBlobStatement = {
           sql: 'DELETE FROM conversation_memory_blob_history WHERE owner_id = ? AND memory_id = ?',
           args: [ownerId, memoryId]
         };
         const changed = await executePhoneLocalMemoryBlobConditionalTransaction(
-          new ArkDataBlobTransactionAdapter(store), mutation, [historyDelete]
+          new ArkDataBlobTransactionAdapter(store), mutation, [historyDelete], guard
         );
         return changed ? { status: 'success', record: null } : { status: 'conflict', record: null };
       } catch (error) {
@@ -679,7 +685,7 @@ export class ArkDataPhoneLocalMemoryBlobStore implements PhoneLocalMemoryBlobFal
         statements.push(historyStatement(replacements[index], 'add'));
       }
       try {
-        await executePhoneLocalMemoryBlobTransaction(new ArkDataBlobTransactionAdapter(store), statements);
+        await executePhoneLocalMemoryBlobTransaction(new ArkDataBlobTransactionAdapter(store), statements, guard);
         return existing;
       } catch (error) {
         throw error instanceof Error ? error : new Error('BLOB memory persona tag replacement failed.');

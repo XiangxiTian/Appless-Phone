@@ -1,6 +1,6 @@
 # 当前工具能力总表
 
-更新时间：2026-09-02
+更新时间：2026-09-07
 
 来源：`agent_core/src/main/ets/aiphone/AiphoneToolDefinitions.ets`、`agent_core/src/main/ets/aiphone/runtime/ToolDefinitionRegistry.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentRuntime.ets`、`entry/src/main/ets/pages/A2uiHome/agent/MultiAgentCanaryRuntime.ets`、`agent_core/src/main/ets/aiphone/runtime/AggregateSearchClient.ets`、`agent_core/src/main/ets/aiphone/runtime/ComposioDynamicBackend.ets`、`scripts/aiphone-device-smoke.mjs`、支付/Composio 相关单测。
 
@@ -10,7 +10,14 @@
 
 Firecrawl 六个固定工具由 HAP 携带 `FIRECRAWL_API_KEY`，直接连接 Firecrawl Hosted MCP；这是当前产品配置选择，不依赖 Mac gateway，也不会在手机上运行 Chromium。Credit、Monitor 检查和套餐计费均由 Firecrawl 账号/Provider 管理。Monitor 是退出 App 后仍保留的 Firecrawl 云状态；此版本没有 HarmonyOS 原生推送。
 
-用户管理页现提供“长期记忆”概览入口。宿主读取当前登录账号的全部长期记忆，以内部短索引交给 memory-only 模型任务生成 claim 级概览；主概览只展示模型整理后的统一内容，不暴露索引、原始记忆事实、更新时间或真实 memoryId。修正确认页仍会展示拟修改内容的前后 diff，并在内部关联精确来源；只有再次确认才调用本地 memory runtime，写入前会核验目标记录未变化，成功后用短时 Toast 提示，`presentation_only` 只调整本次概览、不写数据库。由于确认可能更新或删除真实长期记忆，该页面的真机写入验证为 `manual-only`，自动 smoke 只应停在确认方案页。
+用户管理页通过“关于你”查看和修正长期记忆概览。宿主读取当前登录账号的全部长期记忆，以内部短索引交给 memory-only 模型任务生成 claim 级概览；主概览只展示模型整理后的统一内容，不暴露索引、原始记忆事实、更新时间或真实 memoryId。用户提交修改意见即授权执行：一次 memory-only 模型调用同时返回 memory operations 与受影响的 claim patches，宿主校验完整 evidence fingerprint、单条 240 字符上限及写入目标后直接调用本地 memory runtime；全部写入成功时仅在本地应用段落补丁并更新缓存，不再生成全篇概览，也没有 diff、二次确认或多轮 clarify 页面。只改展示措辞时不写数据库；删除意图含糊时返回 `no_change`，不得推断删除。由于提交可能直接更新或删除真实长期记忆，该页面的真机写入验证为 `manual-only`；自动 smoke 不得提交修正意见。
+
+用户管理页以 ArkWeb“关于你”统一长期记忆和公开账号画像功能，原“社交账号画像”和“长期记忆”页面及入口已移除。页面将长期记忆整理为身份与经历、专长、兴趣与偏好、沟通风格、近期关注、性格推断六类卡片，无内容分类隐藏；总述和趣味标签与概览同轮生成、同份缓存，标签只供展示。修改意见与公开账号搜索、已导入的关联账号列表位于同一更新卡片；修正成功后通过 JSON 状态更新当前页面，后台记忆变化则保持可见概览稳定并要求刷新后再修改。现有账号隔离的画像快照与长期记忆保持兼容，无清库或数据迁移。
+MBTI 根据当前记忆与概览同轮推断，单独展示模型主观置信度（0–100），只作展示、不作为证据或写入长期记忆；修正时同轮更新，依据不足时允许暂缺。总述和卡片正文使用自然的第二人称或省略主语，避免“用户是…”等报告式措辞。
+
+长期记忆写入在同一进程内按数据库共享写锁，覆盖页面重建产生的多个 store 实例；跨进程并发写入暂不纳入保证。退出“关于你”、账号切换及宿主 Index 销毁会作废未完成的概览和修正任务，阻止迟到模型结果落缓存及后续记忆提交；普通页面隐藏或切后台不作销毁处理。已成功提交的记忆保留，取消不承诺整组回滚，概览下次进入时按真实记忆重建。
+
+新页面公开账号流程仅产生本轮草稿，生成的 `persona.md` 在弹层中支持编辑、丢弃或导入长期记忆。搜索、生成和丢弃不会改写已保存的公开画像或已导入记忆；导入时从最终 Markdown 重新提取记忆候选，整体替换旧 `public_persona` 来源记忆，保留其他聊天记忆。仅当记忆同步及正式画像保存都成功后更新关联账号并主动刷新概览；失败保留草稿且不宣称成功。账号切换、页面关闭及草稿丢弃会使在途任务失效。这些真实记忆写入和公开账号导入均为 `manual-only`，自动回归只验证展示与隔离，不自动提交。
 
 ## 心上事（BIM）
 

@@ -125,10 +125,10 @@ export interface PublicPersonaInference {
   communicationStyle: string[];
   recentFocus: string[];
   personalityInference: string[];
+  tagList: string[];
+  /** Retained only so older model responses and edited Markdown can still be parsed. */
   mbtiType: string;
   mbtiConfidence: number;
-  /** Optional for compatibility with model responses produced before public-persona memory projection. */
-  memoryCandidates?: PublicPersonaMemoryCandidate[];
 }
 
 export interface PublicPersonaSourceRef {
@@ -148,6 +148,10 @@ export interface PublicPersonaSnapshot {
   sources: PublicPersonaSourceRef[];
   generatedAt: string;
   mbtiHidden: boolean;
+  /** Optional so schemaVersion 1 snapshots from before tagList remain readable. */
+  tagList?: string[];
+  /** Fingerprint of personaMarkdown used to generate tagList. */
+  tagListMarkdownFingerprint?: string;
   /** Optional so persisted schemaVersion 1 snapshots written by older releases remain readable. */
   memoryFacts?: PublicPersonaMemoryFact[];
   /** Fingerprint of personaMarkdown that the model-derived memoryFacts describe. */
@@ -1195,6 +1199,37 @@ export const PUBLIC_PERSONA_MEMORY_MIN_CONFIDENCE: number = 0.85;
 const PUBLIC_PERSONA_SENSITIVE_FACT_PATTERN: RegExp =
   /(政治立场|政治倾向|宗教信仰|性取向|健康状况|疾病诊断|残疾|种族血统|民族血统|精确位置|收入水平|资产状况|political views?|religious beliefs?|sexual orientation|health condition|medical diagnosis|disability|ethnicity|financial status)/i;
 
+export const PUBLIC_PERSONA_TAG_MAX_COUNT: number = 5;
+export const PUBLIC_PERSONA_TAG_MAX_LENGTH: number = 6;
+
+export function sanitizePublicPersonaTagList(value: Object | string | number | boolean | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  const output: string[] = [];
+  const seen: string[] = [];
+  const rawTags = value as Object[];
+  for (let index = 0; index < rawTags.length && output.length < PUBLIC_PERSONA_TAG_MAX_COUNT; index++) {
+    if (typeof rawTags[index] !== 'string') continue;
+    const tag = (rawTags[index] as string).replace(/\s+/g, ' ').trim();
+    const key = tag.toLowerCase();
+    if (tag.length === 0 || tag.length > PUBLIC_PERSONA_TAG_MAX_LENGTH ||
+      tag.indexOf('\n') >= 0 || tag.indexOf('\r') >= 0 ||
+      PUBLIC_PERSONA_SENSITIVE_FACT_PATTERN.test(tag) || seen.indexOf(key) >= 0) continue;
+    seen.push(key);
+    output.push(tag);
+  }
+  return output;
+}
+
+export function parsePublicPersonaTagList(raw: string): string[] | null {
+  try {
+    const parsed = JSON.parse(inferenceJsonText(raw)) as Record<string, Object | string | number | boolean | Object[]>;
+    if (!Array.isArray(parsed['tagList'])) return null;
+    return sanitizePublicPersonaTagList(parsed['tagList']);
+  } catch (_error) {
+    return null;
+  }
+}
+
 const PUBLIC_PERSONA_MEMORY_EXCLUDED_PATTERN: RegExp =
   /(MBTI|性格|人格|心理类型|性格推断|性格猜测|personality type|personality inference)/i;
 
@@ -1280,13 +1315,6 @@ function projectPublicPersonaMemoryCandidates(
   return facts;
 }
 
-export function projectPublicPersonaMemoryFacts(
-  inference: PublicPersonaInference,
-  observedAt: string
-): PublicPersonaMemoryFact[] {
-  return projectPublicPersonaMemoryCandidates(inference.memoryCandidates ?? [], observedAt);
-}
-
 /** Parses a memory-only model response and applies every host confidence, safety, and atomicity filter. */
 export function parsePublicPersonaMemoryFacts(
   raw: string,
@@ -1361,6 +1389,8 @@ export function markPublicPersonaImported(snapshot: PublicPersonaSnapshot): Publ
     sources: snapshot.sources,
     generatedAt: snapshot.generatedAt,
     mbtiHidden: snapshot.mbtiHidden,
+    tagList: snapshot.tagList?.slice() ?? [],
+    tagListMarkdownFingerprint: snapshot.tagListMarkdownFingerprint,
     memoryFacts: snapshot.memoryFacts,
     memoryFactsMarkdownFingerprint: snapshot.memoryFactsMarkdownFingerprint,
     importedMarkdownFingerprint: publicPersonaMarkdownFingerprint(snapshot.personaMarkdown)
@@ -1379,6 +1409,8 @@ export function publicPersonaSnapshotAfterMarkdownEdit(
     sources: snapshot.sources,
     generatedAt: snapshot.generatedAt,
     mbtiHidden: snapshot.mbtiHidden,
+    tagList: [],
+    tagListMarkdownFingerprint: '',
     memoryFacts: [],
     memoryFactsMarkdownFingerprint: '',
     importedMarkdownFingerprint: snapshot.importedMarkdownFingerprint
@@ -1416,10 +1448,41 @@ export function publicPersonaSnapshotWithMemoryFacts(
     sources: snapshot.sources,
     generatedAt: snapshot.generatedAt,
     mbtiHidden: snapshot.mbtiHidden,
+    tagList: snapshot.tagList?.slice() ?? [],
+    tagListMarkdownFingerprint: snapshot.tagListMarkdownFingerprint,
     memoryFacts: safeFacts,
     memoryFactsMarkdownFingerprint: publicPersonaMarkdownFingerprint(snapshot.personaMarkdown),
     importedMarkdownFingerprint: snapshot.importedMarkdownFingerprint
   };
+}
+
+export function publicPersonaSnapshotWithTagList(
+  snapshot: PublicPersonaSnapshot,
+  tagList: string[]
+): PublicPersonaSnapshot {
+  const safeTags = sanitizePublicPersonaTagList(tagList as Object);
+  return {
+    schemaVersion: 1,
+    personaMarkdown: snapshot.personaMarkdown,
+    primaryAvatarUrl: snapshot.primaryAvatarUrl,
+    sources: snapshot.sources,
+    generatedAt: snapshot.generatedAt,
+    mbtiHidden: snapshot.mbtiHidden,
+    tagList: safeTags,
+    tagListMarkdownFingerprint: safeTags.length > 0 ?
+      publicPersonaMarkdownFingerprint(snapshot.personaMarkdown) : '',
+    memoryFacts: snapshot.memoryFacts,
+    memoryFactsMarkdownFingerprint: snapshot.memoryFactsMarkdownFingerprint,
+    importedMarkdownFingerprint: snapshot.importedMarkdownFingerprint
+  };
+}
+
+export function publicPersonaTagList(snapshot: PublicPersonaSnapshot): string[] {
+  const fingerprint = (snapshot.tagListMarkdownFingerprint ?? '').trim();
+  if (fingerprint.length === 0 || fingerprint !== publicPersonaMarkdownFingerprint(snapshot.personaMarkdown)) {
+    return [];
+  }
+  return sanitizePublicPersonaTagList((snapshot.tagList ?? []) as Object);
 }
 
 /**
@@ -1468,7 +1531,6 @@ export function validPublicPersonaInference(value: PublicPersonaInference, itemL
 export function parsePublicPersonaInference(raw: string): PublicPersonaInference | null {
   try {
     const parsed = JSON.parse(inferenceJsonText(raw)) as Record<string, Object | string | number | boolean | Object[]>;
-    const memoryCandidates = parsePublicPersonaMemoryCandidates(parsed['memoryCandidates']);
     const firstString = (key: string): string => {
       const values = stringArray(parsed[key]);
       return values.length > 0 ? values[0] : nonEmptyString(parsed[key]);
@@ -1509,9 +1571,9 @@ export function parsePublicPersonaInference(raw: string): PublicPersonaInference
         communicationStyle: [],
         recentFocus: recent,
         personalityInference: [],
+        tagList: sanitizePublicPersonaTagList(parsed['tagList']),
         mbtiType: alternateType,
-        mbtiConfidence: alternateConfidence,
-        memoryCandidates: memoryCandidates
+        mbtiConfidence: alternateConfidence
       };
       return validPublicPersonaInference(alternate, 64) ? alternate : null;
     }
@@ -1524,9 +1586,12 @@ export function parsePublicPersonaInference(raw: string): PublicPersonaInference
         return null;
       }
     }
+    if (!Array.isArray(parsed['tagList'])) return null;
     const type = nonEmptyString(parsed['mbtiType']);
     const confidence = parsed['mbtiConfidence'];
-    if (MBTI_TYPES.indexOf(type.toUpperCase()) < 0 || typeof confidence !== 'number' || confidence < 0 || confidence > 100) {
+    const hasLegacyMbti = type.length > 0 || confidence !== undefined;
+    if (hasLegacyMbti && (MBTI_TYPES.indexOf(type.toUpperCase()) < 0 ||
+      typeof confidence !== 'number' || confidence < 0 || confidence > 100)) {
       return null;
     }
     const result: PublicPersonaInference = {
@@ -1538,9 +1603,9 @@ export function parsePublicPersonaInference(raw: string): PublicPersonaInference
       communicationStyle: stringArray(parsed['communicationStyle']),
       recentFocus: stringArray(parsed['recentFocus']),
       personalityInference: stringArray(parsed['personalityInference']),
-      mbtiType: type.toUpperCase(),
-      mbtiConfidence: Math.round(confidence),
-      memoryCandidates: memoryCandidates
+      tagList: sanitizePublicPersonaTagList(parsed['tagList']),
+      mbtiType: hasLegacyMbti ? type.toUpperCase() : '',
+      mbtiConfidence: hasLegacyMbti ? Math.round(confidence as number) : 0
     };
     return result.titleName.length > 0 && result.oneLineSummary.length > 0 && validPublicPersonaInference(result) ? result : null;
   } catch (_error) {
@@ -1575,10 +1640,6 @@ export function renderPublicPersonaMarkdown(
     '## 性格推断',
     inference.personalityInference.length > 0 ? markdownList(inference.personalityInference) : '- 暂无足够公开信息',
     '',
-    inference.mbtiType.length > 0 ?
-      inference.mbtiType + ' · ' + inference.mbtiConfidence.toString() + '%' :
-      'MBTI 暂无',
-    '',
     '## 已确认账号'
   ];
   for (let index = 0; index < sources.length; index++) {
@@ -1603,6 +1664,7 @@ export function parsePublicPersonaMarkdown(markdown: string): PublicPersonaInfer
     communicationStyle: [],
     recentFocus: [],
     personalityInference: [],
+    tagList: [],
     mbtiType: '',
     mbtiConfidence: 0
   };
@@ -1800,6 +1862,11 @@ export function sanitizePublicPersonaSnapshot(value: Object): PublicPersonaSnaps
     const rawImportedFingerprint = nonEmptyString(raw['importedMarkdownFingerprint']);
     const importedMarkdownFingerprint = validPublicPersonaMarkdownFingerprint(rawImportedFingerprint) ?
       rawImportedFingerprint : '';
+    const parsedTagList = sanitizePublicPersonaTagList(raw['tagList']);
+    const rawTagFingerprint = nonEmptyString(raw['tagListMarkdownFingerprint']);
+    const tagListMarkdownFingerprint = validPublicPersonaMarkdownFingerprint(rawTagFingerprint) ?
+      rawTagFingerprint : (parsedTagList.length > 0 ? currentMarkdownFingerprint : '');
+    const tagList = tagListMarkdownFingerprint === currentMarkdownFingerprint ? parsedTagList : [];
     return {
       schemaVersion: 1,
       personaMarkdown: raw['personaMarkdown'] as string,
@@ -1807,6 +1874,8 @@ export function sanitizePublicPersonaSnapshot(value: Object): PublicPersonaSnaps
       sources: sources,
       generatedAt: generatedAt,
       mbtiHidden: raw['mbtiHidden'] as boolean,
+      tagList: tagList,
+      tagListMarkdownFingerprint: tagList.length > 0 ? tagListMarkdownFingerprint : '',
       memoryFacts: memoryFacts,
       memoryFactsMarkdownFingerprint: memoryFactsMarkdownFingerprint === currentMarkdownFingerprint ?
         memoryFactsMarkdownFingerprint : '',

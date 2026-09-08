@@ -498,23 +498,37 @@ export default function phoneLocalMemoryProviderTest() {
       expect(phoneLocalMemoryCandidateLimit(100)).assertEqual(1000);
     });
 
-    it('fails closed on non-one CAS results without history and rolls back exactly once', 0, async () => {
+    it('requires every persisted snapshot field to match before a conditional write', 0, () => {
+      const current: MemoryRecord = {
+        memoryId: 'memory-1', ownerId: 'owner-1', sceneId: 'global', personaTag: 'persona',
+        authority: 'seed', fact: 'old fact', normalizedFact: 'old fact', factHash: 'hash',
+        embedding: new Array<number>(512).fill(0), embeddingProfileId: 'profile',
+        sourceTurnId: 'turn', createdAt: 10, updatedAt: 20
+      };
+      const expected = expectedRecord(current);
+      expect(phoneLocalMemoryExpectedRecordMatches(current, expected)).assertTrue();
+      const variants: MemoryRecord[] = [];
+      const memoryId = copyRecord(current); memoryId.memoryId = 'changed'; variants.push(memoryId);
+      const fact = copyRecord(current); fact.fact = 'changed'; variants.push(fact);
+      const tag = copyRecord(current); tag.personaTag = 'changed'; variants.push(tag);
+      const authority = copyRecord(current); authority.authority = 'leader'; variants.push(authority);
+      const created = copyRecord(current); created.createdAt = 11; variants.push(created);
+      const updated = copyRecord(current); updated.updatedAt = 21; variants.push(updated);
+      for (let position = 0; position < variants.length; position += 1) {
+        expect(phoneLocalMemoryExpectedRecordMatches(variants[position], expected)).assertFalse();
+      }
+    });
+
+    it('does not interpret mutation execute return values and keeps mutation plus history atomic', 0, async () => {
       const mutation: PhoneLocalMemoryConditionalStatement = { sql: 'conditional mutation', args: [] };
       const history: PhoneLocalMemoryConditionalStatement = { sql: 'history write', args: [] };
-      const zeroStore = new ConditionalTransactionStore();
-      zeroStore.affected = 0;
-      const changed = await executePhoneLocalMemoryConditionalTransaction(zeroStore, mutation, [history]);
-      expect(changed).assertFalse();
-      expect(zeroStore.executedSql.length).assertEqual(1);
-      expect(zeroStore.commitCalls).assertEqual(0);
-      expect(zeroStore.rollbackCalls).assertEqual(1);
-
-      const unknownStore = new ConditionalTransactionStore();
-      unknownStore.affected = 'unexpected';
-      expect(await executePhoneLocalMemoryConditionalTransaction(
-        unknownStore, mutation, [history])).assertFalse();
-      expect(unknownStore.executedSql.length).assertEqual(1);
-      expect(unknownStore.rollbackCalls).assertEqual(1);
+      const nullStore = new ConditionalTransactionStore();
+      nullStore.affected = null;
+      const changed = await executePhoneLocalMemoryConditionalTransaction(nullStore, mutation, [history]);
+      expect(changed).assertTrue();
+      expect(nullStore.executedSql.length).assertEqual(2);
+      expect(nullStore.commitCalls).assertEqual(1);
+      expect(nullStore.rollbackCalls).assertEqual(0);
 
       const throwingStore = new ConditionalTransactionStore();
       throwingStore.throwMutation = true;
@@ -529,7 +543,6 @@ export default function phoneLocalMemoryProviderTest() {
       expect(throwingStore.rollbackCalls).assertEqual(1);
 
       const historyFailureStore = new ConditionalTransactionStore();
-      historyFailureStore.affected = 1;
       historyFailureStore.failAt = 2;
       rejected = false;
       try {
@@ -543,7 +556,6 @@ export default function phoneLocalMemoryProviderTest() {
       expect(historyFailureStore.rollbackCalls).assertEqual(1);
 
       const successStore = new ConditionalTransactionStore();
-      successStore.affected = 1;
       expect(await executePhoneLocalMemoryConditionalTransaction(
         successStore, mutation, [history])).assertTrue();
       expect(successStore.executedSql.length).assertEqual(2);
@@ -925,6 +937,37 @@ export default function phoneLocalMemoryProviderTest() {
       expect(deletion.status).assertEqual('error');
       expect(deletion.error?.code).assertEqual(PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE);
       expect(store.records.length).assertEqual(1);
+    });
+
+    it('allows only one of two concurrent updates using the same expected snapshot', 0, async () => {
+      const store = new FakeMemoryStore();
+      const memory = provider(store, new FakeEmbeddingPort());
+      const remembered = await memory.remember({
+        ownerId: 'owner-a', records: [{
+          fact: '喜欢咖啡', sceneId: 'global', personaTag: 'global', sourceTurnId: 'concurrent-add'
+        }]
+      });
+      const record = remembered.records[0].record;
+      if (record === undefined) throw new Error('Expected concurrent conditional fixture.');
+      const expected = expectedRecord(record);
+      const results = await Promise.all([
+        memory.updateIfCurrent({
+          ownerId: 'owner-a', memoryId: record.memoryId, fact: '喜欢茶',
+          personaTag: 'global', authority: 'leader', sourceTurnId: 'concurrent-one'
+        }, expected),
+        memory.updateIfCurrent({
+          ownerId: 'owner-a', memoryId: record.memoryId, fact: '喜欢果汁',
+          personaTag: 'global', authority: 'leader', sourceTurnId: 'concurrent-two'
+        }, expected)
+      ]);
+      let successCount = 0;
+      let conflictCount = 0;
+      for (let position = 0; position < results.length; position += 1) {
+        if (results[position].status === 'success') successCount += 1;
+        if (results[position].error?.code === PHONE_LOCAL_MEMORY_WRITE_CONFLICT_CODE) conflictCount += 1;
+      }
+      expect(successCount).assertEqual(1);
+      expect(conflictCount).assertEqual(1);
     });
 
     it('cancels update after embedding and forget immediately before their commits', 0, async () => {

@@ -3,29 +3,26 @@ import {
   COLOR_ACCENT_SOFT,
   COLOR_CARD,
   COLOR_CARD_EDGE,
-  COLOR_CARD_RAISED,
-  COLOR_CARD_SHADOW,
   COLOR_ERROR,
   COLOR_ERROR_SOFT,
   COLOR_FIELD,
   COLOR_INK,
   COLOR_MUTED,
-  COLOR_PAGE,
   COLOR_PANEL,
   COLOR_TEXT
 } from '../style/A2uiHomeTheme';
 import { A2UI_MOTION_CURVE } from '../style/A2uiHomeMotion';
 import {
+  MANAGEMENT_CARD_BACKGROUND,
+  MANAGEMENT_CARD_EDGE,
+  MANAGEMENT_CARD_RADIUS,
+  MANAGEMENT_CARD_SHADOW,
   MANAGEMENT_CARD_SHADOW_OFFSET_Y,
   MANAGEMENT_CARD_SHADOW_RADIUS,
   MANAGEMENT_DISCLOSURE_ARROW_ROTATION
 } from './ManagementPageVisualStyle';
 
 const USER_PAGE_PADDING: number = 16;
-const USER_CARD_RADIUS: number = 18;
-
-export const LONG_TERM_MEMORY_ENTRY_TITLE: string = '长期记忆';
-export const LONG_TERM_MEMORY_ENTRY_SUBTITLE: string = '查看概览并修正 Appless 记住的内容';
 
 export type UserDisplayNameSaveAction = 'disabled' | 'close' | 'save';
 
@@ -60,8 +57,7 @@ export struct UserManagementPage {
   onBack: () => void = () => {};
   onSaveDisplayName: (name: string) => void = (_name: string): void => {};
   onResetDisplayName: () => void = () => {};
-  onOpenSocialPersona: () => void = () => {};
-  onOpenLongTermMemory: () => void = () => {};
+  onOpenAboutYou: () => void = () => {};
   onRequestLogoutConfirmation: () => void = () => {};
   onCancelLogout: () => void = () => {};
   onLogout: () => void = () => {};
@@ -232,12 +228,12 @@ export struct UserManagementPage {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding(16)
-    .backgroundColor(COLOR_CARD_RAISED)
-    .borderRadius(USER_CARD_RADIUS)
-    .border({ width: 1, color: COLOR_CARD_EDGE })
+    .backgroundColor(MANAGEMENT_CARD_BACKGROUND)
+    .borderRadius(MANAGEMENT_CARD_RADIUS)
+    .border({ width: 1, color: MANAGEMENT_CARD_EDGE })
     .shadow({
       radius: MANAGEMENT_CARD_SHADOW_RADIUS,
-      color: COLOR_CARD_SHADOW,
+      color: MANAGEMENT_CARD_SHADOW,
       offsetX: 0,
       offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y
     })
@@ -282,12 +278,12 @@ export struct UserManagementPage {
     .width('100%')
     .constraintSize({ minHeight: 76 })
     .padding({ left: 14, right: 14, top: 12, bottom: 12 })
-    .backgroundColor(COLOR_CARD_RAISED)
-    .borderRadius(USER_CARD_RADIUS)
-    .border({ width: 1, color: COLOR_CARD_EDGE })
+    .backgroundColor(MANAGEMENT_CARD_BACKGROUND)
+    .borderRadius(MANAGEMENT_CARD_RADIUS)
+    .border({ width: 1, color: MANAGEMENT_CARD_EDGE })
     .shadow({
       radius: MANAGEMENT_CARD_SHADOW_RADIUS,
-      color: COLOR_CARD_SHADOW,
+      color: MANAGEMENT_CARD_SHADOW,
       offsetX: 0,
       offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y
     })
@@ -338,12 +334,12 @@ export struct UserManagementPage {
       }
       .width('86%')
       .padding(20)
-      .backgroundColor(COLOR_CARD_RAISED)
-      .borderRadius(20)
-      .border({ width: 1, color: COLOR_CARD_EDGE })
+      .backgroundColor(MANAGEMENT_CARD_BACKGROUND)
+      .borderRadius(MANAGEMENT_CARD_RADIUS)
+      .border({ width: 1, color: MANAGEMENT_CARD_EDGE })
       .shadow({
         radius: MANAGEMENT_CARD_SHADOW_RADIUS,
-        color: COLOR_CARD_SHADOW,
+        color: MANAGEMENT_CARD_SHADOW,
         offsetX: 0,
         offsetY: MANAGEMENT_CARD_SHADOW_OFFSET_Y
       })
@@ -355,6 +351,13 @@ export struct UserManagementPage {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
+      Image($r('app.media.home_light_aurora_background'))
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Cover)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .hitTestBehavior(HitTestMode.Transparent)
+
       Scroll() {
         Column({ space: 12 }) {
           this.Header()
@@ -367,21 +370,12 @@ export struct UserManagementPage {
             .margin({ top: 10, left: 4 })
 
           this.ActionRow(
-            $r('app.media.icon_social'),
-            '社交账号画像',
-            '确认公开账号，整理你的兴趣与偏好',
+            $r('app.media.icon_user'),
+            '关于你',
+            '查看 Appless 对你的了解，补充或更新记忆',
             false,
             () => {
-              this.onOpenSocialPersona();
-            }
-          )
-          this.ActionRow(
-            $r('app.media.icon_history'),
-            LONG_TERM_MEMORY_ENTRY_TITLE,
-            LONG_TERM_MEMORY_ENTRY_SUBTITLE,
-            false,
-            () => {
-              this.onOpenLongTermMemory();
+              this.onOpenAboutYou();
             }
           )
           this.ActionRow(
@@ -405,7 +399,7 @@ export struct UserManagementPage {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(COLOR_PAGE)
+      .backgroundColor('#00000000')
 
       if (this.showLogoutConfirm) {
         this.LogoutConfirmation()
@@ -413,5 +407,7 @@ export struct UserManagementPage {
     }
     .width('100%')
     .height('100%')
+    .backgroundColor('#FFFDF9')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

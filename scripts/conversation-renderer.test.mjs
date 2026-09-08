@@ -58,6 +58,16 @@ test('secondary pages overlay the persistent home WebView', () => {
   assert.match(buildBody, /Stack\(\) \{\s*Swiper[\s\S]*HomePage\(/);
   assert.match(buildBody, /this\.showConfigPage/);
   assert.match(buildBody, /this\.ConfigPageContent\(\)/);
+  assert.match(buildBody, /this\.showAboutYouPage/);
+  assert.match(buildBody, /this\.AboutYouPageContent\(\)/);
+  assert.doesNotMatch(indexSource, /showLongTermMemoryPage|showPublicPersonaPage/);
+
+  const userPageSource = fs.readFileSync(
+    new URL('../entry/src/main/ets/pages/A2uiHome/components/UserManagementPage.ets', import.meta.url),
+    'utf8'
+  );
+  assert.match(userPageSource, /this\.onOpenAboutYou\(\)/);
+  assert.doesNotMatch(userPageSource, /onOpenSocialPersona|onOpenLongTermMemory|社交账号画像/);
 });
 
 test('agent replies do not show a foreground toast', () => {

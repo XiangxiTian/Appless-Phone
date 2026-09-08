@@ -294,7 +294,6 @@ export struct HomePage {
   private voiceHoldActive: boolean = false;
   private previousKeyboardAvoidMode: KeyboardAvoidMode = KeyboardAvoidMode.OFFSET;
   onOpenConfig: () => void = () => {};
-  onOpenPublicPersona: () => void = () => {};
   onOpenUserManagement: () => void = () => {};
   onToggleHistory: () => void = () => {};
   onSendPrompt: () => void = () => {};

@@ -38,3 +38,6 @@ entry/src/main/resources/rawfile/memory/bge-small-zh-v1.5.ms
 /huawei-browser-*.jpeg
 /home-before-haitai.jpeg
 /aiphone-*.json
+
+# Local login provider configuration. Server private keys never belong in an app rawfile.
+entry/src/main/resources/rawfile/account_login_config.json

@@ -1,3 +1,5 @@
+import { CloudAccountService, CloudAccountIdentity, validatedPhone } from '../main/ets/account/CloudAccountService';
+import { validatedWechatCode } from '../main/ets/account/WechatAccountService';
 import { describe, it, expect } from '@ohos/hypium';
 import { MemoryCredentialStore } from '@loop/agent-core';
 import {
@@ -97,8 +99,141 @@ function publicSnapshotText(snapshot: AccountSessionSnapshot): string {
   return snapshot.status.toString() + '|' + snapshot.ownerId + '|' + snapshot.errorMessage;
 }
 
+class FakeCloudAccountService implements CloudAccountService {
+  identity: CloudAccountIdentity = { uid: 'cloud-user', displayName: '手机用户' };
+  restored: CloudAccountIdentity | null = null;
+  fail: boolean = false;
+  failSignOut: boolean = false;
+  restoreWait: Promise<void> | null = null;
+  async requestPhoneCode(_phone: string): Promise<number> { return 60; }
+  async loginPhone(_phone: string, _code: string): Promise<CloudAccountIdentity> {
+    if (this.fail) throw new Error('secret upstream error');
+    this.restored = this.identity;
+    return this.identity;
+  }
+  async loginWechat(): Promise<CloudAccountIdentity> { return this.loginPhone('', ''); }
+  async loginHuawei(): Promise<CloudAccountIdentity> { return this.loginPhone('', ''); }
+  async restore(): Promise<CloudAccountIdentity | null> {
+    const identity = this.restored;
+    if (this.restoreWait !== null) await this.restoreWait;
+    return identity;
+  }
+  async linkPhone(_uid: string, _phone: string, _code: string): Promise<CloudAccountIdentity> { return this.identity; }
+  async linkWechat(_uid: string): Promise<CloudAccountIdentity> { return this.identity; }
+  async signOut(): Promise<void> {
+    if (this.failSignOut) throw new Error('provider sign-out unavailable');
+    this.restored = null;
+  }
+}
+
 export default function accountSessionStoreTest() {
   describe('accountSessionStore', () => {
+    it('phone and WeChat restore the same linked owner without claiming legacy data', 0, async () => {
+      const cloud = new FakeCloudAccountService();
+      const creds = new MemoryCredentialStore();
+      const active = new FakeActiveAccountOwnerStore();
+      const migration = new FakeLegacyClaimCoordinator();
+      const store = new AccountSessionStore(new FakeHuaweiAccountService(), creds, 'client', migration, active, undefined, cloud);
+      const phone = await store.loginPhone('13800138000', '123456');
+      expect(phone.status).assertEqual(AccountSessionStatus.AUTHENTICATED);
+      expect(isValidAccountOwnerId(phone.ownerId)).assertTrue();
+      expect(migration.owners.length).assertEqual(0);
+      expect((await store.restore()).ownerId).assertEqual(phone.ownerId);
+      await store.clearLocalSession();
+      expect((await store.restore()).status).assertEqual(AccountSessionStatus.SIGNED_OUT);
+      expect((await store.loginWechat()).ownerId).assertEqual(phone.ownerId);
+      cloud.restored = { uid: 'another-cloud-user', displayName: '' };
+      expect((await store.restore()).status).assertEqual(AccountSessionStatus.ACCOUNT_MISMATCH);
+      expect(active.ownerId).assertEqual('');
+    });
+
+    it('binding preserves Huawei local ownership and rejects unverified login', 0, async () => {
+      const cloud = new FakeCloudAccountService();
+      const store = new AccountSessionStore(new FakeHuaweiAccountService(), new MemoryCredentialStore(), 'client',
+        undefined, new FakeActiveAccountOwnerStore(), undefined, cloud);
+      const huawei = await store.login();
+      expect(await store.phoneLoginHint()).assertEqual('');
+      const linked = await store.bindPhone('13800138000', '123456');
+      expect(linked.ownerId).assertEqual(huawei.ownerId);
+      expect(await store.phoneLoginHint()).assertEqual('138****8000');
+      await store.clearLocalSession();
+      expect(await store.phoneLoginHint()).assertEqual('');
+      expect((await store.loginPhone('13800138000', '123456')).ownerId).assertEqual(huawei.ownerId);
+      expect(await store.phoneLoginHint()).assertEqual('138****8000');
+      await store.clearLocalSession();
+      expect((await store.login()).ownerId).assertEqual(huawei.ownerId);
+      expect(await store.phoneLoginHint()).assertEqual('138****8000');
+      await store.clearLocalSession();
+      cloud.fail = true;
+      const failed = await store.loginWechat();
+      expect(failed.status).assertEqual(AccountSessionStatus.ERROR);
+      expect(failed.ownerId).assertEqual('');
+      expect(failed.errorMessage.indexOf('secret')).assertEqual(-1);
+    });
+
+    it('logout stays signed out when a previously started cloud restore finishes late', 0, async () => {
+      const cloud = new FakeCloudAccountService();
+      const active = new FakeActiveAccountOwnerStore();
+      const store = new AccountSessionStore(new FakeHuaweiAccountService(), new MemoryCredentialStore(), 'client',
+        undefined, active, undefined, cloud);
+      await store.loginPhone('13800138000', '123456');
+      let release: () => void = () => {};
+      cloud.restoreWait = new Promise<void>((resolve) => { release = resolve; });
+      const restoring = store.restore();
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+      const clearing = store.clearLocalSession();
+      setTimeout(() => { release(); }, 10);
+      await Promise.all([restoring, clearing]);
+      expect(store.snapshot().status).assertEqual(AccountSessionStatus.SIGNED_OUT);
+      expect(active.ownerId).assertEqual('');
+      expect((await store.restore()).status).assertEqual(AccountSessionStatus.SIGNED_OUT);
+    });
+
+    it('cloud cleanup failure does not prevent local logout or Huawei login', 0, async () => {
+      const cloud = new FakeCloudAccountService();
+      const credentials = new MemoryCredentialStore();
+      const active = new FakeActiveAccountOwnerStore();
+      const store = new AccountSessionStore(new FakeHuaweiAccountService(), credentials, 'client',
+        undefined, active, undefined, cloud);
+      await store.loginPhone('13800138000', '123456');
+      cloud.failSignOut = true;
+      expect((await store.clearLocalSession()).status).assertEqual(AccountSessionStatus.SIGNED_OUT);
+      expect(active.ownerId).assertEqual('');
+      expect(await credentials.get('account:agc:uid:v1')).assertEqual('');
+      expect(await credentials.get(HUAWEI_UNION_ID_CREDENTIAL_REF)).assertEqual('');
+      const restarted = new AccountSessionStore(new FakeHuaweiAccountService(), credentials, 'client',
+        undefined, active, undefined, cloud);
+      expect((await restarted.restore()).status).assertEqual(AccountSessionStatus.SIGNED_OUT);
+      expect((await restarted.login()).status).assertEqual(AccountSessionStatus.AUTHENTICATED);
+      expect(restarted.currentOwnerId()).assertEqual(deriveHuaweiOwnerId('union-login'));
+    });
+
+    it('failed binding keeps the current owner and refuses a changed Huawei account', 0, async () => {
+      const huaweiService = new FakeHuaweiAccountService();
+      const cloud = new FakeCloudAccountService();
+      const active = new FakeActiveAccountOwnerStore();
+      const store = new AccountSessionStore(huaweiService, new MemoryCredentialStore(), 'client', undefined, active, undefined, cloud);
+      const original = await store.login();
+      huaweiService.loginIdentity = { unionId: 'another-device-account' };
+      let rejected = false;
+      try { await store.bindWechat(); } catch (_error) { rejected = true; }
+      expect(rejected).assertTrue();
+      expect(store.currentOwnerId()).assertEqual(original.ownerId);
+      expect(active.ownerId).assertEqual(original.ownerId);
+      expect(cloud.restored === null).assertTrue();
+    });
+
+    it('rejects malformed phone numbers and mismatched WeChat callback state', 0, () => {
+      expect(validatedPhone(' 13800138000 ')).assertEqual('13800138000');
+      let invalidPhone = false;
+      let invalidState = false;
+      try { validatedPhone('13800138000&admin=true'); } catch (_error) { invalidPhone = true; }
+      try { validatedWechatCode('request-a', 'request-b', 'valid-code', 0); } catch (_error) { invalidState = true; }
+      expect(invalidPhone).assertTrue();
+      expect(invalidState).assertTrue();
+      expect(validatedWechatCode('request-a', 'request-a', 'valid-code', 0)).assertEqual('valid-code');
+    });
+
     it('derives stable lowercase SHA-256 owner IDs', 0, () => {
       const first = deriveHuaweiOwnerId('union-alpha');
       const second = deriveHuaweiOwnerId('union-alpha');

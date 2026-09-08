@@ -99,3 +99,8 @@ export function deriveHuaweiOwnerId(unionId: string): string {
   }
   return sha256('huawei:' + normalized);
 }
+
+export function deriveCloudOwnerId(uid: string): string {
+  if (uid.trim().length === 0 || uid.length > 1024) throw new Error('Invalid cloud account identity');
+  return sha256('agc:' + uid);
+}

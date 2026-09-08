@@ -122,10 +122,15 @@ const run = async (page, fixture) => {
   assert.deepEqual(actions.at(-1), { type:'social_search',token:'test-token', username:'xiaolin',mode:'exact' });
   changed.social.phase = 'confirm';
   changed.social.candidates = [
-    {id:'a',platform:'GitHub',displayName:'xiaolin',handle:'xiaolin',summary:'公开项目与分享',selected:true},
-    {id:'b',platform:'知乎',displayName:'另一个小林',handle:'lin2',summary:'待确认账号',selected:false}
+    {id:'a',platform:'GitHub',displayName:'xiaolin',handle:'xiaolin',summary:'公开项目与分享',avatarUrl:'https://about-you-preview.test/avatar.svg',selected:true},
+    {id:'b',platform:'知乎',displayName:'另一个小林',handle:'lin2',summary:'待确认账号',avatarUrl:'https://about-you-preview.test/missing.png',selected:false}
   ];
   await update(changed);
+  assert.equal(await page.locator('#candidates .account-avatar').count(), 2);
+  await page.waitForFunction(()=>document.querySelector('#candidates .account-avatar img')?.naturalWidth>0);
+  await page.waitForFunction(()=>document.querySelectorAll('#candidates .account-avatar img').length===1);
+  assert.equal(await page.locator('#candidates .account-avatar svg').nth(1).isVisible(), true);
+  await page.locator('#candidates').screenshot({path:output+'/about-you-candidate-avatars-390.png'});
   await page.locator('#confirm').click();
   actions = await page.evaluate(() => window.actions);
   assert.deepEqual(actions.at(-1).candidateIds, ['a']);

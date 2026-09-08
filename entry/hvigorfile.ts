@@ -30,6 +30,7 @@ function syncLocalProviderConfig(): void {
   execFileSync(process.execPath, [scriptPath], { cwd: rootDir, stdio: 'inherit' });
 }
 
+execFileSync(process.execPath, [join(projectRoot(process.cwd()), 'scripts', 'sync-auth-config.mjs')], { stdio: 'inherit' });
 syncLocalProviderConfig();
 
 export default {

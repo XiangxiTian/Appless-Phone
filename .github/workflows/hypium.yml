@@ -61,6 +61,9 @@ jobs:
       - name: Test public share server
         run: /Applications/DevEco-Studio.app/Contents/tools/node/bin/node scripts/waterfall-share-server.test.mjs
 
+      - name: Test login services
+        run: /Applications/DevEco-Studio.app/Contents/tools/node/bin/node --test scripts/agc-sms-server.test.mjs scripts/wechat-auth-server.test.mjs scripts/sync-auth-config.test.mjs scripts/cloud-account-service.test.mjs scripts/account-worker-lifecycle.test.mjs
+
       - name: Install dependencies
         run: /Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm install --all
 

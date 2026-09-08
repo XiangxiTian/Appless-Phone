@@ -6,6 +6,8 @@
   "author": "XiaoLuoLYG",
   "license": "UNLICENSED",
   "dependencies": {
+    "@hw-agconnect/auth": "1.0.5",
+    "@tencent/wechat_open_sdk": "1.0.21",
     "@loop/agent-core": "file:../agent_core",
     "libentry.so": "file:./src/main/cpp/types/libentry"
   }

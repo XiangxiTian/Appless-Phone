@@ -39,7 +39,7 @@ function pageHost() {
   for (const name of ['loadModelPreset', 'loadAggregateSearchPolicy', 'loadBimMotionPreference',
     'readDebugBuildState', 'configureComposioRuntimeForCurrentUser', 'subscribeWaterfallConversationTypedTest',
     'invalidateWaterfallLlmBatchLifecycle', 'stopBimMotionPreference', 'unsubscribeTrainPresaleHandoff',
-    'unsubscribeWaterfallConversationTypedTest', 'disposeHotelRuntime', 'cancelInterestPoolRefill',
+    'unsubscribeWaterfallConversationTypedTest', 'disposeHotelRuntime', 'cancelInterestPoolRefill', 'disposeWaterfallPoolRuntime',
     'scheduleWaterfallTagGenerationIfSafe']) state[name] = () => {};
   const dependencies = ['LongTermMemoryOverviewCoordinator', 'AccountSessionStatus', 'emptyAboutYouViewModel'];
   for (const [name, signature] of [
@@ -110,4 +110,23 @@ test('a failed first correction write exposes overview refresh before retrying',
   assert.equal(state.aboutYouCorrectionDisabled, true);
   assert.equal(state.aboutYouOverview, null);
   assert.equal(state.aboutYouModel.overviewError, '长期记忆修改失败，请重试。');
+});
+
+
+test('public account discovery retains the avatar in the confirmation view model', async () => {
+  const body = methodBody('private async searchAboutYouAccounts(username: string, mode: PublicPersonaSearchMode): Promise<void> {')
+    .replaceAll(': PublicPersonaProgress', '').replaceAll(': PublicPersonaCandidate', '')
+    .replaceAll(': AboutYouCandidate', '').replaceAll(': void', '');
+  const search = new Function(`return async function(username, mode) {${body}}`)();
+  const candidate = { id: 'github:test', platform: 'github', displayName: 'Test', username: 'test',
+    avatarUrl: 'https://example.com/avatar.png', ownershipBand: 'high', selected: true };
+  const state = {
+    showAboutYouPage: true, aboutYouSocialGeneration: 0, accountOwnerGeneration: 1,
+    aboutYouModel: { social: { phase: 'input', importing: false } }, publicPersonaViewModelJson: '{}',
+    publicPersonaClient: { discover: async () => [candidate] },
+    aboutYouSocialIsCurrent: () => true, publishAboutYou() {}
+  };
+  await search.call(state, 'test', 'exact');
+  assert.equal(state.aboutYouModel.social.phase, 'confirm');
+  assert.equal(state.aboutYouModel.social.candidates[0].avatarUrl, candidate.avatarUrl);
 });

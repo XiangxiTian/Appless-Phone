@@ -317,7 +317,7 @@ import {
   emptyAccountProfileSnapshot
 } from '../../account/AccountProfileStore';
 import { accountScopedStoreName } from '../../account/AccountStorageScope';
-import { HuaweiAccountLoginPage } from '../../account/HuaweiAccountLoginPage';
+import { AccountLoginPage } from '../../account/AccountLoginPage';
 import { configuredHuaweiAccountClientId } from '../../account/HuaweiAccountService';
 import { DefaultLegacyAccountClaimCoordinator } from '../../account/LegacyAccountMigration';
 import { ConfigPage } from './components/ConfigPage';
@@ -2327,15 +2327,27 @@ struct Index {
 
   private ensureWaterfallPoolRuntime(): WaterfallPoolWorkerClient {
     if (this.waterfallPoolWorkerClient === null) {
-      this.waterfallPoolWorkerClient = new WaterfallPoolWorkerClient(
+      const ownerGeneration = this.accountOwnerGeneration;
+      const pool: WaterfallPoolWorkerClient = new WaterfallPoolWorkerClient(
         localProviderConfigSnapshotJsonForWorker(), composioConfigSnapshotJsonForWorker(),
         waterfallSearchPolicyForRuntime(), null,
         (counts: WaterfallSourceSearchCount[]): void => {
+          if (this.waterfallPoolWorkerClient !== pool || ownerGeneration !== this.accountOwnerGeneration ||
+            this.accountOwnerId.length === 0) return;
           this.applyWaterfallAutoDisabledSources(counts);
         });
+      this.waterfallPoolWorkerClient = pool;
       this.waterfallPoolWorkerClient.setEnabledAdapters(this.currentWaterfallPoolAdapterIds());
     }
     return this.waterfallPoolWorkerClient;
+  }
+
+  private disposeWaterfallPoolRuntime(): void {
+    this.cancelInterestPoolRefill();
+    if (this.waterfallPoolWorkerClient !== null) this.waterfallPoolWorkerClient.dispose();
+    this.waterfallPoolWorkerClient = null;
+    this.waterfallPoolStarted = false;
+    this.waterfallPoolActivated = false;
   }
 
   private currentWaterfallPoolAdapterIds(platforms?: string[]): string[] {
@@ -4347,7 +4359,7 @@ struct Index {
       this.accountProfileSnapshot = normalized.length === 0 ? this.accountProfileStore().clearCustomName() :
         this.accountProfileStore().setCustomName(normalized);
       this.accountDisplayName = effectiveAccountDisplayName(this.accountProfileSnapshot);
-      this.accountNameSaveMessage = normalized.length === 0 ? '已恢复华为账号名称。' : '名称已保存。';
+      this.accountNameSaveMessage = normalized.length === 0 ? '已恢复账号名称。' : '名称已保存。';
     } catch (_error) {
       this.accountNameSaveMessage = '名称保存失败，请重试。';
     } finally {
@@ -4556,7 +4568,7 @@ struct Index {
       this.aboutYouCandidates = candidates;
       this.aboutYouModel.social.candidates = candidates.map((candidate: PublicPersonaCandidate): AboutYouCandidate => ({
         id: candidate.id, platform: candidate.platform, displayName: candidate.displayName,
-        handle: candidate.username, summary: candidate.ownershipBand === 'high' ? '较高匹配，请确认是你的账号' : '可能匹配，请确认',
+        handle: candidate.username, avatarUrl: candidate.avatarUrl, summary: candidate.ownershipBand === 'high' ? '较高匹配，请确认是你的账号' : '可能匹配，请确认',
         selected: candidate.selected
       }));
       this.aboutYouModel.social.phase = 'confirm';
@@ -4853,6 +4865,7 @@ struct Index {
     this.resetWaterfallConversationStateFromProfile();
     this.accountDataInitializedOwnerId = '';
     this.resetCurrentSession('account_scope_invalidated');
+    this.disposeWaterfallPoolRuntime();
     if (preserveInput) {
       this.inputText = pendingInput;
     }
@@ -4975,11 +4988,7 @@ struct Index {
     this.unsubscribeTrainPresaleHandoff();
     this.unsubscribeWaterfallConversationTypedTest();
     this.disposeHotelRuntime();
-    this.cancelInterestPoolRefill();
-    if (this.waterfallPoolWorkerClient !== null) this.waterfallPoolWorkerClient.dispose();
-    this.waterfallPoolWorkerClient = null;
-    this.waterfallPoolStarted = false;
-    this.waterfallPoolActivated = false;
+    this.disposeWaterfallPoolRuntime();
     this.interestWaterfallRankingRevision += 1;
     this.interestRefreshPreloadRankingRevision += 1;
     this.waterfallRankingWorkerClient.dispose();
@@ -12935,7 +12944,7 @@ struct Index {
           .width(36)
           .height(36)
           .color('#CF0A2C')
-        Text('正在检查华为账号…')
+        Text('正在检查登录状态…')
           .fontSize(14)
           .fontColor('#646A73')
       }
@@ -12946,7 +12955,7 @@ struct Index {
       .backgroundColor('#F7F8FA')
     } else if (this.accountSessionStatus !== AccountSessionStatus.AUTHENTICATED ||
       this.accountOwnerId.length === 0) {
-      HuaweiAccountLoginPage({
+      AccountLoginPage({
         accountSessionStore: this.accountSessionStore(),
         onLoginSuccess: (ownerId: string): void => {
           this.activateAccountOwner(ownerId);

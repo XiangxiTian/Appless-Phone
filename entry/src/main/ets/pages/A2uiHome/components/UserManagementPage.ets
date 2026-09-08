@@ -1,3 +1,5 @@
+import { AccountLoginPage } from '../../../account/AccountLoginPage';
+import { requireGlobalAccountSessionStore } from '../../../account/AccountSessionStore';
 import {
   COLOR_ACCENT,
   COLOR_ACCENT_SOFT,
@@ -50,6 +52,8 @@ export struct UserManagementPage {
   @Prop isSavingName: boolean = false;
   @Prop hasCustomDisplayName: boolean = false;
   @Prop showLogoutConfirm: boolean = false;
+  @State bindingLogin: boolean = false;
+  @State phoneLoginHint: string = '';
   @State nameDraft: string = '';
   @State hideSaveMessage: boolean = false;
   @State editingName: boolean = false;
@@ -64,6 +68,11 @@ export struct UserManagementPage {
 
   aboutToAppear(): void {
     this.nameDraft = this.displayName;
+    void this.refreshPhoneLoginHint();
+  }
+
+  private async refreshPhoneLoginHint(): Promise<void> {
+    this.phoneLoginHint = await requireGlobalAccountSessionStore().phoneLoginHint();
   }
 
   private onDisplayNameChanged(): void {
@@ -162,7 +171,7 @@ export struct UserManagementPage {
               .fontColor(COLOR_INK)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
-            Text('华为账号已登录')
+            Text('账号已登录')
               .fontSize(11)
               .fontColor(COLOR_ACCENT)
               .margin({ top: 5 })
@@ -203,7 +212,7 @@ export struct UserManagementPage {
       .width('100%')
 
       if (this.hasCustomDisplayName && !this.editingName) {
-        Button('恢复华为账号名称')
+        Button('恢复账号名称')
           .height(34)
           .fontSize(12)
           .fontColor(COLOR_ACCENT)
@@ -358,11 +367,41 @@ export struct UserManagementPage {
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .hitTestBehavior(HitTestMode.Transparent)
 
+      if (this.bindingLogin) {
+        AccountLoginPage({
+          binding: true,
+          onBack: () => { this.bindingLogin = false; },
+          onLoginSuccess: (_ownerId: string) => { this.bindingLogin = false; void this.refreshPhoneLoginHint(); }
+        })
+      } else {
       Scroll() {
         Column({ space: 12 }) {
           this.Header()
           this.ProfileCard()
 
+          if (this.phoneLoginHint.length > 0) {
+            this.ActionRow(
+              $r('app.media.icon_user'),
+              '手机号 ' + this.phoneLoginHint,
+              '已绑定，可用于登录当前账号',
+              false,
+              () => {
+                AlertDialog.show({
+                  title: '手机号登录',
+                  message: '此手机号已验证，可用于登录当前 Appless 账号。无需重复绑定。',
+                  confirm: { value: '知道了', action: () => {} }
+                });
+              }
+            )
+          } else {
+            this.ActionRow(
+              $r('app.media.icon_user'),
+              '添加手机号登录',
+              '可选，不影响华为账号登录',
+              false,
+              () => { this.bindingLogin = true; }
+            )
+          }
           Text('功能')
             .width('100%')
             .fontSize(13)
@@ -401,6 +440,7 @@ export struct UserManagementPage {
       .height('100%')
       .backgroundColor('#00000000')
 
+      }
       if (this.showLogoutConfirm) {
         this.LogoutConfirmation()
       }

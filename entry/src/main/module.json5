@@ -17,6 +17,7 @@
         "value": "6917613462213244123"
       }
     ],
+    "querySchemes": ["weixin", "wxopensdk"],
     "requestPermissions": [
       {
         "name": "ohos.permission.INTERNET"

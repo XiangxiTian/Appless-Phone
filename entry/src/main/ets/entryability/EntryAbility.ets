@@ -1,3 +1,4 @@
+import { handleWechatLoginWant } from '../account/WechatAccountService';
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { display, window } from '@kit.ArkUI';
@@ -374,6 +375,7 @@ export default class EntryAbility extends UIAbility {
   private pendingWaterfallShareUrl: string = '';
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    handleWechatLoginWant(want);
     this.pendingWaterfallShareUrl = waterfallShareUrlFromWant(want);
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
@@ -437,6 +439,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    if (handleWechatLoginWant(want)) return;
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onNewWant');
     const shareUrl = waterfallShareUrlFromWant(want);
     if (shareUrl.length > 0) {

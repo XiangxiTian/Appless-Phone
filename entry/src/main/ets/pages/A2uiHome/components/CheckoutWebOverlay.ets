@@ -46,7 +46,7 @@ import { A2uiButtonView } from './common/A2uiButtonView';
 import { A2uiWebControllerIdentity, A2uiWebSurfaceView } from './common/A2uiWebSurfaceView';
 
 export type CheckoutWebKind = 'payment' | 'hotel' | 'train' | 'flight';
-export type CheckoutNavigationDecision = 'allow' | 'payment_return' | 'block';
+export type CheckoutNavigationDecision = 'allow' | 'payment_return' | 'external_payment' | 'block';
 
 interface StrictHttpsLocation {
   host: string;
@@ -77,21 +77,25 @@ function strictHttpsLocation(value: string): StrictHttpsLocation | undefined {
 
 function isAllowed12306MainFrameUrl(value: string): boolean {
   const parsed = strictHttpsLocation(value);
+  return parsed !== undefined && (parsed.host === '12306.cn' || parsed.host.endsWith('.12306.cn'));
+}
+
+function isTrustedTrainPaymentAppTarget(value: string): boolean {
+  const url = value.trim();
+  const lower = url.toLowerCase();
+  if (url.indexOf('\\') >= 0 || /\s/.test(url)) return false;
+  return lower.startsWith('alipays://') || lower.startsWith('weixin://') || lower.startsWith('unionpay://');
+}
+
+function isTrustedTrainPaymentHttpsUrl(value: string): boolean {
+  const url = value.trim();
+  const parsed = strictHttpsLocation(url);
   if (parsed === undefined) return false;
-  if (parsed.host === 'epay.12306.cn') {
-    return ['/pay/webBusiness', '/pay/payGatewayT', '/pay/payResponse'].indexOf(parsed.path) >= 0;
+  const trustedDomains: string[] = ['alipay.com', 'tenpay.com', 'unionpay.com', '95516.com'];
+  for (let index = 0; index < trustedDomains.length; index++) {
+    if (parsed.host === trustedDomains[index] || parsed.host.endsWith('.' + trustedDomains[index])) return true;
   }
-  if (parsed.host !== 'kyfw.12306.cn') return false;
-  return [
-    '/otn/leftTicket/init',
-    '/otn/login/init',
-    '/otn//login/init',
-    '/otn/resources/login.html',
-    '/otn/passport',
-    '/otn/confirmPassenger/initDc',
-    '/otn/payOrder/init',
-    '/payOrder/init'
-  ].indexOf(parsed.path) >= 0;
+  return parsed.host === 'payapp.weixin.qq.com';
 }
 
 export function isAllowed12306BookingUrl(url: string): boolean {
@@ -116,8 +120,7 @@ export function isAllowedCtripMainFrameUrl(value: string): boolean {
 
 export function isOfficial12306PaymentUrl(value: string): boolean {
   const parsed = strictHttpsLocation(value);
-  return parsed !== undefined && ((parsed.host === 'epay.12306.cn' &&
-    ['/pay/webBusiness', '/pay/payGatewayT', '/pay/payResponse'].indexOf(parsed.path) >= 0) ||
+  return parsed !== undefined && ((parsed.host === 'epay.12306.cn') ||
     (parsed.host === 'kyfw.12306.cn' &&
       (parsed.path === '/otn/payOrder/init' || parsed.path === '/payOrder/init')));
 }
@@ -128,6 +131,9 @@ export function checkoutWebNavigationDecision(
   isMainFrame: boolean
 ): CheckoutNavigationDecision {
   const value = url.trim().toLowerCase();
+  if (kind === 'train' && isTrustedTrainPaymentAppTarget(url)) {
+    return 'external_payment';
+  }
   if ((kind === 'train' || kind === 'flight') && !value.startsWith('https://')) {
     return 'block';
   }
@@ -140,7 +146,7 @@ export function checkoutWebNavigationDecision(
   if (kind === 'hotel' && !isAllowedHotelBookingNavigationUrl(url)) {
     return 'block';
   }
-  if (kind === 'train' && !isAllowed12306MainFrameUrl(url)) {
+  if (kind === 'train' && !isAllowed12306MainFrameUrl(url) && !isTrustedTrainPaymentHttpsUrl(url)) {
     return 'block';
   }
   if (kind === 'flight' && !isAllowedCtripMainFrameUrl(url)) {
@@ -515,10 +521,15 @@ export struct CheckoutWebOverlay {
       this.onReturnUrl(url);
       return true;
     }
+    if (decision === 'external_payment') {
+      this.openTrainPaymentTarget(url);
+      return true;
+    }
     if (decision === 'block') {
       if (this.kind === 'train') {
         this.blockedNavigation = '已阻止离开安全的 HTTPS 页面。';
-        aiLogInfo('[AIPhone][TrainBookingNavigationBlocked] chars=' + url.length.toString());
+        aiLogInfo('[AIPhone][TrainBookingNavigationBlocked] target=' + webHostForDisplay(url) +
+          ' chars=' + url.length.toString());
       } else if (this.kind === 'flight') {
         this.blockedNavigation = '已阻止离开携程安全域名。';
         aiLogInfo('[AIPhone][FlightBookingNavigationBlocked] chars=' + url.length.toString());
@@ -530,6 +541,21 @@ export struct CheckoutWebOverlay {
     }
     this.blockedNavigation = '';
     return false;
+  }
+
+  private async openTrainPaymentTarget(url: string): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await context.startAbility({
+        action: 'ohos.want.action.viewData',
+        uri: url
+      });
+      this.blockedNavigation = '';
+      aiLogInfo('[AIPhone][TrainPaymentOpen] ok=true chars=' + url.length.toString());
+    } catch (_error) {
+      this.blockedNavigation = '无法打开支付页面，请确认已安装所选支付应用。';
+      aiLogError('[AIPhone][TrainPaymentOpen] ok=false chars=' + url.length.toString());
+    }
   }
 
   build() {

@@ -3339,7 +3339,7 @@ const HTML_HOME_JS: string = `
   }
   var app = document.getElementById('app');
   if (!app) { return; }
-  var localState = { travel: 'all', food: 'all', mail: 'all', trainFastest: false, trainAvailable: false, trainShowMore: false, expandedKey: '', luckinShopKey: '' };
+  var localState = { travel: 'all', food: 'all', mail: 'all', fastestFirst: false, expandedKey: '', luckinShopKey: '' };
   var mailDetailEntries = {};
   var mailCalendarSuggestions = {};
   var mailReplyDrafts = {};
@@ -4937,12 +4937,6 @@ const HTML_HOME_JS: string = `
     var total = (hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0);
     return total > 0 ? total : 999999;
   }
-  function hasAvailableText(value) {
-    var raw = text(value);
-    if (raw.indexOf('有') >= 0 || raw.toLowerCase().indexOf('available') >= 0) { return true; }
-    if (raw.indexOf('无') >= 0 && raw.indexOf('有') < 0) { return false; }
-    return /[1-9][0-9]*/.test(raw);
-  }
   function handleLocalAction(action) {
     if (isBusy) { return false; }
     var id = text(action && action.id);
@@ -4964,9 +4958,7 @@ const HTML_HOME_JS: string = `
     if (id === 'travel_filter_flight') { localState.travel = 'flight'; applyLocalView(); return true; }
     if (id === 'food_show_all' || id === 'food_show_more') { localState.food = 'all'; applyLocalView(); return true; }
     if (id === 'food_filter_1km') { localState.food = 'within_1km'; applyLocalView(); return true; }
-    if (id === 'client_show_more') { localState.trainShowMore = !localState.trainShowMore; applyLocalView(); return true; }
-    if (id === 'client_sort_fastest') { localState.trainFastest = !localState.trainFastest; applyLocalView(); return true; }
-    if (id === 'client_filter_available') { localState.trainAvailable = !localState.trainAvailable; applyLocalView(); return true; }
+    if (id === 'client_sort_fastest') { localState.fastestFirst = !localState.fastestFirst; applyLocalView(); return true; }
     return false;
   }
   function updateVisibleCount(visibleCount, totalCount) {
@@ -4991,19 +4983,20 @@ const HTML_HOME_JS: string = `
   }
   function applyLocalView() {
     var cards = Array.prototype.slice.call(document.querySelectorAll('.block'));
-    var trains = cards.filter(function (card) {
-      return (card.getAttribute('data-kind') || '') === 'train-option';
+    var travelCards = cards.filter(function (card) {
+      var kind = card.getAttribute('data-kind') || '';
+      return kind === 'travel-option' || kind === 'train-option' || kind === 'flight-option';
     }).sort(function (left, right) {
-      if (localState.trainFastest) {
-        return durationMinutes(left.getAttribute('data-duration') || '') - durationMinutes(right.getAttribute('data-duration') || '');
+      if (localState.fastestFirst) {
+        var durationDelta = durationMinutes(left.getAttribute('data-duration') || '') - durationMinutes(right.getAttribute('data-duration') || '');
+        if (durationDelta !== 0) { return durationDelta; }
       }
-      return numberIn(left.getAttribute('data-train-index') || '') - numberIn(right.getAttribute('data-train-index') || '');
+      return numberIn(left.getAttribute('data-index') || '') - numberIn(right.getAttribute('data-index') || '');
     });
-    trains.forEach(function (card) {
+    travelCards.forEach(function (card) {
       if (card.parentNode) { card.parentNode.appendChild(card); }
     });
     cards = Array.prototype.slice.call(document.querySelectorAll('.block'));
-    var trainVisibleCount = 0;
     var visibleCount = 0;
     cards.forEach(function (card) {
       var kind = card.getAttribute('data-kind') || '';
@@ -5016,15 +5009,6 @@ const HTML_HOME_JS: string = `
       }
       if (kind === 'generic-tool-result' && localState.mail !== 'all') {
         visible = (card.getAttribute('data-source-key') || '') === localState.mail;
-      }
-      if (kind === 'train-option' && localState.trainAvailable) {
-        visible = hasAvailableText(card.getAttribute('data-availability') || '');
-      }
-      if (kind === 'train-option' && visible) {
-        trainVisibleCount += 1;
-        if (!localState.trainShowMore && trainVisibleCount > 6) {
-          visible = false;
-        }
       }
       if (visible) { visibleCount += 1; }
       card.style.display = visible ? '' : 'none';
@@ -6145,7 +6129,9 @@ const HTML_HOME_JS: string = `
   }
   function addActions(parent, actions) {
     var kept = list(actions).filter(function (action) {
-      return text(action && (action.label || action.id)).length > 0;
+      var id = text(action && action.id);
+      return id !== 'client_show_more' && id !== 'client_filter_available' && id !== 'travel_retry' &&
+        text(action && (action.label || action.id)).length > 0;
     });
     if (kept.length === 0) { return; }
     var row = add(parent, 'div', 'actions');
@@ -6332,6 +6318,7 @@ const HTML_HOME_JS: string = `
         card.classList.add('whatsapp-send-card');
       }
       card.setAttribute('data-kind', text(block.kind));
+      card.setAttribute('data-index', String(index));
       card.setAttribute('data-source-key', blockSourceKey);
       if (expandable) {
         card.setAttribute('data-card-key', text(block.id) || text(block.title) || String(blocks.indexOf(block)));

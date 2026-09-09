@@ -10,7 +10,6 @@ import {
   COLOR_CARD,
   COLOR_CARD_EDGE,
   COLOR_CARD_GLOW,
-  COLOR_CARD_RAISED,
   COLOR_ERROR,
   COLOR_ERROR_SOFT,
   COLOR_FIELD,
@@ -19,10 +18,7 @@ import {
   COLOR_TEXT
 } from '../style/A2uiHomeTheme';
 import { componentBodyOf, componentStatusOf, componentTitleOf } from '../render/A2uiRenderData';
-import {
-  buildCtripFlightSearchUrl,
-  ctripFlightBookingSelection
-} from '../travel/TravelBookingProvider';
+import { ctripFlightBookingSelection } from '../travel/TravelBookingProvider';
 import {
   travelCalendarActionForFlight,
   travelCalendarEventFromFlight
@@ -38,68 +34,62 @@ export struct FlightBoardView {
   @Prop component: A2uiComponent = { id: '', component: 'FlightBoard' };
   @Prop renderTick: number = 0;
   @Prop isBusy: boolean = false;
-  @State selectedDate: Date = new Date();
+  @State fastestFirst: boolean = false;
   @State expandedFlightKey: string = '';
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onPinFlightNavigationCard: (item: A2uiFlightOption) => void = (_item: A2uiFlightOption) => {};
-
-  aboutToAppear(): void {
-    this.selectedDate = this.initialDate();
-  }
 
   private flights(): A2uiFlightOption[] {
     return flightOptions(this.surface, this.component);
   }
 
+  private clockMinutes(value: string): number {
+    const match = /(\d{1,2}):(\d{2})/.exec(value);
+    return match === null ? 999999 : Number.parseInt(match[1], 10) * 60 + Number.parseInt(match[2], 10);
+  }
+
+  private durationMinutes(item: A2uiFlightOption): number {
+    const depart = this.clockMinutes(item.depTime);
+    const arrive = this.clockMinutes(item.arrTime);
+    if (depart >= 999999 || arrive >= 999999) return 999999;
+    return arrive >= depart ? arrive - depart : arrive + 24 * 60 - depart;
+  }
+
+  private visibleFlights(): A2uiFlightOption[] {
+    const next = this.flights().slice();
+    if (this.fastestFirst) {
+      next.sort((left: A2uiFlightOption, right: A2uiFlightOption) => {
+        return this.durationMinutes(left) - this.durationMinutes(right);
+      });
+    }
+    return next;
+  }
+
+  private actionForState(action: A2uiAction): A2uiAction {
+    const active = action.id === 'client_sort_fastest' && this.fastestFirst;
+    if (!active) return action;
+    return {
+      id: action.id, label: action.label, prompt: action.prompt,
+      kind: action.kind, variant: 'activated', args: action.args
+    };
+  }
+
   private visibleActions(): A2uiAction[] {
     const actions: A2uiAction[] = [];
     actionsOf(this.component).forEach((action: A2uiAction) => {
-      if (action.id !== 'flight_change_date' && action.id !== 'flight_change_city') {
-        actions.push(action);
-      }
+      if (action.id === 'client_show_more' || action.id === 'client_filter_available' ||
+        action.id === 'travel_retry' || action.id === 'flight_retry_date') return;
+      actions.push(this.actionForState(action));
     });
     return actions;
   }
 
-  private pad2(value: number): string {
-    return value < 10 ? '0' + value.toString() : value.toString();
-  }
-
-  private formatDate(date: Date): string {
-    return date.getFullYear().toString() + '-' + this.pad2(date.getMonth() + 1) + '-' + this.pad2(date.getDate());
-  }
-
-  private initialDate(): Date {
-    const text = componentTitleOf(this.component, '') + ' ' + componentBodyOf(this.component, '');
-    const match = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(text);
-    if (match !== null) {
-      const year = Number(match[1]);
-      const month = Number(match[2]);
-      const day = Number(match[3]);
-      if (year > 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return new Date(year, month - 1, day);
-      }
+  private handleAction(action: A2uiAction): void {
+    if (action.id === 'client_sort_fastest') {
+      this.fastestFirst = !this.fastestFirst;
+      return;
     }
-    return new Date();
-  }
-
-  private retryPrompt(): string {
-    const dateText = this.formatDate(this.selectedDate);
-    const flights = this.flights();
-    if (flights.length > 0 && flights[0].dep.length > 0 && flights[0].arr.length > 0) {
-      return '查询 ' + dateText + ' ' + flights[0].dep + ' 到 ' + flights[0].arr + ' 航班';
-    }
-    return '把当前航班查询改到 ' + dateText + '，沿用当前出发城市和到达城市';
-  }
-
-  private retryAction(): A2uiAction {
-    return {
-      id: 'flight_retry_date',
-      label: '重新查询',
-      prompt: this.retryPrompt(),
-      kind: 'prompt',
-      variant: 'primary'
-    };
+    this.onAction(action);
   }
 
   private flightRoute(item: A2uiFlightOption): string {
@@ -116,10 +106,6 @@ export struct FlightBoardView {
     const dep = item.depTime.length > 0 ? item.depTime : '--';
     const arr = item.arrTime.length > 0 ? item.arrTime : '--';
     return dep + ' - ' + arr;
-  }
-
-  private canBookOnCtrip(item: A2uiFlightOption): boolean {
-    return buildCtripFlightSearchUrl(ctripFlightBookingSelection(item)).length > 0;
   }
 
   private canAddCalendarReminder(item: A2uiFlightOption): boolean {
@@ -140,7 +126,7 @@ export struct FlightBoardView {
     const selection = ctripFlightBookingSelection(item);
     return {
       id: 'flight.booking.ctrip.open',
-      label: '去携程订票',
+      label: '打开携程',
       prompt: JSON.stringify({
         flightNo: item.flightNo,
         depTime: item.depTime,
@@ -202,19 +188,19 @@ export struct FlightBoardView {
         .alignItems(VerticalAlign.Top)
         .padding({ top: 4, bottom: 4 })
       }
-      Text('航班信息来自飞常准；点击后将在系统浏览器打开携程，票价、余票和订单状态以携程实时页面为准。')
+      Text('航班信息来自飞常准；点击后将打开携程 App，票价、余票和订单状态以携程实时信息为准。')
         .fontSize(12)
         .fontColor(COLOR_MUTED)
         .lineHeight(18)
         .margin({ top: 8 })
-      Button(this.canBookOnCtrip(item) ? '去携程订票' : '缺少航线或日期，暂不能订票')
-        .enabled(this.canBookOnCtrip(item) && !this.isBusy)
+      Button('打开携程')
+        .enabled(!this.isBusy)
         .height(42)
         .width('100%')
         .fontSize(14)
         .fontWeight(FontWeight.Medium)
-        .fontColor(this.canBookOnCtrip(item) ? COLOR_BUTTON_TEXT : COLOR_MUTED)
-        .backgroundColor(this.canBookOnCtrip(item) ? COLOR_ACCENT_DEEP : COLOR_FIELD)
+        .fontColor(COLOR_BUTTON_TEXT)
+        .backgroundColor(COLOR_ACCENT_DEEP)
         .borderRadius(11)
         .margin({ top: 10 })
         .onClick(() => {
@@ -272,13 +258,13 @@ export struct FlightBoardView {
       .width('100%')
       .alignItems(VerticalAlign.Top)
 
-      if (this.flights().length === 0) {
+      if (this.visibleFlights().length === 0) {
         Text('暂无可展示航班')
           .fontSize(13)
           .fontColor(COLOR_MUTED)
           .padding({ top: 14, bottom: 4 })
       } else {
-        ForEach(this.flights(), (item: A2uiFlightOption) => {
+        ForEach(this.visibleFlights(), (item: A2uiFlightOption) => {
           Column() {
             Row() {
               Column() {
@@ -376,61 +362,12 @@ export struct FlightBoardView {
         }, (item: A2uiFlightOption) => this.flightKey(item) + '-' + this.renderTick.toString())
       }
 
-      Column() {
-        Text('调整日期')
-          .fontSize(12)
-          .fontColor(COLOR_MUTED)
-          .margin({ bottom: 8 })
-        Row() {
-          CalendarPicker({
-            selected: this.selectedDate
-          })
-            .onChange((value: Date) => {
-              this.selectedDate = value;
-            })
-            .markToday(true)
-            .height(40)
-            .layoutWeight(1)
-            .textStyle({
-              color: COLOR_INK,
-              font: {
-                size: 14,
-                weight: FontWeight.Medium
-              }
-            })
-            .backgroundColor(COLOR_FIELD)
-            .borderRadius(11)
-            .border({ width: 1, color: COLOR_CARD_EDGE })
-            .padding({ left: 10, right: 10 })
-          Button('重新查询')
-            .enabled(!this.isBusy)
-            .height(40)
-            .fontSize(13)
-            .fontColor(COLOR_BUTTON_TEXT)
-            .backgroundColor(COLOR_ACCENT_DEEP)
-            .borderRadius(11)
-            .border({ width: 1, color: COLOR_ACCENT })
-            .padding({ left: 14, right: 14 })
-            .margin({ left: 10 })
-            .onClick(() => {
-              this.onAction(this.retryAction());
-            })
-        }
-        .width('100%')
-        .alignItems(VerticalAlign.Center)
-      }
-      .width('100%')
-      .alignItems(HorizontalAlign.Start)
-      .padding({ left: 12, right: 12, top: 12, bottom: 12 })
-      .backgroundColor(COLOR_CARD_RAISED)
-      .borderRadius(14)
-      .border({ width: 1, color: COLOR_CARD_EDGE })
-      .margin({ top: 12 })
-
       ActionBarView({
         actions: this.visibleActions(),
         isBusy: this.isBusy,
-        onAction: this.onAction
+        onAction: (action: A2uiAction) => {
+          this.handleAction(action);
+        }
       })
     }
     .width('100%')

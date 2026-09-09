@@ -454,12 +454,6 @@ import {
   DiscoveryMemoryProjectionStore
 } from './waterfall/DiscoveryMemoryProjectionStore';
 import {
-  buildCtripFlightSearchUrl,
-  buildCtripFlightSelectionContext,
-  ctripFlightBookingSelection,
-  ctripTravelOptionBookingSelection
-} from './travel/TravelBookingProvider';
-import {
   BimAttentionEvent,
   BimCuratorResult,
   BimForegroundRequest,
@@ -664,6 +658,7 @@ const LOG_SNIPPET_LIMIT: number = 1200;
 const DEFAULT_INPUT_PLACEHOLDER: string = '点击输入或按住说话';
 const DEEP_SEARCH_AUTO_ROUTE_ENABLED: boolean = false;
 const TRAIN_EDIT_QUERY_PLACEHOLDER: string = '请输入具体车站和时间，如：深圳北 18:00 后 到香港西九龙';
+const CTRIP_APP_URI: string = 'ctrip://wireless';
 const NAVIGATION_CARD_TTL_MS: number = 60 * 60 * 1000;
 const PAYMENT_ACCOUNT_STORE_NAME: string = 'aiphone_payment_account_store';
 const PAYMENT_ACCOUNT_BOOK_KEY: string = 'payment_account_book';
@@ -8809,8 +8804,6 @@ struct Index {
       this.logHtmlHomeActionError(action, 'invalid_model');
       return true;
     }
-    let bookingUrl = '';
-    let bookingContext = '';
     let source = 'flight.search';
     if (this.actionText(payload.source) === 'flight') {
       const travelRow = this.htmlPinTravelRow(model, payload, index);
@@ -8818,9 +8811,6 @@ struct Index {
         this.logHtmlHomeActionError(action, 'missing_travel_flight_row');
         return true;
       }
-      const selection = ctripTravelOptionBookingSelection(travelRow);
-      bookingUrl = buildCtripFlightSearchUrl(selection);
-      bookingContext = buildCtripFlightSelectionContext(selection);
       source = 'travel.search';
     } else {
       const flightRow = this.htmlPinFlightRow(model, payload, index);
@@ -8828,23 +8818,15 @@ struct Index {
         this.logHtmlHomeActionError(action, 'missing_flight_row');
         return true;
       }
-      const selection = ctripFlightBookingSelection(flightRow);
-      bookingUrl = buildCtripFlightSearchUrl(selection);
-      bookingContext = buildCtripFlightSelectionContext(selection);
     }
-    if (bookingUrl.length === 0) {
+    aiLogInfo('[AIPhone][FlightBookingOpen] provider=携程 channel=flight_ctrip mode=external_app source=' + source);
+    const opened = await this.openExternalUrl(CTRIP_APP_URI, ['ctrip']);
+    if (!opened) {
       this.getUIContext().getPromptAction().showToast({
-        message: '这条航班缺少出发机场、到达机场或日期，请重新查询后再订票。'
+        message: '未能打开携程，请确认已安装携程 App。'
       });
-      aiLogError('[AIPhone][FlightBookingOpen] ok=false reason=missing_trusted_parameters');
-      return true;
+      aiLogError('[AIPhone][FlightBookingOpen] ok=false reason=app_open_failed source=' + source);
     }
-    this.checkoutWebKind = 'flight';
-    this.checkoutWebUrl = bookingUrl;
-    this.checkoutWebContext = bookingContext;
-    this.trainPresaleCheckoutTaskId = '';
-    this.showCheckoutWeb = true;
-    aiLogInfo('[AIPhone][FlightBookingOpen] provider=携程 channel=flight_ctrip mode=in_app source=' + source);
     return true;
   }
 

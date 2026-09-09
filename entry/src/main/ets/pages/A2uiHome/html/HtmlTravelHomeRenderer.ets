@@ -1168,7 +1168,7 @@ const TRAVEL_HOME_JS: string = `
   });
   var initialMode = text(activatedFilter && activatedFilter.id) === 'travel_filter_train' ? 'train' :
     (text(activatedFilter && activatedFilter.id) === 'travel_filter_flight' ? 'flight' : 'all');
-  var state = { mode: initialMode, trainFastest: false, trainAvailable: false, trainShowMore: false, expandedKey: '' };
+  var state = { mode: initialMode, fastestFirst: false, expandedKey: '' };
   var isBusy = text(data.isBusy).toLowerCase() === 'true';
   function add(parent, tag, className, value) {
     var el = document.createElement(tag);
@@ -1245,12 +1245,6 @@ const TRAVEL_HOME_JS: string = `
   function trainPrice(value) {
     var raw = text(value).trim().replace(/^¥+/, '').replace(/起+$/, '').trim();
     return raw.length > 0 ? '¥' + raw + '起' : '';
-  }
-  function available(value) {
-    var raw = text(value);
-    if (raw.indexOf('有') >= 0 || raw.toLowerCase().indexOf('available') >= 0) { return true; }
-    if (raw.indexOf('无') >= 0 && raw.indexOf('有') < 0) { return false; }
-    return /[1-9][0-9]*/.test(raw);
   }
   function sourceKind(block) {
     var kind = text(block && block.kind).toLowerCase();
@@ -1350,9 +1344,7 @@ const TRAVEL_HOME_JS: string = `
     if (id === 'travel_show_all') { state.mode = 'all'; applyView(); if (action.args && action.args.taskId) { postAction(action); } return true; }
     if (id === 'travel_filter_train') { state.mode = 'train'; applyView(); if (action.args && action.args.taskId) { postAction(action); } return true; }
     if (id === 'travel_filter_flight') { state.mode = 'flight'; applyView(); if (action.args && action.args.taskId) { postAction(action); } return true; }
-    if (id === 'client_show_more') { state.trainShowMore = !state.trainShowMore; applyView(); return true; }
-    if (id === 'client_sort_fastest') { state.trainFastest = !state.trainFastest; applyView(); return true; }
-    if (id === 'client_filter_available') { state.trainAvailable = !state.trainAvailable; applyView(); return true; }
+    if (id === 'client_sort_fastest') { state.fastestFirst = !state.fastestFirst; applyView(); return true; }
     return false;
   }
   function updateControls() {
@@ -1362,9 +1354,7 @@ const TRAVEL_HOME_JS: string = `
       if (id === 'travel_show_all') { active = state.mode === 'all'; }
       if (id === 'travel_filter_train') { active = state.mode === 'train'; }
       if (id === 'travel_filter_flight') { active = state.mode === 'flight'; }
-      if (id === 'client_show_more') { active = state.trainShowMore; }
-      if (id === 'client_sort_fastest') { active = state.trainFastest; }
-      if (id === 'client_filter_available') { active = state.trainAvailable; }
+      if (id === 'client_sort_fastest') { active = state.fastestFirst; }
       button.classList.toggle('active', active);
     });
   }
@@ -1372,26 +1362,19 @@ const TRAVEL_HOME_JS: string = `
     var board = document.querySelector('.journey-board');
     var cards = Array.prototype.slice.call(document.querySelectorAll('.journey-card'));
     cards.sort(function (left, right) {
-      var leftSource = left.getAttribute('data-source') || '';
-      var rightSource = right.getAttribute('data-source') || '';
-      if (state.trainFastest && leftSource === 'train' && rightSource === 'train') {
-        return durationMinutes(left.getAttribute('data-duration') || '') - durationMinutes(right.getAttribute('data-duration') || '');
+      if (state.fastestFirst) {
+        var durationDelta = durationMinutes(left.getAttribute('data-duration') || '') - durationMinutes(right.getAttribute('data-duration') || '');
+        if (durationDelta !== 0) { return durationDelta; }
       }
       return numberIn(left.getAttribute('data-index') || '') - numberIn(right.getAttribute('data-index') || '');
     });
     cards.forEach(function (card) { if (board) { board.appendChild(card); } });
     var visible = 0;
-    var trainVisible = 0;
     cards.forEach(function (card) {
       var source = card.getAttribute('data-source') || '';
       var keep = true;
       if (state.mode === 'train') { keep = source === 'train'; }
       if (state.mode === 'flight') { keep = source === 'flight'; }
-      if (source === 'train' && state.trainAvailable) { keep = keep && available(card.getAttribute('data-availability') || ''); }
-      if (source === 'train' && keep) {
-        trainVisible += 1;
-        if (!state.trainShowMore && trainVisible > 6) { keep = false; }
-      }
       if (keep) { visible += 1; }
       card.style.display = keep ? '' : 'none';
     });
@@ -1440,10 +1423,7 @@ const TRAVEL_HOME_JS: string = `
   }
   function controlIcon(id) {
     if (id === 'client_sort_fastest') { return 'zap'; }
-    if (id === 'client_filter_available') { return 'ticket-check'; }
-    if (id === 'client_show_more') { return 'list-filter'; }
     if (id === 'travel_change_date') { return 'calendar-sync'; }
-    if (id === 'travel_retry') { return 'refresh-cw'; }
     return '';
   }
   function actionIcon(action) {
@@ -1558,24 +1538,20 @@ const TRAVEL_HOME_JS: string = `
     { id: 'travel_filter_flight', label: '飞机', prompt: 'travel_filter_flight', variant: 'secondary', kind: 'client' }
   ];
   localControls.push(
-    { id: 'client_sort_fastest', label: '最快', prompt: 'client_sort_fastest', variant: 'secondary', kind: 'client' },
-    { id: 'client_filter_available', label: '有票', prompt: 'client_filter_available', variant: 'secondary', kind: 'client' },
-    { id: 'client_show_more', label: '更多', prompt: 'client_show_more', variant: 'secondary', kind: 'client' }
+    { id: 'client_sort_fastest', label: '最快', prompt: 'client_sort_fastest', variant: 'secondary', kind: 'client' }
   );
   var seen = {};
   var controlActions = localControls.concat(list(data.actions));
   controlActions.forEach(function (action) {
     var id = text(action && action.id);
-    if (id.length === 0 || seen[id]) { return; }
+    if (id.length === 0 || seen[id] || id === 'client_show_more' ||
+      id === 'client_filter_available' || id === 'travel_retry') { return; }
     seen[id] = true;
     var label = text(action && action.label);
     if (id === 'travel_filter_train') { label = '高铁 ' + String(trainCount); }
     if (id === 'travel_filter_flight') { label = '飞机 ' + String(flightCount); }
     if (id === 'client_sort_fastest') { label = '最快'; }
-    if (id === 'client_filter_available') { label = '有票'; }
-    if (id === 'client_show_more') { label = '更多'; }
     if (id === 'travel_change_date') { label = '换日期'; }
-    if (id === 'travel_retry') { label = '重新查询'; }
     var primary = id === 'travel_show_all' || id === 'travel_filter_train' || id === 'travel_filter_flight';
     var button = add(primary ? primaryControls : toolControls, 'button', 'travel-control');
     button.type = 'button';

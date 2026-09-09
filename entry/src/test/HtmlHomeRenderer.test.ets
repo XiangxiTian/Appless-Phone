@@ -2636,10 +2636,10 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('travel_filter_train')).assertLarger(-1);
       expect(html.indexOf('food_filter_1km')).assertLarger(-1);
       expect(html.indexOf('client_sort_fastest')).assertLarger(-1);
-      expect(html.indexOf('trainShowMore: false')).assertLarger(-1);
-      expect(html.indexOf('localState.trainShowMore = !localState.trainShowMore')).assertLarger(-1);
+      expect(html.indexOf('fastestFirst: false')).assertLarger(-1);
+      expect(html.indexOf('localState.fastestFirst = !localState.fastestFirst')).assertLarger(-1);
       expect(html.indexOf('data-train-index')).assertLarger(-1);
-      expect(html.indexOf('trainVisibleCount > 6')).assertLarger(-1);
+      expect(html.indexOf('trainVisibleCount > 6')).assertEqual(-1);
     });
 
     it('renders food filter controls and matching data attributes in food documents', 0, () => {
@@ -2797,9 +2797,11 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('travel_filter_train')).assertLarger(-1);
       expect(html.indexOf('travel_filter_flight')).assertLarger(-1);
       expect(html.indexOf('client_sort_fastest')).assertLarger(-1);
-      expect(html.indexOf('client_filter_available')).assertLarger(-1);
-      expect(html.indexOf('client_show_more')).assertLarger(-1);
-      expect(html.indexOf("state.trainShowMore = !state.trainShowMore")).assertLarger(-1);
+      expect(html.indexOf("{ id: 'client_filter_available', label: '有票'")).assertEqual(-1);
+      expect(html.indexOf("{ id: 'client_show_more', label: '更多'")).assertEqual(-1);
+      expect(html.indexOf("state.trainShowMore = !state.trainShowMore")).assertEqual(-1);
+      expect(html.indexOf("id === 'client_filter_available' || id === 'travel_retry'")).assertLarger(-1);
+      expect(html.indexOf('state.fastestFirst = !state.fastestFirst')).assertLarger(-1);
       expect(html.indexOf('function displayTime(value)')).assertLarger(-1);
       expect(html.indexOf("displayTime(metric(block, ['depart', 'depTime']))")).assertLarger(-1);
       expect(html.indexOf('white-space: nowrap')).assertLarger(-1);

@@ -107,7 +107,7 @@ export default function checkoutWebOverlayTest() {
       )).assertEqual('');
     });
 
-    it('allows only exact official train main-frame booking routes', 0, () => {
+    it('allows official 12306 login and booking navigation', 0, () => {
       expect(checkoutWebNavigationDecision(
         'train',
         'https://kyfw.12306.cn/otn/leftTicket/init',
@@ -143,6 +143,16 @@ export default function checkoutWebOverlayTest() {
         'https://epay.12306.cn/pay/payResponse',
         true
       )).assertEqual('allow');
+      expect(checkoutWebNavigationDecision(
+        'train',
+        'https://kyfw.12306.cn/otn/view/index.html',
+        true
+      )).assertEqual('allow');
+      expect(checkoutWebNavigationDecision(
+        'train',
+        'https://epay.12306.cn/pay/newGatewayRoute',
+        true
+      )).assertEqual('allow');
       expect(checkoutWebNavigationDecision('train', 'https://evil.example/', true)).assertEqual('block');
       expect(checkoutWebNavigationDecision(
         'train', 'https://kyfw.12306.cn.evil.example/otn/leftTicket/init', true
@@ -161,13 +171,38 @@ export default function checkoutWebOverlayTest() {
       )).assertEqual('block');
       expect(checkoutWebNavigationDecision(
         'train', 'https://kyfw.12306.cn/otn/view/passengers.html', true
-      )).assertEqual('block');
+      )).assertEqual('allow');
       expect(checkoutWebNavigationDecision(
         'train', 'https://kyfw.12306.cn/otn/leftTicket/query', true
+      )).assertEqual('allow');
+      expect(checkoutWebNavigationDecision(
+        'train', 'alipays://platformapi/startapp', true
+      )).assertEqual('external_payment');
+      expect(checkoutWebNavigationDecision(
+        'train', 'weixin://wap/pay?prepayid=test', true
+      )).assertEqual('external_payment');
+      expect(checkoutWebNavigationDecision(
+        'train', 'https://render.alipay.com/payment', true
+      )).assertEqual('allow');
+      expect(checkoutWebNavigationDecision(
+        'train', 'https://mapi.alipay.com/gateway.do', true
+      )).assertEqual('allow');
+      expect(checkoutWebNavigationDecision(
+        'train', 'https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb', true
+      )).assertEqual('allow');
+      expect(checkoutWebNavigationDecision(
+        'train', 'https://payapp.weixin.qq.com/pay/entry', true
+      )).assertEqual('allow');
+      expect(checkoutWebNavigationDecision(
+        'train', 'https://payapp.weixin.qq.com.evil.example/pay/entry', true
       )).assertEqual('block');
-      expect(checkoutWebNavigationDecision('train', 'alipays://platformapi/startapp', true)).assertEqual('block');
+      expect(checkoutWebNavigationDecision(
+        'train', 'https://render.alipay.com.evil.example/payment', true
+      )).assertEqual('block');
       expect(checkoutWebNavigationDecision('train', 'javascript:alert(1)', true)).assertEqual('block');
-      expect(checkoutWebNavigationDecision('train', 'alipays://platformapi/startapp', false)).assertEqual('block');
+      expect(checkoutWebNavigationDecision(
+        'train', 'alipays://platformapi/startapp', false
+      )).assertEqual('external_payment');
       expect(checkoutWebNavigationDecision('train', 'https://static.example/frame', false)).assertEqual('allow');
     });
 

@@ -1705,19 +1705,16 @@ const MCP_PROTOCOL_VERSION: string = '2025-06-18';
 const FOOD_PROVIDER_RESULT_LIMIT: number = 10;
 const FOOD_AGGREGATED_RESULT_LIMIT: number = 24;
 const TRAIN_RESULT_LIMIT: number = 30;
-const TRAIN_INITIAL_VISIBLE: number = 6;
 const TRAIN_CLIENT_ACTIONS: A2uiAction[] = [
-  { id: 'client_show_more', label: '多展示一些', prompt: 'client_show_more', kind: 'client', variant: 'primary' },
   { id: 'client_sort_fastest', label: '选最快的', prompt: 'client_sort_fastest', kind: 'client', variant: 'secondary' },
-  { id: 'client_filter_available', label: '只看有票', prompt: 'client_filter_available', kind: 'client', variant: 'secondary' },
   { id: 'client_edit_query', label: '修改查询', prompt: 'client_edit_query', kind: 'input', variant: 'secondary' }
 ];
 const TRAVEL_CLIENT_ACTIONS: A2uiAction[] = [
   { id: 'travel_show_all', label: '全部', prompt: 'travel_show_all', kind: 'client', variant: 'secondary' },
   { id: 'travel_filter_train', label: '只看高铁', prompt: 'travel_filter_train', kind: 'client', variant: 'secondary' },
   { id: 'travel_filter_flight', label: '只看飞机', prompt: 'travel_filter_flight', kind: 'client', variant: 'secondary' },
+  { id: 'client_sort_fastest', label: '最快', prompt: 'client_sort_fastest', kind: 'client', variant: 'secondary' },
   { id: 'travel_change_date', label: '换日期', prompt: '换日期重新查询出行方案', kind: 'input', variant: 'secondary' },
-  { id: 'travel_retry', label: '重新查询', prompt: '重新查询出行方案', kind: 'prompt', variant: 'primary' }
 ];
 const HIGH_SPEED_DEFAULT_STATIONS: StationDefault[] = [
   { city: '北京', station: '北京南' },
@@ -6281,6 +6278,7 @@ function flightResultA2ui(surfaceId: string, title: string, body: string, summar
             status: 'ready',
             dataPath: dataPathForTool('flight.search'),
             actions: [
+              { id: 'client_sort_fastest', label: '最快', prompt: 'client_sort_fastest', kind: 'client', variant: 'secondary' },
               { id: 'flight_change_date', label: '换个日期', prompt: '换个日期查询航班', kind: 'prompt', variant: 'secondary' }
               // 换城市需要城市选择控件，先不暴露半成品入口。
               // { id: 'flight_change_city', label: '换个城市', prompt: '换个城市查询航班', kind: 'prompt', variant: 'secondary' }
@@ -12622,8 +12620,8 @@ async function callStructuredTrainTool(prompt: string): Promise<DataResult> {
     ? '已从 12306 查询到 ' + date + ' ' + fromName + ' 到 ' + toName + ' ' + timeSummary + '的车次。'
     : '已从 12306 查询到 ' + date + ' ' + fromName + ' 到 ' + toName + ' 的车次。';
   const body = timeSummary.length > 0
-    ? '以下为 ' + timeSummary + '出发的 12306 实时查询结果，默认先展示 ' + TRAIN_INITIAL_VISIBLE.toString() + ' 趟。'
-    : '以下为 12306 实时查询结果摘要，默认先展示 ' + TRAIN_INITIAL_VISIBLE.toString() + ' 趟。';
+    ? '以下为 ' + timeSummary + '出发的 12306 实时查询结果。'
+    : '以下为 12306 实时查询结果。';
   aiLogInfo('[AIPhone][LocalTool12306Result] rows=' + rows.length.toString() + ' filtered=' + parsed.length.toString() + ' returned=' + top.length.toString());
   return trainStructuredDataResult({
     title: '12306 余票查询', body: body, summary: summaryText, trains: top

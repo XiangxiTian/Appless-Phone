@@ -46,6 +46,7 @@ export struct TravelOptionsView {
   @Prop renderTick: number = 0;
   @Prop isBusy: boolean = false;
   @State filterMode: TravelFilterMode = 'all';
+  @State fastestFirst: boolean = false;
   @State expandedTravelKey: string = '';
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onPinTravelNavigationCard: (item: A2uiTravelOption) => void = (_item: A2uiTravelOption) => {};
@@ -85,9 +86,21 @@ export struct TravelOptionsView {
     return 2;
   }
 
+  private durationMinutes(value: string): number {
+    const hours = /([0-9]+)\s*(?:h|小时|时)/i.exec(value);
+    const minutes = /([0-9]+)\s*(?:m|分钟|分)/i.exec(value);
+    const total = (hours === null ? 0 : Number.parseInt(hours[1], 10) * 60) +
+      (minutes === null ? 0 : Number.parseInt(minutes[1], 10));
+    return total > 0 ? total : 999999;
+  }
+
   private sortedOptions(rows: A2uiTravelOption[]): A2uiTravelOption[] {
     const copy = rows.slice();
     copy.sort((left: A2uiTravelOption, right: A2uiTravelOption) => {
+      if (this.fastestFirst) {
+        const durationDelta = this.durationMinutes(left.duration) - this.durationMinutes(right.duration);
+        if (durationDelta !== 0) return durationDelta;
+      }
       const departDelta = this.parseClockMinutes(left.depart) - this.parseClockMinutes(right.depart);
       if (departDelta !== 0) {
         return departDelta;
@@ -158,7 +171,8 @@ export struct TravelOptionsView {
   }
 
   private isLocalTravelAction(action: A2uiAction): boolean {
-    return action.id === 'travel_show_all' || action.id === 'travel_filter_train' || action.id === 'travel_filter_flight';
+    return action.id === 'travel_show_all' || action.id === 'travel_filter_train' ||
+      action.id === 'travel_filter_flight' || action.id === 'client_sort_fastest';
   }
 
   private actionForFilter(action: A2uiAction): A2uiAction {
@@ -169,6 +183,8 @@ export struct TravelOptionsView {
       active = this.filterMode === 'train';
     } else if (action.id === 'travel_filter_flight') {
       active = this.filterMode === 'flight';
+    } else if (action.id === 'client_sort_fastest') {
+      active = this.fastestFirst;
     }
     if (!active) {
       return action;
@@ -185,6 +201,8 @@ export struct TravelOptionsView {
   private visibleActions(): A2uiAction[] {
     const next: A2uiAction[] = [];
     actionsOf(this.component).forEach((action: A2uiAction) => {
+      if (action.id === 'client_show_more' || action.id === 'client_filter_available' ||
+        action.id === 'travel_retry') return;
       next.push(this.actionForFilter(action));
     });
     return next;
@@ -218,7 +236,9 @@ export struct TravelOptionsView {
       this.onAction(action);
       return;
     }
-    if (action.id === 'travel_filter_train') {
+    if (action.id === 'client_sort_fastest') {
+      this.fastestFirst = !this.fastestFirst;
+    } else if (action.id === 'travel_filter_train') {
       this.filterMode = 'train';
     } else if (action.id === 'travel_filter_flight') {
       this.filterMode = 'flight';
@@ -294,7 +314,7 @@ export struct TravelOptionsView {
       if (item.feasibilityReason !== undefined && item.feasibilityReason.length > 0) {
         this.DetailRow('会议判断', item.feasibilityReason)
       }
-      Text(item.source === 'flight' ? '以飞常准返回为准；支持订票的结果会在系统浏览器打开携程。' :
+      Text(item.source === 'flight' ? '以飞常准返回为准；点击后将打开携程 App。' :
         (this.trainBookingAction(item) === null ? '以 12306 返回为准，当前结果未提供购票入口。' :
           '以 12306 返回为准，可继续前往官方页面购票。'))
         .fontSize(12)

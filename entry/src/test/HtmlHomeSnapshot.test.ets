@@ -421,7 +421,7 @@ export default function htmlHomeSnapshotTest() {
       expect(JSON.stringify(doc.blocks[1].actions).indexOf('train.booking.open')).assertEqual(-1);
       expect(doc.blocks[1].actions.length).assertEqual(3);
       expect(doc.blocks[1].actions[0].id).assertEqual('flight.booking.ctrip.open');
-      expect(doc.blocks[1].actions[0].label).assertEqual('去携程订票');
+      expect(doc.blocks[1].actions[0].label).assertEqual('打开携程');
       expect(doc.blocks[1].actions[0].variant).assertEqual('primary');
       expect(doc.blocks[1].actions[0].prompt.indexOf('"id":"flight-CZ1"')).assertLarger(-1);
       expect(doc.blocks[1].actions[0].prompt.indexOf('"source":"flight"')).assertLarger(-1);
@@ -521,7 +521,7 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.blocks[0].actions[3].id).assertEqual('html_pin_train');
       expect(doc.blocks[1].actions.length).assertEqual(3);
       expect(doc.blocks[1].actions[0].id).assertEqual('flight.booking.ctrip.open');
-      expect(doc.blocks[1].actions[0].label).assertEqual('去携程订票');
+      expect(doc.blocks[1].actions[0].label).assertEqual('打开携程');
       expect(doc.blocks[1].actions[0].variant).assertEqual('primary');
       expect(doc.blocks[1].actions[1].id).assertEqual('travel.calendar.add');
       expect(doc.blocks[1].actions[1].label).assertEqual('加入日历');
@@ -539,7 +539,7 @@ export default function htmlHomeSnapshotTest() {
       expect(doc.blocks[1].actions[0].prompt.indexOf('"travelDate":"2026-07-01"')).assertLarger(-1);
       expect(isHtmlHomeActionAllowed(doc, doc.blocks[1].actions[0] as A2uiAction)).assertTrue();
       const forgedFlightBooking: A2uiAction = {
-        id: 'flight.booking.ctrip.open', label: '去携程订票',
+        id: 'flight.booking.ctrip.open', label: '打开携程',
         prompt: doc.blocks[1].actions[0].prompt.replace('"toCode":"SHA"', '"toCode":"PEK"'),
         variant: 'primary', kind: 'client'
       };

@@ -1478,8 +1478,15 @@ export default function toolGatewayClientTest() {
         foodStructuredDataA2ui('food_fixture', foodData)
       ];
       expect(legacyJsonl[0].indexOf('"id":"train-G5612-18:05"')).assertLarger(-1);
+      expect(legacyJsonl[0].indexOf('"id":"client_sort_fastest"')).assertLarger(-1);
+      expect(legacyJsonl[0].indexOf('"id":"client_filter_available"')).assertEqual(-1);
+      expect(legacyJsonl[0].indexOf('"id":"travel_retry"')).assertEqual(-1);
       expect(legacyJsonl[1].indexOf('"trainCode":"G5612"')).assertLarger(-1);
+      expect(legacyJsonl[1].indexOf('"id":"client_show_more"')).assertEqual(-1);
+      expect(legacyJsonl[1].indexOf('"id":"client_filter_available"')).assertEqual(-1);
       expect(legacyJsonl[2].indexOf('"flightNo":"CZ355"')).assertLarger(-1);
+      expect(legacyJsonl[2].indexOf('"id":"client_sort_fastest"')).assertLarger(-1);
+      expect(legacyJsonl[2].indexOf('"id":"client_filter_available"')).assertEqual(-1);
       expect(legacyJsonl[3].indexOf('"name":"瑞幸咖啡 科技园店"')).assertLarger(-1);
       legacyJsonl.forEach((jsonl: string) => {
         expect(jsonl.indexOf('updateComponents')).assertLarger(-1);

@@ -743,7 +743,7 @@ function appendTravelBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
         travelDate: textOf(item.travelDate)
       });
       const bookingAction = clientAction(
-        'flight.booking.ctrip.open', '去携程订票', flightActionPayload, component.id
+        'flight.booking.ctrip.open', '打开携程', flightActionPayload, component.id
       );
       bookingAction.variant = 'primary';
       block.actions.push(bookingAction);
@@ -863,7 +863,7 @@ function appendFlightBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceStat
       toCode: textOf(item.arrCode),
       travelDate: textOf(item.travelDate)
     });
-    const bookingAction = clientAction('flight.booking.ctrip.open', '去携程订票', actionPayload, component.id);
+    const bookingAction = clientAction('flight.booking.ctrip.open', '打开携程', actionPayload, component.id);
     bookingAction.variant = 'primary';
     block.actions.push(bookingAction);
     const calendarAction = travelCalendarActionForFlight(item, component.id);

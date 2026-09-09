@@ -19,7 +19,6 @@ import {
 import { componentBodyOf, componentStatusOf, componentTitleOf } from '../render/A2uiRenderData';
 import {
   A2UI_TRAIN_ACTION_SHOW_MORE,
-  A2UI_TRAIN_INITIAL_VISIBLE,
   A2uiTrainViewState,
   isLocalTrainAction,
   nextTrainViewStateForAction,
@@ -48,9 +47,8 @@ export struct TrainOptionsView {
   @Prop renderTick: number = 0;
   @Prop isBusy: boolean = false;
   @State expandedTrainKey: string = '';
-  @State showAllTrains: boolean = false;
+  @State showAllTrains: boolean = true;
   @State fastestFirst: boolean = false;
-  @State availableOnly: boolean = false;
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onPinTrainNavigationCard: (item: A2uiTrainOption) => void = (_item: A2uiTrainOption) => {};
 
@@ -62,7 +60,7 @@ export struct TrainOptionsView {
     return {
       showAll: this.showAllTrains,
       fastestFirst: this.fastestFirst,
-      availableOnly: this.availableOnly
+      availableOnly: false
     };
   }
 
@@ -101,10 +99,10 @@ export struct TrainOptionsView {
     const source = actionsOf(this.component);
     const next: A2uiAction[] = [];
     source.forEach((action: A2uiAction) => {
-      if (action.id === A2UI_TRAIN_ACTION_SHOW_MORE && this.trains().length <= A2UI_TRAIN_INITIAL_VISIBLE) {
+      if (action.id === A2UI_TRAIN_ACTION_SHOW_MORE || action.id === 'client_filter_available') {
         return;
       }
-      next.push(trainActionForState(action, this.showAllTrains, this.fastestFirst, this.availableOnly));
+      next.push(trainActionForState(action, this.showAllTrains, this.fastestFirst, false));
     });
     return next;
   }
@@ -117,7 +115,6 @@ export struct TrainOptionsView {
     const next = nextTrainViewStateForAction(this.viewState(), action);
     this.showAllTrains = next.showAll;
     this.fastestFirst = next.fastestFirst;
-    this.availableOnly = next.availableOnly;
   }
 
   private trainKey(item: A2uiTrainOption): string {
